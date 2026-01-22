@@ -29,6 +29,7 @@ import {
 import { Prompt, type PromptRef } from "@tui/component/prompt"
 import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk/v2"
 import { useLocal } from "@tui/context/local"
+import { useDirectory } from "@tui/context/directory"
 import { Locale } from "@/util/locale"
 import type { Tool } from "@/tool/tool"
 import type { ReadTool } from "@/tool/read"
@@ -1346,6 +1347,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const ctx = use()
   const local = useLocal()
   const sync = useSync()
+  const directory = useDirectory()
   const { theme, syntax } = useTheme()
 
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
@@ -1361,6 +1363,66 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
     if (!user || !user.time) return 0
     return props.message.time.completed - user.time.created
   })
+
+  // Context window stats from this message
+  const contextStats = createMemo(() => {
+    const msg = props.message
+    const total = msg.tokens.input + msg.tokens.cache.read + msg.tokens.cache.write
+    const cached = msg.tokens.cache.read
+    const newTokens = msg.tokens.input + msg.tokens.cache.write
+    const modelInfo = sync.data.provider.find((x) => x.id === msg.providerID)?.models[msg.modelID]
+    const contextLimit = modelInfo?.limit.context ?? 200000
+    const percentage = Math.round((total / contextLimit) * 100)
+    return { total, cached, newTokens, contextLimit, percentage }
+  })
+
+  // Session totals - sum tokens across all assistant messages up to this one
+  const sessionTotals = createMemo(() => {
+    const msgs = messages()
+    let inputTotal = 0
+    let outputTotal = 0
+    for (const m of msgs) {
+      if (m.role === "assistant") {
+        inputTotal += m.tokens.input + m.tokens.cache.write
+        outputTotal += m.tokens.output + m.tokens.reasoning
+      }
+      if (m.id === props.message.id) break // Stop at current message
+    }
+    return { input: inputTotal, output: outputTotal }
+  })
+
+  // Cache expiry - 5 minutes from message completion
+  const cacheExpiry = createMemo(() => {
+    if (!props.message.time.completed) return null
+    const expiryTime = props.message.time.completed + 5 * 60 * 1000
+    if (expiryTime <= Date.now()) return null
+    const date = new Date(expiryTime)
+    const hours = date.getHours().toString().padStart(2, "0")
+    const minutes = date.getMinutes().toString().padStart(2, "0")
+    const seconds = date.getSeconds().toString().padStart(2, "0")
+    return `${hours}:${minutes}:${seconds}`
+  })
+
+  // Format helpers
+  const formatTokens = (count: number): string => {
+    if (count >= 1_000_000) return Math.round(count / 1_000_000) + "M"
+    if (count >= 1_000) return Math.round(count / 1_000) + "k"
+    return count.toString()
+  }
+
+  // Progress bar helper
+  const progressBar = (percent: number, width: number = 10) => {
+    const filled = Math.min(Math.round((percent / 100) * width), width)
+    const color = percent >= 80 ? theme.error : percent >= 50 ? theme.warning : theme.success
+    return (
+      <text>
+        <span style={{ fg: theme.textMuted }}>[</span>
+        <span style={{ fg: color }}>{"\u2593".repeat(filled)}</span>
+        <span style={{ fg: theme.textMuted }}>{"\u2591".repeat(width - filled)}</span>
+        <span style={{ fg: theme.textMuted }}>]</span>
+      </text>
+    )
+  }
 
   // Create greenish tinted background for assistant output
   const tintedBg = createMemo(() => {
@@ -1420,6 +1482,43 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
               <span> · interrupted</span>
             </Show>
           </text>
+          {/* Statusline snapshot - exact format from prompt area */}
+          <box flexDirection="column" marginTop={1} gap={0}>
+            {/* Line 1: Directory */}
+            <box flexDirection="row">
+              <text>
+                <span style={{ fg: theme.textMuted }}>[cwd]</span>{" "}
+                <span style={{ fg: theme.primary }}>{directory()}</span>
+              </text>
+            </box>
+            {/* Line 2: Cache expiry | Context window | Cached/New tokens | Session totals */}
+            <box flexDirection="row">
+              <text>
+                <span style={{ fg: theme.textMuted }}>[cache_exp]</span>{" "}
+                <span style={{ fg: theme.warning }}>{cacheExpiry() ?? "--"}</span>
+                <span style={{ fg: theme.textMuted }}> │ </span>
+                <span style={{ fg: theme.textMuted }}>[ctx_win]</span>{" "}
+              </text>
+              {progressBar(contextStats().percentage, 10)}
+              <text>
+                {" "}
+                <span style={{ fg: theme.primary }}>{formatTokens(contextStats().total)}</span>
+                <span style={{ fg: theme.textMuted }}>/</span>
+                <span style={{ fg: theme.textMuted }}>{formatTokens(contextStats().contextLimit)}</span>
+                <span style={{ fg: theme.textMuted }}> │ </span>
+                <span style={{ fg: theme.textMuted }}>[cached]</span>{" "}
+                <span style={{ fg: theme.success }}>{formatTokens(contextStats().cached)}</span>
+                <span style={{ fg: theme.textMuted }}> · </span>
+                <span style={{ fg: theme.textMuted }}>[new]</span>{" "}
+                <span style={{ fg: theme.warning }}>{formatTokens(contextStats().newTokens)}</span>
+                <span style={{ fg: theme.textMuted }}> │ </span>
+                <span style={{ fg: theme.textMuted }}>[session]</span>{" "}
+                <span style={{ fg: theme.primary }}>↑{formatTokens(sessionTotals().input)}</span>
+                <span style={{ fg: theme.textMuted }}> </span>
+                <span style={{ fg: theme.warning }}>↓{formatTokens(sessionTotals().output)}</span>
+              </text>
+            </box>
+          </box>
         </Show>
       </box>
     </Show>
