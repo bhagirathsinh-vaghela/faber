@@ -129,10 +129,6 @@ export function Session() {
     return children().flatMap((x) => sync.data.question[x.id] ?? [])
   })
 
-  const pending = createMemo(() => {
-    return messages().findLast((x) => x.role === "assistant" && !x.time.completed)?.id
-  })
-
   const lastAssistant = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant")
   })
@@ -313,8 +309,8 @@ export function Session() {
           })
           .then((res) =>
             Clipboard.copy(res.data!.share!.url).catch(() =>
-              toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
-            ),
+              toast.show({ message: "Failed to copy URL to clipboard", variant: "error" })
+            )
           )
           .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
           .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
@@ -456,8 +452,8 @@ export function Session() {
               if (part.type === "file") agg.parts.push(part)
               return agg
             },
-            { input: "", parts: [] as PromptInfo["parts"] },
-          ),
+            { input: "", parts: [] as PromptInfo["parts"] }
+          )
         )
         dialog.clear()
       },
@@ -666,7 +662,7 @@ export function Session() {
           if (!parts || !Array.isArray(parts)) continue
 
           const hasValidTextPart = parts.some(
-            (part) => part && part.type === "text" && !part.synthetic && !part.ignored,
+            (part) => part && part.type === "text" && !part.synthetic && !part.ignored
           )
 
           if (hasValidTextPart) {
@@ -703,7 +699,7 @@ export function Session() {
       onSelect: (dialog) => {
         const revertID = session()?.revert?.messageID
         const lastAssistantMessage = messages().findLast(
-          (msg) => msg.role === "assistant" && (!revertID || msg.id < revertID),
+          (msg) => msg.role === "assistant" && (!revertID || msg.id < revertID)
         )
         if (!lastAssistantMessage) {
           toast.show({ message: "No assistant messages found", variant: "error" })
@@ -757,7 +753,7 @@ export function Session() {
               thinking: showThinking(),
               toolDetails: showDetails(),
               assistantMetadata: showAssistantMetadata(),
-            },
+            }
           )
           await Clipboard.copy(transcript)
           toast.show({ message: "Session transcript copied to clipboard!", variant: "success" })
@@ -789,7 +785,7 @@ export function Session() {
             showThinking(),
             showDetails(),
             showAssistantMetadata(),
-            false,
+            false
           )
 
           if (options === null) return
@@ -801,7 +797,7 @@ export function Session() {
               thinking: options.thinking,
               toolDetails: options.toolDetails,
               assistantMetadata: options.assistantMetadata,
-            },
+            }
           )
 
           if (options.openWithoutSaving) {
@@ -885,11 +881,11 @@ export function Session() {
           filename: cleanFilename,
           additions: patch.hunks.reduce(
             (sum, hunk) => sum + hunk.lines.filter((line) => line.startsWith("+")).length,
-            0,
+            0
           ),
           deletions: patch.hunks.reduce(
             (sum, hunk) => sum + hunk.lines.filter((line) => line.startsWith("-")).length,
-            0,
+            0
           ),
         }
       })
@@ -974,7 +970,7 @@ export function Session() {
                           const confirmed = await DialogConfirm.show(
                             dialog,
                             "Confirm Redo",
-                            "Are you sure you want to restore the reverted messages?",
+                            "Are you sure you want to restore the reverted messages?"
                           )
                           if (confirmed) {
                             command.trigger("session.redo")
@@ -1043,7 +1039,7 @@ export function Session() {
                         }}
                         message={message as UserMessage}
                         parts={sync.data.part[message.id] ?? []}
-                        pending={pending()}
+                        messages={messages()}
                       />
                     </Match>
                     <Match when={message.role === "assistant"}>
@@ -1109,6 +1105,18 @@ export function Session() {
   )
 }
 
+const formatTime = (timestamp: number): string => {
+  try {
+    const date = new Date(timestamp)
+    const hours = date.getHours().toString().padStart(2, "0")
+    const minutes = date.getMinutes().toString().padStart(2, "0")
+    const seconds = date.getSeconds().toString().padStart(2, "0")
+    return `${hours}:${minutes}:${seconds}`
+  } catch {
+    return ""
+  }
+}
+
 const MIME_BADGE: Record<string, string> = {
   "text/plain": "txt",
   "image/png": "img",
@@ -1124,7 +1132,7 @@ function UserMessage(props: {
   parts: Part[]
   onMouseUp: () => void
   index: number
-  pending?: string
+  messages: (UserMessage | AssistantMessage)[]
 }) {
   const ctx = use()
   const local = useLocal()
@@ -1133,9 +1141,12 @@ function UserMessage(props: {
   const sync = useSync()
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
-  const queued = createMemo(() => props.pending && props.message.id > props.pending)
+  const pending = createMemo(() => props.messages.findLast((x) => x.role === "assistant" && !x.time.completed)?.id)
+  const queued = createMemo(() => {
+    const id = pending()
+    return id !== undefined && props.message.id > id
+  })
   const color = createMemo(() => (queued() ? theme.accent : local.agent.color(props.message.agent)))
-  const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
 
@@ -1179,10 +1190,17 @@ function UserMessage(props: {
             <text fg={color()} attributes={TextAttributes.BOLD}>
               USER
             </text>
+            <Show when={ctx.showTimestamps()}>
+              <text fg={theme.textMuted}>
+                <span style={{ bg: color(), fg: theme.background, bold: true, underline: true }}>
+                  {"(" + formatTime(props.message.time.created) + ")"}
+                </span>
+              </text>
+            </Show>
           </box>
           <text fg={theme.text}>{text()?.text}</text>
           <Show when={files().length}>
-            <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
+            <box flexDirection="row" paddingBottom={0} paddingTop={1} gap={1} flexWrap="wrap">
               <For each={files()}>
                 {(file) => {
                   const bg = createMemo(() => {
@@ -1200,19 +1218,8 @@ function UserMessage(props: {
               </For>
             </box>
           </Show>
-          <Show
-            when={queued()}
-            fallback={
-              <Show when={ctx.showTimestamps()}>
-                <text fg={theme.textMuted}>
-                  <span style={{ fg: theme.textMuted }}>
-                    {Locale.todayTimeOrDateTime(props.message.time.created)}
-                  </span>
-                </text>
-              </Show>
-            }
-          >
-            <text fg={theme.textMuted}>
+          <Show when={queued()}>
+            <text fg={theme.textMuted} marginTop={1}>
               <span style={{ bg: theme.accent, fg: theme.backgroundPanel, bold: true }}> QUEUED </span>
             </text>
           </Show>
@@ -1456,6 +1463,15 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
           <text fg={theme.success} attributes={TextAttributes.BOLD}>
             ASSISTANT
           </text>
+          <Show when={ctx.showTimestamps() && props.message.time.completed}>
+            {(completed) => (
+              <text fg={theme.textMuted}>
+                <span style={{ bg: theme.success, fg: theme.background, bold: true, underline: true }}>
+                  {"(" + formatTime(completed()) + ")"}
+                </span>
+              </text>
+            )}
+          </Show>
         </box>
         <code
           filetype="markdown"
@@ -1467,21 +1483,22 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
           fg={theme.text}
         />
         <Show when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
-          <text fg={theme.textMuted} marginTop={1}>
-            <span style={{ fg: local.agent.color(props.message.agent) }}>
-              {Locale.titlecase(props.message.mode)}
-            </span>
-            <span> · {props.message.modelID}</span>
+          <box flexDirection="row" marginTop={1} flexWrap="wrap">
+            <text fg={theme.textMuted}>
+              <span style={{ fg: local.agent.color(props.message.agent) }}>{Locale.titlecase(props.message.mode)}</span>
+              <span> · {props.message.modelID}</span>
+            </text>
             <Show when={duration()}>
-              <span> · {Locale.duration(duration())}</span>
-            </Show>
-            <Show when={ctx.showTimestamps() && props.message.time.completed}>
-              {(completed) => <span> · {Locale.todayTimeOrDateTime(completed())}</span>}
+              <text fg={theme.textMuted}>
+                <span> · {Locale.duration(duration())}</span>
+              </text>
             </Show>
             <Show when={props.message.error?.name === "MessageAbortedError"}>
-              <span> · interrupted</span>
+              <text fg={theme.textMuted}>
+                <span> · interrupted</span>
+              </text>
             </Show>
-          </text>
+          </box>
           {/* Statusline snapshot - exact format from prompt area */}
           <box flexDirection="column" marginTop={1} gap={0}>
             {/* Line 1: Directory */}
@@ -1540,7 +1557,7 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
 
   const toolprops = {
     get metadata() {
-      return props.part.state.status === "pending" ? {} : (props.part.state.metadata ?? {})
+      return props.part.state.status === "pending" ? {} : props.part.state.metadata ?? {}
     },
     get input() {
       return props.part.state.input ?? {}
@@ -1676,7 +1693,7 @@ function InlineTool(props: {
     () =>
       error()?.includes("rejected permission") ||
       error()?.includes("specified a rule") ||
-      error()?.includes("user dismissed"),
+      error()?.includes("user dismissed")
   )
 
   return (
@@ -1738,9 +1755,9 @@ function BlockTool(props: {
     const panel = theme.backgroundPanel
     const accent = agentColor()
     return RGBA.fromInts(
-      Math.round((panel.r * 0.90 + accent.r * 0.10) * 255),
-      Math.round((panel.g * 0.90 + accent.g * 0.10) * 255),
-      Math.round((panel.b * 0.90 + accent.b * 0.10) * 255),
+      Math.round((panel.r * 0.9 + accent.r * 0.1) * 255),
+      Math.round((panel.g * 0.9 + accent.g * 0.1) * 255),
+      Math.round((panel.b * 0.9 + accent.b * 0.1) * 255),
       255
     )
   })
@@ -1750,9 +1767,9 @@ function BlockTool(props: {
     const base = theme.borderSubtle
     const accent = agentColor()
     return RGBA.fromInts(
-      Math.round((base.r * 0.80 + accent.r * 0.20) * 255),
-      Math.round((base.g * 0.80 + accent.g * 0.20) * 255),
-      Math.round((base.b * 0.80 + accent.b * 0.20) * 255),
+      Math.round((base.r * 0.8 + accent.r * 0.2) * 255),
+      Math.round((base.g * 0.8 + accent.g * 0.2) * 255),
+      Math.round((base.b * 0.8 + accent.b * 0.2) * 255),
       255
     )
   })
