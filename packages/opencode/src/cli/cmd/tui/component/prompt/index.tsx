@@ -1,5 +1,5 @@
 import { BoxRenderable, TextareaRenderable, MouseEvent, PasteEvent, t, dim, fg } from "@opentui/core"
-import { createEffect, createMemo, type JSX, onMount, createSignal, onCleanup, Show, Switch, Match } from "solid-js"
+import { createEffect, createMemo, type JSX, onMount, createSignal, onCleanup, Show, Switch, Match, on } from "solid-js"
 import "opentui-spinner/solid"
 import { useLocal } from "@tui/context/local"
 import { useTheme } from "@tui/context/theme"
@@ -129,6 +129,23 @@ export function Prompt(props: PromptProps) {
     mode: "normal",
     extmarkToPartIndex: new Map(),
     interrupt: 0,
+  })
+
+  onMount(() => {
+    const cleanup = sdk.event.on("session.idle", (evt) => {
+      if (props.sessionID && evt.properties.sessionID !== props.sessionID) return
+      const entry = stash.getTransient()
+      if (entry && store.prompt.input === "") {
+        setTimeout(() => {
+          input.setText(entry.input)
+          setStore("prompt", { input: entry.input, parts: entry.parts })
+          restoreExtmarksFromParts(entry.parts)
+          input.gotoBufferEnd()
+          stash.popTransient()
+        }, 50)
+      }
+    })
+    onCleanup(cleanup)
   })
 
   // Initialize agent/model/variant from last user message when session changes
@@ -793,6 +810,28 @@ export function Prompt(props: PromptProps) {
                 // This is needed because Windows terminal doesn't properly send image data
                 // through bracketed paste, so we need to intercept the keypress and
                 // directly read from clipboard before the terminal handles it
+                if ((keybind as any).match("prompt_stash", e)) {
+                  e.preventDefault()
+                  if (store.prompt.input !== "") {
+                    stash.pushTransient({
+                      input: store.prompt.input,
+                      parts: store.prompt.parts,
+                    })
+                    input.extmarks.clear()
+                    input.clear()
+                    setStore("prompt", { input: "", parts: [] })
+                    setStore("extmarkToPartIndex", new Map())
+                  } else {
+                    const entry = stash.popTransient()
+                    if (entry) {
+                      input.setText(entry.input)
+                      setStore("prompt", { input: entry.input, parts: entry.parts })
+                      restoreExtmarksFromParts(entry.parts)
+                      input.gotoBufferEnd()
+                    }
+                  }
+                  return
+                }
                 if (keybind.match("input_paste", e)) {
                   const content = await Clipboard.read()
                   if (content?.mime.startsWith("image/")) {
@@ -944,24 +983,31 @@ export function Prompt(props: PromptProps) {
               cursorColor={theme.text}
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1}>
-              <text fg={highlight()}>
-                {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
-              </text>
-              <Show when={store.mode === "normal"}>
-                <box flexDirection="row" gap={1}>
-                  <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
-                    {local.model.parsed().model}
-                  </text>
-                  <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
-                  <Show when={showVariant()}>
-                    <text fg={theme.textMuted}>·</text>
-                    <text>
-                      <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
+            <Show when={stash.getTransient()}>
+              <box paddingTop={1}>
+                <text fg={theme.textMuted}>[Stashed prompt]</text>
+              </box>
+            </Show>
+            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
+              <box flexDirection="row" gap={1}>
+                <text fg={highlight()}>
+                  {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
+                </text>
+                <Show when={store.mode === "normal"}>
+                  <box flexDirection="row" gap={1}>
+                    <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
+                      {local.model.parsed().model}
                     </text>
-                  </Show>
-                </box>
-              </Show>
+                    <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
+                    <Show when={showVariant()}>
+                      <text fg={theme.textMuted}>·</text>
+                      <text>
+                        <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
+                      </text>
+                    </Show>
+                  </box>
+                </Show>
+              </box>
             </box>
             <Statusline sessionID={props.sessionID} />
           </box>

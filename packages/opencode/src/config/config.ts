@@ -748,6 +748,7 @@ export namespace Config {
         .describe("Select to start of buffer in input"),
       input_select_buffer_end: z.string().optional().default("shift+end").describe("Select to end of buffer in input"),
       input_delete_line: z.string().optional().default("ctrl+shift+d").describe("Delete line in input"),
+      prompt_stash: z.string().optional().default("ctrl+s").describe("Stash or pop the current prompt"),
       input_delete_to_line_end: z.string().optional().default("ctrl+k").describe("Delete to end of line in input"),
       input_delete_to_line_start: z.string().optional().default("ctrl+u").describe("Delete to start of line in input"),
       input_backspace: z.string().optional().default("backspace,shift+backspace").describe("Backspace in input"),

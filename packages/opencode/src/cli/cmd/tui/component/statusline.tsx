@@ -48,7 +48,7 @@ export function Statusline(props: StatuslineProps) {
   const directory = useDirectory()
 
   // Get messages for the current session
-  const messages = createMemo(() => (props.sessionID ? sync.data.message[props.sessionID] ?? [] : []))
+  const messages = createMemo(() => (props.sessionID ? (sync.data.message[props.sessionID] ?? []) : []))
 
   // Get last assistant message with token data
   const lastAssistant = createMemo(() => {
@@ -128,8 +128,7 @@ export function Statusline(props: StatuslineProps) {
       {/* Line 1: Directory (includes git branch info) */}
       <box flexDirection="row">
         <text>
-          <span style={{ fg: theme.textMuted }}>[cwd]</span>{" "}
-          <span style={{ fg: theme.primary }}>{directory()}</span>
+          <span style={{ fg: theme.textMuted }}>📁</span> <span style={{ fg: theme.primary }}>{directory()}</span>
         </text>
       </box>
 
@@ -138,10 +137,10 @@ export function Statusline(props: StatuslineProps) {
         {(stats) => (
           <box flexDirection="row">
             <text>
-              <span style={{ fg: theme.textMuted }}>[cache_exp]</span>{" "}
+              <span style={{ fg: theme.textMuted }}>⏳</span>{" "}
               <span style={{ fg: theme.warning }}>{cacheExpiry() ?? "--"}</span>
               <span style={{ fg: theme.textMuted }}> │ </span>
-              <span style={{ fg: theme.textMuted }}>[ctx_win]</span>{" "}
+              <span style={{ fg: theme.textMuted }}>🧠</span>{" "}
             </text>
             <ProgressBar percent={stats().percentage} width={10} />
             <text>
@@ -150,13 +149,13 @@ export function Statusline(props: StatuslineProps) {
               <span style={{ fg: theme.textMuted }}>/</span>
               <span style={{ fg: theme.textMuted }}>{formatTokens(stats().contextLimit)}</span>
               <span style={{ fg: theme.textMuted }}> │ </span>
-              <span style={{ fg: theme.textMuted }}>[cached]</span>{" "}
+              <span style={{ fg: theme.textMuted }}>📦</span>{" "}
               <span style={{ fg: theme.success }}>{formatTokens(stats().cached)}</span>
               <span style={{ fg: theme.textMuted }}> · </span>
-              <span style={{ fg: theme.textMuted }}>[new]</span>{" "}
+              <span style={{ fg: theme.textMuted }}>✨</span>{" "}
               <span style={{ fg: theme.warning }}>{formatTokens(stats().newTokens)}</span>
               <span style={{ fg: theme.textMuted }}> │ </span>
-              <span style={{ fg: theme.textMuted }}>[session]</span>{" "}
+              <span style={{ fg: theme.textMuted }}>💬</span>{" "}
               <span style={{ fg: theme.primary }}>↑{formatTokens(sessionTotals().input)}</span>
               <span style={{ fg: theme.textMuted }}> </span>
               <span style={{ fg: theme.warning }}>↓{formatTokens(sessionTotals().output)}</span>

@@ -1504,17 +1504,16 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
             {/* Line 1: Directory */}
             <box flexDirection="row">
               <text>
-                <span style={{ fg: theme.textMuted }}>[cwd]</span>{" "}
-                <span style={{ fg: theme.primary }}>{directory()}</span>
+                <span style={{ fg: theme.textMuted }}>📁</span> <span style={{ fg: theme.primary }}>{directory()}</span>
               </text>
             </box>
             {/* Line 2: Cache expiry | Context window | Cached/New tokens | Session totals */}
             <box flexDirection="row">
               <text>
-                <span style={{ fg: theme.textMuted }}>[cache_exp]</span>{" "}
+                <span style={{ fg: theme.textMuted }}>⏳</span>{" "}
                 <span style={{ fg: theme.warning }}>{cacheExpiry() ?? "--"}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
-                <span style={{ fg: theme.textMuted }}>[ctx_win]</span>{" "}
+                <span style={{ fg: theme.textMuted }}>🧠</span>{" "}
               </text>
               {progressBar(contextStats().percentage, 10)}
               <text>
@@ -1523,13 +1522,13 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
                 <span style={{ fg: theme.textMuted }}>/</span>
                 <span style={{ fg: theme.textMuted }}>{formatTokens(contextStats().contextLimit)}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
-                <span style={{ fg: theme.textMuted }}>[cached]</span>{" "}
+                <span style={{ fg: theme.textMuted }}>📦</span>{" "}
                 <span style={{ fg: theme.success }}>{formatTokens(contextStats().cached)}</span>
                 <span style={{ fg: theme.textMuted }}> · </span>
-                <span style={{ fg: theme.textMuted }}>[new]</span>{" "}
+                <span style={{ fg: theme.textMuted }}>✨</span>{" "}
                 <span style={{ fg: theme.warning }}>{formatTokens(contextStats().newTokens)}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
-                <span style={{ fg: theme.textMuted }}>[session]</span>{" "}
+                <span style={{ fg: theme.textMuted }}>💬</span>{" "}
                 <span style={{ fg: theme.primary }}>↑{formatTokens(sessionTotals().input)}</span>
                 <span style={{ fg: theme.textMuted }}> </span>
                 <span style={{ fg: theme.warning }}>↓{formatTokens(sessionTotals().output)}</span>
