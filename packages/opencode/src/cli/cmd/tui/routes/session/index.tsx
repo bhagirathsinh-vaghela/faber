@@ -1141,10 +1141,14 @@ function UserMessage(props: {
   const sync = useSync()
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
-  const pending = createMemo(() => props.messages.findLast((x) => x.role === "assistant" && !x.time.completed)?.id)
+  const pending = createMemo(
+    () => props.messages.findLast((x) => x.role === "assistant" && !x.time.completed) as AssistantMessage | undefined
+  )
   const queued = createMemo(() => {
-    const id = pending()
-    return id !== undefined && props.message.id > id
+    const p = pending()
+    // A user message is QUEUED if there's an incomplete assistant responding to an EARLIER message
+    // This means the user sent this message while the assistant was still responding to a previous one
+    return p && p.parentID !== props.message.id && props.message.id > p.parentID
   })
   const color = createMemo(() => (queued() ? theme.accent : local.agent.color(props.message.agent)))
 
