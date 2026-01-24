@@ -15,7 +15,7 @@ import { Dynamic } from "solid-js/web"
 import path from "path"
 import { useRoute, useRouteData } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
-import { SplitBorder } from "@tui/component/border"
+import { SplitBorder, AgentBorder } from "@tui/component/border"
 import { useTheme } from "@tui/context/theme"
 import {
   BoxRenderable,
@@ -1138,67 +1138,83 @@ function UserMessage(props: {
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
 
+  // Create tinted background using agent color
+  const tintedBg = createMemo(() => {
+    const panel = theme.backgroundPanel
+    const accent = color()
+    return RGBA.fromInts(
+      Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
+      Math.round((panel.g * 0.88 + accent.g * 0.12) * 255),
+      Math.round((panel.b * 0.88 + accent.b * 0.12) * 255),
+      255
+    )
+  })
+
   return (
     <>
       <Show when={text()}>
         <box
           id={props.message.id}
-          border={["left"]}
+          border={["top", "bottom", "left", "right"]}
           borderColor={color()}
-          customBorderChars={SplitBorder.customBorderChars}
+          customBorderChars={AgentBorder.customBorderChars}
           marginTop={props.index === 0 ? 0 : 1}
+          backgroundColor={hover() ? theme.backgroundElement : tintedBg()}
+          onMouseOver={() => {
+            setHover(true)
+          }}
+          onMouseOut={() => {
+            setHover(false)
+          }}
+          onMouseUp={props.onMouseUp}
+          paddingTop={1}
+          paddingBottom={1}
+          paddingLeft={2}
+          paddingRight={2}
+          flexShrink={0}
         >
-          <box
-            onMouseOver={() => {
-              setHover(true)
-            }}
-            onMouseOut={() => {
-              setHover(false)
-            }}
-            onMouseUp={props.onMouseUp}
-            paddingTop={1}
-            paddingBottom={1}
-            paddingLeft={2}
-            backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
-            flexShrink={0}
-          >
-            <text fg={theme.text}>{text()?.text}</text>
-            <Show when={files().length}>
-              <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
-                <For each={files()}>
-                  {(file) => {
-                    const bg = createMemo(() => {
-                      if (file.mime.startsWith("image/")) return theme.accent
-                      if (file.mime === "application/pdf") return theme.primary
-                      return theme.secondary
-                    })
-                    return (
-                      <text fg={theme.text}>
-                        <span style={{ bg: bg(), fg: theme.background }}> {MIME_BADGE[file.mime] ?? file.mime} </span>
-                        <span style={{ bg: theme.backgroundElement, fg: theme.textMuted }}> {file.filename} </span>
-                      </text>
-                    )
-                  }}
-                </For>
-              </box>
-            </Show>
-            <Show
-              when={queued()}
-              fallback={
-                <Show when={ctx.showTimestamps()}>
-                  <text fg={theme.textMuted}>
-                    <span style={{ fg: theme.textMuted }}>
-                      {Locale.todayTimeOrDateTime(props.message.time.created)}
-                    </span>
-                  </text>
-                </Show>
-              }
-            >
-              <text fg={theme.textMuted}>
-                <span style={{ bg: theme.accent, fg: theme.backgroundPanel, bold: true }}> QUEUED </span>
-              </text>
-            </Show>
+          <box flexDirection="row" gap={1} marginBottom={1}>
+            <text fg={color()}>{"◈"}</text>
+            <text fg={color()} attributes={TextAttributes.BOLD}>
+              USER
+            </text>
           </box>
+          <text fg={theme.text}>{text()?.text}</text>
+          <Show when={files().length}>
+            <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
+              <For each={files()}>
+                {(file) => {
+                  const bg = createMemo(() => {
+                    if (file.mime.startsWith("image/")) return theme.accent
+                    if (file.mime === "application/pdf") return theme.primary
+                    return theme.secondary
+                  })
+                  return (
+                    <text fg={theme.text}>
+                      <span style={{ bg: bg(), fg: theme.background }}> {MIME_BADGE[file.mime] ?? file.mime} </span>
+                      <span style={{ bg: theme.backgroundElement, fg: theme.textMuted }}> {file.filename} </span>
+                    </text>
+                  )
+                }}
+              </For>
+            </box>
+          </Show>
+          <Show
+            when={queued()}
+            fallback={
+              <Show when={ctx.showTimestamps()}>
+                <text fg={theme.textMuted}>
+                  <span style={{ fg: theme.textMuted }}>
+                    {Locale.todayTimeOrDateTime(props.message.time.created)}
+                  </span>
+                </text>
+              </Show>
+            }
+          >
+            <text fg={theme.textMuted}>
+              <span style={{ bg: theme.accent, fg: theme.backgroundPanel, bold: true }}> QUEUED </span>
+            </text>
+          </Show>
         </box>
       </Show>
       <Show when={compaction()}>
@@ -1215,6 +1231,7 @@ function UserMessage(props: {
 }
 
 function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+  const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
@@ -1276,15 +1293,8 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
                 }}
               >
                 ▣{" "}
-              </span>{" "}
+              </span>
               <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
-              <span style={{ fg: theme.textMuted }}> · {props.message.modelID}</span>
-              <Show when={duration()}>
-                <span style={{ fg: theme.textMuted }}> · {Locale.duration(duration())}</span>
-              </Show>
-              <Show when={props.message.error?.name === "MessageAbortedError"}>
-                <span style={{ fg: theme.textMuted }}> · interrupted</span>
-              </Show>
             </text>
           </box>
         </Match>
@@ -1334,10 +1344,57 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
 
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
+  const local = useLocal()
+  const sync = useSync()
   const { theme, syntax } = useTheme()
+
+  const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
+
+  const final = createMemo(() => {
+    return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
+  })
+
+  const duration = createMemo(() => {
+    if (!final()) return 0
+    if (!props.message.time.completed) return 0
+    const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
+    if (!user || !user.time) return 0
+    return props.message.time.completed - user.time.created
+  })
+
+  // Create greenish tinted background for assistant output
+  const tintedBg = createMemo(() => {
+    const panel = theme.backgroundPanel
+    const accent = theme.success
+    return RGBA.fromInts(
+      Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
+      Math.round((panel.g * 0.88 + accent.g * 0.12) * 255),
+      Math.round((panel.b * 0.88 + accent.b * 0.12) * 255),
+      255
+    )
+  })
+
   return (
     <Show when={props.part.text.trim()}>
-      <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
+      <box
+        id={"text-" + props.part.id}
+        marginTop={1}
+        border={["top", "bottom", "left", "right"]}
+        customBorderChars={AgentBorder.customBorderChars}
+        borderColor={theme.success}
+        backgroundColor={tintedBg()}
+        paddingTop={1}
+        paddingBottom={1}
+        paddingLeft={2}
+        paddingRight={2}
+        flexShrink={0}
+      >
+        <box flexDirection="row" gap={1} marginBottom={1}>
+          <text fg={theme.success}>{"◈"}</text>
+          <text fg={theme.success} attributes={TextAttributes.BOLD}>
+            ASSISTANT
+          </text>
+        </box>
         <code
           filetype="markdown"
           drawUnstyledText={false}
@@ -1347,6 +1404,23 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
           conceal={ctx.conceal()}
           fg={theme.text}
         />
+        <Show when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
+          <text fg={theme.textMuted} marginTop={1}>
+            <span style={{ fg: local.agent.color(props.message.agent) }}>
+              {Locale.titlecase(props.message.mode)}
+            </span>
+            <span> · {props.message.modelID}</span>
+            <Show when={duration()}>
+              <span> · {Locale.duration(duration())}</span>
+            </Show>
+            <Show when={ctx.showTimestamps() && props.message.time.completed}>
+              {(completed) => <span> · {Locale.todayTimeOrDateTime(completed())}</span>}
+            </Show>
+            <Show when={props.message.error?.name === "MessageAbortedError"}>
+              <span> · interrupted</span>
+            </Show>
+          </text>
+        </Show>
       </box>
     </Show>
   )
@@ -1385,6 +1459,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
     },
     get part() {
       return props.part
+    },
+    get message() {
+      return props.message
     },
   }
 
@@ -1448,6 +1525,7 @@ type ToolProps<T extends Tool.Info> = {
   tool: string
   output?: string
   part: ToolPart
+  message: AssistantMessage
 }
 function GenericTool(props: ToolProps<any>) {
   return (
@@ -1541,22 +1619,57 @@ function InlineTool(props: {
   )
 }
 
-function BlockTool(props: { title: string; children: JSX.Element; onClick?: () => void; part?: ToolPart }) {
+function BlockTool(props: {
+  title: string
+  children: JSX.Element
+  onClick?: () => void
+  part?: ToolPart
+  message?: AssistantMessage
+}) {
   const { theme } = useTheme()
+  const local = useLocal()
   const renderer = useRenderer()
   const [hover, setHover] = createSignal(false)
   const error = createMemo(() => (props.part?.state.status === "error" ? props.part.state.error : undefined))
+
+  const agentColor = createMemo(() => local.agent.color(props.message?.agent ?? "unknown"))
+
+  // Create tinted background using agent color
+  const tintedBg = createMemo(() => {
+    const panel = theme.backgroundPanel
+    const accent = agentColor()
+    return RGBA.fromInts(
+      Math.round((panel.r * 0.90 + accent.r * 0.10) * 255),
+      Math.round((panel.g * 0.90 + accent.g * 0.10) * 255),
+      Math.round((panel.b * 0.90 + accent.b * 0.10) * 255),
+      255
+    )
+  })
+
+  // Create muted border color (20% agent color blend)
+  const mutedBorder = createMemo(() => {
+    const base = theme.borderSubtle
+    const accent = agentColor()
+    return RGBA.fromInts(
+      Math.round((base.r * 0.80 + accent.r * 0.20) * 255),
+      Math.round((base.g * 0.80 + accent.g * 0.20) * 255),
+      Math.round((base.b * 0.80 + accent.b * 0.20) * 255),
+      255
+    )
+  })
+
   return (
     <box
-      border={["left"]}
+      border={["top", "bottom", "left", "right"]}
       paddingTop={1}
       paddingBottom={1}
       paddingLeft={2}
+      paddingRight={2}
       marginTop={1}
       gap={1}
-      backgroundColor={hover() ? theme.backgroundMenu : theme.backgroundPanel}
-      customBorderChars={SplitBorder.customBorderChars}
-      borderColor={theme.background}
+      backgroundColor={hover() ? theme.backgroundMenu : tintedBg()}
+      customBorderChars={AgentBorder.customBorderChars}
+      borderColor={mutedBorder()}
       onMouseOver={() => props.onClick && setHover(true)}
       onMouseOut={() => setHover(false)}
       onMouseUp={() => {
@@ -1564,9 +1677,72 @@ function BlockTool(props: { title: string; children: JSX.Element; onClick?: () =
         props.onClick?.()
       }}
     >
-      <text paddingLeft={3} fg={theme.textMuted}>
-        {props.title}
-      </text>
+      <box flexDirection="row" gap={1} marginBottom={1}>
+        <text fg={agentColor()}>{"◇"}</text>
+        <text fg={theme.textMuted}>{props.title}</text>
+      </box>
+      {props.children}
+      <Show when={error()}>
+        <text fg={theme.error}>{error()}</text>
+      </Show>
+    </box>
+  )
+}
+
+function AgentBlockTool(props: {
+  title: string
+  children: JSX.Element
+  onClick?: () => void
+  part?: ToolPart
+  agentType?: string
+}) {
+  const { theme } = useTheme()
+  const renderer = useRenderer()
+  const local = useLocal()
+  const [hover, setHover] = createSignal(false)
+  const error = createMemo(() => (props.part?.state.status === "error" ? props.part.state.error : undefined))
+
+  const accentColor = createMemo(() => local.agent.color(props.agentType ?? "unknown"))
+
+  const tintedBg = createMemo(() => {
+    const accent = accentColor()
+    const panel = theme.backgroundPanel
+    // RGBA values are 0-1 floats, convert to 0-255 for fromInts
+    return RGBA.fromInts(
+      Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
+      Math.round((panel.g * 0.88 + accent.g * 0.12) * 255),
+      Math.round((panel.b * 0.88 + accent.b * 0.12) * 255),
+      255
+    )
+  })
+
+  return (
+    <box
+      border={["top", "bottom", "left", "right"]}
+      paddingTop={1}
+      paddingBottom={1}
+      paddingLeft={2}
+      paddingRight={2}
+      marginTop={1}
+      gap={1}
+      backgroundColor={hover() ? theme.backgroundMenu : tintedBg()}
+      customBorderChars={AgentBorder.customBorderChars}
+      borderColor={accentColor()}
+      onMouseOver={() => props.onClick && setHover(true)}
+      onMouseOut={() => setHover(false)}
+      onMouseUp={() => {
+        if (renderer.getSelection()?.getSelectedText()) return
+        props.onClick?.()
+      }}
+    >
+      <box flexDirection="row" gap={1}>
+        <text fg={accentColor()}>{"◈"}</text>
+        <text fg={accentColor()} attributes={TextAttributes.BOLD}>
+          SUBAGENT OUTPUT
+        </text>
+        <text fg={theme.textMuted}>│</text>
+        <text fg={theme.textMuted}>{props.title}</text>
+      </box>
       {props.children}
       <Show when={error()}>
         <text fg={theme.error}>{error()}</text>
@@ -1618,6 +1794,7 @@ function Bash(props: ToolProps<typeof BashTool>) {
         <BlockTool
           title={title()}
           part={props.part}
+          message={props.message}
           onClick={overflow() ? () => setExpanded((prev) => !prev) : undefined}
         >
           <box gap={1}>
@@ -1653,7 +1830,7 @@ function Write(props: ToolProps<typeof WriteTool>) {
   return (
     <Switch>
       <Match when={props.metadata.diagnostics !== undefined}>
-        <BlockTool title={"# Wrote " + normalizePath(props.input.filePath!)} part={props.part}>
+        <BlockTool title={"# Wrote " + normalizePath(props.input.filePath!)} part={props.part} message={props.message}>
           <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
             <code
               conceal={false}
@@ -1771,7 +1948,8 @@ function WebSearch(props: ToolProps<any>) {
 }
 
 function Task(props: ToolProps<typeof TaskTool>) {
-  const { theme } = useTheme()
+  const ctx = use()
+  const { theme, syntax } = useTheme()
   const keybind = useKeybind()
   const { navigate } = useRoute()
   const local = useLocal()
@@ -1779,11 +1957,20 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const current = createMemo(() => props.metadata.summary?.findLast((x) => x.state.status !== "pending"))
   const color = createMemo(() => local.agent.color(props.input.subagent_type ?? "unknown"))
 
+  // Extract the text output, stripping the task_metadata section
+  const outputText = createMemo(() => {
+    if (!props.output) return ""
+    const text = String(props.output)
+    // Remove the <task_metadata>...</task_metadata> section
+    return text.replace(/<task_metadata>[\s\S]*?<\/task_metadata>/g, "").trim()
+  })
+
   return (
     <Switch>
       <Match when={props.metadata.summary?.length}>
-        <BlockTool
-          title={"# " + Locale.titlecase(props.input.subagent_type ?? "unknown") + " Task"}
+        <AgentBlockTool
+          title={Locale.titlecase(props.input.subagent_type ?? "unknown") + " Task"}
+          agentType={props.input.subagent_type ?? "unknown"}
           onClick={
             props.metadata.sessionId
               ? () => navigate({ type: "session", sessionID: props.metadata.sessionId! })
@@ -1802,11 +1989,24 @@ function Task(props: ToolProps<typeof TaskTool>) {
               </text>
             </Show>
           </box>
+          <Show when={outputText()}>
+            <box marginTop={1} paddingTop={1} border={["top"]} borderColor={theme.borderSubtle}>
+              <code
+                filetype="markdown"
+                drawUnstyledText={false}
+                streaming={false}
+                syntaxStyle={syntax()}
+                content={outputText()}
+                conceal={ctx.conceal()}
+                fg={theme.text}
+              />
+            </box>
+          </Show>
           <text fg={theme.text}>
             {keybind.print("session_child_cycle")}
             <span style={{ fg: theme.textMuted }}> view subagents</span>
           </text>
-        </BlockTool>
+        </AgentBlockTool>
       </Match>
       <Match when={true}>
         <InlineTool
@@ -1848,7 +2048,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
   return (
     <Switch>
       <Match when={props.metadata.diff !== undefined}>
-        <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)} part={props.part}>
+        <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)} part={props.part} message={props.message}>
           <box paddingLeft={1}>
             <diff
               diff={diffContent()}
@@ -1943,7 +2143,7 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
       <Match when={files().length > 0}>
         <For each={files()}>
           {(file) => (
-            <BlockTool title={title(file)} part={props.part}>
+            <BlockTool title={title(file)} part={props.part} message={props.message}>
               <Show
                 when={file.type !== "delete"}
                 fallback={
@@ -1971,7 +2171,7 @@ function TodoWrite(props: ToolProps<typeof TodoWriteTool>) {
   return (
     <Switch>
       <Match when={props.metadata.todos?.length}>
-        <BlockTool title="# Todos" part={props.part}>
+        <BlockTool title="# Todos" part={props.part} message={props.message}>
           <box>
             <For each={props.input.todos ?? []}>
               {(todo) => <TodoItem status={todo.status} content={todo.content} />}
@@ -2000,7 +2200,7 @@ function Question(props: ToolProps<typeof QuestionTool>) {
   return (
     <Switch>
       <Match when={props.metadata.answers}>
-        <BlockTool title="# Questions" part={props.part}>
+        <BlockTool title="# Questions" part={props.part} message={props.message}>
           <box gap={1}>
             <For each={props.input.questions ?? []}>
               {(q, i) => (

@@ -19,3 +19,19 @@ export const SplitBorder = {
     vertical: "┃",
   },
 }
+
+export const AgentBorder = {
+  customBorderChars: {
+    topLeft: "╭",
+    topRight: "╮",
+    bottomLeft: "╰",
+    bottomRight: "╯",
+    vertical: "│",
+    horizontal: "─",
+    topT: "┬",
+    bottomT: "┴",
+    leftT: "├",
+    rightT: "┤",
+    cross: "┼",
+  },
+}
