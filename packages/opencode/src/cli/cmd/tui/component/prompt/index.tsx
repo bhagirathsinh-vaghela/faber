@@ -31,6 +31,7 @@ import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
+import { Statusline } from "../statusline"
 
 export type PromptProps = {
   sessionID?: string
@@ -962,6 +963,7 @@ export function Prompt(props: PromptProps) {
                 </box>
               </Show>
             </box>
+            <Statusline sessionID={props.sessionID} />
           </box>
         </box>
         <box
