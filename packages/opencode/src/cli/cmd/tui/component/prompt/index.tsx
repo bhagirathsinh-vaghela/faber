@@ -38,6 +38,7 @@ export type PromptProps = {
   visible?: boolean
   disabled?: boolean
   onSubmit?: () => void
+  onMessageSent?: (isPing: boolean) => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
   showPlaceholder?: boolean
@@ -513,6 +514,9 @@ export function Prompt(props: PromptProps) {
       exit()
       return
     }
+
+    // Detect ping message
+    const isPing = trimmed === "." && store.prompt.parts.length === 0
     const selectedModel = local.model.current()
     if (!selectedModel) {
       promptModelWarning()
@@ -625,6 +629,7 @@ export function Prompt(props: PromptProps) {
     })
     setStore("extmarkToPartIndex", new Map())
     props.onSubmit?.()
+    props.onMessageSent?.(isPing)
 
     // temporary hack to make sure the message is sent
     if (!props.sessionID)

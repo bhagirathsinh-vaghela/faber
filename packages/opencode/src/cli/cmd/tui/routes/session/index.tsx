@@ -144,6 +144,7 @@ export function Session() {
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [animationsEnabled, setAnimationsEnabled] = kv.signal("animations_enabled", true)
+  const [savedScrollPosition, setSavedScrollPosition] = createSignal<number | null>(null)
 
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
@@ -222,6 +223,40 @@ export function Session() {
       exit()
     }
   })
+
+  // Esc+Esc double-tap to force scroll to bottom
+  let lastEscapeTime = 0
+  useKeyboard((evt) => {
+    if (evt.name !== "escape") return
+
+    const now = Date.now()
+    if (now - lastEscapeTime < 500) {
+      // Double escape detected within 500ms
+      if (scroll) scroll.scrollTo(scroll.scrollHeight)
+      lastEscapeTime = 0
+    } else {
+      lastEscapeTime = now
+    }
+  })
+
+  // Restore scroll position after ping response completes
+  createEffect(
+    on(
+      () => messages(),
+      () => {
+        const saved = savedScrollPosition()
+        if (saved !== null) {
+          // Wait for render, then restore position
+          setTimeout(() => {
+            if (scroll && savedScrollPosition() !== null) {
+              scroll.scrollTo(saved)
+              setSavedScrollPosition(null)
+            }
+          }, 100)
+        }
+      },
+    ),
+  )
 
   // Helper: Find next visible message boundary in direction
   const findNextVisibleMessage = (direction: "next" | "prev"): string | null => {
@@ -309,8 +344,8 @@ export function Session() {
           })
           .then((res) =>
             Clipboard.copy(res.data!.share!.url).catch(() =>
-              toast.show({ message: "Failed to copy URL to clipboard", variant: "error" })
-            )
+              toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
+            ),
           )
           .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
           .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
@@ -452,8 +487,8 @@ export function Session() {
               if (part.type === "file") agg.parts.push(part)
               return agg
             },
-            { input: "", parts: [] as PromptInfo["parts"] }
-          )
+            { input: "", parts: [] as PromptInfo["parts"] },
+          ),
         )
         dialog.clear()
       },
@@ -662,7 +697,7 @@ export function Session() {
           if (!parts || !Array.isArray(parts)) continue
 
           const hasValidTextPart = parts.some(
-            (part) => part && part.type === "text" && !part.synthetic && !part.ignored
+            (part) => part && part.type === "text" && !part.synthetic && !part.ignored,
           )
 
           if (hasValidTextPart) {
@@ -699,7 +734,7 @@ export function Session() {
       onSelect: (dialog) => {
         const revertID = session()?.revert?.messageID
         const lastAssistantMessage = messages().findLast(
-          (msg) => msg.role === "assistant" && (!revertID || msg.id < revertID)
+          (msg) => msg.role === "assistant" && (!revertID || msg.id < revertID),
         )
         if (!lastAssistantMessage) {
           toast.show({ message: "No assistant messages found", variant: "error" })
@@ -753,7 +788,7 @@ export function Session() {
               thinking: showThinking(),
               toolDetails: showDetails(),
               assistantMetadata: showAssistantMetadata(),
-            }
+            },
           )
           await Clipboard.copy(transcript)
           toast.show({ message: "Session transcript copied to clipboard!", variant: "success" })
@@ -785,7 +820,7 @@ export function Session() {
             showThinking(),
             showDetails(),
             showAssistantMetadata(),
-            false
+            false,
           )
 
           if (options === null) return
@@ -797,7 +832,7 @@ export function Session() {
               thinking: options.thinking,
               toolDetails: options.toolDetails,
               assistantMetadata: options.assistantMetadata,
-            }
+            },
           )
 
           if (options.openWithoutSaving) {
@@ -881,11 +916,11 @@ export function Session() {
           filename: cleanFilename,
           additions: patch.hunks.reduce(
             (sum, hunk) => sum + hunk.lines.filter((line) => line.startsWith("+")).length,
-            0
+            0,
           ),
           deletions: patch.hunks.reduce(
             (sum, hunk) => sum + hunk.lines.filter((line) => line.startsWith("-")).length,
-            0
+            0,
           ),
         }
       })
@@ -970,7 +1005,7 @@ export function Session() {
                           const confirmed = await DialogConfirm.show(
                             dialog,
                             "Confirm Redo",
-                            "Are you sure you want to restore the reverted messages?"
+                            "Are you sure you want to restore the reverted messages?",
                           )
                           if (confirmed) {
                             command.trigger("session.redo")
@@ -1071,8 +1106,15 @@ export function Session() {
                   }
                 }}
                 disabled={permissions().length > 0 || questions().length > 0}
-                onSubmit={() => {
-                  toBottom()
+                onMessageSent={(isPing) => {
+                  if (isPing) {
+                    // Save current scroll position for ping messages BEFORE scrolling
+                    setSavedScrollPosition(scroll.y)
+                  } else {
+                    // Clear saved position for normal messages and scroll to bottom
+                    setSavedScrollPosition(null)
+                    toBottom()
+                  }
                 }}
                 sessionID={route.sessionID}
               />
@@ -1142,7 +1184,7 @@ function UserMessage(props: {
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
   const pending = createMemo(
-    () => props.messages.findLast((x) => x.role === "assistant" && !x.time.completed) as AssistantMessage | undefined
+    () => props.messages.findLast((x) => x.role === "assistant" && !x.time.completed) as AssistantMessage | undefined,
   )
   const queued = createMemo(() => {
     const p = pending()
@@ -1162,7 +1204,7 @@ function UserMessage(props: {
       Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
       Math.round((panel.g * 0.88 + accent.g * 0.12) * 255),
       Math.round((panel.b * 0.88 + accent.b * 0.12) * 255),
-      255
+      255,
     )
   })
 
@@ -1443,7 +1485,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
       Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
       Math.round((panel.g * 0.88 + accent.g * 0.12) * 255),
       Math.round((panel.b * 0.88 + accent.b * 0.12) * 255),
-      255
+      255,
     )
   })
 
@@ -1560,7 +1602,7 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
 
   const toolprops = {
     get metadata() {
-      return props.part.state.status === "pending" ? {} : props.part.state.metadata ?? {}
+      return props.part.state.status === "pending" ? {} : (props.part.state.metadata ?? {})
     },
     get input() {
       return props.part.state.input ?? {}
@@ -1696,7 +1738,7 @@ function InlineTool(props: {
     () =>
       error()?.includes("rejected permission") ||
       error()?.includes("specified a rule") ||
-      error()?.includes("user dismissed")
+      error()?.includes("user dismissed"),
   )
 
   return (
@@ -1761,7 +1803,7 @@ function BlockTool(props: {
       Math.round((panel.r * 0.9 + accent.r * 0.1) * 255),
       Math.round((panel.g * 0.9 + accent.g * 0.1) * 255),
       Math.round((panel.b * 0.9 + accent.b * 0.1) * 255),
-      255
+      255,
     )
   })
 
@@ -1773,7 +1815,7 @@ function BlockTool(props: {
       Math.round((base.r * 0.8 + accent.r * 0.2) * 255),
       Math.round((base.g * 0.8 + accent.g * 0.2) * 255),
       Math.round((base.b * 0.8 + accent.b * 0.2) * 255),
-      255
+      255,
     )
   })
 
@@ -1831,7 +1873,7 @@ function AgentBlockTool(props: {
       Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
       Math.round((panel.g * 0.88 + accent.g * 0.12) * 255),
       Math.round((panel.b * 0.88 + accent.b * 0.12) * 255),
-      255
+      255,
     )
   })
 
