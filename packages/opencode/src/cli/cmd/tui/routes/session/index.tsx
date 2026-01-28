@@ -1289,6 +1289,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
+  const directory = useDirectory()
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
 
   const final = createMemo(() => {
@@ -1303,6 +1304,66 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
     return props.message.time.completed - user.time.created
   })
 
+  // Context window stats from this message
+  const contextStats = createMemo(() => {
+    const msg = props.message
+    const total = msg.tokens.input + msg.tokens.cache.read + msg.tokens.cache.write
+    const cached = msg.tokens.cache.read
+    const newTokens = msg.tokens.input + msg.tokens.cache.write
+    const modelInfo = sync.data.provider.find((x) => x.id === msg.providerID)?.models[msg.modelID]
+    const contextLimit = modelInfo?.limit.context ?? 200000
+    const percentage = Math.round((total / contextLimit) * 100)
+    return { total, cached, newTokens, contextLimit, percentage }
+  })
+
+  // Session totals - sum tokens across all assistant messages up to this one
+  const sessionTotals = createMemo(() => {
+    const msgs = messages()
+    let inputTotal = 0
+    let outputTotal = 0
+    for (const m of msgs) {
+      if (m.role === "assistant") {
+        inputTotal += m.tokens.input + m.tokens.cache.write
+        outputTotal += m.tokens.output + m.tokens.reasoning
+      }
+      if (m.id === props.message.id) break // Stop at current message
+    }
+    return { input: inputTotal, output: outputTotal }
+  })
+
+  // Cache expiry - 5 minutes from message completion
+  const cacheExpiry = createMemo(() => {
+    if (!props.message.time.completed) return null
+    const expiryTime = props.message.time.completed + 5 * 60 * 1000
+    if (expiryTime <= Date.now()) return null
+    const date = new Date(expiryTime)
+    const hours = date.getHours().toString().padStart(2, "0")
+    const minutes = date.getMinutes().toString().padStart(2, "0")
+    const seconds = date.getSeconds().toString().padStart(2, "0")
+    return `${hours}:${minutes}:${seconds}`
+  })
+
+  // Format helpers
+  const formatTokens = (count: number): string => {
+    if (count >= 1_000_000) return Math.round(count / 1_000_000) + "M"
+    if (count >= 1_000) return Math.round(count / 1_000) + "k"
+    return count.toString()
+  }
+
+  // Progress bar helper
+  const progressBar = (percent: number, width: number = 10) => {
+    const filled = Math.min(Math.round((percent / 100) * width), width)
+    const color = percent >= 80 ? theme.error : percent >= 50 ? theme.warning : theme.success
+    return (
+      <text>
+        <span style={{ fg: theme.textMuted }}>[</span>
+        <span style={{ fg: color }}>{"\u2593".repeat(filled)}</span>
+        <span style={{ fg: theme.textMuted }}>{"\u2591".repeat(width - filled)}</span>
+        <span style={{ fg: theme.textMuted }}>]</span>
+      </text>
+    )
+  }
+
   return (
     <>
       <For each={props.parts}>
@@ -1315,6 +1376,15 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
                 component={component()}
                 part={part as any}
                 message={props.message}
+                parts={props.parts}
+                messageLast={props.last}
+                messageFinal={!!final()}
+                messageDuration={duration()}
+                contextStats={contextStats()}
+                sessionTotals={sessionTotals()}
+                cacheExpiry={cacheExpiry()}
+                formatTokens={formatTokens}
+                progressBar={progressBar}
               />
             </Show>
           )
@@ -1396,86 +1466,35 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
   )
 }
 
-function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
+function TextPart(props: {
+  last: boolean
+  part: TextPart
+  message: AssistantMessage
+  parts: Part[]
+  messageLast: boolean
+  messageFinal: boolean
+  messageDuration: number
+  contextStats: { total: number; cached: number; newTokens: number; contextLimit: number; percentage: number }
+  sessionTotals: { input: number; output: number }
+  cacheExpiry: string | null
+  formatTokens: (count: number) => string
+  progressBar: (percent: number, width?: number) => any
+}) {
   const ctx = use()
   const local = useLocal()
-  const sync = useSync()
-  const directory = useDirectory()
   const { theme, syntax } = useTheme()
+  const directory = useDirectory()
 
-  const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
-
-  const final = createMemo(() => {
-    return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
-  })
-
-  const duration = createMemo(() => {
-    if (!final()) return 0
-    if (!props.message.time.completed) return 0
-    const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
-    if (!user || !user.time) return 0
-    return props.message.time.completed - user.time.created
-  })
-
-  // Context window stats from this message
-  const contextStats = createMemo(() => {
-    const msg = props.message
-    const total = msg.tokens.input + msg.tokens.cache.read + msg.tokens.cache.write
-    const cached = msg.tokens.cache.read
-    const newTokens = msg.tokens.input + msg.tokens.cache.write
-    const modelInfo = sync.data.provider.find((x) => x.id === msg.providerID)?.models[msg.modelID]
-    const contextLimit = modelInfo?.limit.context ?? 200000
-    const percentage = Math.round((total / contextLimit) * 100)
-    return { total, cached, newTokens, contextLimit, percentage }
-  })
-
-  // Session totals - sum tokens across all assistant messages up to this one
-  const sessionTotals = createMemo(() => {
-    const msgs = messages()
-    let inputTotal = 0
-    let outputTotal = 0
-    for (const m of msgs) {
-      if (m.role === "assistant") {
-        inputTotal += m.tokens.input + m.tokens.cache.write
-        outputTotal += m.tokens.output + m.tokens.reasoning
-      }
-      if (m.id === props.message.id) break // Stop at current message
+  // Show snapshot for ALL text parts (even during streaming)
+  const showSnapshot = createMemo(() => {
+    // Always show if message is the last in session, final, or aborted
+    if (props.messageLast || props.messageFinal || props.message.error?.name === "MessageAbortedError") {
+      return true
     }
-    return { input: inputTotal, output: outputTotal }
+    // Also show during streaming if this text part exists (has been rendered)
+    // This ensures snapshot appears in all assistant boxes, even before completion
+    return true
   })
-
-  // Cache expiry - 5 minutes from message completion
-  const cacheExpiry = createMemo(() => {
-    if (!props.message.time.completed) return null
-    const expiryTime = props.message.time.completed + 5 * 60 * 1000
-    if (expiryTime <= Date.now()) return null
-    const date = new Date(expiryTime)
-    const hours = date.getHours().toString().padStart(2, "0")
-    const minutes = date.getMinutes().toString().padStart(2, "0")
-    const seconds = date.getSeconds().toString().padStart(2, "0")
-    return `${hours}:${minutes}:${seconds}`
-  })
-
-  // Format helpers
-  const formatTokens = (count: number): string => {
-    if (count >= 1_000_000) return Math.round(count / 1_000_000) + "M"
-    if (count >= 1_000) return Math.round(count / 1_000) + "k"
-    return count.toString()
-  }
-
-  // Progress bar helper
-  const progressBar = (percent: number, width: number = 10) => {
-    const filled = Math.min(Math.round((percent / 100) * width), width)
-    const color = percent >= 80 ? theme.error : percent >= 50 ? theme.warning : theme.success
-    return (
-      <text>
-        <span style={{ fg: theme.textMuted }}>[</span>
-        <span style={{ fg: color }}>{"\u2593".repeat(filled)}</span>
-        <span style={{ fg: theme.textMuted }}>{"\u2591".repeat(width - filled)}</span>
-        <span style={{ fg: theme.textMuted }}>]</span>
-      </text>
-    )
-  }
 
   // Create greenish tinted background for assistant output
   const tintedBg = createMemo(() => {
@@ -1528,15 +1547,15 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
           conceal={ctx.conceal()}
           fg={theme.text}
         />
-        <Show when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
+        <Show when={showSnapshot()}>
           <box flexDirection="row" marginTop={1} flexWrap="wrap">
             <text fg={theme.textMuted}>
               <span style={{ fg: local.agent.color(props.message.agent) }}>{Locale.titlecase(props.message.mode)}</span>
               <span> · {props.message.modelID}</span>
             </text>
-            <Show when={duration()}>
+            <Show when={props.messageDuration}>
               <text fg={theme.textMuted}>
-                <span> · {Locale.duration(duration())}</span>
+                <span> · {Locale.duration(props.messageDuration)}</span>
               </text>
             </Show>
             <Show when={props.message.error?.name === "MessageAbortedError"}>
@@ -1557,27 +1576,27 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
             <box flexDirection="row">
               <text>
                 <span style={{ fg: theme.textMuted }}>⏳</span>{" "}
-                <span style={{ fg: theme.warning }}>{cacheExpiry() ?? "--"}</span>
+                <span style={{ fg: theme.warning }}>{props.cacheExpiry ?? "--"}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
                 <span style={{ fg: theme.textMuted }}>🧠</span>{" "}
               </text>
-              {progressBar(contextStats().percentage, 10)}
+              {props.progressBar(props.contextStats.percentage, 10)}
               <text>
                 {" "}
-                <span style={{ fg: theme.primary }}>{formatTokens(contextStats().total)}</span>
+                <span style={{ fg: theme.primary }}>{props.formatTokens(props.contextStats.total)}</span>
                 <span style={{ fg: theme.textMuted }}>/</span>
-                <span style={{ fg: theme.textMuted }}>{formatTokens(contextStats().contextLimit)}</span>
+                <span style={{ fg: theme.textMuted }}>{props.formatTokens(props.contextStats.contextLimit)}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
                 <span style={{ fg: theme.textMuted }}>📦</span>{" "}
-                <span style={{ fg: theme.success }}>{formatTokens(contextStats().cached)}</span>
+                <span style={{ fg: theme.success }}>{props.formatTokens(props.contextStats.cached)}</span>
                 <span style={{ fg: theme.textMuted }}> · </span>
                 <span style={{ fg: theme.textMuted }}>✨</span>{" "}
-                <span style={{ fg: theme.warning }}>{formatTokens(contextStats().newTokens)}</span>
+                <span style={{ fg: theme.warning }}>{props.formatTokens(props.contextStats.newTokens)}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
                 <span style={{ fg: theme.textMuted }}>💬</span>{" "}
-                <span style={{ fg: theme.primary }}>↑{formatTokens(sessionTotals().input)}</span>
+                <span style={{ fg: theme.primary }}>↑{props.formatTokens(props.sessionTotals.input)}</span>
                 <span style={{ fg: theme.textMuted }}> </span>
-                <span style={{ fg: theme.warning }}>↓{formatTokens(sessionTotals().output)}</span>
+                <span style={{ fg: theme.warning }}>↓{props.formatTokens(props.sessionTotals.output)}</span>
               </text>
             </box>
           </box>
