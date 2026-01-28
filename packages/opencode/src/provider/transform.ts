@@ -163,8 +163,11 @@ export namespace ProviderTransform {
   }
 
   function applyCaching(msgs: ModelMessage[], providerID: string): ModelMessage[] {
-    const system = msgs.filter((msg) => msg.role === "system").slice(0, 2)
-    const final = msgs.filter((msg) => msg.role !== "system").slice(-2)
+    // Anthropic allows up to 4 cache breakpoints per request
+    // Strategy: 1 breakpoint after last system message + 3 conversation messages = 4 total
+    // Cache is prefix-based, so breakpoint after system2 covers system1 too
+    const lastSystem = msgs.filter((msg) => msg.role === "system").slice(-1)
+    const final = msgs.filter((msg) => msg.role !== "system").slice(-3)
 
     const providerOptions = {
       anthropic: {
@@ -181,7 +184,7 @@ export namespace ProviderTransform {
       },
     }
 
-    for (const msg of unique([...system, ...final])) {
+    for (const msg of unique([...lastSystem, ...final])) {
       const shouldUseContentOptions = providerID !== "anthropic" && Array.isArray(msg.content) && msg.content.length > 0
 
       if (shouldUseContentOptions) {
