@@ -10,10 +10,12 @@ function ProgressBar(props: { percent: number; width?: number }) {
   const width = () => props.width ?? 10
   const filled = () => Math.min(Math.round((props.percent / 100) * width()), width())
 
-  // Color based on utilization level
+  // Color based on utilization level (4-tier system)
+  // RED: Critical (85-100%) | YELLOW: High (70-84%) | BLUE: Moderate (50-69%) | GREEN: Low (0-49%)
   const color = () => {
-    if (props.percent >= 80) return theme.error
-    if (props.percent >= 50) return theme.warning
+    if (props.percent >= 85) return theme.error
+    if (props.percent >= 70) return theme.warning
+    if (props.percent >= 50) return theme.info
     return theme.success
   }
 

@@ -1342,10 +1342,12 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
     return count.toString()
   }
 
-  // Progress bar helper
+  // Progress bar helper (4-tier color system)
+  // RED: Critical (85-100%) | YELLOW: High (70-84%) | BLUE: Moderate (50-69%) | GREEN: Low (0-49%)
   const progressBar = (percent: number, width: number = 10) => {
     const filled = Math.min(Math.round((percent / 100) * width), width)
-    const color = percent >= 80 ? theme.error : percent >= 50 ? theme.warning : theme.success
+    const color =
+      percent >= 85 ? theme.error : percent >= 70 ? theme.warning : percent >= 50 ? theme.info : theme.success
     return (
       <text>
         <span style={{ fg: theme.textMuted }}>[</span>
