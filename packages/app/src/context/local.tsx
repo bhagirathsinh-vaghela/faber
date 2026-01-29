@@ -67,17 +67,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             setStore("current", undefined)
             return
           }
+          const currentModel = model.current()
           let next = available.findIndex((x) => x.name === store.current) + direction
           if (next < 0) next = available.length - 1
           if (next >= available.length) next = 0
           const value = available[next]
           if (!value) return
           setStore("current", value.name)
-          if (value.model)
-            model.set({
-              providerID: value.model.providerID,
-              modelID: value.model.modelID,
-            })
+          if (currentModel) {
+            queueMicrotask(() =>
+              model.set({
+                providerID: currentModel.provider.id,
+                modelID: currentModel.id,
+              }),
+            )
+            queueMicrotask(() => sync.set("config", "model", currentModel.provider.id + "/" + currentModel.id))
+          }
         },
       }
     })()
@@ -86,12 +91,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const models = useModels()
 
       const [ephemeral, setEphemeral] = createStore<{
-        model: Record<string, ModelKey | undefined>
+        model?: ModelKey
       }>({
-        model: {},
+        model: undefined,
       })
 
       const fallbackModel = createMemo<ModelKey | undefined>(() => {
+        for (const item of models.recent.list()) {
+          if (isModelValid(item)) {
+            return item
+          }
+        }
+
         if (sync.data.config.model) {
           const [providerID, modelID] = sync.data.config.model.split("/")
           if (isModelValid({ providerID, modelID })) {
@@ -99,12 +110,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               providerID,
               modelID,
             }
-          }
-        }
-
-        for (const item of models.recent.list()) {
-          if (isModelValid(item)) {
-            return item
           }
         }
 
@@ -126,13 +131,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
 
       const current = createMemo(() => {
-        const a = agent.current()
-        if (!a) return undefined
-        const key = getFirstValidModel(
-          () => ephemeral.model[a.name],
-          () => a.model,
-          fallbackModel,
-        )
+        const key = getFirstValidModel(() => ephemeral.model, fallbackModel)
         if (!key) return undefined
         return models.find(key)
       })
@@ -170,11 +169,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         cycle,
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
           batch(() => {
-            const currentAgent = agent.current()
             const next = model ?? fallbackModel()
-            if (currentAgent) setEphemeral("model", currentAgent.name, next)
+            setEphemeral("model", next)
             if (model) models.setVisibility(model, true)
             if (options?.recent && model) models.recent.push(model)
+            if (model) sync.set("config", "model", model.providerID + "/" + model.modelID)
           })
         },
         visible(model: ModelKey) {

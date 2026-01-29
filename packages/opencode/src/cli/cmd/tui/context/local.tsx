@@ -1,5 +1,5 @@
 import { createStore } from "solid-js/store"
-import { batch, createEffect, createMemo } from "solid-js"
+import { batch, createMemo } from "solid-js"
 import { useSync } from "@tui/context/sync"
 import { useTheme } from "@tui/context/theme"
 import { uniqueBy } from "remeda"
@@ -88,13 +88,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const model = iife(() => {
       const [modelStore, setModelStore] = createStore<{
         ready: boolean
-        model: Record<
-          string,
-          {
-            providerID: string
-            modelID: string
-          }
-        >
+        model?: {
+          providerID: string
+          modelID: string
+        }
         recent: {
           providerID: string
           modelID: string
@@ -106,7 +103,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         variant: Record<string, string | undefined>
       }>({
         ready: false,
-        model: {},
+        model: undefined,
         recent: [],
         favorite: [],
         variant: {},
@@ -187,14 +184,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
 
       const currentModel = createMemo(() => {
-        const a = agent.current()
-        return (
-          getFirstValidModel(
-            () => modelStore.model[a.name],
-            () => a.model,
-            fallbackModel,
-          ) ?? undefined
-        )
+        return getFirstValidModel(() => modelStore.model, fallbackModel) ?? undefined
       })
 
       return {
@@ -236,7 +226,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (next >= recent.length) next = 0
           const val = recent[next]
           if (!val) return
-          setModelStore("model", agent.current().name, { ...val })
+          setModelStore("model", { ...val })
         },
         cycleFavorite(direction: 1 | -1) {
           const favorites = modelStore.favorite.filter((item) => isModelValid(item))
@@ -262,7 +252,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
           const next = favorites[index]
           if (!next) return
-          setModelStore("model", agent.current().name, { ...next })
+          setModelStore("model", { ...next })
           const uniq = uniqueBy([next, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
           if (uniq.length > 10) uniq.pop()
           setModelStore(
@@ -281,7 +271,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
               return
             }
-            setModelStore("model", agent.current().name, model)
+            setModelStore("model", model)
             if (options?.recent) {
               const uniq = uniqueBy([model, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
               if (uniq.length > 10) uniq.pop()
@@ -373,24 +363,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
       },
     }
-
-    // Automatically update model when agent changes
-    createEffect(() => {
-      const value = agent.current()
-      if (value.model) {
-        if (isModelValid(value.model))
-          model.set({
-            providerID: value.model.providerID,
-            modelID: value.model.modelID,
-          })
-        else
-          toast.show({
-            variant: "warning",
-            message: `Agent ${value.name}'s configured model ${value.model.providerID}/${value.model.modelID} is not valid`,
-            duration: 3000,
-          })
-      }
-    })
 
     const result = {
       model,

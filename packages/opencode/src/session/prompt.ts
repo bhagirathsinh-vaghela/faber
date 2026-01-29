@@ -826,6 +826,7 @@ export namespace SessionPrompt {
 
   async function createUserMessage(input: PromptInput) {
     const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
+    const model = input.model ?? (await lastModel(input.sessionID)) ?? agent.model
     const info: MessageV2.Info = {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
@@ -835,7 +836,7 @@ export namespace SessionPrompt {
       },
       tools: input.tools,
       agent: agent.name,
-      model: input.model ?? agent.model ?? (await lastModel(input.sessionID)),
+      model,
       system: input.system,
       variant: input.variant,
     }
