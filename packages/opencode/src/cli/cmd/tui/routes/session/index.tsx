@@ -224,18 +224,10 @@ export function Session() {
     }
   })
 
-  // Esc+Esc double-tap to force scroll to bottom
-  let lastEscapeTime = 0
+  // Force scroll to bottom (configurable via scroll_to_bottom keybind)
   useKeyboard((evt) => {
-    if (evt.name !== "escape") return
-
-    const now = Date.now()
-    if (now - lastEscapeTime < 500) {
-      // Double escape detected within 500ms
+    if (keybind.match("scroll_to_bottom", evt)) {
       if (scroll) scroll.scrollTo(scroll.scrollHeight)
-      lastEscapeTime = 0
-    } else {
-      lastEscapeTime = now
     }
   })
 

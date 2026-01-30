@@ -681,6 +681,7 @@ export namespace Config {
         .describe("Scroll messages down by half page"),
       messages_first: z.string().optional().default("ctrl+g,home").describe("Navigate to first message"),
       messages_last: z.string().optional().default("ctrl+alt+g,end").describe("Navigate to last message"),
+      scroll_to_bottom: z.string().optional().default("<leader>.").describe("Force scroll to bottom of conversation"),
       messages_next: z.string().optional().default("none").describe("Navigate to next message"),
       messages_previous: z.string().optional().default("none").describe("Navigate to previous message"),
       messages_last_user: z.string().optional().default("none").describe("Navigate to last user message"),

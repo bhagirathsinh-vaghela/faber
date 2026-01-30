@@ -8546,6 +8546,11 @@
             "default": "ctrl+alt+g,end",
             "type": "string"
           },
+          "scroll_to_bottom": {
+            "description": "Force scroll to bottom of conversation",
+            "default": "<leader>.",
+            "type": "string"
+          },
           "messages_next": {
             "description": "Navigate to next message",
             "default": "none",
@@ -8759,6 +8764,11 @@
           "input_delete_line": {
             "description": "Delete line in input",
             "default": "ctrl+shift+d",
+            "type": "string"
+          },
+          "prompt_stash": {
+            "description": "Stash or pop the current prompt",
+            "default": "ctrl+s",
             "type": "string"
           },
           "input_delete_to_line_end": {

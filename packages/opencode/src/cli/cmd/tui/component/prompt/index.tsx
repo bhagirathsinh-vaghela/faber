@@ -60,6 +60,7 @@ export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
   let anchor: BoxRenderable
   let autocomplete: AutocompleteRef
+  let ctrlCPressTime = 0
 
   const keybind = useKeybind()
   const local = useLocal()
@@ -818,6 +819,14 @@ export function Prompt(props: PromptProps) {
                 if ((keybind as any).match("prompt_stash", e)) {
                   e.preventDefault()
                   if (store.prompt.input !== "") {
+                    // Check if there's already something stashed
+                    if (stash.getTransient()) {
+                      toast.show({
+                        message: "Prompt already stashed. Restore it first with Ctrl+S.",
+                        variant: "warning",
+                      })
+                      return
+                    }
                     stash.pushTransient({
                       input: store.prompt.input,
                       parts: store.prompt.parts,
@@ -862,10 +871,24 @@ export function Prompt(props: PromptProps) {
                 }
                 if (keybind.match("app_exit", e)) {
                   if (store.prompt.input === "") {
-                    await exit()
-                    // Don't preventDefault - let textarea potentially handle the event
-                    e.preventDefault()
-                    return
+                    // Double Ctrl+C to exit
+                    const now = Date.now()
+                    if (now - ctrlCPressTime < 2000) {
+                      // Second Ctrl+C within 2 seconds - exit
+                      await exit()
+                      e.preventDefault()
+                      return
+                    } else {
+                      // First press - record time and show toast
+                      ctrlCPressTime = now
+                      toast.show({
+                        message: "Press again to exit",
+                        variant: "warning",
+                        duration: 2000,
+                      })
+                      e.preventDefault()
+                      return
+                    }
                   }
                 }
                 if (e.name === "!" && input.visualCursor.offset === 0) {

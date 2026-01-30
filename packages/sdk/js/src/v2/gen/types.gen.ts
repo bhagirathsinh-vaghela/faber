@@ -1070,6 +1070,10 @@ export type KeybindsConfig = {
    */
   messages_last?: string
   /**
+   * Force scroll to bottom of conversation
+   */
+  scroll_to_bottom?: string
+  /**
    * Navigate to next message
    */
   messages_next?: string
@@ -1241,6 +1245,10 @@ export type KeybindsConfig = {
    * Delete line in input
    */
   input_delete_line?: string
+  /**
+   * Stash or pop the current prompt
+   */
+  prompt_stash?: string
   /**
    * Delete to end of line in input
    */

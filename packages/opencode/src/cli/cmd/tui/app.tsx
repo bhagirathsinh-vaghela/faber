@@ -280,6 +280,28 @@ function App() {
     ),
   )
 
+  // Double Ctrl+C to exit
+  let ctrlCPressTime = 0
+  const CTRL_C_TIMEOUT = 2000 // 2 seconds to press Ctrl+C again
+
+  useKeyboard((evt) => {
+    if (evt.ctrl && evt.name === "c") {
+      const now = Date.now()
+      if (now - ctrlCPressTime < CTRL_C_TIMEOUT) {
+        // Second Ctrl+C within timeout - exit
+        exit()
+      } else {
+        // First Ctrl+C - record time and show toast
+        ctrlCPressTime = now
+        toast.show({
+          message: "Press again to exit",
+          variant: "warning",
+          duration: 2000,
+        })
+      }
+    }
+  })
+
   const connected = useConnected()
   command.register(() => [
     {
@@ -703,9 +725,20 @@ function ErrorComponent(props: {
     props.onExit()
   }
 
+  let ctrlCPressTime = 0
+  const CTRL_C_TIMEOUT = 2000 // 2 seconds to press Ctrl+C again
+
   useKeyboard((evt) => {
     if (evt.ctrl && evt.name === "c") {
-      handleExit()
+      const now = Date.now()
+      if (now - ctrlCPressTime < CTRL_C_TIMEOUT) {
+        // Second Ctrl+C within timeout - exit
+        handleExit()
+      } else {
+        // First Ctrl+C - record time
+        ctrlCPressTime = now
+        // TODO: Show toast notification "Press again to exit"
+      }
     }
   })
   const [copied, setCopied] = createSignal(false)
