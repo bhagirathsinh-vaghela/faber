@@ -22,7 +22,6 @@ import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
-import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
 
 export namespace LLM {
@@ -274,10 +273,14 @@ export namespace LLM {
     })
   }
 
-  async function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "user">) {
-    const disabled = PermissionNext.disabled(Object.keys(input.tools), input.agent.permission)
+  async function resolveTools(input: Pick<StreamInput, "tools" | "user">) {
+    // NOTE: We intentionally do NOT filter tools based on agent permissions here.
+    // Tool schemas must remain stable across mode switches (plan <-> build) for
+    // Anthropic prompt caching to work. Permissions are enforced at execution time
+    // by tools that call PermissionNext.ask(); a denied tool that never asks is not
+    // blocked here.
     for (const tool of Object.keys(input.tools)) {
-      if (input.user.tools?.[tool] === false || disabled.has(tool)) {
+      if (input.user.tools?.[tool] === false) {
         delete input.tools[tool]
       }
     }
