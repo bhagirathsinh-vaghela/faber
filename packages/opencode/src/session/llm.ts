@@ -34,7 +34,11 @@ export namespace LLM {
     sessionID: string
     model: Provider.Model
     agent: Agent.Info
-    system: string[]
+    system: {
+      env: string[]
+      globalInstructions: string[]
+      projectInstructions: string[]
+    }
     abort: AbortSignal
     messages: ModelMessage[]
     small?: boolean
@@ -65,22 +69,35 @@ export namespace LLM {
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"
 
-    const system = []
-    system.push(
-      [
-        // use agent prompt otherwise provider prompt
-        // For Codex sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : isCodex ? [] : SystemPrompt.provider(input.model)),
-        // any custom prompt passed into this call
-        ...input.system,
-        // any custom prompt from last user message
-        ...(input.user.system ? [input.user.system] : []),
-      ]
-        .filter((x) => x)
-        .join("\n"),
-    )
+    // Build system as separate blocks for cache optimization
+    // Block 1: Provider prompt (marker target - cross-machine cache)
+    // Block 2: Global instructions (marker target - cross-repo cache)
+    // Block 3: Environment (repo/session specific)
+    // Block 4: Project instructions + user.system
+    const system: string[] = []
 
-    const header = system[0]
+    // Block 1: Provider/agent prompt
+    const providerPrompt = input.agent.prompt
+      ? input.agent.prompt
+      : isCodex
+        ? ""
+        : SystemPrompt.provider(input.model).join("\n")
+    if (providerPrompt) system.push(providerPrompt)
+
+    // Block 2: Global instructions (cross-repo stable)
+    const globalInstructions = input.system.globalInstructions.join("\n")
+    if (globalInstructions) system.push(globalInstructions)
+
+    // Block 3: Environment (repo/session specific)
+    const envBlock = input.system.env.join("\n")
+    if (envBlock) system.push(envBlock)
+
+    // Block 4: Project instructions + user.system
+    const projectBlock = [...input.system.projectInstructions, ...(input.user.system ? [input.user.system] : [])]
+      .filter(Boolean)
+      .join("\n")
+    if (projectBlock) system.push(projectBlock)
+
     const original = clone(system)
     await Plugin.trigger(
       "experimental.chat.system.transform",
@@ -89,12 +106,6 @@ export namespace LLM {
     )
     if (system.length === 0) {
       system.push(...original)
-    }
-    // rejoin to maintain 2-part structure for caching if header unchanged
-    if (system.length > 2 && system[0] === header) {
-      const rest = system.slice(1)
-      system.length = 0
-      system.push(header, rest.join("\n"))
     }
 
     const variant =

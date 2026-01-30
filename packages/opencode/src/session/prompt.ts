@@ -596,12 +596,17 @@ export namespace SessionPrompt {
 
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
+      const instructions = await InstructionPrompt.system()
       const result = await processor.process({
         user: lastUser,
         agent,
         abort,
         sessionID,
-        system: [...(await SystemPrompt.environment(session.time.created)), ...(await InstructionPrompt.system())],
+        system: {
+          env: await SystemPrompt.environment(session.time.created),
+          globalInstructions: instructions.global,
+          projectInstructions: instructions.project,
+        },
         messages: [
           ...MessageV2.toModelMessages(sessionMessages, model),
           ...(isLastStep
@@ -1785,7 +1790,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const result = await LLM.stream({
       agent,
       user: firstRealUser.info as MessageV2.User,
-      system: [],
+      system: { env: [], globalInstructions: [], projectInstructions: [] },
       small: true,
       tools: {},
       model,

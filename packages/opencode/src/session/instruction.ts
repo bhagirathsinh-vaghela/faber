@@ -44,7 +44,7 @@ export namespace InstructionPrompt {
   // Cache instructions per instance for prompt cache stability
   // Instructions are loaded once and reused until the instance is disposed (restart, config change, or reload)
   const state = Instance.state(() => ({
-    instructions: undefined as string[] | undefined,
+    instructions: undefined as { global: string[]; project: string[] } | undefined,
     paths: undefined as Set<string> | undefined,
   }))
 
@@ -96,9 +96,53 @@ export namespace InstructionPrompt {
     if (cached.instructions) return cached.instructions
 
     const config = await Config.get()
-    const paths = await systemPaths()
 
-    const files = Array.from(paths)
+    // Collect global instruction paths (user-level, cross-repo)
+    const globalPaths = new Set<string>()
+    for (const file of globalFiles()) {
+      if (await Bun.file(file).exists()) {
+        globalPaths.add(path.resolve(file))
+        break
+      }
+    }
+
+    // Collect project instruction paths (repo-level)
+    const projectPaths = new Set<string>()
+    if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
+      for (const file of FILES) {
+        const matches = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
+        if (matches.length > 0) {
+          matches.forEach((p) => projectPaths.add(path.resolve(p)))
+          break
+        }
+      }
+    }
+
+    // Config instructions go to project (repo-specific)
+    if (config.instructions) {
+      for (let instruction of config.instructions) {
+        if (instruction.startsWith("https://") || instruction.startsWith("http://")) continue
+        if (instruction.startsWith("~/")) {
+          instruction = path.join(os.homedir(), instruction.slice(2))
+        }
+        const matches = path.isAbsolute(instruction)
+          ? await Array.fromAsync(
+              new Bun.Glob(path.basename(instruction)).scan({
+                cwd: path.dirname(instruction),
+                absolute: true,
+                onlyFiles: true,
+              }),
+            ).catch(() => [])
+          : await resolveRelative(instruction)
+        matches.forEach((p) => projectPaths.add(path.resolve(p)))
+      }
+    }
+
+    // A file reachable as both global and project (e.g. cwd inside the global config dir) loads once, as global
+    for (const p of globalPaths) projectPaths.delete(p)
+
+    // Load global files
+    const globalFiles_ = Array.from(globalPaths)
       .sort()
       .map(async (p) => {
         const content = await Bun.file(p)
@@ -107,6 +151,17 @@ export namespace InstructionPrompt {
         return content ? "Instructions from: " + p + "\n" + content : ""
       })
 
+    // Load project files
+    const projectFiles = Array.from(projectPaths)
+      .sort()
+      .map(async (p) => {
+        const content = await Bun.file(p)
+          .text()
+          .catch(() => "")
+        return content ? "Instructions from: " + p + "\n" + content : ""
+      })
+
+    // URL instructions go to project
     const urls: string[] = []
     if (config.instructions) {
       for (const instruction of config.instructions) {
@@ -122,10 +177,14 @@ export namespace InstructionPrompt {
         .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
     )
 
-    const result = await Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
-    cached.instructions = result
-    cached.paths = paths
-    return result
+    const [global, project] = await Promise.all([
+      Promise.all(globalFiles_).then((r) => r.filter(Boolean)),
+      Promise.all([...projectFiles, ...fetches]).then((r) => r.filter(Boolean)),
+    ])
+
+    cached.instructions = { global, project }
+    cached.paths = new Set([...globalPaths, ...projectPaths])
+    return cached.instructions
   }
 
   export function loaded(messages: MessageV2.WithParts[]) {

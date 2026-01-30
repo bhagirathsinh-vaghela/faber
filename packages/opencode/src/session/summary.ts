@@ -156,7 +156,7 @@ export namespace SessionSummary {
         ],
         abort: new AbortController().signal,
         sessionID: userMsg.sessionID,
-        system: [],
+        system: { env: [], globalInstructions: [], projectInstructions: [] },
         retries: 3,
       })
       const result = await stream.text

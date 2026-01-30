@@ -147,7 +147,12 @@ export namespace SessionCompaction {
       bypassAgentCheck: false,
       messages: input.messages,
     })
-    const system = [...(await SystemPrompt.environment(session.time.created)), ...(await InstructionPrompt.system())]
+    const instructions = await InstructionPrompt.system()
+    const system = {
+      env: await SystemPrompt.environment(session.time.created),
+      globalInstructions: instructions.global,
+      projectInstructions: instructions.project,
+    }
 
     // Allow plugins to inject context or replace compaction prompt
     const compacting = await Plugin.trigger(
