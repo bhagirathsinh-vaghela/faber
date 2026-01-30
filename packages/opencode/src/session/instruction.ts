@@ -41,6 +41,13 @@ async function resolveRelative(instruction: string): Promise<string[]> {
 }
 
 export namespace InstructionPrompt {
+  // Cache instructions per instance for prompt cache stability
+  // Instructions are loaded once and reused until the instance is disposed (restart, config change, or reload)
+  const state = Instance.state(() => ({
+    instructions: undefined as string[] | undefined,
+    paths: undefined as Set<string> | undefined,
+  }))
+
   export async function systemPaths() {
     const config = await Config.get()
     const paths = new Set<string>()
@@ -85,15 +92,20 @@ export namespace InstructionPrompt {
   }
 
   export async function system() {
+    const cached = state()
+    if (cached.instructions) return cached.instructions
+
     const config = await Config.get()
     const paths = await systemPaths()
 
-    const files = Array.from(paths).map(async (p) => {
-      const content = await Bun.file(p)
-        .text()
-        .catch(() => "")
-      return content ? "Instructions from: " + p + "\n" + content : ""
-    })
+    const files = Array.from(paths)
+      .sort()
+      .map(async (p) => {
+        const content = await Bun.file(p)
+          .text()
+          .catch(() => "")
+        return content ? "Instructions from: " + p + "\n" + content : ""
+      })
 
     const urls: string[] = []
     if (config.instructions) {
@@ -110,7 +122,10 @@ export namespace InstructionPrompt {
         .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
     )
 
-    return Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
+    const result = await Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
+    cached.instructions = result
+    cached.paths = paths
+    return result
   }
 
   export function loaded(messages: MessageV2.WithParts[]) {
@@ -138,7 +153,8 @@ export namespace InstructionPrompt {
   }
 
   export async function resolve(messages: MessageV2.WithParts[], filepath: string) {
-    const system = await systemPaths()
+    // The same path set system() injected, so a file that appeared since is not skipped as already loaded
+    const system = state().paths ?? (await systemPaths())
     const already = loaded(messages)
     const results: { filepath: string; content: string }[] = []
 
