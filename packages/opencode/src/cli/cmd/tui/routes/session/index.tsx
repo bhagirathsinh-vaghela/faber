@@ -1446,14 +1446,11 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
         customBorderChars={SplitBorder.customBorderChars}
         borderColor={theme.backgroundElement}
       >
-        <code
-          filetype="markdown"
-          drawUnstyledText={false}
-          streaming={true}
+        <markdown
+          streaming={!props.message.time.completed}
           syntaxStyle={subtleSyntax()}
           content={"_Thinking:_ " + content()}
           conceal={ctx.conceal()}
-          fg={theme.textMuted}
         />
       </box>
     </Show>
@@ -1532,14 +1529,11 @@ function TextPart(props: {
             )}
           </Show>
         </box>
-        <code
-          filetype="markdown"
-          drawUnstyledText={false}
-          streaming={true}
+        <markdown
+          streaming={!props.messageFinal}
           syntaxStyle={syntax()}
           content={props.part.text.trim()}
           conceal={ctx.conceal()}
-          fg={theme.text}
         />
         <Show when={showSnapshot()}>
           <box flexDirection="row" marginTop={1} flexWrap="wrap">
@@ -2165,15 +2159,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
           </box>
           <Show when={outputText()}>
             <box marginTop={1} paddingTop={1} border={["top"]} borderColor={theme.borderSubtle}>
-              <code
-                filetype="markdown"
-                drawUnstyledText={false}
-                streaming={false}
-                syntaxStyle={syntax()}
-                content={outputText()}
-                conceal={ctx.conceal()}
-                fg={theme.text}
-              />
+              <markdown streaming={false} syntaxStyle={syntax()} content={outputText()} conceal={ctx.conceal()} />
             </box>
           </Show>
           <text fg={theme.text}>
