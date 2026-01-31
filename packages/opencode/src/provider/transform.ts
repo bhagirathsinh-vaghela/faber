@@ -191,19 +191,35 @@ export namespace ProviderTransform {
         cache_control: { type: "ephemeral" },
       },
     }
+    const systemProviderOptions = {
+      anthropic: {
+        cacheControl: { type: "ephemeral", ttl: "1h" },
+      },
+      openrouter: {
+        cacheControl: { type: "ephemeral" },
+      },
+      bedrock: {
+        cachePoint: { type: "ephemeral" },
+      },
+      openaiCompatible: {
+        cache_control: { type: "ephemeral" },
+      },
+    }
 
     for (const msg of unique([...systemMarkers, ...conversationMarkers])) {
+      const isSystem = msg.role === "system"
+      const options = isSystem ? systemProviderOptions : providerOptions
       const shouldUseContentOptions = providerID !== "anthropic" && Array.isArray(msg.content) && msg.content.length > 0
 
       if (shouldUseContentOptions) {
         const lastContent = msg.content[msg.content.length - 1]
         if (lastContent && typeof lastContent === "object") {
-          lastContent.providerOptions = mergeDeep(lastContent.providerOptions ?? {}, providerOptions)
+          lastContent.providerOptions = mergeDeep(lastContent.providerOptions ?? {}, options)
           continue
         }
       }
 
-      msg.providerOptions = mergeDeep(msg.providerOptions ?? {}, providerOptions)
+      msg.providerOptions = mergeDeep(msg.providerOptions ?? {}, options)
     }
 
     return msgs
