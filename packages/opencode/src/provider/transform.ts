@@ -1,5 +1,8 @@
 import type { APICallError, ModelMessage } from "ai"
 import { mergeDeep, unique } from "remeda"
+import { createHash } from "crypto"
+import { Log } from "@/util/log"
+import { Installation } from "@/installation"
 import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
@@ -16,6 +19,7 @@ function mimeToModality(mime: string): Modality | undefined {
 }
 
 export namespace ProviderTransform {
+  const log = Log.create({ service: "provider.transform" })
   // Maps npm package to the key the AI SDK expects for providerOptions
   function sdkKey(npm: string): string | undefined {
     switch (npm) {
@@ -176,6 +180,20 @@ export namespace ProviderTransform {
     const systemMarkers = systemMsgs.slice(0, 2)
     // Conversation markers: last 2
     const conversationMarkers = conversationMsgs.slice(-2)
+
+    if (Installation.isLocal()) {
+      log.info("cache markers", {
+        providerID,
+        system: systemMarkers.map((msg, i) => {
+          const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content ?? [])
+          return {
+            index: i,
+            hash: createHash("sha256").update(text).digest("hex"),
+            length: text.length,
+          }
+        }),
+      })
+    }
 
     const providerOptions = {
       anthropic: {
