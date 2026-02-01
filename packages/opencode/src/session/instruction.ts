@@ -16,6 +16,15 @@ const FILES = [
   "CONTEXT.md", // deprecated
 ]
 
+function formatPath(input: string) {
+  const home = Global.Path.home
+  const homePrefix = home + path.sep
+  const homeRel = input.startsWith(homePrefix) ? `~/${path.relative(home, input)}` : input
+  const worktree = Instance.worktree
+  const workRel = worktree !== "/" && Filesystem.contains(worktree, input) ? path.relative(worktree, input) : homeRel
+  return workRel
+}
+
 function globalFiles() {
   const files = [path.join(Global.Path.config, "AGENTS.md")]
   if (!Flag.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT) {
@@ -148,7 +157,7 @@ export namespace InstructionPrompt {
         const content = await Bun.file(p)
           .text()
           .catch(() => "")
-        return content ? "Instructions from: " + p + "\n" + content : ""
+        return content ? "Instructions from: " + formatPath(p) + "\n" + content : ""
       })
 
     // Load project files
@@ -158,7 +167,7 @@ export namespace InstructionPrompt {
         const content = await Bun.file(p)
           .text()
           .catch(() => "")
-        return content ? "Instructions from: " + p + "\n" + content : ""
+        return content ? "Instructions from: " + formatPath(p) + "\n" + content : ""
       })
 
     // URL instructions go to project
@@ -227,7 +236,7 @@ export namespace InstructionPrompt {
           .text()
           .catch(() => undefined)
         if (content) {
-          results.push({ filepath: found, content: "Instructions from: " + found + "\n" + content })
+          results.push({ filepath: found, content: "Instructions from: " + formatPath(found) + "\n" + content })
         }
       }
       if (current === root) break
