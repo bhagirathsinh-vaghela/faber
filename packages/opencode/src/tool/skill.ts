@@ -7,6 +7,7 @@ import { PermissionNext } from "../permission/next"
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const skills = await Skill.all()
+  skills.sort((a, b) => a.name.localeCompare(b.name))
 
   // Filter skills by agent permissions if agent provided
   const agent = ctx?.agent
