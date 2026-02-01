@@ -5,35 +5,35 @@ description: Use this when you are working on file operations like reading, writ
 
 ## Use this when
 
-- Editing file I/O or scans in `packages/opencode`
-- Handling directory operations or external tools
+- File I/O or scans in `packages/opencode`
+- Directory ops or external tools
 
-## Bun file APIs (from Bun docs)
+## Bun file APIs
 
-- `Bun.file(path)` is lazy; call `text`, `json`, `stream`, `arrayBuffer`, `bytes`, `exists` to read.
-- Metadata: `file.size`, `file.type`, `file.name`.
-- `Bun.write(dest, input)` writes strings, buffers, Blobs, Responses, or files.
-- `Bun.file(...).delete()` deletes a file.
-- `file.writer()` returns a FileSink for incremental writes.
-- `Bun.Glob` + `Array.fromAsync(glob.scan({ cwd, absolute, onlyFiles, dot }))` for scans.
-- Use `Bun.which` to find a binary, then `Bun.spawn` to run it.
-- `Bun.readableStreamToText/Bytes/JSON` for stream output.
+- `Bun.file(path)` lazy; call `text`, `json`, `stream`, `arrayBuffer`, `bytes`, `exists` to read
+- Metadata: `file.size`, `file.type`, `file.name`
+- `Bun.write(dest, input)` writes strings, buffers, Blobs, Responses, files
+- `Bun.file(...).delete()` deletes file
+- `file.writer()` → FileSink for incremental writes
+- `Bun.Glob` + `Array.fromAsync(glob.scan({ cwd, absolute, onlyFiles, dot }))` for scans
+- `Bun.which` to find binary, `Bun.spawn` to run
+- `Bun.readableStreamToText/Bytes/JSON` for stream output
 
 ## When to use node:fs
 
-- Use `node:fs/promises` for directories (`mkdir`, `readdir`, recursive operations).
+- `node:fs/promises` for directories (`mkdir`, `readdir`, recursive ops)
 
 ## Repo patterns
 
-- Prefer Bun APIs over Node `fs` for file access.
-- Check `Bun.file(...).exists()` before reading.
-- For binary/large files use `arrayBuffer()` and MIME checks via `file.type`.
-- Use `Bun.Glob` + `Array.fromAsync` for scans.
-- Decode tool stderr with `Bun.readableStreamToText`.
-- For large writes, use `Bun.write(Bun.file(path), text)`.
+- Prefer Bun APIs over Node `fs`
+- Check `Bun.file(...).exists()` before reading
+- Binary/large files: `arrayBuffer()` + MIME via `file.type`
+- `Bun.Glob` + `Array.fromAsync` for scans
+- Decode stderr: `Bun.readableStreamToText`
+- Large writes: `Bun.write(Bun.file(path), text)`
 
 ## Quick checklist
 
-- Use Bun APIs first.
-- Use `path.join`/`path.resolve` for paths.
-- Prefer promise `.catch(...)` over `try/catch` when possible.
+- Bun APIs first
+- `path.join`/`path.resolve` for paths
+- Prefer `.catch(...)` over `try/catch`
