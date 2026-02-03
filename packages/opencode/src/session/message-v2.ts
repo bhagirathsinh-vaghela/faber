@@ -300,6 +300,8 @@ export namespace MessageV2 {
   const Base = z.object({
     id: z.string(),
     sessionID: z.string(),
+    promptIndex: z.number().optional(),
+    synthetic: z.boolean().optional(),
   })
 
   export const User = Base.extend({

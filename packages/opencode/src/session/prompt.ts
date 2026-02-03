@@ -1205,7 +1205,20 @@ export namespace SessionPrompt {
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 
-    const insertMeta = (text: string) => {
+    const assignPromptIndices = (msgs: MessageV2.WithParts[]) => {
+      for (let i = 0; i < msgs.length; i++) {
+        msgs[i].info.promptIndex = i
+      }
+    }
+
+    const persistPromptIndices = async (msgs: MessageV2.WithParts[]) => {
+      for (const msg of msgs) {
+        if (msg.info.synthetic) continue
+        await Session.updateMessage(msg.info)
+      }
+    }
+
+    const insertMeta = async (text: string) => {
       const userInfo = userMessage.info as MessageV2.User
       const reminder = text.includes("<system-reminder>")
         ? text
@@ -1221,6 +1234,7 @@ export namespace SessionPrompt {
           },
           agent: userInfo.agent,
           model: userInfo.model,
+          synthetic: true,
         },
         parts: [
           {
@@ -1236,18 +1250,22 @@ export namespace SessionPrompt {
       const index = input.messages.indexOf(userMessage)
       if (index === -1) return input.messages
       input.messages.splice(index, 0, metaMessage)
+      assignPromptIndices(input.messages)
+      await persistPromptIndices(input.messages)
       return input.messages
     }
 
     // Original logic when experimental plan mode is disabled
     if (!Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE) {
       if (input.agent.name === "plan") {
-        return insertMeta(PROMPT_PLAN)
+        return await insertMeta(PROMPT_PLAN)
       }
       const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
       if (wasPlan && input.agent.name === "build") {
-        return insertMeta(BUILD_SWITCH)
+        return await insertMeta(BUILD_SWITCH)
       }
+      assignPromptIndices(input.messages)
+      await persistPromptIndices(input.messages)
       return input.messages
     }
 
@@ -1258,8 +1276,12 @@ export namespace SessionPrompt {
     if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
       const plan = Session.plan(input.session)
       const exists = await Bun.file(plan).exists()
-      if (!exists) return input.messages
-      return insertMeta(
+      if (!exists) {
+        assignPromptIndices(input.messages)
+        await persistPromptIndices(input.messages)
+        return input.messages
+      }
+      return await insertMeta(
         BUILD_SWITCH + "\n\n" + `A plan file exists at ${plan}. You should execute on the plan defined within it`,
       )
     }
@@ -1269,7 +1291,7 @@ export namespace SessionPrompt {
       const plan = Session.plan(input.session)
       const exists = await Bun.file(plan).exists()
       if (!exists) await fs.mkdir(path.dirname(plan), { recursive: true })
-      return insertMeta(`<system-reminder>
+      return await insertMeta(`<system-reminder>
 Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.
 
 ## Plan File Info:
@@ -1340,6 +1362,8 @@ This is critical - your turn should only end with either asking the user a quest
 NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.
 </system-reminder>`)
     }
+    assignPromptIndices(input.messages)
+    await persistPromptIndices(input.messages)
     return input.messages
   }
 

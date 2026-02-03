@@ -101,6 +101,8 @@ export type FileDiff = {
 export type UserMessage = {
   id: string
   sessionID: string
+  promptIndex?: number
+  synthetic?: boolean
   role: "user"
   time: {
     created: number
@@ -170,6 +172,8 @@ export type ApiError = {
 export type AssistantMessage = {
   id: string
   sessionID: string
+  promptIndex?: number
+  synthetic?: boolean
   role: "assistant"
   time: {
     created: number

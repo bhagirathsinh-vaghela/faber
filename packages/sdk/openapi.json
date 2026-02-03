@@ -6044,6 +6044,12 @@
           "sessionID": {
             "type": "string"
           },
+          "promptIndex": {
+            "type": "number"
+          },
+          "synthetic": {
+            "type": "boolean"
+          },
           "role": {
             "type": "string",
             "const": "user"
@@ -6236,6 +6242,12 @@
           },
           "sessionID": {
             "type": "string"
+          },
+          "promptIndex": {
+            "type": "number"
+          },
+          "synthetic": {
+            "type": "boolean"
           },
           "role": {
             "type": "string",

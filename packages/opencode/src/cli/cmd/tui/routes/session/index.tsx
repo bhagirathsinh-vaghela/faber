@@ -1053,7 +1053,7 @@ export function Session() {
                     </Match>
                     <Match when={message.role === "user"}>
                       <UserMessage
-                        index={index()}
+                        index={message.promptIndex ?? index()}
                         onMouseUp={() => {
                           if (renderer.getSelection()?.getSelectedText()) return
                           dialog.replace(() => (
@@ -1072,6 +1072,7 @@ export function Session() {
                     <Match when={message.role === "assistant"}>
                       <AssistantMessage
                         last={lastAssistant()?.id === message.id}
+                        index={message.promptIndex ?? index()}
                         message={message as AssistantMessage}
                         parts={sync.data.part[message.id] ?? []}
                       />
@@ -1226,7 +1227,7 @@ function UserMessage(props: {
           <box flexDirection="row" gap={1} marginBottom={1}>
             <text fg={color()}>{"◈"}</text>
             <text fg={color()} attributes={TextAttributes.BOLD}>
-              USER
+              {`#${props.index + 1} USER`}
             </text>
             <Show when={ctx.showTimestamps()}>
               <text fg={theme.textMuted}>
@@ -1276,7 +1277,7 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean; index: number }) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
@@ -1285,7 +1286,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
 
   const final = createMemo(() => {
-    return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
+    return !!props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
   })
 
   const duration = createMemo(() => {
@@ -1371,6 +1372,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
                 part={part as any}
                 message={props.message}
                 parts={props.parts}
+                messageIndex={props.index}
                 messageLast={props.last}
                 messageFinal={!!final()}
                 messageDuration={duration()}
@@ -1384,7 +1386,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           )
         }}
       </For>
-      <Show when={props.message.error && props.message.error.name !== "MessageAbortedError"}>
+      <Show when={!!props.message.error && props.message.error.name !== "MessageAbortedError"}>
         <box
           border={["left"]}
           paddingTop={1}
@@ -1462,6 +1464,7 @@ function TextPart(props: {
   part: TextPart
   message: AssistantMessage
   parts: Part[]
+  messageIndex: number
   messageLast: boolean
   messageFinal: boolean
   messageDuration: number
@@ -1517,7 +1520,7 @@ function TextPart(props: {
         <box flexDirection="row" gap={1} marginBottom={1}>
           <text fg={theme.success}>{"◈"}</text>
           <text fg={theme.success} attributes={TextAttributes.BOLD}>
-            ASSISTANT
+            {`#${props.messageIndex + 1} ASSISTANT`}
           </text>
           <Show when={ctx.showTimestamps() && props.message.time.completed}>
             {(completed) => (
