@@ -1205,28 +1205,48 @@ export namespace SessionPrompt {
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 
+    const insertMeta = (text: string) => {
+      const userInfo = userMessage.info as MessageV2.User
+      const reminder = text.includes("<system-reminder>")
+        ? text
+        : ["<system-reminder>", text, "</system-reminder>"].join("\n")
+      const messageID = Identifier.ascending("message")
+      const metaMessage: MessageV2.WithParts = {
+        info: {
+          id: messageID,
+          sessionID: userInfo.sessionID,
+          role: "user",
+          time: {
+            created: Date.now(),
+          },
+          agent: userInfo.agent,
+          model: userInfo.model,
+        },
+        parts: [
+          {
+            id: Identifier.ascending("part"),
+            messageID,
+            sessionID: userInfo.sessionID,
+            type: "text",
+            text: reminder,
+            synthetic: true,
+          },
+        ],
+      }
+      const index = input.messages.indexOf(userMessage)
+      if (index === -1) return input.messages
+      input.messages.splice(index, 0, metaMessage)
+      return input.messages
+    }
+
     // Original logic when experimental plan mode is disabled
     if (!Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE) {
       if (input.agent.name === "plan") {
-        userMessage.parts.push({
-          id: Identifier.ascending("part"),
-          messageID: userMessage.info.id,
-          sessionID: userMessage.info.sessionID,
-          type: "text",
-          text: PROMPT_PLAN,
-          synthetic: true,
-        })
+        return insertMeta(PROMPT_PLAN)
       }
       const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
       if (wasPlan && input.agent.name === "build") {
-        userMessage.parts.push({
-          id: Identifier.ascending("part"),
-          messageID: userMessage.info.id,
-          sessionID: userMessage.info.sessionID,
-          type: "text",
-          text: BUILD_SWITCH,
-          synthetic: true,
-        })
+        return insertMeta(BUILD_SWITCH)
       }
       return input.messages
     }
@@ -1238,19 +1258,10 @@ export namespace SessionPrompt {
     if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
       const plan = Session.plan(input.session)
       const exists = await Bun.file(plan).exists()
-      if (exists) {
-        const part = await Session.updatePart({
-          id: Identifier.ascending("part"),
-          messageID: userMessage.info.id,
-          sessionID: userMessage.info.sessionID,
-          type: "text",
-          text:
-            BUILD_SWITCH + "\n\n" + `A plan file exists at ${plan}. You should execute on the plan defined within it`,
-          synthetic: true,
-        })
-        userMessage.parts.push(part)
-      }
-      return input.messages
+      if (!exists) return input.messages
+      return insertMeta(
+        BUILD_SWITCH + "\n\n" + `A plan file exists at ${plan}. You should execute on the plan defined within it`,
+      )
     }
 
     // Entering plan mode
@@ -1258,12 +1269,7 @@ export namespace SessionPrompt {
       const plan = Session.plan(input.session)
       const exists = await Bun.file(plan).exists()
       if (!exists) await fs.mkdir(path.dirname(plan), { recursive: true })
-      const part = await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
-        type: "text",
-        text: `<system-reminder>
+      return insertMeta(`<system-reminder>
 Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.
 
 ## Plan File Info:
@@ -1332,11 +1338,7 @@ This is critical - your turn should only end with either asking the user a quest
 **Important:** Use question tool to clarify requirements/approach, use plan_exit to request plan approval. Do NOT use question tool to ask "Is this plan okay?" - that's what plan_exit does.
 
 NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.
-</system-reminder>`,
-        synthetic: true,
-      })
-      userMessage.parts.push(part)
-      return input.messages
+</system-reminder>`)
     }
     return input.messages
   }

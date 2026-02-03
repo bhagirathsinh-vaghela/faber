@@ -174,11 +174,12 @@ export namespace ProviderTransform {
     // Total: 4 markers (or fewer if some blocks are empty)
     const systemMsgs = msgs.filter((msg) => msg.role === "system")
     const conversationMsgs = msgs.filter((msg) => msg.role !== "system")
+    const cacheableConversation = conversationMsgs.filter((msg) => !isMetaMessage(msg))
 
     // System block markers: first 2 (provider prompt + global AGENTS.md)
     const systemMarkers = systemMsgs.slice(0, 2)
     // Conversation markers: last 2
-    const conversationMarkers = conversationMsgs.slice(-2)
+    const conversationMarkers = cacheableConversation.slice(-2)
 
     log.info("cache markers", {
       providerID,
@@ -238,6 +239,21 @@ export namespace ProviderTransform {
     }
 
     return msgs
+  }
+
+  function isMetaMessage(msg: ModelMessage) {
+    if (msg.role !== "user") return false
+    if (typeof msg.content === "string") return isSystemReminder(msg.content)
+    if (!Array.isArray(msg.content)) return false
+    if (msg.content.length !== 1) return false
+    const part = msg.content[0]
+    if (!part || typeof part !== "object" || part.type !== "text") return false
+    return isSystemReminder(part.text)
+  }
+
+  function isSystemReminder(text: string) {
+    const trimmed = text.trim()
+    return trimmed.startsWith("<system-reminder>") && trimmed.endsWith("</system-reminder>")
   }
 
   function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
