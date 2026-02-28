@@ -102,6 +102,8 @@ export type FileDiff = {
 export type UserMessage = {
   id: string
   sessionID: string
+  promptIndex?: number
+  synthetic?: boolean
   role: "user"
   time: {
     created: number
@@ -171,6 +173,8 @@ export type ApiError = {
 export type AssistantMessage = {
   id: string
   sessionID: string
+  promptIndex?: number
+  synthetic?: boolean
   role: "assistant"
   time: {
     created: number
@@ -198,6 +202,7 @@ export type AssistantMessage = {
     }
   }
   finish?: string
+  variant?: string
 }
 
 export type Message = UserMessage | AssistantMessage
@@ -229,9 +234,6 @@ export type TextPart = {
     start: number
     end?: number
   }
-  metadata?: {
-    [key: string]: unknown
-  }
 }
 
 export type SubtaskPart = {
@@ -255,9 +257,7 @@ export type ReasoningPart = {
   messageID: string
   type: "reasoning"
   text: string
-  metadata?: {
-    [key: string]: unknown
-  }
+  signature?: string
   time: {
     start: number
     end?: number
@@ -381,9 +381,6 @@ export type ToolPart = {
   callID: string
   tool: string
   state: ToolState
-  metadata?: {
-    [key: string]: unknown
-  }
 }
 
 export type StepStartPart = {
@@ -784,6 +781,8 @@ export type Session = {
     snapshot?: string
     diff?: string
   }
+  cacheMarkers?: Array<number>
+  systemBlockCount?: number
 }
 
 export type EventSessionCreated = {
@@ -1058,6 +1057,10 @@ export type KeybindsConfig = {
    */
   messages_last?: string
   /**
+   * Force scroll to bottom of conversation
+   */
+  scroll_to_bottom?: string
+  /**
    * Navigate to next message
    */
   messages_next?: string
@@ -1229,6 +1232,10 @@ export type KeybindsConfig = {
    * Delete line in input
    */
   input_delete_line?: string
+  /**
+   * Stash or pop the current prompt
+   */
+  prompt_stash?: string
   /**
    * Delete to end of line in input
    */
@@ -1990,9 +1997,6 @@ export type TextPartInput = {
   time?: {
     start: number
     end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
   }
 }
 

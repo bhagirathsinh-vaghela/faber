@@ -152,6 +152,7 @@ export function Session() {
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [animationsEnabled, setAnimationsEnabled] = kv.signal("animations_enabled", true)
+  const [savedScrollPosition, setSavedScrollPosition] = createSignal<number | null>(null)
 
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
@@ -243,6 +244,32 @@ export function Session() {
       exit()
     }
   })
+
+  // Force scroll to bottom (configurable via scroll_to_bottom keybind)
+  useKeyboard((evt) => {
+    if (keybind.match("scroll_to_bottom", evt)) {
+      if (scroll) scroll.scrollTo(scroll.scrollHeight)
+    }
+  })
+
+  // Restore scroll position after ping response completes
+  createEffect(
+    on(
+      () => messages(),
+      () => {
+        const saved = savedScrollPosition()
+        if (saved !== null) {
+          // Wait for render, then restore position
+          setTimeout(() => {
+            if (scroll && savedScrollPosition() !== null) {
+              scroll.scrollTo(saved)
+              setSavedScrollPosition(null)
+            }
+          }, 100)
+        }
+      },
+    ),
+  )
 
   // Helper: Find next visible message boundary in direction
   const findNextVisibleMessage = (direction: "next" | "prev"): string | null => {
@@ -1048,7 +1075,7 @@ export function Session() {
                     </Match>
                     <Match when={message.role === "user"}>
                       <UserMessage
-                        index={index()}
+                        index={message.promptIndex ?? index() + (session()?.systemBlockCount ?? 0)}
                         onMouseUp={() => {
                           if (renderer.getSelection()?.getSelectedText()) return
                           dialog.replace(() => (
@@ -1067,6 +1094,7 @@ export function Session() {
                     <Match when={message.role === "assistant"}>
                       <AssistantMessage
                         last={lastAssistant()?.id === message.id}
+                        index={message.promptIndex ?? index() + (session()?.systemBlockCount ?? 0)}
                         message={message as AssistantMessage}
                         parts={sync.data.part[message.id] ?? []}
                       />
@@ -1093,8 +1121,15 @@ export function Session() {
                   }
                 }}
                 disabled={permissions().length > 0 || questions().length > 0}
-                onSubmit={() => {
-                  toBottom()
+                onMessageSent={(isPing) => {
+                  if (isPing) {
+                    // Save current scroll position for ping messages BEFORE scrolling
+                    setSavedScrollPosition(scroll.y)
+                  } else {
+                    // Clear saved position for normal messages and scroll to bottom
+                    setSavedScrollPosition(null)
+                    toBottom()
+                  }
                 }}
                 sessionID={route.sessionID}
               />
@@ -1127,16 +1162,13 @@ export function Session() {
   )
 }
 
-const formatTime = (isoTimestamp: string): string => {
-  try {
-    const date = new Date(isoTimestamp)
-    const hours = date.getHours().toString().padStart(2, "0")
-    const minutes = date.getMinutes().toString().padStart(2, "0")
-    const seconds = date.getSeconds().toString().padStart(2, "0")
-    return `${hours}:${minutes}:${seconds}`
-  } catch {
-    return ""
-  }
+const formatTime = (timestamp: string | number): string => {
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ""
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  const seconds = date.getSeconds().toString().padStart(2, "0")
+  return `${hours}:${minutes}:${seconds}`
 }
 
 const MIME_BADGE: Record<string, string> = {
@@ -1163,8 +1195,15 @@ function UserMessage(props: {
   const sync = useSync()
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
-  const pending = createMemo(() => props.messages.findLast((x) => x.role === "assistant" && !x.time.completed)?.id)
-  const queued = createMemo(() => pending() && props.message.id > pending())
+  const pending = createMemo(
+    () => props.messages.findLast((x) => x.role === "assistant" && !x.time.completed) as AssistantMessage | undefined,
+  )
+  const queued = createMemo(() => {
+    const p = pending()
+    // A user message is QUEUED if there's an incomplete assistant responding to an EARLIER message
+    // This means the user sent this message while the assistant was still responding to a previous one
+    return p && p.parentID !== props.message.id && props.message.id > p.parentID
+  })
   const color = createMemo(() => (queued() ? theme.accent : local.agent.color(props.message.agent)))
   const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
@@ -1207,8 +1246,8 @@ function UserMessage(props: {
         >
           <box flexDirection="row" gap={1} marginBottom={1}>
             <text fg={color()}>{"◈"}</text>
-            <text fg={color()} bold>
-              USER
+            <text fg={color()}>
+              <span style={{ bold: true }}>{`#${props.index + 1} USER`}</span>
             </text>
             <Show when={ctx.showTimestamps()}>
               <text fg={theme.textMuted}>
@@ -1258,129 +1297,18 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+type AssistantWithVariant = AssistantMessage & { variant?: string }
+
+function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[]; last: boolean; index: number }) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
-  const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
-
-  const final = createMemo(() => {
-    return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
-  })
-
-  const duration = createMemo(() => {
-    if (!final()) return 0
-    if (!props.message.time.completed) return 0
-    const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
-    if (!user || !user.time) return 0
-    return props.message.time.completed - user.time.created
-  })
-
-  return (
-    <>
-      <For each={props.parts}>
-        {(part, index) => {
-          const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
-          return (
-            <Show when={component()}>
-              <Dynamic
-                last={index() === props.parts.length - 1}
-                component={component()}
-                part={part as any}
-                message={props.message}
-              />
-            </Show>
-          )
-        }}
-      </For>
-      <Show when={props.message.error && props.message.error.name !== "MessageAbortedError"}>
-        <box
-          border={["left"]}
-          paddingTop={1}
-          paddingBottom={1}
-          paddingLeft={2}
-          marginTop={1}
-          backgroundColor={theme.backgroundPanel}
-          customBorderChars={SplitBorder.customBorderChars}
-          borderColor={theme.error}
-        >
-          <text fg={theme.textMuted}>{props.message.error?.data.message}</text>
-        </box>
-      </Show>
-      <Switch>
-        <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
-          <box paddingLeft={3}>
-            <text marginTop={1}>
-              <span
-                style={{
-                  fg:
-                    props.message.error?.name === "MessageAbortedError"
-                      ? theme.textMuted
-                      : local.agent.color(props.message.agent),
-                }}
-              >
-                ▣{" "}
-              </span>
-              <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
-            </text>
-          </box>
-        </Match>
-      </Switch>
-    </>
-  )
-}
-
-const PART_MAPPING = {
-  text: TextPart,
-  tool: ToolPart,
-  reasoning: ReasoningPart,
-}
-
-function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: AssistantMessage }) {
-  const { theme, subtleSyntax } = useTheme()
-  const ctx = use()
-  const content = createMemo(() => {
-    // Filter out redacted reasoning chunks from OpenRouter
-    // OpenRouter sends encrypted reasoning data that appears as [REDACTED]
-    return props.part.text.replace("[REDACTED]", "").trim()
-  })
-  return (
-    <Show when={content() && ctx.showThinking()}>
-      <box
-        id={"text-" + props.part.id}
-        paddingLeft={2}
-        marginTop={1}
-        flexDirection="column"
-        border={["left"]}
-        customBorderChars={SplitBorder.customBorderChars}
-        borderColor={theme.backgroundElement}
-      >
-        <code
-          filetype="markdown"
-          drawUnstyledText={false}
-          streaming={true}
-          syntaxStyle={subtleSyntax()}
-          content={"_Thinking:_ " + content()}
-          conceal={ctx.conceal()}
-          fg={theme.textMuted}
-        />
-      </box>
-    </Show>
-  )
-}
-
-function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
-  const ctx = use()
-  const local = useLocal()
-  const sync = useSync()
   const directory = useDirectory()
-  const { theme, syntax } = useTheme()
-
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
 
   const final = createMemo(() => {
-    return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
+    return !!props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
   })
 
   const duration = createMemo(() => {
@@ -1437,10 +1365,12 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
     return count.toString()
   }
 
-  // Progress bar helper
+  // Progress bar helper (4-tier color system)
+  // RED: Critical (85-100%) | YELLOW: High (70-84%) | BLUE: Moderate (50-69%) | GREEN: Low (0-49%)
   const progressBar = (percent: number, width: number = 10) => {
     const filled = Math.min(Math.round((percent / 100) * width), width)
-    const color = percent >= 80 ? theme.error : percent >= 50 ? theme.warning : theme.success
+    const color =
+      percent >= 85 ? theme.error : percent >= 70 ? theme.warning : percent >= 50 ? theme.info : theme.success
     return (
       <text>
         <span style={{ fg: theme.textMuted }}>[</span>
@@ -1450,6 +1380,140 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
       </text>
     )
   }
+
+  return (
+    <>
+      <For each={props.parts}>
+        {(part, index) => {
+          const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
+          return (
+            <Show when={component()}>
+              <Dynamic
+                last={index() === props.parts.length - 1}
+                component={component()}
+                part={part as any}
+                message={props.message}
+                parts={props.parts}
+                messageIndex={props.index}
+                messageLast={props.last}
+                messageFinal={final()}
+                messageDuration={duration()}
+                contextStats={contextStats()}
+                sessionTotals={sessionTotals()}
+                cacheExpiry={cacheExpiry()}
+                formatTokens={formatTokens}
+                progressBar={progressBar}
+              />
+            </Show>
+          )
+        }}
+      </For>
+      <Show when={!!props.message.error && props.message.error.name !== "MessageAbortedError"}>
+        <box
+          border={["left"]}
+          paddingTop={1}
+          paddingBottom={1}
+          paddingLeft={2}
+          marginTop={1}
+          backgroundColor={theme.backgroundPanel}
+          customBorderChars={SplitBorder.customBorderChars}
+          borderColor={theme.error}
+        >
+          <text fg={theme.textMuted}>{props.message.error?.data.message}</text>
+        </box>
+      </Show>
+      <Switch>
+        <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
+          <box paddingLeft={3}>
+            <text marginTop={1}>
+              <span
+                style={{
+                  fg:
+                    props.message.error?.name === "MessageAbortedError"
+                      ? theme.textMuted
+                      : local.agent.color(props.message.agent),
+                }}
+              >
+                ▣{" "}
+              </span>
+              <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
+            </text>
+          </box>
+        </Match>
+      </Switch>
+    </>
+  )
+}
+
+const PART_MAPPING = {
+  text: TextPart,
+  tool: ToolPart,
+  reasoning: ReasoningPart,
+}
+
+function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: AssistantMessage; messageIndex: number }) {
+  const { theme, subtleSyntax } = useTheme()
+  const ctx = use()
+  const content = createMemo(() => {
+    // Filter out redacted reasoning chunks from OpenRouter
+    // OpenRouter sends encrypted reasoning data that appears as [REDACTED]
+    return props.part.text.replace("[REDACTED]", "").trim()
+  })
+  return (
+    <Show when={content() && ctx.showThinking()}>
+      <box
+        id={"text-" + props.part.id}
+        paddingLeft={2}
+        marginTop={1}
+        flexDirection="column"
+        border={["left"]}
+        customBorderChars={SplitBorder.customBorderChars}
+        borderColor={theme.backgroundElement}
+      >
+        <text fg={theme.textMuted} marginBottom={1}>
+          #{props.messageIndex + 1} Thinking:
+        </text>
+        <markdown
+          streaming={!props.message.time.completed}
+          syntaxStyle={subtleSyntax()}
+          content={content()}
+          conceal={ctx.conceal()}
+        />
+      </box>
+    </Show>
+  )
+}
+
+function TextPart(props: {
+  last: boolean
+  part: TextPart
+  message: AssistantMessage
+  parts: Part[]
+  messageIndex: number
+  messageLast: boolean
+  messageFinal: boolean
+  messageDuration: number
+  contextStats: { total: number; cached: number; newTokens: number; contextLimit: number; percentage: number }
+  sessionTotals: { input: number; output: number }
+  cacheExpiry: string | null
+  formatTokens: (count: number) => string
+  progressBar: (percent: number, width?: number) => any
+}) {
+  const ctx = use()
+  const local = useLocal()
+  const { theme, syntax } = useTheme()
+  const directory = useDirectory()
+
+  // Show snapshot for ALL text parts (even during streaming)
+  const showSnapshot = createMemo(() => {
+    // Always show if message is the last in session, final, or aborted
+    if (props.messageLast || props.messageFinal || props.message.error?.name === "MessageAbortedError") {
+      return true
+    }
+    // Also show during streaming if this text part exists (has been rendered)
+    // This ensures snapshot appears in all assistant boxes, even before completion
+    return true
+  })
 
   // Create greenish tinted background for assistant output
   const tintedBg = createMemo(() => {
@@ -1480,35 +1544,33 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
       >
         <box flexDirection="row" gap={1} marginBottom={1}>
           <text fg={theme.success}>{"◈"}</text>
-          <text fg={theme.success} bold>
-            ASSISTANT
+          <text fg={theme.success}>
+            <span style={{ bold: true }}>{`#${props.messageIndex + 1} ASSISTANT`}</span>
           </text>
-          <Show when={ctx.showTimestamps() && props.message.time.completed}>
+          <Show when={ctx.showTimestamps() && !!props.message.time.completed}>
             <text fg={theme.textMuted}>
               <span style={{ bg: theme.success, fg: theme.background, bold: true, underline: true }}>
-                {"(" + formatTime(props.message.time.completed) + ")"}
+                {"(" + formatTime(props.message.time.completed ?? "") + ")"}
               </span>
             </text>
           </Show>
         </box>
-        <code
-          filetype="markdown"
-          drawUnstyledText={false}
-          streaming={true}
+        <markdown
+          streaming={!props.messageFinal}
           syntaxStyle={syntax()}
           content={props.part.text.trim()}
           conceal={ctx.conceal()}
-          fg={theme.text}
         />
-        <Show when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
+        <Show when={showSnapshot()}>
           <box flexDirection="row" marginTop={1} flexWrap="wrap">
             <text fg={theme.textMuted}>
               <span style={{ fg: local.agent.color(props.message.agent) }}>{Locale.titlecase(props.message.mode)}</span>
               <span> · {props.message.modelID}</span>
+              <Show when={props.message.variant}>{(variant) => <span> · {variant()}</span>}</Show>
             </text>
-            <Show when={duration()}>
+            <Show when={props.messageDuration}>
               <text fg={theme.textMuted}>
-                <span> · {Locale.duration(duration())}</span>
+                <span> · {Locale.duration(props.messageDuration)}</span>
               </text>
             </Show>
             <Show when={props.message.error?.name === "MessageAbortedError"}>
@@ -1529,27 +1591,27 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
             <box flexDirection="row">
               <text>
                 <span style={{ fg: theme.textMuted }}>⏳</span>{" "}
-                <span style={{ fg: theme.warning }}>{cacheExpiry() ?? "--"}</span>
+                <span style={{ fg: theme.warning }}>{props.cacheExpiry ?? "--"}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
                 <span style={{ fg: theme.textMuted }}>🧠</span>{" "}
               </text>
-              {progressBar(contextStats().percentage, 10)}
+              {props.progressBar(props.contextStats.percentage, 10)}
               <text>
                 {" "}
-                <span style={{ fg: theme.primary }}>{formatTokens(contextStats().total)}</span>
+                <span style={{ fg: theme.primary }}>{props.formatTokens(props.contextStats.total)}</span>
                 <span style={{ fg: theme.textMuted }}>/</span>
-                <span style={{ fg: theme.textMuted }}>{formatTokens(contextStats().contextLimit)}</span>
+                <span style={{ fg: theme.textMuted }}>{props.formatTokens(props.contextStats.contextLimit)}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
                 <span style={{ fg: theme.textMuted }}>📦</span>{" "}
-                <span style={{ fg: theme.success }}>{formatTokens(contextStats().cached)}</span>
+                <span style={{ fg: theme.success }}>{props.formatTokens(props.contextStats.cached)}</span>
                 <span style={{ fg: theme.textMuted }}> · </span>
                 <span style={{ fg: theme.textMuted }}>✨</span>{" "}
-                <span style={{ fg: theme.warning }}>{formatTokens(contextStats().newTokens)}</span>
+                <span style={{ fg: theme.warning }}>{props.formatTokens(props.contextStats.newTokens)}</span>
                 <span style={{ fg: theme.textMuted }}> │ </span>
                 <span style={{ fg: theme.textMuted }}>💬</span>{" "}
-                <span style={{ fg: theme.primary }}>↑{formatTokens(sessionTotals().input)}</span>
+                <span style={{ fg: theme.primary }}>↑{props.formatTokens(props.sessionTotals.input)}</span>
                 <span style={{ fg: theme.textMuted }}> </span>
-                <span style={{ fg: theme.warning }}>↓{formatTokens(sessionTotals().output)}</span>
+                <span style={{ fg: theme.warning }}>↓{props.formatTokens(props.sessionTotals.output)}</span>
               </text>
             </box>
           </box>
@@ -1561,7 +1623,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
 
 // Pending messages moved to individual tool pending functions
 
-function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMessage }) {
+function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMessage; messageIndex: number }) {
   const ctx = use()
   const sync = useSync()
 
@@ -1571,6 +1633,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
     if (props.part.state.status !== "completed") return false
     return true
   })
+
+  // Tool results follow the assistant message in the LLM prompt, so toolIndex = assistantIndex + 1
+  const toolIndex = props.messageIndex + 1
 
   const toolprops = {
     get metadata() {
@@ -1595,6 +1660,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
     },
     get message() {
       return props.message
+    },
+    get toolIndex() {
+      return toolIndex
     },
   }
 
@@ -1662,10 +1730,11 @@ type ToolProps<T extends Tool.Info> = {
   output?: string
   part: ToolPart
   message: AssistantMessage
+  toolIndex: number
 }
 function GenericTool(props: ToolProps<any>) {
   return (
-    <InlineTool icon="⚙" pending="Writing command..." complete={true} part={props.part}>
+    <InlineTool icon="⚙" pending="Writing command..." complete={true} part={props.part} toolIndex={props.toolIndex}>
       {props.tool} {input(props.input)}
     </InlineTool>
   )
@@ -1689,6 +1758,7 @@ function InlineTool(props: {
   pending: string
   children: JSX.Element
   part: ToolPart
+  toolIndex?: number
 }) {
   const [margin, setMargin] = createSignal(0)
   const { theme } = useTheme()
@@ -1745,6 +1815,9 @@ function InlineTool(props: {
     >
       <text paddingLeft={3} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
         <Show fallback={<>~ {props.pending}</>} when={props.complete}>
+          <Show when={props.toolIndex !== undefined}>
+            <span style={{ fg: fg() }}>#{props.toolIndex! + 1} </span>
+          </Show>
           <span style={{ fg: props.iconColor }}>{props.icon}</span> {props.children}
         </Show>
       </text>
@@ -1762,6 +1835,7 @@ function BlockTool(props: {
   part?: ToolPart
   spinner?: boolean
   message?: AssistantMessage
+  toolIndex?: number
 }) {
   const { theme } = useTheme()
   const local = useLocal()
@@ -1819,6 +1893,9 @@ function BlockTool(props: {
         fallback={
           <box flexDirection="row" gap={1} marginBottom={1}>
             <text fg={agentColor()}>{"◇"}</text>
+            <Show when={props.toolIndex !== undefined}>
+              <text fg={agentColor()}>#{props.toolIndex! + 1}</text>
+            </Show>
             <text fg={theme.textMuted}>{props.title}</text>
           </box>
         }
@@ -1840,6 +1917,7 @@ function AgentBlockTool(props: {
   part?: ToolPart
   agentType?: string
   spinner?: boolean
+  toolIndex?: number
 }) {
   const { theme } = useTheme()
   const renderer = useRenderer()
@@ -1885,8 +1963,11 @@ function AgentBlockTool(props: {
         fallback={
           <box flexDirection="row" gap={1}>
             <text fg={accentColor()}>{"◈"}</text>
-            <text fg={accentColor()} bold>
-              SUBAGENT OUTPUT
+            <Show when={props.toolIndex !== undefined}>
+              <text fg={accentColor()}>#{props.toolIndex! + 1}</text>
+            </Show>
+            <text fg={accentColor()}>
+              <span style={{ fontWeight: "bold" }}>SUBAGENT OUTPUT</span>
             </text>
             <text fg={theme.textMuted}>│</text>
             <text fg={theme.textMuted}>{props.title}</text>
@@ -1947,6 +2028,7 @@ function Bash(props: ToolProps<typeof BashTool>) {
           title={title()}
           part={props.part}
           message={props.message}
+          toolIndex={props.toolIndex}
           onClick={overflow() ? () => setExpanded((prev) => !prev) : undefined}
         >
           <box gap={1}>
@@ -1961,7 +2043,13 @@ function Bash(props: ToolProps<typeof BashTool>) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="$" pending="Writing command..." complete={props.input.command} part={props.part}>
+        <InlineTool
+          icon="$"
+          pending="Writing command..."
+          complete={props.input.command}
+          part={props.part}
+          toolIndex={props.toolIndex}
+        >
           {props.input.command}
         </InlineTool>
       </Match>
@@ -1984,7 +2072,12 @@ function Write(props: ToolProps<typeof WriteTool>) {
   return (
     <Switch>
       <Match when={props.metadata.diagnostics !== undefined}>
-        <BlockTool title={"# Wrote " + normalizePath(props.input.filePath!)} part={props.part} message={props.message}>
+        <BlockTool
+          title={"# Wrote " + normalizePath(props.input.filePath!)}
+          part={props.part}
+          message={props.message}
+          toolIndex={props.toolIndex}
+        >
           <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
             <code
               conceal={false}
@@ -2006,7 +2099,13 @@ function Write(props: ToolProps<typeof WriteTool>) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="←" pending="Preparing write..." complete={props.input.filePath} part={props.part}>
+        <InlineTool
+          icon="←"
+          pending="Preparing write..."
+          complete={props.input.filePath}
+          part={props.part}
+          toolIndex={props.toolIndex}
+        >
           Write {normalizePath(props.input.filePath!)}
         </InlineTool>
       </Match>
@@ -2016,7 +2115,13 @@ function Write(props: ToolProps<typeof WriteTool>) {
 
 function Glob(props: ToolProps<typeof GlobTool>) {
   return (
-    <InlineTool icon="✱" pending="Finding files..." complete={props.input.pattern} part={props.part}>
+    <InlineTool
+      icon="✱"
+      pending="Finding files..."
+      complete={props.input.pattern}
+      part={props.part}
+      toolIndex={props.toolIndex}
+    >
       Glob "{props.input.pattern}" <Show when={props.input.path}>in {normalizePath(props.input.path)} </Show>
       <Show when={props.metadata.count}>
         ({props.metadata.count} {props.metadata.count === 1 ? "match" : "matches"})
@@ -2036,7 +2141,13 @@ function Read(props: ToolProps<typeof ReadTool>) {
   })
   return (
     <>
-      <InlineTool icon="→" pending="Reading file..." complete={props.input.filePath} part={props.part}>
+      <InlineTool
+        icon="→"
+        pending="Reading file..."
+        complete={props.input.filePath}
+        part={props.part}
+        toolIndex={props.toolIndex}
+      >
         Read {normalizePath(props.input.filePath!)} {input(props.input, ["filePath"])}
       </InlineTool>
       <For each={loaded()}>
@@ -2054,7 +2165,13 @@ function Read(props: ToolProps<typeof ReadTool>) {
 
 function Grep(props: ToolProps<typeof GrepTool>) {
   return (
-    <InlineTool icon="✱" pending="Searching content..." complete={props.input.pattern} part={props.part}>
+    <InlineTool
+      icon="✱"
+      pending="Searching content..."
+      complete={props.input.pattern}
+      part={props.part}
+      toolIndex={props.toolIndex}
+    >
       Grep "{props.input.pattern}" <Show when={props.input.path}>in {normalizePath(props.input.path)} </Show>
       <Show when={props.metadata.matches}>
         ({props.metadata.matches} {props.metadata.matches === 1 ? "match" : "matches"})
@@ -2089,7 +2206,13 @@ function CodeSearch(props: ToolProps<any>) {
   const input = props.input as any
   const metadata = props.metadata as any
   return (
-    <InlineTool icon="◇" pending="Searching code..." complete={input.query} part={props.part}>
+    <InlineTool
+      icon="◇"
+      pending="Searching code..."
+      complete={input.query}
+      part={props.part}
+      toolIndex={props.toolIndex}
+    >
       Exa Code Search "{input.query}" <Show when={metadata.results}>({metadata.results} results)</Show>
     </InlineTool>
   )
@@ -2099,7 +2222,13 @@ function WebSearch(props: ToolProps<any>) {
   const input = props.input as any
   const metadata = props.metadata as any
   return (
-    <InlineTool icon="◈" pending="Searching web..." complete={input.query} part={props.part}>
+    <InlineTool
+      icon="◈"
+      pending="Searching web..."
+      complete={input.query}
+      part={props.part}
+      toolIndex={props.toolIndex}
+    >
       Exa Web Search "{input.query}" <Show when={metadata.numResults}>({metadata.numResults} results)</Show>
     </InlineTool>
   )
@@ -2148,6 +2277,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
           }
           part={props.part}
           spinner={isRunning()}
+          toolIndex={props.toolIndex}
         >
           <box>
             <text style={{ fg: theme.textMuted }}>
@@ -2166,15 +2296,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
           </box>
           <Show when={outputText()}>
             <box marginTop={1} paddingTop={1} border={["top"]} borderColor={theme.borderSubtle}>
-              <code
-                filetype="markdown"
-                drawUnstyledText={false}
-                streaming={false}
-                syntaxStyle={syntax()}
-                content={outputText()}
-                conceal={ctx.conceal()}
-                fg={theme.text}
-              />
+              <markdown streaming={false} syntaxStyle={syntax()} content={outputText()} conceal={ctx.conceal()} />
             </box>
           </Show>
           <text fg={theme.text}>
@@ -2184,7 +2306,13 @@ function Task(props: ToolProps<typeof TaskTool>) {
         </AgentBlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="#" pending="Delegating..." complete={props.input.subagent_type} part={props.part}>
+        <InlineTool
+          icon="#"
+          pending="Delegating..."
+          complete={props.input.subagent_type}
+          part={props.part}
+          toolIndex={props.toolIndex}
+        >
           {props.input.subagent_type} Task {props.input.description}
         </InlineTool>
       </Match>
@@ -2216,7 +2344,12 @@ function Edit(props: ToolProps<typeof EditTool>) {
   return (
     <Switch>
       <Match when={props.metadata.diff !== undefined}>
-        <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)} part={props.part} message={props.message}>
+        <BlockTool
+          title={"← Edit " + normalizePath(props.input.filePath!)}
+          part={props.part}
+          message={props.message}
+          toolIndex={props.toolIndex}
+        >
           <box paddingLeft={1}>
             <diff
               diff={diffContent()}
@@ -2253,7 +2386,13 @@ function Edit(props: ToolProps<typeof EditTool>) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="←" pending="Preparing edit..." complete={props.input.filePath} part={props.part}>
+        <InlineTool
+          icon="←"
+          pending="Preparing edit..."
+          complete={props.input.filePath}
+          part={props.part}
+          toolIndex={props.toolIndex}
+        >
           Edit {normalizePath(props.input.filePath!)} {input({ replaceAll: props.input.replaceAll })}
         </InlineTool>
       </Match>
@@ -2311,7 +2450,7 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
       <Match when={files().length > 0}>
         <For each={files()}>
           {(file) => (
-            <BlockTool title={title(file)} part={props.part} message={props.message}>
+            <BlockTool title={title(file)} part={props.part} message={props.message} toolIndex={props.toolIndex}>
               <Show
                 when={file.type !== "delete"}
                 fallback={
@@ -2327,7 +2466,13 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
         </For>
       </Match>
       <Match when={true}>
-        <InlineTool icon="%" pending="Preparing apply_patch..." complete={false} part={props.part}>
+        <InlineTool
+          icon="%"
+          pending="Preparing apply_patch..."
+          complete={false}
+          part={props.part}
+          toolIndex={props.toolIndex}
+        >
           apply_patch
         </InlineTool>
       </Match>
@@ -2339,7 +2484,7 @@ function TodoWrite(props: ToolProps<typeof TodoWriteTool>) {
   return (
     <Switch>
       <Match when={props.metadata.todos?.length}>
-        <BlockTool title="# Todos" part={props.part} message={props.message}>
+        <BlockTool title="# Todos" part={props.part} message={props.message} toolIndex={props.toolIndex}>
           <box>
             <For each={props.input.todos ?? []}>
               {(todo) => <TodoItem status={todo.status} content={todo.content} />}
@@ -2348,7 +2493,13 @@ function TodoWrite(props: ToolProps<typeof TodoWriteTool>) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="⚙" pending="Updating todos..." complete={false} part={props.part}>
+        <InlineTool
+          icon="⚙"
+          pending="Updating todos..."
+          complete={false}
+          part={props.part}
+          toolIndex={props.toolIndex}
+        >
           Updating todos...
         </InlineTool>
       </Match>
@@ -2368,7 +2519,7 @@ function Question(props: ToolProps<typeof QuestionTool>) {
   return (
     <Switch>
       <Match when={props.metadata.answers}>
-        <BlockTool title="# Questions" part={props.part} message={props.message}>
+        <BlockTool title="# Questions" part={props.part} message={props.message} toolIndex={props.toolIndex}>
           <box gap={1}>
             <For each={props.input.questions ?? []}>
               {(q, i) => (
@@ -2382,7 +2533,13 @@ function Question(props: ToolProps<typeof QuestionTool>) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="→" pending="Asking questions..." complete={count()} part={props.part}>
+        <InlineTool
+          icon="→"
+          pending="Asking questions..."
+          complete={count()}
+          part={props.part}
+          toolIndex={props.toolIndex}
+        >
           Asked {count()} question{count() !== 1 ? "s" : ""}
         </InlineTool>
       </Match>
@@ -2392,7 +2549,13 @@ function Question(props: ToolProps<typeof QuestionTool>) {
 
 function Skill(props: ToolProps<typeof SkillTool>) {
   return (
-    <InlineTool icon="→" pending="Loading skill..." complete={props.input.name} part={props.part}>
+    <InlineTool
+      icon="→"
+      pending="Loading skill..."
+      complete={props.input.name}
+      part={props.part}
+      toolIndex={props.toolIndex}
+    >
       Skill "{props.input.name}"
     </InlineTool>
   )

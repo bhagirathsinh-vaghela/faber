@@ -302,6 +302,8 @@ export namespace MessageV2 {
   const Base = z.object({
     id: z.string(),
     sessionID: z.string(),
+    promptIndex: z.number().optional(),
+    synthetic: z.boolean().optional(),
   })
 
   export const User = Base.extend({
@@ -388,6 +390,7 @@ export namespace MessageV2 {
       }),
     }),
     finish: z.string().optional(),
+    variant: z.string().optional(),
   }).meta({
     ref: "AssistantMessage",
   })
@@ -435,9 +438,16 @@ export namespace MessageV2 {
   })
   export type WithParts = z.infer<typeof WithParts>
 
-  export function toModelMessages(input: WithParts[], model: Provider.Model): ModelMessage[] {
+  export type ToModelMessagesResult = {
+    messages: ModelMessage[]
+    /** Maps session message ID to its index in the final model messages array */
+    idToIndex: Map<string, number>
+  }
+
+  export function toModelMessages(input: WithParts[], model: Provider.Model): ToModelMessagesResult {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
+    const idToResultIndex = new Map<string, number>()
 
     const toModelOutput = (output: unknown) => {
       if (typeof output === "string") {
@@ -481,6 +491,7 @@ export namespace MessageV2 {
           role: "user",
           parts: [],
         }
+        idToResultIndex.set(msg.info.id, result.length)
         result.push(userMessage)
         for (const part of msg.parts) {
           if (part.type === "text" && !part.ignored)
@@ -592,6 +603,7 @@ export namespace MessageV2 {
           }
         }
         if (assistantMessage.parts.length > 0) {
+          idToResultIndex.set(msg.info.id, result.length)
           result.push(assistantMessage)
         }
       }
@@ -599,13 +611,46 @@ export namespace MessageV2 {
 
     const tools = Object.fromEntries(Array.from(toolNames).map((toolName) => [toolName, { toModelOutput }]))
 
-    return convertToModelMessages(
-      result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")),
-      {
+    // Filter out messages that only have step-start parts
+    const filtered = result.filter((msg) => msg.parts.some((part) => part.type !== "step-start"))
+
+    // Detect which filtered messages are assistants with tool outputs
+    // convertToModelMessages adds a 'tool' role message after each such assistant,
+    // which shifts all subsequent indices by 1
+    const hasToolOutput = (msg: UIMessage) =>
+      msg.role === "assistant" &&
+      msg.parts.some(
+        (p) =>
+          typeof p.type === "string" &&
+          p.type.startsWith("tool-") &&
+          "state" in p &&
+          (p.state === "output-available" || p.state === "output-error"),
+      )
+
+    // Build final ID to index mapping, accounting for:
+    // 1. Filtered messages (step-start only messages removed)
+    // 2. Extra 'tool' blocks inserted by convertToModelMessages after assistant-with-tools
+    const idToIndex = new Map<string, number>()
+    for (const [id, resultIdx] of idToResultIndex) {
+      const msg = result[resultIdx]
+      const filteredIdx = filtered.indexOf(msg)
+      if (filteredIdx !== -1) {
+        // Count assistant-with-tools messages before this one
+        let toolBlockOffset = 0
+        for (let i = 0; i < filteredIdx; i++) {
+          if (hasToolOutput(filtered[i])) toolBlockOffset++
+        }
+        idToIndex.set(id, filteredIdx + toolBlockOffset)
+      }
+    }
+
+    return {
+      messages: convertToModelMessages(filtered, {
         //@ts-expect-error (convertToModelMessages expects a ToolSet but only actually needs tools[name]?.toModelOutput)
         tools,
-      },
-    )
+      }),
+      idToIndex,
+    }
   }
 
   export const stream = fn(Identifier.schema("session"), async function* (sessionID) {
