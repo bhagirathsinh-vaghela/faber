@@ -1,6 +1,6 @@
 import path from "path"
 import { Global } from "@/global"
-import { onMount } from "solid-js"
+import { onMount, createSignal } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { clone } from "remeda"
 import { createSimpleContext } from "../../context/helper"
@@ -46,8 +46,20 @@ export const { use: usePromptStash, provider: PromptStashProvider } = createSimp
     const [store, setStore] = createStore({
       entries: [] as StashEntry[],
     })
+    const [transient, setTransient] = createSignal<Omit<StashEntry, "timestamp"> | null>(null)
 
     return {
+      getTransient() {
+        return transient()
+      },
+      pushTransient(entry: Omit<StashEntry, "timestamp">) {
+        setTransient(clone(entry))
+      },
+      popTransient() {
+        const entry = transient()
+        setTransient(null)
+        return entry
+      },
       list() {
         return store.entries
       },
