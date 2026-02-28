@@ -11,14 +11,8 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
     description: DESCRIPTION,
     parameters: z.object({
       query: z.string().min(2).describe("The search query to use"),
-      allowed_domains: z
-        .array(z.string())
-        .optional()
-        .describe("Only include search results from these domains"),
-      blocked_domains: z
-        .array(z.string())
-        .optional()
-        .describe("Never include search results from these domains"),
+      allowed_domains: z.array(z.string()).optional().describe("Only include search results from these domains"),
+      blocked_domains: z.array(z.string()).optional().describe("Never include search results from these domains"),
     }),
     async execute(params, ctx) {
       if (params.allowed_domains?.length && params.blocked_domains?.length) {
@@ -35,8 +29,7 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
       const startTime = performance.now()
 
       // Get a small Anthropic model and its connection options (reuses existing auth)
-      const smallModel =
-        (await Provider.getSmallModel("anthropic")) ?? (await Provider.getSmallModel("opencode"))
+      const smallModel = (await Provider.getSmallModel("anthropic")) ?? (await Provider.getSmallModel("opencode"))
       if (!smallModel) throw new Error("No small model available for web search")
 
       const sdkOpts = await Provider.getSDKOptions(smallModel)
@@ -72,7 +65,8 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
         body: JSON.stringify({
           model: smallModel.api.id,
           max_tokens: 4096,
-          system: "You are an assistant for performing a web search tool use. Use the web_search tool to answer the query.",
+          system:
+            "You are an assistant for performing a web search tool use. Use the web_search tool to answer the query.",
           tools: [serverTool],
           tool_choice: { type: "tool", name: "web_search" },
           messages: [

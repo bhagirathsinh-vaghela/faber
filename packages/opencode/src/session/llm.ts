@@ -366,12 +366,7 @@ export namespace LLM {
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(
-                  args.params.prompt,
-                  input.model,
-                  options,
-                  probeIndex,
-                )
+                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options, probeIndex)
               }
               return args.params
             },

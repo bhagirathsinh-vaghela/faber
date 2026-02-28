@@ -897,6 +897,11 @@ export namespace Config {
         .optional()
         .default("alt+i")
         .describe("Toggle auto-inject for background task results"),
+      paste_mode_toggle: z
+        .string()
+        .optional()
+        .default("alt+p")
+        .describe("Toggle paste mode between summary and inline"),
     })
     .strict()
     .meta({
@@ -921,6 +926,11 @@ export namespace Config {
       .positive()
       .optional()
       .describe("Maximum number of messages to load when opening a session (default: 100)"),
+    paste_mode: z
+      .enum(["summary", "inline"])
+      .optional()
+      .default("inline")
+      .describe("Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text"),
   })
 
   export const Server = z

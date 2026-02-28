@@ -32,7 +32,8 @@ import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
-import { Statusline, ModelHeader, MODEL_COLOR } from "../statusline"
+import { Statusline, ModelHeader, MODEL_COLOR, UTILIZATION_GREEN } from "../statusline"
+import { useDirectory } from "@tui/context/directory"
 import { KeybindHint } from "../../ui/keybind-hint"
 
 export type PromptProps = {
@@ -69,6 +70,7 @@ export function Prompt(props: PromptProps) {
   const sdk = useSDK()
   const route = useRoute()
   const sync = useSync()
+  const directory = useDirectory()
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
@@ -84,6 +86,8 @@ export function Prompt(props: PromptProps) {
   const [hoverPending, setHoverPending] = createSignal(false)
   const [hoverResults, setHoverResults] = createSignal(false)
   const [hoverAutoInject, setHoverAutoInject] = createSignal(false)
+  const [pasteMode, setPasteMode] = createSignal<"summary" | "inline">(sync.data.config.tui?.paste_mode ?? "inline")
+  const [hoverPasteMode, setHoverPasteMode] = createSignal(false)
 
   // Fetch auto-inject state, running tasks, and results count on mount
   onMount(async () => {
@@ -1014,6 +1018,10 @@ export function Prompt(props: PromptProps) {
                   }
                   // If no image, let the default paste behavior continue
                 }
+                if (keybind.match("paste_mode_toggle", e)) {
+                  setPasteMode((m) => (m === "summary" ? "inline" : "summary"))
+                  return
+                }
                 if (keybind.match("input_clear", e) && store.prompt.input !== "") {
                   input.clear()
                   input.extmarks.clear()
@@ -1138,6 +1146,7 @@ export function Prompt(props: PromptProps) {
                 const lineCount = (pastedContent.match(/\n/g)?.length ?? 0) + 1
                 if (
                   (lineCount >= 3 || pastedContent.length > 150) &&
+                  pasteMode() === "summary" &&
                   !sync.data.config.experimental?.disable_paste_summary
                 ) {
                   event.preventDefault()
@@ -1184,7 +1193,8 @@ export function Prompt(props: PromptProps) {
                 model={store.mode === "normal" ? local.model.parsed().model : ""}
                 modelColor={MODEL_COLOR}
                 provider={store.mode === "normal" ? local.model.parsed().provider : ""}
-                variant={store.mode === "normal" ? showVariant() ? local.model.variant.current() : null : null}
+                variant={store.mode === "normal" ? (showVariant() ? local.model.variant.current() : null) : null}
+                directory={directory()}
               />
             </box>
             <Statusline sessionID={props.sessionID} dimmed={keybind.leader} />
@@ -1333,6 +1343,18 @@ export function Prompt(props: PromptProps) {
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>
+                  <text fg={theme.textMuted}>·</text>
+                  <text
+                    fg={theme.text}
+                    onMouseOver={() => setHoverPasteMode(true)}
+                    onMouseOut={() => setHoverPasteMode(false)}
+                  >
+                    <span style={{ fg: theme.textMuted }}>│</span>
+                    <span style={{ fg: pasteMode() === "inline" ? UTILIZATION_GREEN : theme.textMuted }}>
+                      {pasteMode() === "inline" ? "◆" : "◇"}
+                    </span>
+                    <span style={{ fg: theme.textMuted }}>│</span>
+                  </text>
                 </Match>
                 <Match when={store.mode === "shell"}>
                   <text fg={theme.text}>
@@ -1347,6 +1369,10 @@ export function Prompt(props: PromptProps) {
       <KeybindHint text="Tasks currently running in background" visible={hoverPending()} />
       <KeybindHint text="ctrl+x z - accept pending results" visible={hoverResults()} />
       <KeybindHint text="alt+i - toggle auto-accept" visible={hoverAutoInject()} />
+      <KeybindHint
+        text={`${keybind.print("paste_mode_toggle")} - toggle paste mode (${pasteMode() === "summary" ? "summary" : "inline"})`}
+        visible={hoverPasteMode()}
+      />
     </>
   )
 }

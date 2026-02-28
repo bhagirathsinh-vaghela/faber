@@ -922,6 +922,7 @@ export type Session = {
   cacheMarkers?: Array<number>
   systemBlockCount?: number
   cacheProbeIndex?: number
+  cacheProbeMessageID?: string
 }
 
 export type EventSessionCreated = {
@@ -1493,6 +1494,10 @@ export type KeybindsConfig = {
    * Toggle auto-inject for background task results
    */
   background_auto_inject_toggle?: string
+  /**
+   * Toggle paste mode between summary and inline
+   */
+  paste_mode_toggle?: string
 }
 
 /**
@@ -1824,6 +1829,10 @@ export type Config = {
      * Maximum number of messages to load when opening a session (default: 100)
      */
     message_limit?: number
+    /**
+     * Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text
+     */
+    paste_mode?: "summary" | "inline"
   }
   server?: ServerConfig
   /**
@@ -3220,6 +3229,7 @@ export type SessionUpdateData = {
       archived?: number
     }
     cacheProbeIndex?: number
+    cacheProbeMessageID?: string
   }
   path: {
     sessionID: string

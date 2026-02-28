@@ -1621,6 +1621,9 @@
                   },
                   "cacheProbeIndex": {
                     "type": "number"
+                  },
+                  "cacheProbeMessageID": {
+                    "type": "string"
                   }
                 }
               }
@@ -7082,6 +7085,18 @@
           },
           "variant": {
             "type": "string"
+          },
+          "sessionCost": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              }
+            },
+            "required": ["input", "output"]
           }
         },
         "required": [
@@ -7952,6 +7967,59 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.file.watcher.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.watcher.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "event": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "add"
+                  },
+                  {
+                    "type": "string",
+                    "const": "change"
+                  },
+                  {
+                    "type": "string",
+                    "const": "unlink"
+                  }
+                ]
+              }
+            },
+            "required": ["file", "event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.vcs.branch.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "vcs.branch.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "PermissionRequest": {
         "type": "object",
         "properties": {
@@ -8283,41 +8351,6 @@
               }
             },
             "required": ["sessionID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.watcher.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.watcher.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              },
-              "event": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "const": "add"
-                  },
-                  {
-                    "type": "string",
-                    "const": "change"
-                  },
-                  {
-                    "type": "string",
-                    "const": "unlink"
-                  }
-                ]
-              }
-            },
-            "required": ["file", "event"]
           }
         },
         "required": ["type", "properties"]
@@ -8990,6 +9023,50 @@
             },
             "required": ["count", "time"]
           },
+          "tokens": {
+            "default": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0
+            },
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "cacheRead": {
+                "type": "number"
+              },
+              "cacheWrite": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "number"
+              }
+            },
+            "required": ["input", "cacheRead", "cacheWrite", "output", "reasoning"]
+          },
+          "total": {
+            "default": {
+              "input": 0,
+              "output": 0
+            },
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              }
+            },
+            "required": ["input", "output"]
+          },
           "cacheMarkers": {
             "type": "array",
             "items": {
@@ -9001,6 +9078,9 @@
           },
           "cacheProbeIndex": {
             "type": "number"
+          },
+          "cacheProbeMessageID": {
+            "type": "string"
           }
         },
         "required": ["id", "slug", "projectID", "directory", "title", "version", "time"]
@@ -9118,24 +9198,6 @@
                     "$ref": "#/components/schemas/APIError"
                   }
                 ]
-              }
-            }
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.vcs.branch.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "vcs.branch.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "branch": {
-                "type": "string"
               }
             }
           }
@@ -9338,6 +9400,12 @@
             "$ref": "#/components/schemas/Event.message.part.removed"
           },
           {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.vcs.branch.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.permission.asked"
           },
           {
@@ -9360,9 +9428,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
           },
           {
             "$ref": "#/components/schemas/Event.background.task.created"
@@ -9417,9 +9482,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.error"
-          },
-          {
-            "$ref": "#/components/schemas/Event.vcs.branch.updated"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"
@@ -9962,6 +10024,11 @@
             "default": "none",
             "type": "string"
           },
+          "cache_markers_toggle": {
+            "description": "Toggle cache markers in statusline",
+            "default": "none",
+            "type": "string"
+          },
           "tips_toggle": {
             "description": "Toggle tips on home screen",
             "default": "<leader>h",
@@ -9975,6 +10042,11 @@
           "background_auto_inject_toggle": {
             "description": "Toggle auto-inject for background task results",
             "default": "alt+i",
+            "type": "string"
+          },
+          "paste_mode_toggle": {
+            "description": "Toggle paste mode between summary and inline",
+            "default": "alt+p",
             "type": "string"
           }
         },
@@ -10597,6 +10669,12 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              },
+              "paste_mode": {
+                "description": "Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text",
+                "default": "inline",
+                "type": "string",
+                "enum": ["summary", "inline"]
               }
             }
           },

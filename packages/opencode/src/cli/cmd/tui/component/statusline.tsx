@@ -16,26 +16,17 @@ import { useTheme } from "@tui/context/theme"
 import { useSync } from "@tui/context/sync"
 import { useDirectory } from "@tui/context/directory"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
-import { RGBA } from "@opentui/core"
+import { RGBA, hsvToRgb } from "@opentui/core"
 
 export const MODEL_COLOR = RGBA.fromHex("#E83CF5")
 
-// Utilization colors - green until 40%, then gradient to red
-export const UTILIZATION_GREEN = RGBA.fromHex("#00FF00")
-const UTILIZATION_GRADIENT = [
-  RGBA.fromHex("#CCFF00"), // 40-50%  Yellow-Green
-  RGBA.fromHex("#FFFF00"), // 50-60%  Yellow
-  RGBA.fromHex("#FFCC00"), // 60-70%  Yellow-Orange
-  RGBA.fromHex("#FF9900"), // 70-80%  Orange
-  RGBA.fromHex("#FF6600"), // 80-90%  Dark Orange
-  RGBA.fromHex("#FF0000"), // 90-100% Red
-]
+export const UTILIZATION_GREEN = RGBA.fromHex("#22DD22")
 
-// Color based on utilization level (green until 40%, then gradient to red)
 export function utilizationColor(percent: number) {
-  if (percent < 40) return UTILIZATION_GREEN
-  const index = Math.min(Math.floor((percent - 40) / 10), 5)
-  return UTILIZATION_GRADIENT[index]
+  if (percent < 75) return UTILIZATION_GREEN
+  const t = Math.min((percent - 75) / 25, 1)
+  const hue = 120 * (1 - t)
+  return hsvToRgb(hue, 0.85, 0.9)
 }
 
 // Format token count (e.g., 1234 -> "1k", 1234567 -> "1M")
@@ -84,7 +75,7 @@ export function ModelHeader(props: {
 }) {
   const { theme } = useTheme()
   const b = () => props.bold
-  const d = () => props.dimmed ? theme.textMuted : undefined
+  const d = () => (props.dimmed ? theme.textMuted : undefined)
 
   return (
     <box flexDirection="row" gap={1} flexWrap="wrap">
@@ -153,7 +144,7 @@ export function StatuslineContent(props: StatuslineContentProps) {
   const { theme } = useTheme()
   const b = () => props.bold
   const m = () => theme.textMuted
-  const c = (color: RGBA) => props.dimmed ? m() : color
+  const c = (color: RGBA) => (props.dimmed ? m() : color)
 
   return (
     <box flexDirection="column" gap={0}>
@@ -199,7 +190,9 @@ export function StatuslineContent(props: StatuslineContentProps) {
             <ProgressBar percent={stats().percentage} width={10} dimmed={props.dimmed} />
             <text>
               {" "}
-              <span style={{ fg: c(utilizationColor(stats().percentage)), bold: b() }}>{formatTokens(stats().total)}</span>
+              <span style={{ fg: c(utilizationColor(stats().percentage)), bold: b() }}>
+                {formatTokens(stats().total)}
+              </span>
               <span style={{ fg: m() }}>/</span>
               <span style={{ fg: m(), bold: b() }}>{formatTokens(stats().contextLimit)}</span>
               <span style={{ fg: m() }}> │ </span>
