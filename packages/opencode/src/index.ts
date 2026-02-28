@@ -39,6 +39,15 @@ process.on("uncaughtException", (e) => {
   })
 })
 
+// Ensure clean exit when terminal closes or process is asked to terminate.
+// Without this, the process can become orphaned (e.g., when a terminal emulator
+// window is closed, the shell sends SIGHUP but the event loop keeps running).
+for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    process.exit(0)
+  })
+}
+
 const cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
   .scriptName("opencode")
