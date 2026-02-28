@@ -31,6 +31,14 @@ export namespace SessionRevert {
     const patches: Snapshot.Patch[] = []
     for (const msg of all) {
       if (msg.info.role === "user") lastUser = msg.info
+
+      // Handle messages with no parts - check message ID match before part loop
+      if (!revert && msg.info.id === input.messageID && !input.partID && msg.parts.length === 0) {
+        revert = {
+          messageID: lastUser ? lastUser.id : msg.info.id,
+        }
+      }
+
       const remaining = []
       for (const part of msg.parts) {
         if (revert) {
@@ -71,6 +79,7 @@ export namespace SessionRevert {
       })
       return Session.update(input.sessionID, (draft) => {
         draft.revert = revert
+        draft.ping = undefined
         draft.summary = {
           additions: diffs.reduce((sum, x) => sum + x.additions, 0),
           deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),

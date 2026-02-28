@@ -1,4 +1,4 @@
-import { BoxRenderable, TextareaRenderable, MouseEvent, PasteEvent, t, dim, fg } from "@opentui/core"
+import { BoxRenderable, TextareaRenderable, MouseEvent, PasteEvent, t, dim, fg, RGBA } from "@opentui/core"
 import { createEffect, createMemo, type JSX, onMount, createSignal, onCleanup, Show, Switch, Match, on } from "solid-js"
 import "opentui-spinner/solid"
 import { useLocal } from "@tui/context/local"
@@ -32,7 +32,7 @@ import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
-import { Statusline } from "../statusline"
+import { Statusline, ModelHeader, MODEL_COLOR } from "../statusline"
 import { KeybindHint } from "../../ui/keybind-hint"
 
 export type PromptProps = {
@@ -1175,28 +1175,19 @@ export function Prompt(props: PromptProps) {
                 <text fg={theme.textMuted}>[Stashed prompt]</text>
               </box>
             </Show>
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
-              <box flexDirection="row" gap={1}>
-                <text fg={highlight()}>
-                  {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
-                </text>
-                <Show when={store.mode === "normal"}>
-                  <box flexDirection="row" gap={1}>
-                    <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
-                      {local.model.parsed().model}
-                    </text>
-                    <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
-                    <Show when={showVariant()}>
-                      <text fg={theme.textMuted}>·</text>
-                      <text>
-                        <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
-                      </text>
-                    </Show>
-                  </box>
-                </Show>
-              </box>
+            <box flexShrink={0} paddingTop={1}>
+              <ModelHeader
+                bold={true}
+                dimmed={keybind.leader}
+                agent={store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}
+                agentColor={highlight()}
+                model={store.mode === "normal" ? local.model.parsed().model : ""}
+                modelColor={MODEL_COLOR}
+                provider={store.mode === "normal" ? local.model.parsed().provider : ""}
+                variant={store.mode === "normal" ? showVariant() ? local.model.variant.current() : null : null}
+              />
             </box>
-            <Statusline sessionID={props.sessionID} />
+            <Statusline sessionID={props.sessionID} dimmed={keybind.leader} />
           </box>
         </box>
         <box
@@ -1336,6 +1327,7 @@ export function Prompt(props: PromptProps) {
                       {autoInject() ? "on" : "off"}
                     </span>
                   </text>
+
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>
@@ -1351,7 +1343,7 @@ export function Prompt(props: PromptProps) {
         </box>
       </box>
       <KeybindHint text="Tasks currently running in background" visible={hoverPending()} />
-      <KeybindHint text="ctrl+x z - inject completed results" visible={hoverResults()} />
+      <KeybindHint text="ctrl+x z - accept pending results" visible={hoverResults()} />
       <KeybindHint text="alt+i - toggle auto-accept" visible={hoverAutoInject()} />
     </>
   )

@@ -686,7 +686,7 @@ export namespace SessionPrompt {
   })
 
   function isPingText(parts: MessageV2.Part[]) {
-    const text = parts.filter((p) => p.type === "text")
+    const text = parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
     if (text.length !== 1) return false
     return text[0].text.trim() === "."
   }
