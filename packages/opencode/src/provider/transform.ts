@@ -187,32 +187,16 @@ export namespace ProviderTransform {
 
   /**
    * Select which messages should have cache markers.
-   * Returns both the messages and their indices in the original array.
    *
-   * Actual system block layout as sent to the Anthropic API (after plugin transforms):
+   * System block layout (built in llm.ts, after plugin transforms):
+   *   [0] S0: any block a plugin prepends (experimental.chat.system.transform)
+   *   [1] S1: provider prompt + global instructions (cross-repo stable)
+   *   [2] S2: environment + project instructions (per-session)
    *
-   *   [0] Preamble       — any block a plugin prepends
-   *   [1] Provider prompt — full Anthropic/Claude system prompt
-   *   [2] Global AGENTS   — ~/.config/opencode/AGENTS.md (cross-machine stable)
-   *   [3] Environment     — cwd, platform, date, git status (dynamic per session)
-   *   [4] Project         — project AGENTS.md + user.system (optional, only if present)
-   *
-   * Cache prefix order per Anthropic API: tools → system[0..N] → messages
-   *
-   * Strategy (up to 4 markers):
-   * - System marker 1 on [2] (global AGENTS): cross-machine/cross-repo cache.
-   *   Caches tools + preamble + provider prompt + AGENTS.md. This prefix is
-   *   identical across all directories and machines with the same config.
-   * - System marker 2 on last system block: per-session cache.
-   *   The delta from marker 1 is just the env block (~60 tokens) + optional
-   *   project instructions. Changes per directory but is cheap to re-write.
+   * Strategy (up to 4 markers, all with 1h TTL for system):
+   * - Last 2 system blocks get markers (S0 is within lookback of S1's marker)
    * - Last user-typed prompt: stable checkpoint for the current turn
    * - Last message (N): moves with each API call for incremental caching
-   *
-   * The user prompt marker stays fixed throughout a turn, providing a stable checkpoint.
-   * The N marker moves with each API call, enabling incremental cache hits within the
-   * 20-block lookback window. This ensures long tool chains don't cause cache misses
-   * for the conversation prefix.
    */
   function selectCacheMarkers(
     msgs: ModelMessage[],
@@ -224,33 +208,21 @@ export namespace ProviderTransform {
     const markers: ModelMessage[] = []
     const indices: number[] = []
 
-    // System marker 1: global AGENTS.md at index [2] — cross-machine stable prefix.
-    // System marker 2: last system block — env or project instructions (per-session).
-    const systemMarkerTargets: ModelMessage[] = []
-    if (systemMsgs.length >= 3) systemMarkerTargets.push(systemMsgs[2])
-    if (systemMsgs.length >= 1) {
-      const last = systemMsgs[systemMsgs.length - 1]
-      if (!systemMarkerTargets.includes(last)) systemMarkerTargets.push(last)
-    }
-    for (const msg of systemMarkerTargets) {
+    // Only mark the last 2 system blocks (up to 4 markers total).
+    // Earlier system blocks are within the 20-block lookback window
+    // of subsequent markers and get cached for free.
+    const systemToMark = systemMsgs.slice(-2)
+    for (const msg of systemToMark) {
       markers.push(msg)
       indices.push(msgs.indexOf(msg))
     }
 
-    // Conversation marker 1: last user-typed prompt (stable checkpoint for turn)
     const lastUserPrompt = conversationMsgs.findLast((msg) => msg.role === "user" && !isMetaMessage(msg))
     if (lastUserPrompt) {
       markers.push(lastUserPrompt)
       indices.push(msgs.indexOf(lastUserPrompt))
     }
 
-    // Conversation marker 2: depends on context
-    //  - Probe override: place at the specified block index (one-shot)
-    //  - First call of turn (user prompt is last message): place on last
-    //    assistant message to keep the previous turn's prefix cached so
-    //    undo+resend gets a cache hit instead of a full write
-    //  - Tool-loop calls (last message differs from user prompt): place
-    //    on the rolling last message for incremental caching
     if (probeIndex !== undefined && probeIndex >= 0 && probeIndex < msgs.length) {
       const probeMsg = msgs[probeIndex]
       if (probeMsg && probeMsg !== lastUserPrompt && probeMsg.role !== "system") {
@@ -261,11 +233,9 @@ export namespace ProviderTransform {
     } else {
       const lastMessage = msgs[msgs.length - 1]
       if (lastMessage && lastMessage !== lastUserPrompt && lastMessage.role !== "system") {
-        // Tool-loop: rolling marker on last message
         markers.push(lastMessage)
         indices.push(msgs.length - 1)
       } else {
-        // First call of turn: marker on last assistant to keep previous turn cached
         const lastAssistant = conversationMsgs.findLast((msg) => msg.role === "assistant")
         if (lastAssistant && lastAssistant !== lastUserPrompt) {
           markers.push(lastAssistant)

@@ -610,12 +610,14 @@ export namespace SessionPrompt {
       const stripReasoning =
         (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/google-vertex/anthropic") &&
         variant?.thinking?.type !== "enabled"
-      // Read one-shot cache probe index (if set) and clear it immediately
+      // Read one-shot cache probe (index or message ID) and clear immediately
       const probeSession = await Session.get(sessionID)
       const cacheProbeIndex = probeSession?.cacheProbeIndex
-      if (cacheProbeIndex !== undefined) {
+      const cacheProbeMessageID = probeSession?.cacheProbeMessageID
+      if (cacheProbeIndex !== undefined || cacheProbeMessageID !== undefined) {
         await Session.update(sessionID, (draft) => {
           draft.cacheProbeIndex = undefined
+          draft.cacheProbeMessageID = undefined
         })
       }
 
@@ -660,6 +662,7 @@ export namespace SessionPrompt {
         tools,
         model,
         cacheProbeIndex,
+        cacheProbeMessageID,
       })
       if (result === "stop") break
       if (result === "compact") {

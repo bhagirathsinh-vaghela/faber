@@ -110,6 +110,7 @@ export namespace Session {
       cacheMarkers: z.array(z.number()).optional(),
       systemBlockCount: z.number().optional(),
       cacheProbeIndex: z.number().optional(),
+      cacheProbeMessageID: z.string().optional(),
     })
     .meta({
       ref: "Session",

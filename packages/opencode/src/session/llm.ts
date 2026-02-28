@@ -51,6 +51,8 @@ export namespace LLM {
     retries?: number
     /** One-shot probe: place an extra cache marker at this block index for testing */
     cacheProbeIndex?: number
+    /** One-shot probe by message ID: resolved to block index using messageIdToIndex + system offset */
+    cacheProbeMessageID?: string
   }
 
   export type StreamOutput = {
@@ -80,42 +82,30 @@ export namespace LLM {
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"
 
-    // Build system as separate blocks for cache optimization
-    // Block 1: Provider prompt (static, cross-machine)
-    // System blocks built here. After plugin transforms (a plugin may prepend
-    // a block of its own), the final layout sent to the API is:
+    // Two system blocks, both get 1h cache markers.
+    //   [0] S1: provider prompt + global instructions
+    //   [1] S2: environment + project instructions + user.system
     //
-    //   [0] Preamble       — any block a plugin prepends
-    //   [1] Provider prompt — built here as system[0]
-    //   [2] Global AGENTS   — built here as system[1], cross-machine stable ← CACHE MARKER
-    //   [3] Environment     — built here as system[2], dynamic per session
-    //   [4] Project         — built here as system[3], optional             ← CACHE MARKER (last)
-    //
-    // Cache markers in transform.ts target systemMsgs[2] and systemMsgs[last].
-    // See selectCacheMarkers() in provider/transform.ts for full details.
+    // See selectCacheMarkers() in provider/transform.ts for marker strategy.
     const system: string[] = []
 
-    // Provider/agent prompt (becomes block [1] after plugin preamble)
+    // Any block ahead of S1 comes from a plugin through the
+    // experimental.chat.system.transform hook, not from this file.
     const providerPrompt = input.agent.prompt
       ? input.agent.prompt
       : isCodex
         ? ""
         : SystemPrompt.provider(input.model).join("\n")
-    if (providerPrompt) system.push(providerPrompt)
-
-    // Global instructions — cross-machine stable (becomes block [2])
     const globalInstructions = input.system.globalInstructions.join("\n")
-    if (globalInstructions) system.push(globalInstructions)
+    const s1 = [providerPrompt, globalInstructions].filter(Boolean).join("\n")
+    if (s1) system.push(s1)
 
-    // Environment — session-specific, dynamic (becomes block [3])
     const envBlock = input.system.env.join("\n")
-    if (envBlock) system.push(envBlock)
-
-    // Project instructions + user.system — optional (becomes block [4])
     const projectBlock = [...input.system.projectInstructions, ...(input.user.system ? [input.user.system] : [])]
       .filter(Boolean)
       .join("\n")
-    if (projectBlock) system.push(projectBlock)
+    const s2 = [envBlock, projectBlock].filter(Boolean).join("\n")
+    if (s2) system.push(s2)
 
     const original = clone(system)
     await Plugin.trigger(
@@ -306,8 +296,15 @@ export namespace LLM {
       ...input.messages,
     ]
 
+    // Resolve message ID probe to block index (add system offset since idToIndex is conversation-only)
+    let probeIndex = input.cacheProbeIndex
+    if (probeIndex === undefined && input.cacheProbeMessageID && input.messageIdToIndex) {
+      const convIndex = input.messageIdToIndex.get(input.cacheProbeMessageID)
+      if (convIndex !== undefined) probeIndex = convIndex + system.length
+    }
+
     // Calculate cache marker indices based on the final messages
-    const cacheMarkers = ProviderTransform.cacheMarkerIndices(finalMessages, input.cacheProbeIndex)
+    const cacheMarkers = ProviderTransform.cacheMarkerIndices(finalMessages, probeIndex)
 
     const stream = streamText({
       onError(error) {
@@ -373,7 +370,7 @@ export namespace LLM {
                   args.params.prompt,
                   input.model,
                   options,
-                  input.cacheProbeIndex,
+                  probeIndex,
                 )
               }
               return args.params

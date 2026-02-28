@@ -1,4 +1,5 @@
 import path from "path"
+import os from "os"
 import { pathToFileURL } from "url"
 import z from "zod"
 import { Tool } from "./tool"
@@ -6,6 +7,15 @@ import { Skill } from "../skill"
 import { PermissionNext } from "../permission/next"
 import { Ripgrep } from "../file/ripgrep"
 import { iife } from "@/util/iife"
+import { Instance } from "../project/instance"
+
+function relativePath(absolute: string) {
+  const home = os.homedir()
+  const worktree = Instance.worktree
+  if (worktree !== "/" && absolute.startsWith(worktree + path.sep)) return path.relative(worktree, absolute)
+  if (absolute.startsWith(home + path.sep)) return "~/" + path.relative(home, absolute)
+  return absolute
+}
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const skills = await Skill.all()
@@ -42,7 +52,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
             `  <skill>`,
             `    <name>${skill.name}</name>`,
             `    <description>${skill.description}</description>`,
-            `    <location>${pathToFileURL(skill.location).href}</location>`,
+            `    <location>${relativePath(skill.location)}</location>`,
             `  </skill>`,
           ]),
           "</available_skills>",
