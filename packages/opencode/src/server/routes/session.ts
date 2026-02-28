@@ -270,6 +270,8 @@ export const SessionRoutes = lazy(() =>
               archived: z.number().optional(),
             })
             .optional(),
+          cacheProbeIndex: z.number().optional(),
+          cacheProbeMessageID: z.string().optional(),
         }),
       ),
       async (c) => {
@@ -283,6 +285,8 @@ export const SessionRoutes = lazy(() =>
               session.title = updates.title
             }
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
+            if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
+            if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID
           },
           { touch: false },
         )

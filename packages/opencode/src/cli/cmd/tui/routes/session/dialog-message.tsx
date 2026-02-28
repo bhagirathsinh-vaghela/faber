@@ -58,34 +58,28 @@ export function DialogMessage(props: {
             parts: [{ id: Identifier.ascending("part"), type: "text", text: "." }],
           })
 
-          const unsub = sdk.event.on("session.status", (evt) => {
-            if (evt.properties.sessionID !== props.sessionID) return
-            if (evt.properties.status.type !== "idle") return
-            unsub()
-
-            sdk.client.session.revert({
-              sessionID: props.sessionID,
-              messageID: props.messageID,
-            })
-
-            if (props.setPrompt) {
-              const parts = sync.data.part[props.messageID]
-              if (parts) {
-                props.setPrompt(
-                  parts.reduce(
-                    (agg, part) => {
-                      if (part.type === "text" && !part.synthetic) agg.input += part.text
-                      if (part.type === "file") agg.parts.push(part)
-                      return agg
-                    },
-                    { input: "", parts: [] as PromptInfo["parts"] },
-                  ),
-                )
-              }
-            }
-
-            toast.show({ message: "Reverted — cache preserved", variant: "success", duration: 2000 })
+          await sdk.client.session.revert({
+            sessionID: props.sessionID,
+            messageID: props.messageID,
           })
+
+          if (props.setPrompt) {
+            const parts = sync.data.part[props.messageID]
+            if (parts) {
+              props.setPrompt(
+                parts.reduce(
+                  (agg, part) => {
+                    if (part.type === "text" && !part.synthetic) agg.input += part.text
+                    if (part.type === "file") agg.parts.push(part)
+                    return agg
+                  },
+                  { input: "", parts: [] as PromptInfo["parts"] },
+                ),
+              )
+            }
+          }
+
+          toast.show({ message: "Reverted — cache preserved", variant: "success", duration: 2000 })
         },
       })
     }
