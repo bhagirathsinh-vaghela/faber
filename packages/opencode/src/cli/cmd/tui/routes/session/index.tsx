@@ -161,6 +161,7 @@ export function Session() {
   const [showAssistantMetadata, setShowAssistantMetadata] = kv.signal("assistant_metadata_visibility", true)
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
+  const [headerVisible, setHeaderVisible] = kv.signal("header_visible", () => sync.data.config.tui?.header ?? false)
   const [animationsEnabled, setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [savedScrollPosition, setSavedScrollPosition] = createSignal<number | null>(null)
 
@@ -190,7 +191,9 @@ export function Session() {
     await sync.session
       .sync(route.sessionID)
       .then(() => {
-        if (scroll) scroll.scrollBy(100_000)
+        if (scroll) {
+          scroll.scrollBy(100_000)
+        }
       })
       .catch((e) => {
         console.error(e)
@@ -364,10 +367,8 @@ export function Session() {
   }
 
   function toBottom() {
-    setTimeout(() => {
-      if (!scroll || scroll.isDestroyed) return
-      scroll.scrollTo(scroll.scrollHeight)
-    }, 50)
+    if (!scroll || scroll.isDestroyed) return
+    scroll.scrollTo(scroll.scrollHeight)
   }
 
   const local = useLocal()
@@ -465,6 +466,8 @@ export function Session() {
               if (child) scroll.scrollBy(child.y - scroll.y - 1)
             }}
             sessionID={route.sessionID}
+            setPrompt={(promptInfo) => prompt.set(promptInfo)}
+            onReverted={() => toBottom()}
           />
         ))
       },
@@ -585,6 +588,16 @@ export function Session() {
           sessionID: route.sessionID,
           messageID: message.id,
         })
+      },
+    },
+    {
+      title: headerVisible() ? "Hide header" : "Show header",
+      value: "session.header.toggle",
+      keybind: "header_toggle",
+      category: "Session",
+      onSelect: (dialog) => {
+        setHeaderVisible((prev) => !prev)
+        dialog.clear()
       },
     },
     {
@@ -771,7 +784,9 @@ export function Session() {
             const child = scroll.getChildren().find((child) => {
               return child.id === message.id
             })
-            if (child) scroll.scrollBy(child.y - scroll.y - 1)
+            if (child) {
+              scroll.scrollBy(child.y - scroll.y - 1)
+            }
             break
           }
         }
@@ -1077,8 +1092,17 @@ export function Session() {
   const dialog = useDialog()
   const renderer = useRenderer()
 
-  // snap to bottom when session changes
-  createEffect(on(() => route.sessionID, toBottom))
+  // Scroll to bottom on session change. The sync effect handles
+  // scrollBy(100_000) after data loads; this ensures the renderable's
+  // native stickyScroll is at the bottom position for the new session.
+  createEffect(
+    on(
+      () => route.sessionID,
+      () => {
+        if (scroll) scroll.scrollTo(scroll.scrollHeight)
+      },
+    ),
+  )
 
   return (
     <context.Provider
@@ -1098,11 +1122,13 @@ export function Session() {
       <box flexDirection="row">
         <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
           <Show when={session()}>
-            <Show when={!sidebarVisible() || !wide()}>
+            <Show when={(headerVisible() || session()?.parentID) && (!sidebarVisible() || !wide())}>
               <Header />
             </Show>
             <scrollbox
-              ref={(r) => (scroll = r)}
+              ref={(r) => {
+                scroll = r
+              }}
               viewportOptions={{
                 paddingRight: showScrollbar() ? 1 : 0,
               }}
@@ -1541,7 +1567,6 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
     return `${hours}:${minutes}:${seconds}`
   })
 
-
   return (
     <>
       <For each={props.parts}>
@@ -1581,25 +1606,27 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
           <text fg={theme.textMuted}>{props.message.error?.data.message}</text>
         </box>
       </Show>
-      <Switch>
-        <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
-          <box paddingLeft={3}>
-            <text marginTop={1}>
-              <span
-                style={{
-                  fg:
-                    props.message.error?.name === "MessageAbortedError"
-                      ? theme.textMuted
-                      : local.agent.color(props.message.agent),
-                }}
-              >
-                ▣{" "}
-              </span>
-              <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
-            </text>
-          </box>
-        </Match>
-      </Switch>
+      {false && (
+        <Switch>
+          <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
+            <box paddingLeft={3}>
+              <text marginTop={1}>
+                <span
+                  style={{
+                    fg:
+                      props.message.error?.name === "MessageAbortedError"
+                        ? theme.textMuted
+                        : local.agent.color(props.message.agent),
+                  }}
+                >
+                  ▣{" "}
+                </span>
+                <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
+              </text>
+            </box>
+          </Match>
+        </Switch>
+      )}
     </>
   )
 }
@@ -1751,12 +1778,12 @@ function TextPart(props: {
               variant={props.message.variant}
               duration={props.messageDuration ? Locale.duration(props.messageDuration) : null}
               interrupted={props.message.error?.name === "MessageAbortedError"}
+              directory={directoryNoBranch()}
             />
           </box>
           <StatuslineContent
             bold={false}
             compact={true}
-            directory={directoryNoBranch()}
             contextStats={props.contextStats}
             cacheExpiry={props.cacheExpiry}
             sessionTotals={props.sessionTotals}
