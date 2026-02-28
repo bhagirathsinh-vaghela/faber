@@ -1,8 +1,15 @@
 - Fast content search tool that works with any codebase size
 - Searches file contents using regular expressions
 - Supports full regex syntax (eg. "log.*Error", "function\s+\w+", etc.)
-- Filter files by pattern with the include parameter (eg. "*.js", "*.{ts,tsx}")
-- Returns file paths and line numbers with at least one match sorted by modification time
+- Filter files by glob pattern with the include parameter (eg. "*.js", "*.{ts,tsx}")
+- Filter by file type with the type parameter (eg. "js", "py", "rust") — uses ripgrep's built-in type definitions
+- Three output modes controlled by output_mode:
+  - "files_with_matches" (default): returns just file paths sorted by modification time
+  - "content": returns matching lines with optional context lines and line numbers
+  - "count": returns per-file match counts and totals
+- Use case_insensitive for case-insensitive matching
+- Use multiline to match patterns that span multiple lines
+- Use context (with output_mode "content") to include surrounding lines for each match
+- Use head_limit and offset to paginate results across all output modes
 - Use this tool when you need to find files containing specific patterns
-- If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly. Do NOT use `grep`.
 - When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead

@@ -70,7 +70,6 @@ export const GlobTool = Tool.define("glob", {
       title: path.relative(Instance.worktree, search),
       metadata: {
         count: files.length,
-        truncated,
       },
       output: output.join("\n"),
     }

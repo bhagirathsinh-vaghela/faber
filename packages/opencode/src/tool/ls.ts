@@ -113,7 +113,6 @@ export const ListTool = Tool.define("list", {
       title: path.relative(Instance.worktree, searchPath),
       metadata: {
         count: files.length,
-        truncated: files.length >= LIMIT,
       },
       output,
     }
