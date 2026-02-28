@@ -895,6 +895,7 @@ export type Session = {
   }
   cacheMarkers?: Array<number>
   systemBlockCount?: number
+  cacheProbeIndex?: number
 }
 
 export type EventSessionCreated = {
@@ -1190,6 +1191,18 @@ export type KeybindsConfig = {
    */
   messages_previous?: string
   /**
+   * Navigate to next user message (when jump mode enabled)
+   */
+  messages_next_user?: string
+  /**
+   * Navigate to previous user message (when jump mode enabled)
+   */
+  messages_previous_user?: string
+  /**
+   * Toggle user message jump mode ([ and ] jump between user messages)
+   */
+  messages_jump_mode_toggle?: string
+  /**
    * Navigate to last user message
    */
   messages_last_user?: string
@@ -1253,6 +1266,10 @@ export type KeybindsConfig = {
    * List skills and insert at cursor
    */
   skill_list?: string
+  /**
+   * Set cache probe block index for testing
+   */
+  cache_probe?: string
   /**
    * Cycle model variants
    */
@@ -1438,13 +1455,17 @@ export type KeybindsConfig = {
    */
   terminal_title_toggle?: string
   /**
+   * Toggle console
+   */
+  console_toggle?: string
+  /**
    * Toggle tips on home screen
    */
   tips_toggle?: string
   /**
-   * View pending background task results
+   * Accept pending background task results
    */
-  background_pending?: string
+  accept_pending_results?: string
   /**
    * Toggle auto-inject for background task results
    */
@@ -1776,6 +1797,10 @@ export type Config = {
      * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
      */
     diff_style?: "auto" | "stacked"
+    /**
+     * Maximum number of messages to load when opening a session (default: 100)
+     */
+    message_limit?: number
   }
   server?: ServerConfig
   /**
@@ -1939,6 +1964,37 @@ export type Config = {
      * Whether /undo should revert file changes along with messages (default: true)
      */
     revertFiles?: boolean
+  }
+  background?: {
+    /**
+     * Auto-inject background task results when they complete (default: false)
+     */
+    auto_inject?: boolean
+  }
+  anthropic?: {
+    /**
+     * Beta headers to send for all Anthropic models (e.g., ['interleaved-thinking-2025-05-14'])
+     */
+    beta?: Array<string>
+    /**
+     * Map of model IDs to context/beta config.
+     */
+    context?: {
+      [key: string]: {
+        /**
+         * Model ID to use for API calls (e.g., 'claude-sonnet-4-5[1m]')
+         */
+        model?: string
+        /**
+         * Context window limit (used for display and compaction decisions)
+         */
+        limit?: number
+        /**
+         * Beta headers for this model (overrides provider-level beta if set)
+         */
+        beta?: Array<string>
+      }
+    }
   }
   experimental?: {
     disable_paste_summary?: boolean
@@ -3140,6 +3196,7 @@ export type SessionUpdateData = {
     time?: {
       archived?: number
     }
+    cacheProbeIndex?: number
   }
   path: {
     sessionID: string

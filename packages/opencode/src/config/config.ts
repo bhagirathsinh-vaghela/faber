@@ -793,6 +793,7 @@ export namespace Config {
       agent_cycle: z.string().optional().default("tab").describe("Next agent"),
       agent_cycle_reverse: z.string().optional().default("shift+tab").describe("Previous agent"),
       skill_list: z.string().optional().default("<leader>s").describe("List skills and insert at cursor"),
+      cache_probe: z.string().optional().default("none").describe("Set cache probe block index for testing"),
       variant_cycle: z.string().optional().default("ctrl+t").describe("Cycle model variants"),
       input_clear: z.string().optional().default("ctrl+c").describe("Clear input field"),
       input_paste: z.string().optional().default("ctrl+v").describe("Paste from clipboard"),
@@ -883,8 +884,13 @@ export namespace Config {
       session_parent: z.string().optional().default("<leader>up").describe("Go to parent session"),
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
       terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
+      console_toggle: z.string().optional().default("none").describe("Toggle console"),
       tips_toggle: z.string().optional().default("<leader>h").describe("Toggle tips on home screen"),
-      background_pending: z.string().optional().default("<leader>z").describe("View pending background task results"),
+      accept_pending_results: z
+        .string()
+        .optional()
+        .default("<leader>z")
+        .describe("Accept pending background task results"),
       background_auto_inject_toggle: z
         .string()
         .optional()
@@ -1164,6 +1170,31 @@ export namespace Config {
             .boolean()
             .optional()
             .describe("Auto-inject background task results when they complete (default: false)"),
+        })
+        .optional(),
+      anthropic: z
+        .object({
+          beta: z
+            .array(z.string())
+            .optional()
+            .describe("Beta headers to send for all Anthropic models (e.g., ['interleaved-thinking-2025-05-14'])"),
+          context: z
+            .record(
+              z.string(),
+              z.object({
+                model: z.string().optional().describe("Model ID to use for API calls (e.g., 'claude-sonnet-4-5[1m]')"),
+                limit: z
+                  .number()
+                  .optional()
+                  .describe("Context window limit (used for display and compaction decisions)"),
+                beta: z
+                  .array(z.string())
+                  .optional()
+                  .describe("Beta headers for this model (overrides provider-level beta if set)"),
+              }),
+            )
+            .optional()
+            .describe("Map of model IDs to context/beta config."),
         })
         .optional(),
       experimental: z

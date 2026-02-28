@@ -26,6 +26,7 @@ import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
 import { DialogAlert } from "./ui/dialog-alert"
+import { DialogCacheProbe } from "./component/dialog-cache-probe"
 import { ToastProvider, useToast } from "./ui/toast"
 import { ExitProvider, useExit } from "./context/exit"
 import { Session as SessionApi } from "@/session"
@@ -284,6 +285,28 @@ function App() {
     ),
   )
 
+  // Double Ctrl+C to exit
+  let ctrlCPressTime = 0
+  const CTRL_C_TIMEOUT = 2000 // 2 seconds to press Ctrl+C again
+
+  useKeyboard((evt) => {
+    if (evt.ctrl && evt.name === "c") {
+      const now = Date.now()
+      if (now - ctrlCPressTime < CTRL_C_TIMEOUT) {
+        // Second Ctrl+C within timeout - exit
+        exit()
+      } else {
+        // First Ctrl+C - record time and show toast
+        ctrlCPressTime = now
+        toast.show({
+          message: "Press again to exit",
+          variant: "warning",
+          duration: 2000,
+        })
+      }
+    }
+  })
+
   const connected = useConnected()
   command.register(() => [
     {
@@ -515,6 +538,7 @@ function App() {
       title: "Toggle console",
       category: "System",
       value: "app.console",
+      keybind: "console_toggle",
       onSelect: (dialog) => {
         renderer.console.toggle()
         dialog.clear()
@@ -582,6 +606,34 @@ function App() {
         const current = kv.get("diff_wrap_mode", "word")
         kv.set("diff_wrap_mode", current === "word" ? "none" : "word")
         dialog.clear()
+      },
+    },
+    {
+      title: "Set cache probe",
+      value: "cache.probe",
+      keybind: "cache_probe",
+      category: "System",
+      onSelect: async () => {
+        const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
+        if (!sessionID) {
+          toast.show({ message: "No active session", variant: "warning", duration: 3000 })
+          return
+        }
+        const session = sync.session.get(sessionID)
+        const hint = session?.cacheMarkers?.length ? `Markers: ${session.cacheMarkers.join(", ")}` : ""
+        dialog.replace(() => (
+          <DialogCacheProbe
+            hint={hint}
+            onConfirm={async (idx) => {
+              await sdk.client.session.update({ sessionID, cacheProbeIndex: idx })
+              toast.show({ message: `Cache probe set at block #${idx} (one-shot)`, variant: "info", duration: 3000 })
+            }}
+            onDelete={async () => {
+              await sdk.client.session.update({ sessionID, cacheProbeIndex: -1 })
+              toast.show({ message: "Cache probe cleared", variant: "info", duration: 3000 })
+            }}
+          />
+        ))
       },
     },
   ])
@@ -707,9 +759,20 @@ function ErrorComponent(props: {
     props.onExit()
   }
 
+  let ctrlCPressTime = 0
+  const CTRL_C_TIMEOUT = 2000 // 2 seconds to press Ctrl+C again
+
   useKeyboard((evt) => {
     if (evt.ctrl && evt.name === "c") {
-      handleExit()
+      const now = Date.now()
+      if (now - ctrlCPressTime < CTRL_C_TIMEOUT) {
+        // Second Ctrl+C within timeout - exit
+        handleExit()
+      } else {
+        // First Ctrl+C - record time
+        ctrlCPressTime = now
+        // TODO: Show toast notification "Press again to exit"
+      }
     }
   })
   const [copied, setCopied] = createSignal(false)
