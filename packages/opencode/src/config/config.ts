@@ -758,6 +758,21 @@ export namespace Config {
       scroll_to_bottom: z.string().optional().default("<leader>.").describe("Force scroll to bottom of conversation"),
       messages_next: z.string().optional().default("none").describe("Navigate to next message"),
       messages_previous: z.string().optional().default("none").describe("Navigate to previous message"),
+      messages_next_user: z
+        .string()
+        .optional()
+        .default("]")
+        .describe("Navigate to next user message (when jump mode enabled)"),
+      messages_previous_user: z
+        .string()
+        .optional()
+        .default("[")
+        .describe("Navigate to previous user message (when jump mode enabled)"),
+      messages_jump_mode_toggle: z
+        .string()
+        .optional()
+        .default("<leader>[,<leader>]")
+        .describe("Toggle user message jump mode ([ and ] jump between user messages)"),
       messages_last_user: z.string().optional().default("none").describe("Navigate to last user message"),
       messages_copy: z.string().optional().default("<leader>y").describe("Copy message"),
       messages_undo: z.string().optional().default("<leader>u").describe("Undo message"),
@@ -893,6 +908,12 @@ export namespace Config {
       .enum(["auto", "stacked"])
       .optional()
       .describe("Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column"),
+    message_limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum number of messages to load when opening a session (default: 100)"),
   })
 
   export const Server = z
@@ -1135,6 +1156,14 @@ export namespace Config {
             .boolean()
             .optional()
             .describe("Whether /undo should revert file changes along with messages (default: true)"),
+        })
+        .optional(),
+      background: z
+        .object({
+          auto_inject: z
+            .boolean()
+            .optional()
+            .describe("Auto-inject background task results when they complete (default: false)"),
         })
         .optional(),
       experimental: z

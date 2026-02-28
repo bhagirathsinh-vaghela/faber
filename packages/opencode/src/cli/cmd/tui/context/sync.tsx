@@ -73,6 +73,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       formatter: FormatterStatus[]
       vcs: VcsInfo | undefined
       path: Path
+      background_pending: {
+        [sessionID: string]: number
+      }
     }>({
       provider_next: {
         all: [],
@@ -100,6 +103,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       formatter: [],
       vcs: undefined,
       path: { state: "", config: "", worktree: "", directory: "" },
+      background_pending: {},
     })
 
     const sdk = useSDK()
@@ -322,6 +326,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("vcs", { branch: event.properties.branch })
           break
         }
+
+        case "background.task.result_pending": {
+          const { sessionID } = event.properties
+          setStore("background_pending", sessionID, (prev) => (prev ?? 0) + 1)
+          break
+        }
       }
     })
 
@@ -441,9 +451,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
         async sync(sessionID: string) {
           if (fullSyncedSessions.has(sessionID)) return
+          const messageLimit = store.config.tui?.message_limit ?? 100
           const [session, messages, todo, diff] = await Promise.all([
             sdk.client.session.get({ sessionID }, { throwOnError: true }),
-            sdk.client.session.messages({ sessionID, limit: 100 }),
+            sdk.client.session.messages({ sessionID, limit: messageLimit }),
             sdk.client.session.todo({ sessionID }),
             sdk.client.session.diff({ sessionID }),
           ])
@@ -461,6 +472,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }),
           )
           fullSyncedSessions.add(sessionID)
+        },
+      },
+      background: {
+        setPending(sessionID: string, count: number) {
+          setStore("background_pending", sessionID, count)
+        },
+        decrementPending(sessionID: string, by = 1) {
+          setStore("background_pending", sessionID, (prev) => Math.max(0, (prev ?? 0) - by))
+        },
+        clearPending(sessionID: string) {
+          setStore("background_pending", sessionID, 0)
         },
       },
       bootstrap,
