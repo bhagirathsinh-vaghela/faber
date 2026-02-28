@@ -33,7 +33,7 @@ export const anthropicHelper: ProviderHelper = ({ reqModel, providerModel }) => 
       } else {
         headers.set("x-api-key", apiKey)
         headers.set("anthropic-version", headers.get("anthropic-version") ?? "2023-06-01")
-        if (body.model.startsWith("claude-sonnet-")) {
+        if (body.model.toLowerCase().includes("claude-sonnet-4-5")) {
           headers.set("anthropic-beta", "context-1m-2025-08-07")
         }
       }

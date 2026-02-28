@@ -38,6 +38,7 @@ export const ProviderRoutes = lazy(() =>
         const config = await Config.get()
         const disabled = new Set(config.disabled_providers ?? [])
         const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
+        const anthropicContext = config.anthropic?.context
 
         const allProviders = await ModelsDev.get()
         const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
@@ -49,7 +50,7 @@ export const ProviderRoutes = lazy(() =>
 
         const connected = await Provider.list()
         const providers = Object.assign(
-          mapValues(filteredProviders, (x) => Provider.fromModelsDevProvider(x)),
+          mapValues(filteredProviders, (x) => Provider.fromModelsDevProvider(x, anthropicContext)),
           connected,
         )
         return c.json({

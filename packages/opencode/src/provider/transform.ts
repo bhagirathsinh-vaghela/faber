@@ -1,6 +1,8 @@
 import type { APICallError, ModelMessage } from "ai"
 import { mergeDeep, unique } from "remeda"
 import type { JSONSchema7 } from "@ai-sdk/provider"
+import { createHash } from "crypto"
+import { Log } from "@/util/log"
 import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
@@ -17,6 +19,7 @@ function mimeToModality(mime: string): Modality | undefined {
 }
 
 export namespace ProviderTransform {
+  const log = Log.create({ service: "provider.transform" })
   // Maps npm package to the key the AI SDK expects for providerOptions
   function sdkKey(npm: string): string | undefined {
     switch (npm) {
@@ -48,7 +51,30 @@ export namespace ProviderTransform {
   ): ModelMessage[] {
     // Anthropic rejects messages with empty content - filter out empty string messages
     // and remove empty text/reasoning parts from array content
-    if (model.api.npm === "@ai-sdk/anthropic") {
+    if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/google-vertex/anthropic") {
+      const thinking = options?.["thinking"] as { type?: string } | undefined
+      const hasThinking = thinking?.type === "enabled" || Boolean(options?.["_adaptiveThinking"])
+      msgs = msgs.map((msg) => {
+        if (!hasThinking && msg.role === "assistant" && Array.isArray(msg.content)) {
+          const filtered = msg.content.filter((part) => part.type !== "reasoning")
+          return { ...msg, content: filtered }
+        }
+        return msg
+      })
+      // Strip trailing reasoning from the last assistant message so Anthropic
+      // doesn't try to continue from a thinking block.  Done here (at send time)
+      // rather than in toModelMessages so stored messages stay immutable.
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const msg = msgs[i]
+        if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue
+        const parts = msg.content as Array<{ type: string }>
+        let idx = parts.length - 1
+        while (idx >= 0 && parts[idx]?.type === "reasoning") idx--
+        if (idx < parts.length - 1) msg.content = parts.slice(0, idx + 1) as typeof msg.content
+        if (!(msg.content as Array<{ type: string }>).some((p) => p.type !== "step-start"))
+          msg.content = [{ type: "text", text: "[No message content]" }] as typeof msg.content
+        break
+      }
       msgs = msgs
         .map((msg) => {
           if (typeof msg.content === "string") {
@@ -168,9 +194,115 @@ export namespace ProviderTransform {
     return msgs
   }
 
-  function applyCaching(msgs: ModelMessage[], providerID: string): ModelMessage[] {
-    const system = msgs.filter((msg) => msg.role === "system").slice(0, 2)
-    const final = msgs.filter((msg) => msg.role !== "system").slice(-2)
+  /**
+   * Select which messages should have cache markers.
+   * Returns both the messages and their indices in the original array.
+   *
+   * Actual system block layout as sent to the Anthropic API (after plugin transforms):
+   *
+   *   [0] Preamble       — any block a plugin prepends
+   *   [1] Provider prompt — full Anthropic/Claude system prompt
+   *   [2] Global AGENTS   — ~/.config/opencode/AGENTS.md (cross-machine stable)
+   *   [3] Environment     — cwd, platform, date, git status (dynamic per session)
+   *   [4] Project         — project AGENTS.md + user.system (optional, only if present)
+   *
+   * Cache prefix order per Anthropic API: tools → system[0..N] → messages
+   *
+   * Strategy (up to 4 markers):
+   * - System marker 1 on [2] (global AGENTS): cross-machine/cross-repo cache.
+   *   Caches tools + preamble + provider prompt + AGENTS.md. This prefix is
+   *   identical across all directories and machines with the same config.
+   * - System marker 2 on last system block: per-session cache.
+   *   The delta from marker 1 is just the env block (~60 tokens) + optional
+   *   project instructions. Changes per directory but is cheap to re-write.
+   * - Last user-typed prompt: stable checkpoint for the current turn
+   * - Last message (N): moves with each API call for incremental caching
+   *
+   * The user prompt marker stays fixed throughout a turn, providing a stable checkpoint.
+   * The N marker moves with each API call, enabling incremental cache hits within the
+   * 20-block lookback window. This ensures long tool chains don't cause cache misses
+   * for the conversation prefix.
+   */
+  function selectCacheMarkers(
+    msgs: ModelMessage[],
+    probeIndex?: number,
+  ): { messages: ModelMessage[]; indices: number[] } {
+    const systemMsgs = msgs.filter((msg) => msg.role === "system")
+    const conversationMsgs = msgs.filter((msg) => msg.role !== "system")
+
+    const markers: ModelMessage[] = []
+    const indices: number[] = []
+
+    // System marker 1: global AGENTS.md at index [2] — cross-machine stable prefix.
+    // System marker 2: last system block — env or project instructions (per-session).
+    const systemMarkerTargets: ModelMessage[] = []
+    if (systemMsgs.length >= 3) systemMarkerTargets.push(systemMsgs[2])
+    if (systemMsgs.length >= 1) {
+      const last = systemMsgs[systemMsgs.length - 1]
+      if (!systemMarkerTargets.includes(last)) systemMarkerTargets.push(last)
+    }
+    for (const msg of systemMarkerTargets) {
+      markers.push(msg)
+      indices.push(msgs.indexOf(msg))
+    }
+
+    // Conversation marker 1: last user-typed prompt (stable checkpoint for turn)
+    const lastUserPrompt = conversationMsgs.findLast((msg) => msg.role === "user" && !isMetaMessage(msg))
+    if (lastUserPrompt) {
+      markers.push(lastUserPrompt)
+      indices.push(msgs.indexOf(lastUserPrompt))
+    }
+
+    // Conversation marker 2: depends on context
+    //  - Probe override: place at the specified block index (one-shot)
+    //  - First call of turn (user prompt is last message): place on last
+    //    assistant message to keep the previous turn's prefix cached so
+    //    undo+resend gets a cache hit instead of a full write
+    //  - Tool-loop calls (last message differs from user prompt): place
+    //    on the rolling last message for incremental caching
+    if (probeIndex !== undefined && probeIndex >= 0 && probeIndex < msgs.length) {
+      const probeMsg = msgs[probeIndex]
+      if (probeMsg && probeMsg !== lastUserPrompt && probeMsg.role !== "system") {
+        log.info("cache probe marker", { probeIndex })
+        markers.push(probeMsg)
+        indices.push(probeIndex)
+      }
+    } else {
+      const lastMessage = msgs[msgs.length - 1]
+      if (lastMessage && lastMessage !== lastUserPrompt && lastMessage.role !== "system") {
+        // Tool-loop: rolling marker on last message
+        markers.push(lastMessage)
+        indices.push(msgs.length - 1)
+      } else {
+        // First call of turn: marker on last assistant to keep previous turn cached
+        const lastAssistant = conversationMsgs.findLast((msg) => msg.role === "assistant")
+        if (lastAssistant && lastAssistant !== lastUserPrompt) {
+          markers.push(lastAssistant)
+          indices.push(msgs.indexOf(lastAssistant))
+        }
+      }
+    }
+
+    return { messages: markers, indices }
+  }
+
+  function applyCaching(msgs: ModelMessage[], providerID: string, probeIndex?: number): ModelMessage[] {
+    const { messages: markerMsgs, indices } = selectCacheMarkers(msgs, probeIndex)
+
+    log.info("cache markers", {
+      providerID,
+      indices,
+      system: markerMsgs
+        .filter((msg) => msg.role === "system")
+        .map((msg, i) => {
+          const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content ?? [])
+          return {
+            index: i,
+            hash: createHash("sha256").update(text).digest("hex"),
+            length: text.length,
+          }
+        }),
+    })
 
     const providerOptions = {
       anthropic: {
@@ -189,23 +321,76 @@ export namespace ProviderTransform {
         copilot_cache_control: { type: "ephemeral" },
       },
     }
+    const systemProviderOptions = {
+      anthropic: {
+        cacheControl: { type: "ephemeral", ttl: "1h" },
+      },
+      openrouter: {
+        cacheControl: { type: "ephemeral" },
+      },
+      bedrock: {
+        cachePoint: { type: "ephemeral" },
+      },
+      openaiCompatible: {
+        cache_control: { type: "ephemeral" },
+      },
+    }
 
-    for (const msg of unique([...system, ...final])) {
+    for (const msg of unique(markerMsgs)) {
+      const isSystem = msg.role === "system"
+      const options = isSystem ? systemProviderOptions : providerOptions
       const useMessageLevelOptions = providerID === "anthropic" || providerID.includes("bedrock")
       const shouldUseContentOptions = !useMessageLevelOptions && Array.isArray(msg.content) && msg.content.length > 0
 
       if (shouldUseContentOptions) {
         const lastContent = msg.content[msg.content.length - 1]
         if (lastContent && typeof lastContent === "object") {
-          lastContent.providerOptions = mergeDeep(lastContent.providerOptions ?? {}, providerOptions)
+          lastContent.providerOptions = mergeDeep(lastContent.providerOptions ?? {}, options)
           continue
         }
       }
 
-      msg.providerOptions = mergeDeep(msg.providerOptions ?? {}, providerOptions)
+      msg.providerOptions = mergeDeep(msg.providerOptions ?? {}, options)
     }
 
     return msgs
+  }
+
+  /**
+   * Calculate the indices of cache marker positions in the message array.
+   *
+   * Anthropic caches the prefix up to and including each marker. On subsequent calls,
+   * the system checks backwards from each marker (up to 20 blocks) to find cache hits.
+   *
+   * A block at index N can get a cache hit if:
+   *   markers.some(marker => N >= marker - 19 && N <= marker)
+   *
+   * For example, if markers are at [0, 1, 150, 180] (system, system, user prompt, N):
+   *   - Blocks 0-1 are within lookback of markers 0, 1 (system cache)
+   *   - Blocks 131-150 are within lookback of marker 150 (user prompt checkpoint)
+   *   - Blocks 161-180 are within lookback of marker 180 (N - current position)
+   *   - The user prompt marker at 150 stays fixed during a turn, while N moves
+   *     with each API call, enabling incremental caching throughout long tool chains
+   */
+  export function cacheMarkerIndices(msgs: ModelMessage[], probeIndex?: number): number[] {
+    return selectCacheMarkers(msgs, probeIndex).indices
+  }
+
+  function isMetaMessage(msg: ModelMessage) {
+    if (msg.role !== "user") return false
+    if (typeof msg.content === "string") return isSyntheticContent(msg.content)
+    if (!Array.isArray(msg.content)) return false
+    if (msg.content.length !== 1) return false
+    const part = msg.content[0]
+    if (!part || typeof part !== "object" || part.type !== "text") return false
+    return isSyntheticContent(part.text)
+  }
+
+  function isSyntheticContent(text: string) {
+    const trimmed = text.trim()
+    if (trimmed.startsWith("<system-reminder>") && trimmed.endsWith("</system-reminder>")) return true
+    if (trimmed.startsWith("<background-task-result>") && trimmed.endsWith("</background-task-result>")) return true
+    return false
   }
 
   function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
@@ -246,7 +431,12 @@ export namespace ProviderTransform {
     })
   }
 
-  export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>) {
+  export function message(
+    msgs: ModelMessage[],
+    model: Provider.Model,
+    options: Record<string, unknown>,
+    probeIndex?: number,
+  ) {
     msgs = unsupportedParts(msgs, model)
     msgs = normalizeMessages(msgs, model, options)
     if (
@@ -257,7 +447,7 @@ export namespace ProviderTransform {
       model.id.includes("claude") ||
       model.api.npm === "@ai-sdk/anthropic"
     ) {
-      msgs = applyCaching(msgs, model.providerID)
+      msgs = applyCaching(msgs, model.providerID, probeIndex)
     }
 
     // Remap providerOptions keys from stored providerID to expected SDK key
@@ -288,7 +478,7 @@ export namespace ProviderTransform {
   export function temperature(model: Provider.Model) {
     const id = model.id.toLowerCase()
     if (id.includes("qwen")) return 0.55
-    if (id.includes("claude")) return undefined
+    // Claude temperature is handled in llm.ts based on thinking state
     if (id.includes("gemini")) return 1.0
     if (id.includes("glm-4.6")) return 1.0
     if (id.includes("glm-4.7")) return 1.0
@@ -453,6 +643,15 @@ export namespace ProviderTransform {
       case "@ai-sdk/google-vertex/anthropic":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/google-vertex#anthropic-provider
         return {
+          // Adaptive thinking: model decides thinking budget dynamically.
+          // Requires adaptive-thinking-2026-01-28 beta header.
+          // The SDK doesn't support type:"adaptive" natively and rejects it in validation,
+          // so we only pass effort here. The fetch wrapper in provider.ts injects
+          // thinking:{type:"adaptive"} into the request body when the adaptive-thinking
+          // beta header is present.
+          adaptive: {
+            effort: "medium",
+          },
           high: {
             thinking: {
               type: "enabled",
@@ -695,29 +894,45 @@ export namespace ProviderTransform {
     return { [key]: options }
   }
 
+  export function anthropicMaxTokens(modelId: string): number {
+    const id = modelId.toLowerCase()
+    if (id.includes("3-5")) return 8192
+    if (id.includes("claude-3-opus")) return 4096
+    if (id.includes("claude-3-sonnet")) return 8192
+    if (id.includes("claude-3-haiku")) return 4096
+    if (id.includes("opus-4-5")) return 64000
+    if (id.includes("opus-4")) return 32000
+    if (id.includes("sonnet-4") || id.includes("haiku-4")) return 64000
+    return 32000
+  }
+
   export function maxOutputTokens(
     npm: string,
     options: Record<string, any>,
     modelLimit: number,
     globalLimit: number,
+    modelId?: string,
   ): number {
     const modelCap = modelLimit || globalLimit
-    const standardLimit = Math.min(modelCap, globalLimit)
 
     if (npm === "@ai-sdk/anthropic" || npm === "@ai-sdk/google-vertex/anthropic") {
+      const anthropicDefault = modelId ? anthropicMaxTokens(modelId) : globalLimit
+      const standardLimit = Math.min(modelCap, anthropicDefault)
+
       const thinking = options?.["thinking"]
       const budgetTokens = typeof thinking?.["budgetTokens"] === "number" ? thinking["budgetTokens"] : 0
       const enabled = thinking?.["type"] === "enabled"
       if (enabled && budgetTokens > 0) {
-        // Return text tokens so that text + thinking <= model cap, preferring 32k text when possible.
+        // Return text tokens so that text + thinking <= model cap, preferring model-specific limit when possible.
         if (budgetTokens + standardLimit <= modelCap) {
           return standardLimit
         }
         return modelCap - budgetTokens
       }
+      return standardLimit
     }
 
-    return standardLimit
+    return Math.min(modelCap, globalLimit)
   }
 
   export function schema(model: Provider.Model, schema: JSONSchema.BaseSchema | JSONSchema7): JSONSchema7 {

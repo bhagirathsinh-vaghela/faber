@@ -28,7 +28,15 @@ import {
   RGBA,
 } from "@opentui/core"
 import { Prompt, type PromptRef } from "@tui/component/prompt"
-import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk/v2"
+import type {
+  AssistantMessage,
+  Part,
+  ToolPart,
+  UserMessage,
+  TextPart,
+  ReasoningPart,
+  Message,
+} from "@opencode-ai/sdk/v2"
 import { useLocal } from "@tui/context/local"
 import { useDirectory } from "@tui/context/directory"
 import { Locale } from "@/util/locale"
@@ -79,6 +87,7 @@ import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { formatTranscript } from "../../util/transcript"
 import { UI } from "@/cli/ui.ts"
+import { DialogPending } from "../../component/dialog-pending"
 
 addDefaultParsers(parsers.parsers)
 
@@ -317,6 +326,42 @@ export function Session() {
     dialog.clear()
   }
 
+  // Helper: Find next/prev user message
+  const findNextUserMessage = (direction: "next" | "prev"): string | null => {
+    const children = scroll.getChildren()
+    const messagesList = messages()
+    const scrollTop = scroll.y
+
+    const userMessages = children
+      .filter((c) => {
+        if (!c.id) return false
+        const message = messagesList.find((m) => m.id === c.id)
+        return message?.role === "user"
+      })
+      .sort((a, b) => a.y - b.y)
+
+    if (userMessages.length === 0) return null
+
+    if (direction === "next") {
+      return userMessages.find((c) => c.y > scrollTop + 10)?.id ?? null
+    }
+    return [...userMessages].reverse().find((c) => c.y < scrollTop - 10)?.id ?? null
+  }
+
+  // Helper: Scroll to user message in direction
+  const scrollToUserMessage = (direction: "next" | "prev", dialog: ReturnType<typeof useDialog>) => {
+    const targetID = findNextUserMessage(direction)
+
+    if (!targetID) {
+      dialog.clear()
+      return
+    }
+
+    const child = scroll.getChildren().find((c) => c.id === targetID)
+    if (child) scroll.scrollBy(child.y - scroll.y - 1)
+    dialog.clear()
+  }
+
   function toBottom() {
     setTimeout(() => {
       if (!scroll || scroll.isDestroyed) return
@@ -481,7 +526,9 @@ export function Session() {
         const status = sync.data.session_status?.[route.sessionID]
         if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
         const revert = session()?.revert?.messageID
-        const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
+        const allMsgs = messages()
+        // Find last non-synthetic user message (skip TASK RESULT messages)
+        const message = allMsgs.findLast((x) => (!revert || x.id < revert) && x.role === "user" && x.synthetic !== true)
         if (!message) return
         sdk.client.session
           .revert({
@@ -491,19 +538,24 @@ export function Session() {
           .then(() => {
             toBottom()
           })
+          .catch(() => {})
         const parts = sync.data.part[message.id]
-        prompt.set(
-          parts.reduce(
-            (agg, part) => {
-              if (part.type === "text") {
-                if (!part.synthetic) agg.input += part.text
-              }
-              if (part.type === "file") agg.parts.push(part)
-              return agg
-            },
-            { input: "", parts: [] as PromptInfo["parts"] },
-          ),
-        )
+        if (parts) {
+          prompt.set(
+            parts.reduce(
+              (agg, part) => {
+                if (part.type === "text") {
+                  if (!part.synthetic) agg.input += part.text
+                }
+                if (part.type === "file") agg.parts.push(part)
+                return agg
+              },
+              { input: "", parts: [] as PromptInfo["parts"] },
+            ),
+          )
+        } else {
+          prompt.set({ input: "", parts: [] })
+        }
         dialog.clear()
       },
     },
@@ -740,6 +792,23 @@ export function Session() {
       hidden: true,
       onSelect: (dialog) => scrollToMessage("prev", dialog),
     },
+
+    {
+      title: "Next user message",
+      value: "session.message.next_user",
+      keybind: "messages_next_user",
+      category: "Session",
+      hidden: true,
+      onSelect: (dialog) => scrollToUserMessage("next", dialog),
+    },
+    {
+      title: "Previous user message",
+      value: "session.message.previous_user",
+      keybind: "messages_previous_user",
+      category: "Session",
+      hidden: true,
+      onSelect: (dialog) => scrollToUserMessage("prev", dialog),
+    },
     {
       title: "Copy last assistant message",
       value: "messages.copy",
@@ -912,7 +981,50 @@ export function Session() {
         dialog.clear()
       },
     },
+    {
+      title: "Accept pending background results",
+      value: "session.background.inject_pending",
+      keybind: "accept_pending_results",
+      category: "Session",
+      slash: {
+        name: "inject-pending",
+        aliases: ["pending"],
+      },
+      onSelect: async (dialog) => {
+        const result = await sdk.client.background.acceptAllPending({ sessionID: route.sessionID, triggerLLM: true })
+        const count = result.data?.count ?? 0
+        if (count === 0) {
+          toast.show({ message: "No pending results to inject", variant: "info" })
+        } else {
+          toast.show({ message: `Injected ${count} result${count > 1 ? "s" : ""}`, variant: "success" })
+        }
+        sync.background.clearPending(route.sessionID)
+        dialog.clear()
+      },
+    },
+    {
+      title: "Toggle auto-inject for this session",
+      value: "session.background.auto_inject",
+      keybind: "background_auto_inject_toggle",
+      category: "Session",
+      slash: {
+        name: "auto-inject",
+        aliases: ["toggle-auto-inject"],
+      },
+      onSelect: async (dialog) => {
+        const result = await sdk.client.background.toggleAutoInject({ sessionID: route.sessionID })
+        const enabled = result.data?.autoInject ?? true
+        toast.show({
+          message: `Auto-inject ${enabled ? "enabled" : "disabled"} for this session`,
+          variant: enabled ? "success" : "warning",
+        })
+        sync.background.setPending(route.sessionID, 0)
+        dialog.clear()
+      },
+    },
   ])
+
+  const ping = createMemo(() => session()?.ping)
 
   const revertInfo = createMemo(() => session()?.revert)
   const revertMessageID = createMemo(() => revertInfo()?.messageID)
@@ -1065,6 +1177,18 @@ export function Session() {
                                   </For>
                                 </box>
                               </Show>
+                              <Show when={ping()}>
+                                {(p) => (
+                                  <text fg={theme.textMuted}>
+                                    Cache refreshed ({p().count}x), last ping at{" "}
+                                    {new Date(p().time).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      second: "2-digit",
+                                    })}
+                                  </text>
+                                )}
+                              </Show>
                             </box>
                           </box>
                         )
@@ -1075,7 +1199,7 @@ export function Session() {
                     </Match>
                     <Match when={message.role === "user"}>
                       <UserMessage
-                        index={message.promptIndex ?? index() + (session()?.systemBlockCount ?? 0)}
+                        index={message.promptIndex}
                         onMouseUp={() => {
                           if (renderer.getSelection()?.getSelectedText()) return
                           dialog.replace(() => (
@@ -1094,7 +1218,7 @@ export function Session() {
                     <Match when={message.role === "assistant"}>
                       <AssistantMessage
                         last={lastAssistant()?.id === message.id}
-                        index={message.promptIndex ?? index() + (session()?.systemBlockCount ?? 0)}
+                        index={message.promptIndex}
                         message={message as AssistantMessage}
                         parts={sync.data.part[message.id] ?? []}
                       />
@@ -1123,10 +1247,8 @@ export function Session() {
                 disabled={permissions().length > 0 || questions().length > 0}
                 onMessageSent={(isPing) => {
                   if (isPing) {
-                    // Save current scroll position for ping messages BEFORE scrolling
                     setSavedScrollPosition(scroll.y)
                   } else {
-                    // Clear saved position for normal messages and scroll to bottom
                     setSavedScrollPosition(null)
                     toBottom()
                   }
@@ -1185,12 +1307,16 @@ function UserMessage(props: {
   message: UserMessage
   parts: Part[]
   onMouseUp: () => void
-  index: number
+  index?: number
   messages: (UserMessage | AssistantMessage)[]
 }) {
   const ctx = use()
   const local = useLocal()
   const text = createMemo(() => props.parts.flatMap((x) => (x.type === "text" && !x.synthetic ? [x] : []))[0])
+  const backgroundTaskResult = createMemo(() => {
+    const part = props.parts.find((x) => x.type === "text" && x.backgroundTaskResult)
+    return part?.type === "text" ? part : undefined
+  })
   const files = createMemo(() => props.parts.flatMap((x) => (x.type === "file" ? [x] : [])))
   const sync = useSync()
   const { theme } = useTheme()
@@ -1223,7 +1349,75 @@ function UserMessage(props: {
 
   return (
     <>
-      <Show when={text()}>
+      <Show when={backgroundTaskResult()}>
+        {(taskResult) => {
+          const result = taskResult().backgroundTaskResult!
+          const taskColor = createMemo(() => (result.status === "completed" ? theme.warning : theme.error))
+          const taskTintedBg = createMemo(() => {
+            const accent = taskColor()
+            const panel = theme.backgroundPanel
+            return RGBA.fromInts(
+              Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
+              Math.round((panel.g * 0.88 + accent.g * 0.12) * 255),
+              Math.round((panel.b * 0.88 + accent.b * 0.12) * 255),
+              255,
+            )
+          })
+          return (
+            <box
+              id={props.message.id}
+              border={["top", "bottom", "left", "right"]}
+              borderColor={taskColor()}
+              customBorderChars={AgentBorder.customBorderChars}
+              marginTop={props.index === 0 ? 0 : 1}
+              backgroundColor={hover() ? theme.backgroundElement : taskTintedBg()}
+              onMouseOver={() => setHover(true)}
+              onMouseOut={() => setHover(false)}
+              onMouseUp={props.onMouseUp}
+              paddingTop={1}
+              paddingBottom={1}
+              paddingLeft={2}
+              paddingRight={2}
+              flexShrink={0}
+            >
+              <box flexDirection="row" gap={1} marginBottom={1}>
+                <text fg={taskColor()}>{"◈"}</text>
+                <text fg={taskColor()}>
+                  <span style={{ bold: true }}>{`#${props.index} TASK RESULT`}</span>
+                  {result.agent ? <span style={{ bold: false }}>{` │ ${result.description}`}</span> : null}
+                </text>
+                <text fg={theme.textMuted}>
+                  <span style={{ bg: taskColor(), fg: theme.background, bold: true, underline: true }}>
+                    {"(" + formatTime(props.message.time.created) + ")"}
+                  </span>
+                </text>
+              </box>
+              <text fg={theme.text}>
+                {(() => {
+                  const fullText = taskResult().text
+                  // Extract content between XML tags and clean metadata
+                  const match = fullText.match(/<background-task-result>([\s\S]*?)<\/background-task-result>/)
+                  if (!match) return fullText
+
+                  const content = match[1]
+                  const lines = content.split("\n")
+                  const cleanedLines = lines.filter((line) => {
+                    const trimmed = line.trim()
+                    // Remove task_id and session_id lines
+                    if (trimmed.startsWith("task_id:")) return false
+                    if (trimmed.startsWith("session_id:")) return false
+                    // Keep other metadata and actual content
+                    return true
+                  })
+
+                  return cleanedLines.join("\n").trim()
+                })()}
+              </text>
+            </box>
+          )
+        }}
+      </Show>
+      <Show when={text() && !backgroundTaskResult()}>
         <box
           id={props.message.id}
           border={["top", "bottom", "left", "right"]}
@@ -1247,7 +1441,7 @@ function UserMessage(props: {
           <box flexDirection="row" gap={1} marginBottom={1}>
             <text fg={color()}>{"◈"}</text>
             <text fg={color()}>
-              <span style={{ bold: true }}>{`#${props.index + 1} USER`}</span>
+              <span style={{ bold: true }}>{props.index !== undefined ? `#${props.index} USER` : "USER"}</span>
             </text>
             <Show when={ctx.showTimestamps()}>
               <text fg={theme.textMuted}>
@@ -1299,7 +1493,7 @@ function UserMessage(props: {
 
 type AssistantWithVariant = AssistantMessage & { variant?: string }
 
-function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[]; last: boolean; index: number }) {
+function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[]; last: boolean; index?: number }) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
@@ -1451,7 +1645,12 @@ const PART_MAPPING = {
   reasoning: ReasoningPart,
 }
 
-function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: AssistantMessage; messageIndex: number }) {
+function ReasoningPart(props: {
+  last: boolean
+  part: ReasoningPart
+  message: AssistantMessage
+  messageIndex?: number
+}) {
   const { theme, subtleSyntax } = useTheme()
   const ctx = use()
   const content = createMemo(() => {
@@ -1471,7 +1670,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
         borderColor={theme.backgroundElement}
       >
         <text fg={theme.textMuted} marginBottom={1}>
-          #{props.messageIndex + 1} Thinking:
+          {props.messageIndex !== undefined ? `#${props.messageIndex} ` : ""}Thinking:
         </text>
         <markdown
           streaming={!props.message.time.completed}
@@ -1489,7 +1688,7 @@ function TextPart(props: {
   part: TextPart
   message: AssistantMessage
   parts: Part[]
-  messageIndex: number
+  messageIndex?: number
   messageLast: boolean
   messageFinal: boolean
   messageDuration: number
@@ -1545,7 +1744,9 @@ function TextPart(props: {
         <box flexDirection="row" gap={1} marginBottom={1}>
           <text fg={theme.success}>{"◈"}</text>
           <text fg={theme.success}>
-            <span style={{ bold: true }}>{`#${props.messageIndex + 1} ASSISTANT`}</span>
+            <span style={{ bold: true }}>
+              {props.messageIndex !== undefined ? `#${props.messageIndex} ASSISTANT` : "ASSISTANT"}
+            </span>
           </text>
           <Show when={ctx.showTimestamps() && !!props.message.time.completed}>
             <text fg={theme.textMuted}>
@@ -1623,7 +1824,7 @@ function TextPart(props: {
 
 // Pending messages moved to individual tool pending functions
 
-function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMessage; messageIndex: number }) {
+function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMessage; messageIndex?: number }) {
   const ctx = use()
   const sync = useSync()
 
@@ -1635,7 +1836,7 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
   })
 
   // Tool results follow the assistant message in the LLM prompt, so toolIndex = assistantIndex + 1
-  const toolIndex = props.messageIndex + 1
+  const toolIndex = props.messageIndex !== undefined ? props.messageIndex + 1 : undefined
 
   const toolprops = {
     get metadata() {
@@ -1730,7 +1931,7 @@ type ToolProps<T extends Tool.Info> = {
   output?: string
   part: ToolPart
   message: AssistantMessage
-  toolIndex: number
+  toolIndex?: number
 }
 function GenericTool(props: ToolProps<any>) {
   return (
@@ -1816,7 +2017,7 @@ function InlineTool(props: {
       <text paddingLeft={3} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
         <Show fallback={<>~ {props.pending}</>} when={props.complete}>
           <Show when={props.toolIndex !== undefined}>
-            <span style={{ fg: fg() }}>#{props.toolIndex! + 1} </span>
+            <span style={{ fg: fg() }}>#{props.toolIndex!} </span>
           </Show>
           <span style={{ fg: props.iconColor }}>{props.icon}</span> {props.children}
         </Show>
@@ -1894,7 +2095,7 @@ function BlockTool(props: {
           <box flexDirection="row" gap={1} marginBottom={1}>
             <text fg={agentColor()}>{"◇"}</text>
             <Show when={props.toolIndex !== undefined}>
-              <text fg={agentColor()}>#{props.toolIndex! + 1}</text>
+              <text fg={agentColor()}>#{props.toolIndex!}</text>
             </Show>
             <text fg={theme.textMuted}>{props.title}</text>
           </box>
@@ -1925,7 +2126,7 @@ function AgentBlockTool(props: {
   const [hover, setHover] = createSignal(false)
   const error = createMemo(() => (props.part?.state.status === "error" ? props.part.state.error : undefined))
 
-  const accentColor = createMemo(() => local.agent.color(props.agentType ?? "unknown"))
+  const accentColor = createMemo(() => theme.warning)
 
   const tintedBg = createMemo(() => {
     const accent = accentColor()
@@ -1964,17 +2165,17 @@ function AgentBlockTool(props: {
           <box flexDirection="row" gap={1}>
             <text fg={accentColor()}>{"◈"}</text>
             <Show when={props.toolIndex !== undefined}>
-              <text fg={accentColor()}>#{props.toolIndex! + 1}</text>
+              <text fg={accentColor()}>#{props.toolIndex!}</text>
             </Show>
             <text fg={accentColor()}>
-              <span style={{ fontWeight: "bold" }}>SUBAGENT OUTPUT</span>
+              <span style={{ fontWeight: "bold" }}>TASK OUTPUT</span>
             </text>
             <text fg={theme.textMuted}>│</text>
             <text fg={theme.textMuted}>{props.title}</text>
           </box>
         }
       >
-        <Spinner color={accentColor()}>SUBAGENT OUTPUT │ {props.title}</Spinner>
+        <Spinner color={accentColor()}>TASK OUTPUT │ {props.title}</Spinner>
       </Show>
       {props.children}
       <Show when={error()}>
@@ -2229,7 +2430,7 @@ function WebSearch(props: ToolProps<any>) {
       part={props.part}
       toolIndex={props.toolIndex}
     >
-      Exa Web Search "{input.query}" <Show when={metadata.numResults}>({metadata.numResults} results)</Show>
+      Web Search "{input.query}" <Show when={metadata.numResults}>({metadata.numResults} results)</Show>
     </InlineTool>
   )
 }
@@ -2242,26 +2443,41 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const local = useLocal()
   const sync = useSync()
 
+  const metadata = props.metadata as { sessionId?: string }
   const tools = createMemo(() => {
-    const sessionID = props.metadata.sessionId
+    const sessionID = metadata.sessionId
     const msgs = sync.data.message[sessionID ?? ""] ?? []
-    return msgs.flatMap((msg) =>
+    return msgs.flatMap((msg: Message) =>
       (sync.data.part[msg.id] ?? [])
         .filter((part): part is ToolPart => part.type === "tool")
         .map((part) => ({ tool: part.tool, state: part.state })),
     )
   })
 
-  const current = createMemo(() => tools().findLast((x) => x.state.status !== "pending"))
+  const current = createMemo(() =>
+    tools().findLast((x: { tool: string; state: { status: string } }) => x.state.status !== "pending"),
+  )
 
   const isRunning = createMemo(() => props.part.state.status === "running")
 
-  // Extract the text output, stripping the task_metadata section
+  // Extract the text output, stripping the task_metadata section and cleaning for user display
   const outputText = createMemo(() => {
     if (!props.output) return ""
     const text = String(props.output)
     // Remove the <task_metadata>...</task_metadata> section
-    return text.replace(/<task_metadata>[\s\S]*?<\/task_metadata>/g, "").trim()
+    const cleaned = text.replace(/<task_metadata>[\s\S]*?<\/task_metadata>/g, "").trim()
+
+    // Clean lines we don't want to show user
+    const lines = cleaned.split("\n")
+    const filteredLines = lines.filter((line) => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith("task_id:")) return false
+      if (trimmed.startsWith("session_id:")) return false
+      if (trimmed === "Results will be delivered when the task completes.") return false
+      return true
+    })
+
+    return filteredLines.join("\n").trim()
   })
 
   return (
@@ -2270,11 +2486,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
         <AgentBlockTool
           title={Locale.titlecase(props.input.subagent_type ?? "unknown") + " Task"}
           agentType={props.input.subagent_type ?? "unknown"}
-          onClick={
-            props.metadata.sessionId
-              ? () => navigate({ type: "session", sessionID: props.metadata.sessionId! })
-              : undefined
-          }
+          onClick={metadata.sessionId ? () => navigate({ type: "session", sessionID: metadata.sessionId! }) : undefined}
           part={props.part}
           spinner={isRunning()}
           toolIndex={props.toolIndex}

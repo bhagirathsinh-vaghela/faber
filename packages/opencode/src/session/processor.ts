@@ -50,7 +50,13 @@ export namespace SessionProcessor {
           try {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
-            const stream = await LLM.stream(streamInput)
+            const { stream, cacheMarkers, systemBlockCount } = await LLM.stream(streamInput)
+
+            // Store cache markers and system block count on session for TUI display
+            await Session.update(input.sessionID, (draft) => {
+              draft.cacheMarkers = cacheMarkers
+              draft.systemBlockCount = systemBlockCount
+            })
 
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()
@@ -81,6 +87,8 @@ export namespace SessionProcessor {
                     const part = reasoningMap[value.id]
                     part.text += value.text
                     if (value.providerMetadata) part.metadata = value.providerMetadata
+                    const signature = (value as any).providerMetadata?.anthropic?.signature as string | undefined
+                    if (signature) part.signature = signature
                     if (part.text) await Session.updatePart({ part, delta: value.text })
                   }
                   break

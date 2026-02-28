@@ -59,11 +59,22 @@ export namespace MessageV2 {
   })
   export type PatchPart = z.infer<typeof PatchPart>
 
+  export const BackgroundTaskResult = z.object({
+    taskId: z.string(),
+    type: z.enum(["subagent", "shell"]),
+    description: z.string(),
+    status: z.enum(["completed", "failed"]),
+    agent: z.string().optional(),
+    duration: z.number(),
+  })
+  export type BackgroundTaskResult = z.infer<typeof BackgroundTaskResult>
+
   export const TextPart = PartBase.extend({
     type: z.literal("text"),
     text: z.string(),
     synthetic: z.boolean().optional(),
     ignored: z.boolean().optional(),
+    backgroundTaskResult: BackgroundTaskResult.optional(),
     time: z
       .object({
         start: z.number(),
@@ -80,6 +91,7 @@ export namespace MessageV2 {
     type: z.literal("reasoning"),
     text: z.string(),
     metadata: z.record(z.string(), z.any()).optional(),
+    signature: z.string().optional(),
     time: z.object({
       start: z.number(),
       end: z.number().optional(),
@@ -447,7 +459,6 @@ export namespace MessageV2 {
   export function toModelMessages(input: WithParts[], model: Provider.Model): ToModelMessagesResult {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
-    const idToResultIndex = new Map<string, number>()
 
     const toModelOutput = (output: unknown) => {
       if (typeof output === "string") {
@@ -491,7 +502,6 @@ export namespace MessageV2 {
           role: "user",
           parts: [],
         }
-        idToResultIndex.set(msg.info.id, result.length)
         result.push(userMessage)
         for (const part of msg.parts) {
           if (part.type === "text" && !part.ignored)
@@ -598,50 +608,52 @@ export namespace MessageV2 {
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
-              ...(differentModel ? {} : { providerMetadata: part.metadata }),
+              ...(differentModel
+                ? {}
+                : {
+                    providerMetadata:
+                      part.metadata ?? (part.signature ? { anthropic: { signature: part.signature } } : undefined),
+                  }),
             })
           }
         }
         if (assistantMessage.parts.length > 0) {
-          idToResultIndex.set(msg.info.id, result.length)
           result.push(assistantMessage)
         }
       }
     }
 
+    const withoutThinkingOnly = result.filter((msg) => {
+      if (msg.role !== "assistant") return true
+      return msg.parts.some((part) => part.type !== "reasoning" && part.type !== "step-start")
+    })
+
     const tools = Object.fromEntries(Array.from(toolNames).map((toolName) => [toolName, { toModelOutput }]))
 
     // Filter out messages that only have step-start parts
-    const filtered = result.filter((msg) => msg.parts.some((part) => part.type !== "step-start"))
+    const filtered = withoutThinkingOnly.filter((msg) => msg.parts.some((part) => part.type !== "step-start"))
 
-    // Detect which filtered messages are assistants with tool outputs
-    // convertToModelMessages adds a 'tool' role message after each such assistant,
-    // which shifts all subsequent indices by 1
-    const hasToolOutput = (msg: UIMessage) =>
-      msg.role === "assistant" &&
-      msg.parts.some(
-        (p) =>
-          typeof p.type === "string" &&
-          p.type.startsWith("tool-") &&
-          "state" in p &&
-          (p.state === "output-available" || p.state === "output-error"),
-      )
-
-    // Build final ID to index mapping, accounting for:
-    // 1. Filtered messages (step-start only messages removed)
-    // 2. Extra 'tool' blocks inserted by convertToModelMessages after assistant-with-tools
+    // Build ID to model-message-index mapping in a single forward pass.
+    // convertToModelMessages produces 1 block per user message and 2 blocks
+    // per assistant-with-tool-results (assistant + tool), so we track a
+    // running offset to get the true position in the final ModelMessage[].
     const idToIndex = new Map<string, number>()
-    for (const [id, resultIdx] of idToResultIndex) {
-      const msg = result[resultIdx]
-      const filteredIdx = filtered.indexOf(msg)
-      if (filteredIdx !== -1) {
-        // Count assistant-with-tools messages before this one
-        let toolBlockOffset = 0
-        for (let i = 0; i < filteredIdx; i++) {
-          if (hasToolOutput(filtered[i])) toolBlockOffset++
-        }
-        idToIndex.set(id, filteredIdx + toolBlockOffset)
-      }
+    let modelIdx = 0
+    for (const msg of filtered) {
+      if (msg.id) idToIndex.set(msg.id, modelIdx)
+      modelIdx++ // the message itself
+      // assistant messages with tool outputs get an extra 'tool' role block
+      if (
+        msg.role === "assistant" &&
+        msg.parts.some(
+          (p) =>
+            typeof p.type === "string" &&
+            p.type.startsWith("tool-") &&
+            "state" in p &&
+            (p.state === "output-available" || p.state === "output-error"),
+        )
+      )
+        modelIdx++
     }
 
     return {

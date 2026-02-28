@@ -11,16 +11,17 @@ import {
   tool,
   jsonSchema,
 } from "ai"
+import { createHash } from "crypto"
 import { clone, mergeDeep, pipe } from "remeda"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
 import type { Agent } from "@/agent/agent"
-import type { MessageV2 } from "./message-v2"
+import { MessageV2 } from "./message-v2"
+import { Session } from "."
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
-import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
 
 export namespace LLM {
@@ -33,17 +34,32 @@ export namespace LLM {
     sessionID: string
     model: Provider.Model
     agent: Agent.Info
-    system: string[]
+    system: {
+      env: string[]
+      globalInstructions: string[]
+      projectInstructions: string[]
+    }
     abort: AbortSignal
     messages: ModelMessage[]
+    sessionMessages?: MessageV2.WithParts[]
+    /** Maps session message ID to its index in the messages array (before system blocks are prepended) */
+    messageIdToIndex?: Map<string, number>
+    /** The assistant message being generated (to assign promptIndex) */
+    assistantMessage?: MessageV2.Assistant
     small?: boolean
     tools: Record<string, Tool>
     retries?: number
+    /** One-shot probe: place an extra cache marker at this block index for testing */
+    cacheProbeIndex?: number
   }
 
-  export type StreamOutput = StreamTextResult<ToolSet, unknown>
+  export type StreamOutput = {
+    stream: StreamTextResult<ToolSet, unknown>
+    cacheMarkers: number[]
+    systemBlockCount: number
+  }
 
-  export async function stream(input: StreamInput) {
+  export async function stream(input: StreamInput): Promise<StreamOutput> {
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -64,22 +80,43 @@ export namespace LLM {
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"
 
-    const system = []
-    system.push(
-      [
-        // use agent prompt otherwise provider prompt
-        // For Codex sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : isCodex ? [] : SystemPrompt.provider(input.model)),
-        // any custom prompt passed into this call
-        ...input.system,
-        // any custom prompt from last user message
-        ...(input.user.system ? [input.user.system] : []),
-      ]
-        .filter((x) => x)
-        .join("\n"),
-    )
+    // Build system as separate blocks for cache optimization
+    // Block 1: Provider prompt (static, cross-machine)
+    // System blocks built here. After plugin transforms (a plugin may prepend
+    // a block of its own), the final layout sent to the API is:
+    //
+    //   [0] Preamble       — any block a plugin prepends
+    //   [1] Provider prompt — built here as system[0]
+    //   [2] Global AGENTS   — built here as system[1], cross-machine stable ← CACHE MARKER
+    //   [3] Environment     — built here as system[2], dynamic per session
+    //   [4] Project         — built here as system[3], optional             ← CACHE MARKER (last)
+    //
+    // Cache markers in transform.ts target systemMsgs[2] and systemMsgs[last].
+    // See selectCacheMarkers() in provider/transform.ts for full details.
+    const system: string[] = []
 
-    const header = system[0]
+    // Provider/agent prompt (becomes block [1] after plugin preamble)
+    const providerPrompt = input.agent.prompt
+      ? input.agent.prompt
+      : isCodex
+        ? ""
+        : SystemPrompt.provider(input.model).join("\n")
+    if (providerPrompt) system.push(providerPrompt)
+
+    // Global instructions — cross-machine stable (becomes block [2])
+    const globalInstructions = input.system.globalInstructions.join("\n")
+    if (globalInstructions) system.push(globalInstructions)
+
+    // Environment — session-specific, dynamic (becomes block [3])
+    const envBlock = input.system.env.join("\n")
+    if (envBlock) system.push(envBlock)
+
+    // Project instructions + user.system — optional (becomes block [4])
+    const projectBlock = [...input.system.projectInstructions, ...(input.user.system ? [input.user.system] : [])]
+      .filter(Boolean)
+      .join("\n")
+    if (projectBlock) system.push(projectBlock)
+
     const original = clone(system)
     await Plugin.trigger(
       "experimental.chat.system.transform",
@@ -89,11 +126,29 @@ export namespace LLM {
     if (system.length === 0) {
       system.push(...original)
     }
-    // rejoin to maintain 2-part structure for caching if header unchanged
-    if (system.length > 2 && system[0] === header) {
-      const rest = system.slice(1)
-      system.length = 0
-      system.push(header, rest.join("\n"))
+
+    // Assign prompt indices to session messages based on actual position in LLM prompt
+    // The final prompt is: [system blocks] + [model messages]
+    // messageIdToIndex maps session message ID -> index in model messages array
+    if (input.sessionMessages && input.messageIdToIndex) {
+      const offset = system.length
+      for (const msg of input.sessionMessages) {
+        const modelIndex = input.messageIdToIndex.get(msg.info.id)
+        if (modelIndex !== undefined) {
+          msg.info.promptIndex = offset + modelIndex
+        }
+      }
+      // Persist indices for non-synthetic messages
+      for (const msg of input.sessionMessages) {
+        if (msg.info.synthetic) continue
+        await Session.updateMessage(msg.info)
+      }
+      // Assign promptIndex to the assistant message being generated
+      // It comes right after all the input messages
+      if (input.assistantMessage) {
+        input.assistantMessage.promptIndex = offset + input.messages.length
+        await Session.updateMessage(input.assistantMessage)
+      }
     }
 
     const variant =
@@ -115,6 +170,20 @@ export namespace LLM {
       options.instructions = SystemPrompt.instructions()
     }
 
+    // For Claude models: temperature undefined when thinking enabled, 1 when disabled
+    // "adaptive" variant uses adaptive thinking (injected via fetch wrapper), so treat it as thinking enabled.
+    // We mark options._adaptiveThinking for normalizeMessages to preserve reasoning blocks.
+    const isClaude = input.model.id.toLowerCase().includes("claude")
+    const isAdaptiveThinking = input.user.variant === "adaptive"
+    if (isAdaptiveThinking) options._adaptiveThinking = true
+    const thinkingEnabled = Boolean(variant?.thinking || options?.thinking || isAdaptiveThinking)
+    const temperature = (() => {
+      if (!input.model.capabilities.temperature) return undefined
+      if (input.agent.temperature !== undefined) return input.agent.temperature
+      if (isClaude) return thinkingEnabled ? undefined : 1
+      return ProviderTransform.temperature(input.model)
+    })()
+
     const params = await Plugin.trigger(
       "chat.params",
       {
@@ -125,16 +194,14 @@ export namespace LLM {
         message: input.user,
       },
       {
-        temperature: input.model.capabilities.temperature
-          ? (input.agent.temperature ?? ProviderTransform.temperature(input.model))
-          : undefined,
+        temperature,
         topP: input.agent.topP ?? ProviderTransform.topP(input.model),
         topK: ProviderTransform.topK(input.model),
         options,
       },
     )
 
-    const { headers } = await Plugin.trigger(
+    const { headers: pluginHeaders } = await Plugin.trigger(
       "chat.headers",
       {
         sessionID: input.sessionID,
@@ -148,6 +215,22 @@ export namespace LLM {
       },
     )
 
+    // Add beta headers for Anthropic models from config
+    const headers: Record<string, string> = { ...pluginHeaders }
+    if (input.model.providerID === "anthropic" && cfg.anthropic) {
+      const modelConfig = cfg.anthropic.context?.[input.model.id]
+      // Model-level beta overrides provider-level if set (even if empty array)
+      const betaHeaders = modelConfig?.beta !== undefined ? modelConfig.beta : cfg.anthropic.beta
+      if (betaHeaders && betaHeaders.length > 0) {
+        const existing = headers["anthropic-beta"] || ""
+        const betas = new Set(existing.split(",").filter(Boolean))
+        for (const beta of betaHeaders) {
+          betas.add(beta)
+        }
+        headers["anthropic-beta"] = [...betas].join(",")
+      }
+    }
+
     const maxOutputTokens =
       isCodex || provider.id.includes("github-copilot")
         ? undefined
@@ -156,9 +239,41 @@ export namespace LLM {
             params.options,
             input.model.limit.output,
             OUTPUT_TOKEN_MAX,
+            input.model.id,
           )
 
     const tools = await resolveTools(input)
+
+    const toolEntries = Object.entries(tools)
+      .map(([id, tool]) => ({
+        id,
+        description: tool.description,
+        schema: tool.inputSchema,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+    const toolHashes = toolEntries.map((entry) => ({
+      id: entry.id,
+      hash: createHash("sha256")
+        .update(JSON.stringify({ description: entry.description, schema: entry.schema }))
+        .digest("hex"),
+    }))
+    const system0 = system[0] ?? ""
+    const toolsHash = createHash("sha256").update(JSON.stringify(toolEntries)).digest("hex")
+    const system0Hash = createHash("sha256").update(system0).digest("hex")
+    const prefixHash = createHash("sha256")
+      .update(JSON.stringify({ tools: toolEntries, system0 }))
+      .digest("hex")
+    l.info("CACHE_PREFIX_HASH_V1", {
+      toolsHash,
+      system0Hash,
+      prefixHash,
+      toolCount: toolEntries.length,
+      system0Length: system0.length,
+    })
+    l.info("CACHE_TOOL_HASHES_V1", {
+      toolCount: toolEntries.length,
+      tools: toolHashes,
+    })
 
     // LiteLLM and some Anthropic proxies require the tools parameter to be present
     // when message history contains tool calls, even if no tools are being used.
@@ -180,7 +295,21 @@ export namespace LLM {
       })
     }
 
-    return streamText({
+    // Build the final messages array for the LLM
+    const finalMessages: ModelMessage[] = [
+      ...system.map(
+        (x): ModelMessage => ({
+          role: "system",
+          content: x,
+        }),
+      ),
+      ...input.messages,
+    ]
+
+    // Calculate cache marker indices based on the final messages
+    const cacheMarkers = ProviderTransform.cacheMarkerIndices(finalMessages, input.cacheProbeIndex)
+
+    const stream = streamText({
       onError(error) {
         l.error("stream error", {
           error,
@@ -232,15 +361,7 @@ export namespace LLM {
         ...headers,
       },
       maxRetries: input.retries ?? 0,
-      messages: [
-        ...system.map(
-          (x): ModelMessage => ({
-            role: "system",
-            content: x,
-          }),
-        ),
-        ...input.messages,
-      ],
+      messages: finalMessages,
       model: wrapLanguageModel({
         model: language,
         middleware: [
@@ -248,7 +369,12 @@ export namespace LLM {
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options)
+                args.params.prompt = ProviderTransform.message(
+                  args.params.prompt,
+                  input.model,
+                  options,
+                  input.cacheProbeIndex,
+                )
               }
               return args.params
             },
@@ -263,12 +389,18 @@ export namespace LLM {
         },
       },
     })
+
+    return { stream, cacheMarkers, systemBlockCount: system.length }
   }
 
-  async function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "user">) {
-    const disabled = PermissionNext.disabled(Object.keys(input.tools), input.agent.permission)
+  async function resolveTools(input: Pick<StreamInput, "tools" | "user">) {
+    // NOTE: We intentionally do NOT filter tools based on agent permissions here.
+    // Tool schemas must remain stable across mode switches (plan <-> build) for
+    // Anthropic prompt caching to work. Permissions are enforced at execution time
+    // by tools that call PermissionNext.ask(); a denied tool that never asks is not
+    // blocked here.
     for (const tool of Object.keys(input.tools)) {
-      if (input.user.tools?.[tool] === false || disabled.has(tool)) {
+      if (input.user.tools?.[tool] === false) {
         delete input.tools[tool]
       }
     }

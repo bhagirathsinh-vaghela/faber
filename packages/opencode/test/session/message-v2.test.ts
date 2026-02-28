@@ -121,7 +121,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "hello" }],
@@ -146,7 +146,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([])
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([])
   })
 
   test("includes synthetic text parts", () => {
@@ -177,7 +177,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "hello" }],
@@ -244,7 +244,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "user",
         content: [
@@ -314,7 +314,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -397,7 +397,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -465,7 +465,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -532,7 +532,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -585,7 +585,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([])
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([])
   })
 
   test("includes aborted assistant messages only when they have non-step-start/reasoning content", () => {
@@ -628,7 +628,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "assistant",
         content: [
@@ -664,7 +664,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([
       {
         role: "assistant",
         content: [{ type: "text", text: "first" }],
@@ -691,7 +691,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(MessageV2.toModelMessages(input, model)).toStrictEqual([])
+    expect(MessageV2.toModelMessages(input, model).messages).toStrictEqual([])
   })
 
   test("converts pending/running tool calls to error results to prevent dangling tool_use", () => {
@@ -740,7 +740,7 @@ describe("session.message-v2.toModelMessage", () => {
 
     const result = MessageV2.toModelMessages(input, model)
 
-    expect(result).toStrictEqual([
+    expect(result.messages).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -782,5 +782,154 @@ describe("session.message-v2.toModelMessage", () => {
         ],
       },
     ])
+  })
+
+  test("returns correct idToIndex mapping", () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-user-1"),
+        parts: [
+          {
+            ...basePart("m-user-1", "p1"),
+            type: "text",
+            text: "first",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m-assistant-1", "m-user-1"),
+        parts: [
+          {
+            ...basePart("m-assistant-1", "p2"),
+            type: "text",
+            text: "response 1",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        // This message should be skipped (empty parts)
+        info: userInfo("m-user-empty"),
+        parts: [],
+      },
+      {
+        info: userInfo("m-user-2"),
+        parts: [
+          {
+            ...basePart("m-user-2", "p3"),
+            type: "text",
+            text: "second",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    const result = MessageV2.toModelMessages(input, model)
+
+    // Should have 3 messages (skipped the empty one)
+    expect(result.messages).toHaveLength(3)
+
+    // Check idToIndex mapping
+    expect(result.idToIndex.get("m-user-1")).toBe(0)
+    expect(result.idToIndex.get("m-assistant-1")).toBe(1)
+    expect(result.idToIndex.get("m-user-empty")).toBeUndefined() // skipped
+    expect(result.idToIndex.get("m-user-2")).toBe(2)
+  })
+
+  test("idToIndex accounts for tool block offsets from convertToModelMessages", () => {
+    // convertToModelMessages adds a 'tool' role message after each assistant with tool outputs.
+    // This shifts subsequent indices by 1 for each such assistant.
+    // Example: user(0), assistant+tool(1), [tool block inserted at 2], user(3)
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-user-1"),
+        parts: [{ ...basePart("m-user-1", "p1"), type: "text", text: "hello" }] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m-assistant-1", "m-user-1"),
+        parts: [
+          { ...basePart("m-assistant-1", "p2"), type: "text", text: "let me help" },
+          {
+            ...basePart("m-assistant-1", "p3"),
+            type: "tool",
+            tool: "bash",
+            callID: "tc1",
+            state: { status: "completed", input: { command: "ls" }, output: "file.txt", time: {}, metadata: {} },
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: userInfo("m-user-2"),
+        parts: [{ ...basePart("m-user-2", "p4"), type: "text", text: "thanks" }] as MessageV2.Part[],
+      },
+    ]
+
+    const result = MessageV2.toModelMessages(input, model)
+
+    // convertToModelMessages produces: user(0), assistant(1), tool(2), user(3)
+    expect(result.messages).toHaveLength(4)
+    expect(result.messages[0].role).toBe("user")
+    expect(result.messages[1].role).toBe("assistant")
+    expect(result.messages[2].role).toBe("tool")
+    expect(result.messages[3].role).toBe("user")
+
+    // idToIndex should account for the inserted tool block
+    expect(result.idToIndex.get("m-user-1")).toBe(0)
+    expect(result.idToIndex.get("m-assistant-1")).toBe(1)
+    expect(result.idToIndex.get("m-user-2")).toBe(3) // shifted by 1 due to tool block
+  })
+
+  test("idToIndex with multiple assistant-with-tools messages", () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-user-1"),
+        parts: [{ ...basePart("m-user-1", "p1"), type: "text", text: "first" }] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m-assistant-1", "m-user-1"),
+        parts: [
+          { ...basePart("m-assistant-1", "p2"), type: "text", text: "response 1" },
+          {
+            ...basePart("m-assistant-1", "p3"),
+            type: "tool",
+            tool: "bash",
+            callID: "tc1",
+            state: { status: "completed", input: { command: "ls" }, output: "out1", time: {}, metadata: {} },
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: userInfo("m-user-2"),
+        parts: [{ ...basePart("m-user-2", "p4"), type: "text", text: "second" }] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m-assistant-2", "m-user-2"),
+        parts: [
+          { ...basePart("m-assistant-2", "p5"), type: "text", text: "response 2" },
+          {
+            ...basePart("m-assistant-2", "p6"),
+            type: "tool",
+            tool: "read",
+            callID: "tc2",
+            state: { status: "completed", input: { path: "x" }, output: "out2", time: {}, metadata: {} },
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: userInfo("m-user-3"),
+        parts: [{ ...basePart("m-user-3", "p7"), type: "text", text: "third" }] as MessageV2.Part[],
+      },
+    ]
+
+    const result = MessageV2.toModelMessages(input, model)
+
+    // Structure: user(0), assistant(1), tool(2), user(3), assistant(4), tool(5), user(6)
+    expect(result.messages).toHaveLength(7)
+
+    // Verify indices account for both tool block insertions
+    expect(result.idToIndex.get("m-user-1")).toBe(0)
+    expect(result.idToIndex.get("m-assistant-1")).toBe(1)
+    expect(result.idToIndex.get("m-user-2")).toBe(3) // +1 offset from first tool block
+    expect(result.idToIndex.get("m-assistant-2")).toBe(4) // +1 offset
+    expect(result.idToIndex.get("m-user-3")).toBe(6) // +2 offset from both tool blocks
   })
 })

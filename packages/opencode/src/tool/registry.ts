@@ -8,6 +8,7 @@ import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { TodoWriteTool, TodoReadTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
+import { WebFetchAnthropicTool } from "./webfetch-anthropic"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
@@ -20,6 +21,7 @@ import { type ToolContext as PluginToolContext, type ToolDefinition } from "@ope
 import z from "zod"
 import { Plugin } from "../plugin"
 import { WebSearchTool } from "./websearch"
+import { WebSearchAnthropicTool } from "./websearch-anthropic"
 import { CodeSearchTool } from "./codesearch"
 import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
@@ -27,6 +29,7 @@ import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
 import { PlanExitTool, PlanEnterTool } from "./plan"
 import { ApplyPatchTool } from "./apply_patch"
+import { Auth } from "../auth"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -94,9 +97,21 @@ export namespace ToolRegistry {
     custom.push(tool)
   }
 
-  async function all(): Promise<Tool.Info[]> {
+  // Native Anthropic web search calls the API with the provider's key, so OAuth sessions
+  // (no API key) keep the regular web search tool
+  async function nativeSearch(providerID?: string) {
+    if (providerID !== "anthropic") return false
+    return (await Auth.get(providerID))?.type !== "oauth"
+  }
+
+  async function all(providerID?: string): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
     const config = await Config.get()
+
+    // Use Anthropic-optimized tools (prompt-based webfetch, native server tool websearch)
+    // when using the Anthropic provider directly
+    const isAnthropic = providerID === "anthropic"
+    const anthropicSearch = await nativeSearch(providerID)
 
     return [
       InvalidTool,
@@ -108,10 +123,10 @@ export namespace ToolRegistry {
       EditTool,
       WriteTool,
       TaskTool,
-      WebFetchTool,
+      isAnthropic ? WebFetchAnthropicTool : WebFetchTool,
       TodoWriteTool,
       // TodoReadTool,
-      WebSearchTool,
+      anthropicSearch ? WebSearchAnthropicTool : WebSearchTool,
       CodeSearchTool,
       SkillTool,
       ApplyPatchTool,
@@ -133,12 +148,17 @@ export namespace ToolRegistry {
     },
     agent?: Agent.Info,
   ) {
-    const tools = await all()
+    const tools = await all(model.providerID)
+    const anthropicSearch = await nativeSearch(model.providerID)
     const result = await Promise.all(
       tools
         .filter((t) => {
-          // Enable websearch/codesearch for zen users OR via enable flag
-          if (t.id === "codesearch" || t.id === "websearch") {
+          // Anthropic websearch uses the native server tool (Anthropic with an API key)
+          // Exa websearch/codesearch only for opencode provider or via flag
+          if (t.id === "websearch") {
+            return anthropicSearch || model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
+          }
+          if (t.id === "codesearch") {
             return model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
           }
 

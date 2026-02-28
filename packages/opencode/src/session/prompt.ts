@@ -938,7 +938,7 @@ export namespace SessionPrompt {
       agent: agent.name,
       model,
       system: input.system,
-      variant: input.variant,
+      variant: input.variant ?? agent.variant,
     }
     using _ = defer(() => InstructionPrompt.clear(info.id))
 

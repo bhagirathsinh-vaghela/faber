@@ -893,6 +893,10 @@ export type Session = {
     snapshot?: string
     diff?: string
   }
+  ping?: {
+    count: number
+    time: number
+  }
   cacheMarkers?: Array<number>
   systemBlockCount?: number
   cacheProbeIndex?: number

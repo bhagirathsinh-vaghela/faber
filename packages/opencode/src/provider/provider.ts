@@ -591,14 +591,21 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
-  function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
+  type AnthropicContextConfig = Record<string, { model?: string; limit?: number; beta?: string[] }>
+
+  function fromModelsDevModel(
+    provider: ModelsDev.Provider,
+    model: ModelsDev.Model,
+    anthropicContext?: AnthropicContextConfig,
+  ): Model {
+    const contextConfig = provider.id === "anthropic" ? anthropicContext?.[model.id] : undefined
     const m: Model = {
       id: model.id,
       providerID: provider.id,
       name: model.name,
       family: model.family,
       api: {
-        id: model.id,
+        id: contextConfig?.model ?? model.id,
         url: provider.api!,
         npm: model.provider?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible",
       },
@@ -624,7 +631,7 @@ export namespace Provider {
           : undefined,
       },
       limit: {
-        context: model.limit.context,
+        context: contextConfig?.limit ?? model.limit.context,
         input: model.limit.input,
         output: model.limit.output,
       },
@@ -658,14 +665,14 @@ export namespace Provider {
     return m
   }
 
-  export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
+  export function fromModelsDevProvider(provider: ModelsDev.Provider, anthropicContext?: AnthropicContextConfig): Info {
     return {
       id: provider.id,
       source: "custom",
       name: provider.name,
       env: provider.env ?? [],
       options: {},
-      models: mapValues(provider.models, (model) => fromModelsDevModel(provider, model)),
+      models: mapValues(provider.models, (model) => fromModelsDevModel(provider, model, anthropicContext)),
     }
   }
 
@@ -673,7 +680,8 @@ export namespace Provider {
     using _ = log.time("state")
     const config = await Config.get()
     const modelsDev = await ModelsDev.get()
-    const database = mapValues(modelsDev, fromModelsDevProvider)
+    const anthropicContext = config.anthropic?.context
+    const database = mapValues(modelsDev, (provider) => fromModelsDevProvider(provider, anthropicContext))
 
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : null
@@ -986,10 +994,19 @@ export namespace Provider {
         const opts = init ?? {}
 
         // Merge configured headers into request headers
-        opts.headers = {
-          ...(typeof opts.headers === "object" ? opts.headers : {}),
-          ...options["headers"],
+        // SDK-level headers (options["headers"]) are defaults; request-level headers (opts.headers) take precedence.
+        // For anthropic-beta, merge both comma-separated lists so SDK betas and request betas are both sent.
+        const reqHeaders = typeof opts.headers === "object" ? opts.headers : {}
+        const sdkHeaders = options["headers"] ?? {}
+        const mergedHeaders = { ...sdkHeaders, ...reqHeaders }
+        if (sdkHeaders["anthropic-beta"] && reqHeaders["anthropic-beta"]) {
+          const betas = new Set([
+            ...sdkHeaders["anthropic-beta"].split(",").filter(Boolean),
+            ...reqHeaders["anthropic-beta"].split(",").filter(Boolean),
+          ])
+          mergedHeaders["anthropic-beta"] = [...betas].join(",")
         }
+        opts.headers = mergedHeaders
 
         if (options["timeout"] !== undefined && options["timeout"] !== null) {
           const signals: AbortSignal[] = []
@@ -999,6 +1016,17 @@ export namespace Provider {
           const combined = signals.length > 1 ? AbortSignal.any(signals) : signals[0]
 
           opts.signal = combined
+        }
+
+        // Anthropic adaptive thinking: the @ai-sdk/anthropic SDK only supports thinking.type="enabled".
+        // When the "adaptive" variant is selected, the SDK omits the thinking field entirely because
+        // type="adaptive" doesn't match its check. We inject it into the request body here.
+        if (model.api.npm === "@ai-sdk/anthropic" && opts.body && opts.method === "POST") {
+          const body = JSON.parse(opts.body as string)
+          if (!body.thinking && mergedHeaders["anthropic-beta"]?.includes("adaptive-thinking")) {
+            body.thinking = { type: "adaptive" }
+            opts.body = JSON.stringify(body)
+          }
         }
 
         // Strip openai itemId metadata following what codex does
@@ -1061,6 +1089,30 @@ export namespace Provider {
 
   export async function getProvider(providerID: string) {
     return state().then((s) => s.providers[providerID])
+  }
+
+  /** Get the SDK connection options (baseURL, apiKey, headers, fetch) for making direct API calls.
+   *  The returned fetch function includes any auth-plugin fetch wrapper and other provider-specific logic. */
+  export async function getSDKOptions(model: Model): Promise<{
+    baseURL: string
+    apiKey: string
+    headers: Record<string, string>
+    fetch: typeof globalThis.fetch
+  }> {
+    const s = await state()
+    const provider = s.providers[model.providerID]
+    const options = { ...provider.options }
+    if (!options["baseURL"]) options["baseURL"] = model.api.url
+    if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
+    if (model.headers) {
+      options["headers"] = { ...options["headers"], ...model.headers }
+    }
+    return {
+      baseURL: options["baseURL"] as string,
+      apiKey: options["apiKey"] as string,
+      headers: (options["headers"] as Record<string, string>) ?? {},
+      fetch: (options["fetch"] as typeof globalThis.fetch) ?? globalThis.fetch,
+    }
   }
 
   export async function getModel(providerID: string, modelID: string) {
