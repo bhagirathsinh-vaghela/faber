@@ -12,6 +12,7 @@ import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { trimDiff } from "./edit"
 import { assertExternalDirectory } from "./external-directory"
+import { applyLineEnding, detectFileProperties, encodeContent } from "../util/encoding"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
@@ -28,10 +29,20 @@ export const WriteTool = Tool.define("write", {
 
     const file = Bun.file(filepath)
     const exists = await file.exists()
-    const contentOld = exists ? await file.text() : ""
-    if (exists) await FileTime.assert(ctx.sessionID, filepath)
+    let contentOld = ""
+    let encoding: "utf8" | "utf16le" = "utf8"
+    let ending: "CRLF" | "LF" = "LF"
+    if (exists) {
+      const props = await detectFileProperties(filepath)
+      contentOld = props.text
+      encoding = props.encoding
+      ending = props.ending
+      await FileTime.assert(ctx.sessionID, filepath)
+    }
 
-    const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
+    // In a CRLF file the write re-applies CRLF, so compare LF text: CRLF vs LF is not a change there
+    const lf = (text: string) => (ending === "CRLF" ? text.replaceAll("\r\n", "\n") : text)
+    const diff = trimDiff(createTwoFilesPatch(filepath, filepath, lf(contentOld), lf(params.content)))
     await ctx.ask({
       permission: "edit",
       patterns: [path.relative(Instance.worktree, filepath)],
@@ -42,7 +53,7 @@ export const WriteTool = Tool.define("write", {
       },
     })
 
-    await Bun.write(filepath, params.content)
+    await Bun.write(filepath, encodeContent(applyLineEnding(params.content, ending), encoding))
     await Bus.publish(File.Event.Edited, {
       file: filepath,
     })
