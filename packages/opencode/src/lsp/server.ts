@@ -110,6 +110,17 @@ export namespace LSPServer {
           tsserver: {
             path: tsserver,
           },
+          // Performance optimizations for LSP usage
+          preferences: {
+            includePackageJsonAutoImports: "off",
+            includeCompletionsForModuleExports: false,
+            includeCompletionsForImportStatements: false,
+            allowIncompleteCompletions: true,
+          },
+          // Reduce analysis scope for faster startup
+          disableAutomaticTypingAcquisition: true,
+          // Focus on semantic operations needed for LSP
+          maxTsServerMemory: 4096, // 4GB limit
         },
       }
     },
