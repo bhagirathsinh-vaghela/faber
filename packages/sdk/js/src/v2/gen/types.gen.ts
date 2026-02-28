@@ -203,6 +203,10 @@ export type AssistantMessage = {
   }
   finish?: string
   variant?: string
+  sessionCost?: {
+    input: number
+    output: number
+  }
 }
 
 export type Message = UserMessage | AssistantMessage
@@ -499,6 +503,21 @@ export type EventMessagePartRemoved = {
   }
 }
 
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
+  }
+}
+
 export type PermissionRequest = {
   id: string
   sessionID: string
@@ -632,14 +651,6 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
   }
 }
 
@@ -897,6 +908,17 @@ export type Session = {
     count: number
     time: number
   }
+  tokens?: {
+    input: number
+    cacheRead: number
+    cacheWrite: number
+    output: number
+    reasoning: number
+  }
+  total?: {
+    input: number
+    output: number
+  }
   cacheMarkers?: Array<number>
   systemBlockCount?: number
   cacheProbeIndex?: number
@@ -936,13 +958,6 @@ export type EventSessionError = {
   properties: {
     sessionID?: string
     error?: ProviderAuthError | UnknownError | MessageOutputLengthError | MessageAbortedError | ApiError
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
   }
 }
 
@@ -1014,6 +1029,8 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventFileWatcherUpdated
+  | EventVcsBranchUpdated
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionStatus
@@ -1022,7 +1039,6 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventSessionCompacted
-  | EventFileWatcherUpdated
   | EventBackgroundTaskCreated
   | EventBackgroundTaskProgress
   | EventBackgroundTaskCompleted
@@ -1041,7 +1057,6 @@ export type Event =
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
-  | EventVcsBranchUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
@@ -1462,6 +1477,10 @@ export type KeybindsConfig = {
    * Toggle console
    */
   console_toggle?: string
+  /**
+   * Toggle cache markers in statusline
+   */
+  cache_markers_toggle?: string
   /**
    * Toggle tips on home screen
    */

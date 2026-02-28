@@ -1525,19 +1525,8 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
     return { total, cached, newTokens, contextLimit, percentage }
   })
 
-  // Session totals - sum tokens across all assistant messages up to this one
   const sessionTotals = createMemo(() => {
-    const msgs = messages()
-    let inputTotal = 0
-    let outputTotal = 0
-    for (const m of msgs) {
-      if (m.role === "assistant") {
-        inputTotal += m.tokens.input + m.tokens.cache.write
-        outputTotal += m.tokens.output + m.tokens.reasoning
-      }
-      if (m.id === props.message.id) break // Stop at current message
-    }
-    return { input: inputTotal, output: outputTotal }
+    return props.message.sessionCost ?? { input: 0, output: 0 }
   })
 
   // Cache expiry - 5 minutes from message completion

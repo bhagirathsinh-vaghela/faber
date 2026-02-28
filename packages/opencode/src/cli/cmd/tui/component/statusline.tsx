@@ -1,3 +1,16 @@
+// Statusline component naming guide
+//
+// Shared components (used in both input area and assistant message snapshots):
+//   ModelHeader     — "header":   agent · model · provider · variant [· duration] [· interrupted]
+//   StatuslineContent — renders the lines below, controlled by bold + compact props:
+//     "directory"   — 📁 path:branch                    (input only, compact skips this)
+//     "markers"     — 🔖 Cache: #0-19                   (input only, toggle via cache_markers_toggle keybind)
+//     "tokens"      — ⏳ HH:MM:SS │ 🧠 [bar] N/M │ 📦 cached · ✨ new │ 💬 ↑in ↓out [│ 📁 path]
+//                     compact mode: no cache expiry, directory appended at end
+//
+// Input area: ModelHeader(bold=true) + Statusline wrapper (bold=true, full layout)
+// Snapshot:   ModelHeader(bold=false, +duration) + StatuslineContent(bold=false, compact=true)
+
 import { createMemo, createSignal, Show } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { useSync } from "@tui/context/sync"
@@ -47,6 +60,7 @@ function formatRanges(ranges: Array<{ start: number; end: number }>): string {
 
 export type StatuslineContentProps = {
   bold: boolean
+  dimmed?: boolean
   compact?: boolean
   directory: string
   cacheRanges?: Array<{ start: number; end: number }> | null
@@ -58,6 +72,7 @@ export type StatuslineContentProps = {
 
 export function ModelHeader(props: {
   bold: boolean
+  dimmed?: boolean
   agent: string
   agentColor: RGBA
   model: string
@@ -69,22 +84,23 @@ export function ModelHeader(props: {
 }) {
   const { theme } = useTheme()
   const b = () => props.bold
+  const d = () => props.dimmed ? theme.textMuted : undefined
 
   return (
     <box flexDirection="row" gap={1} flexWrap="wrap">
       <text>
-        <span style={{ fg: props.agentColor, bold: b() }}>{props.agent}</span>
+        <span style={{ fg: d() ?? props.agentColor, bold: b() }}>{props.agent}</span>
       </text>
       <Show when={props.model}>
         <text fg={theme.textMuted}>·</text>
         <text flexShrink={0}>
-          <span style={{ fg: props.modelColor ?? theme.textMuted, bold: b() }}>{props.model}</span>
+          <span style={{ fg: d() ?? props.modelColor ?? theme.textMuted, bold: b() }}>{props.model}</span>
         </text>
       </Show>
       <Show when={props.provider}>
         <text fg={theme.textMuted}>·</text>
         <text>
-          <span style={{ fg: theme.textMuted, bold: b() }}>{props.provider}</span>
+          <span style={{ fg: d() ?? theme.textMuted, bold: b() }}>{props.provider}</span>
         </text>
       </Show>
       <Show when={props.variant}>
@@ -92,7 +108,7 @@ export function ModelHeader(props: {
           <>
             <text fg={theme.textMuted}>·</text>
             <text>
-              <span style={{ fg: theme.warning, bold: b() }}>{variant()}</span>
+              <span style={{ fg: d() ?? theme.warning, bold: b() }}>{variant()}</span>
             </text>
           </>
         )}
@@ -117,17 +133,18 @@ export function ModelHeader(props: {
   )
 }
 
-function ProgressBar(props: { percent: number; width?: number }) {
+function ProgressBar(props: { percent: number; width?: number; dimmed?: boolean }) {
   const { theme } = useTheme()
   const width = () => props.width ?? 10
   const filled = () => Math.min(Math.round((props.percent / 100) * width()), width())
+  const m = () => theme.textMuted
 
   return (
     <text>
-      <span style={{ fg: theme.textMuted }}>[</span>
-      <span style={{ fg: utilizationColor(props.percent) }}>{"\u2593".repeat(filled())}</span>
-      <span style={{ fg: theme.textMuted }}>{"\u2591".repeat(width() - filled())}</span>
-      <span style={{ fg: theme.textMuted }}>]</span>
+      <span style={{ fg: m() }}>[</span>
+      <span style={{ fg: props.dimmed ? m() : utilizationColor(props.percent) }}>{"\u2593".repeat(filled())}</span>
+      <span style={{ fg: m() }}>{"\u2591".repeat(width() - filled())}</span>
+      <span style={{ fg: m() }}>]</span>
     </text>
   )
 }
@@ -135,6 +152,8 @@ function ProgressBar(props: { percent: number; width?: number }) {
 export function StatuslineContent(props: StatuslineContentProps) {
   const { theme } = useTheme()
   const b = () => props.bold
+  const m = () => theme.textMuted
+  const c = (color: RGBA) => props.dimmed ? m() : color
 
   return (
     <box flexDirection="column" gap={0}>
@@ -142,8 +161,8 @@ export function StatuslineContent(props: StatuslineContentProps) {
       <Show when={!props.compact}>
         <box flexDirection="row">
           <text>
-            <span style={{ fg: theme.textMuted }}>📁</span>{" "}
-            <span style={{ fg: theme.primary, bold: b() }}>{props.directory}</span>
+            <span style={{ fg: m() }}>📁</span>{" "}
+            <span style={{ fg: c(theme.primary), bold: b() }}>{props.directory}</span>
           </text>
         </box>
       </Show>
@@ -154,8 +173,8 @@ export function StatuslineContent(props: StatuslineContentProps) {
           <Show when={ranges().length}>
             <box flexDirection="row">
               <text>
-                <span style={{ fg: theme.textMuted }}>🔖</span> <span style={{ fg: theme.textMuted }}>Cache: </span>
-                <span style={{ fg: UTILIZATION_GREEN, bold: b() }}>{formatRanges(ranges())}</span>
+                <span style={{ fg: m() }}>🔖</span> <span style={{ fg: m(), bold: b() }}>Cache markers: </span>
+                <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatRanges(ranges())}</span>
               </text>
             </box>
           </Show>
@@ -169,36 +188,36 @@ export function StatuslineContent(props: StatuslineContentProps) {
             {/* Cache expiry (full mode only) */}
             <Show when={!props.compact}>
               <text>
-                <span style={{ fg: theme.textMuted }}>⏳</span>{" "}
-                <span style={{ fg: theme.warning, bold: b() }}>{props.cacheExpiry ?? "--"}</span>
-                <span style={{ fg: theme.textMuted }}> │ </span>
+                <span style={{ fg: m() }}>⏳</span>{" "}
+                <span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span>
+                <span style={{ fg: m() }}> │ </span>
               </text>
             </Show>
             <text>
-              <span style={{ fg: theme.textMuted }}>🧠</span>{" "}
+              <span style={{ fg: m() }}>🧠</span>{" "}
             </text>
-            <ProgressBar percent={stats().percentage} width={10} />
+            <ProgressBar percent={stats().percentage} width={10} dimmed={props.dimmed} />
             <text>
               {" "}
-              <span style={{ fg: utilizationColor(stats().percentage), bold: b() }}>{formatTokens(stats().total)}</span>
-              <span style={{ fg: theme.textMuted }}>/</span>
-              <span style={{ fg: theme.textMuted, bold: b() }}>{formatTokens(stats().contextLimit)}</span>
-              <span style={{ fg: theme.textMuted }}> │ </span>
-              <span style={{ fg: theme.textMuted }}>📦</span>{" "}
-              <span style={{ fg: UTILIZATION_GREEN, bold: b() }}>{formatTokens(stats().cached)}</span>
-              <span style={{ fg: theme.textMuted }}> · </span>
-              <span style={{ fg: theme.textMuted }}>✨</span>{" "}
-              <span style={{ fg: theme.warning, bold: b() }}>{formatTokens(stats().newTokens)}</span>
-              <span style={{ fg: theme.textMuted }}> │ </span>
-              <span style={{ fg: theme.textMuted }}>💬</span>{" "}
-              <span style={{ fg: theme.primary, bold: b() }}>↑{formatTokens(props.sessionTotals.input)}</span>
-              <span style={{ fg: theme.textMuted }}> </span>
-              <span style={{ fg: theme.warning, bold: b() }}>↓{formatTokens(props.sessionTotals.output)}</span>
+              <span style={{ fg: c(utilizationColor(stats().percentage)), bold: b() }}>{formatTokens(stats().total)}</span>
+              <span style={{ fg: m() }}>/</span>
+              <span style={{ fg: m(), bold: b() }}>{formatTokens(stats().contextLimit)}</span>
+              <span style={{ fg: m() }}> │ </span>
+              <span style={{ fg: m() }}>📦</span>{" "}
+              <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatTokens(stats().cached)}</span>
+              <span style={{ fg: m() }}> · </span>
+              <span style={{ fg: m() }}>✨</span>{" "}
+              <span style={{ fg: c(theme.warning), bold: b() }}>{formatTokens(stats().newTokens)}</span>
+              <span style={{ fg: m() }}> │ </span>
+              <span style={{ fg: m() }}>💬</span>{" "}
+              <span style={{ fg: c(theme.primary), bold: b() }}>↑{formatTokens(props.sessionTotals.input)}</span>
+              <span style={{ fg: m() }}> · </span>
+              <span style={{ fg: c(theme.warning), bold: b() }}>↓{formatTokens(props.sessionTotals.output)}</span>
               {/* Directory appended (compact mode only) */}
               <Show when={props.compact}>
-                <span style={{ fg: theme.textMuted }}> │ </span>
-                <span style={{ fg: theme.textMuted }}>📁</span>{" "}
-                <span style={{ fg: theme.primary, bold: b() }}>{props.directory}</span>
+                <span style={{ fg: m() }}> │ </span>
+                <span style={{ fg: m() }}>📁</span>{" "}
+                <span style={{ fg: c(theme.primary), bold: b() }}>{props.directory}</span>
               </Show>
             </text>
           </box>
@@ -210,6 +229,7 @@ export function StatuslineContent(props: StatuslineContentProps) {
 
 export type StatuslineProps = {
   sessionID?: string
+  dimmed?: boolean
 }
 
 const [showCacheMarkers, setShowCacheMarkers] = createSignal(false)
@@ -249,27 +269,20 @@ export function Statusline(props: StatuslineProps) {
   })
 
   const contextStats = createMemo(() => {
-    const last = lastAssistant()
-    if (!last) return null
-    const total = last.tokens.input + last.tokens.cache.read + last.tokens.cache.write
-    const cached = last.tokens.cache.read
-    const newTokens = last.tokens.input + last.tokens.cache.write
+    const s = session()
+    const t = s?.tokens
+    if (!t) return null
+    const total = t.input + t.cacheRead + t.cacheWrite
+    if (!total) return null
+    const cached = t.cacheRead
+    const newTokens = t.input + t.cacheWrite
     const contextLimit = modelInfo()?.limit.context ?? 200000
     const percentage = Math.round((total / contextLimit) * 100)
     return { total, cached, newTokens, contextLimit, percentage }
   })
 
   const sessionTotals = createMemo(() => {
-    const msgs = messages()
-    let inputTotal = 0
-    let outputTotal = 0
-    for (const m of msgs) {
-      if (m.role === "assistant") {
-        inputTotal += m.tokens.input + m.tokens.cache.write
-        outputTotal += m.tokens.output + m.tokens.reasoning
-      }
-    }
-    return { input: inputTotal, output: outputTotal }
+    return session()?.total ?? { input: 0, output: 0 }
   })
 
   const cacheRanges = createMemo(() => {
@@ -282,6 +295,7 @@ export function Statusline(props: StatuslineProps) {
   return (
     <StatuslineContent
       bold={true}
+      dimmed={props.dimmed}
       directory={directory()}
       cacheRanges={cacheRanges()}
       showCacheMarkers={showCacheMarkers()}

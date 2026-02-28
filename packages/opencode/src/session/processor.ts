@@ -250,6 +250,15 @@ export namespace SessionProcessor {
                   input.assistantMessage.finish = value.finishReason
                   input.assistantMessage.cost += usage.cost
                   input.assistantMessage.tokens = usage.tokens
+                  await Session.update(input.sessionID, (draft) => {
+                    draft.tokens.input = usage.tokens.input
+                    draft.tokens.cacheRead = usage.tokens.cache.read
+                    draft.tokens.cacheWrite = usage.tokens.cache.write
+                    draft.tokens.output = usage.tokens.output
+                    draft.tokens.reasoning = usage.tokens.reasoning
+                    draft.total.input += usage.tokens.input + usage.tokens.cache.write
+                    draft.total.output += usage.tokens.output + usage.tokens.reasoning
+                  })
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     reason: value.finishReason,
@@ -402,6 +411,8 @@ export namespace SessionProcessor {
             }
           }
           input.assistantMessage.time.completed = Date.now()
+          const completed = await Session.get(input.sessionID)
+          input.assistantMessage.sessionCost = completed.total
           await Session.updateMessage(input.assistantMessage)
           if (needsCompaction) return "compact"
           if (blocked) return "stop"

@@ -92,6 +92,21 @@ export namespace Session {
           time: z.number(),
         })
         .optional(),
+      tokens: z
+        .object({
+          input: z.number(),
+          cacheRead: z.number(),
+          cacheWrite: z.number(),
+          output: z.number(),
+          reasoning: z.number(),
+        })
+        .default({ input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 }),
+      total: z
+        .object({
+          input: z.number(),
+          output: z.number(),
+        })
+        .default({ input: 0, output: 0 }),
       cacheMarkers: z.array(z.number()).optional(),
       systemBlockCount: z.number().optional(),
       cacheProbeIndex: z.number().optional(),
@@ -232,6 +247,8 @@ export namespace Session {
         created: Date.now(),
         updated: Date.now(),
       },
+      tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
+      total: { input: 0, output: 0 },
     }
     log.info("created", result)
     await Storage.write(["session", Instance.project.id, result.id], result)

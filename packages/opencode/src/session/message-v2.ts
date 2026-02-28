@@ -403,6 +403,12 @@ export namespace MessageV2 {
     }),
     finish: z.string().optional(),
     variant: z.string().optional(),
+    sessionCost: z
+      .object({
+        input: z.number(),
+        output: z.number(),
+      })
+      .optional(),
   }).meta({
     ref: "AssistantMessage",
   })
