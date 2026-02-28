@@ -9,6 +9,7 @@ import { iife } from "@/util/iife"
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const skills = await Skill.all()
+  skills.sort((a, b) => a.name.localeCompare(b.name))
 
   // Filter skills by agent permissions if agent provided
   const agent = ctx?.agent
@@ -30,6 +31,8 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           "The skill will inject detailed instructions, workflows, and access to bundled resources (scripts, references, templates) into the conversation context.",
           "",
           'Tool output includes a `<skill_content name="...">` block with the loaded content.',
+          "",
+          "IMPORTANT: When the user's message contains `[USE-SKILL:skill-name]` markers, you MUST invoke this tool for each referenced skill BEFORE responding to the user's request. Load all marked skills first, then proceed with the task.",
           "",
           "The following skills provide specialized sets of instructions for particular tasks",
           "Invoke this tool to load a skill when a task matches one of the available skills listed below:",

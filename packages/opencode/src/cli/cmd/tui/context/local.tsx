@@ -371,10 +371,61 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       },
     }
 
+    const skill = iife(() => {
+      const [skillStore, setSkillStore] = createStore<{
+        ready: boolean
+        favorite: string[]
+      }>({
+        ready: false,
+        favorite: [],
+      })
+
+      const file = Bun.file(path.join(Global.Path.state, "skill.json"))
+      const state = { pending: false }
+
+      function save() {
+        if (!skillStore.ready) {
+          state.pending = true
+          return
+        }
+        state.pending = false
+        Bun.write(file, JSON.stringify({ favorite: skillStore.favorite }))
+      }
+
+      file
+        .json()
+        .then((x) => {
+          if (Array.isArray(x.favorite)) setSkillStore("favorite", x.favorite)
+        })
+        .catch(() => {})
+        .finally(() => {
+          setSkillStore("ready", true)
+          if (state.pending) save()
+        })
+
+      return {
+        favorite() {
+          return skillStore.favorite
+        },
+        isFavorite(name: string) {
+          return skillStore.favorite.includes(name)
+        },
+        toggleFavorite(name: string) {
+          batch(() => {
+            const exists = skillStore.favorite.includes(name)
+            const next = exists ? skillStore.favorite.filter((x) => x !== name) : [name, ...skillStore.favorite]
+            setSkillStore("favorite", next)
+            save()
+          })
+        },
+      }
+    })
+
     const result = {
       model,
       agent,
       mcp,
+      skill,
     }
     return result
   },

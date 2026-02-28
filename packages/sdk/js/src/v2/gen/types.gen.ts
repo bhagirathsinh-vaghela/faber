@@ -230,6 +230,14 @@ export type TextPart = {
   text: string
   synthetic?: boolean
   ignored?: boolean
+  backgroundTaskResult?: {
+    taskId: string
+    type: "subagent" | "shell"
+    description: string
+    status: "completed" | "failed"
+    agent?: string
+    duration: number
+  }
   time?: {
     start: number
     end?: number
@@ -635,6 +643,110 @@ export type EventFileWatcherUpdated = {
   }
 }
 
+export type BackgroundTask = {
+  id: string
+  parentSessionID: string
+  type: "subagent" | "shell"
+  status: "running" | "completed" | "failed" | "cancelled"
+  description: string
+  time: {
+    created: number
+    completed?: number
+  }
+  progress?: {
+    toolCount: number
+    tokens: {
+      input: number
+      output: number
+    }
+    currentActivity?: string
+    lastUpdate: number
+  }
+  subagent?: {
+    sessionID: string
+    agent: string
+    prompt: string
+    model: {
+      providerID: string
+      modelID: string
+    }
+  }
+  shell?: {
+    command: string
+    workdir?: string
+    timeout?: number
+  }
+  result?: {
+    output: string
+    error?: string
+    exitCode?: number
+  }
+}
+
+export type EventBackgroundTaskCreated = {
+  type: "background.task.created"
+  properties: {
+    task: BackgroundTask
+  }
+}
+
+export type EventBackgroundTaskProgress = {
+  type: "background.task.progress"
+  properties: {
+    taskId: string
+    parentSessionID: string
+    progress: {
+      toolCount: number
+      tokens: {
+        input: number
+        output: number
+      }
+      currentActivity?: string
+      lastUpdate: number
+    }
+  }
+}
+
+export type EventBackgroundTaskCompleted = {
+  type: "background.task.completed"
+  properties: {
+    taskId: string
+    parentSessionID: string
+    status: "completed" | "failed" | "cancelled"
+    result?: {
+      output: string
+      error?: string
+      exitCode?: number
+    }
+  }
+}
+
+export type EventBackgroundTaskResultPending = {
+  type: "background.task.result_pending"
+  properties: {
+    sessionID: string
+    pending: {
+      taskId: string
+      parentSessionID: string
+      type: "subagent" | "shell"
+      description: string
+      agent?: string
+      output: string
+      error?: string
+      completedAt: number
+      duration: number
+    }
+  }
+}
+
+export type EventBackgroundTaskAutoInjectChanged = {
+  type: "background.task.auto_inject_changed"
+  properties: {
+    sessionID: string
+    autoInject: boolean
+  }
+}
+
 export type Todo = {
   /**
    * Brief description of the task
@@ -906,6 +1018,11 @@ export type Event =
   | EventQuestionRejected
   | EventSessionCompacted
   | EventFileWatcherUpdated
+  | EventBackgroundTaskCreated
+  | EventBackgroundTaskProgress
+  | EventBackgroundTaskCompleted
+  | EventBackgroundTaskResultPending
+  | EventBackgroundTaskAutoInjectChanged
   | EventTodoUpdated
   | EventTuiPromptAppend
   | EventTuiCommandExecute
@@ -1008,6 +1125,10 @@ export type KeybindsConfig = {
    * Toggle model favorite status
    */
   model_favorite_toggle?: string
+  /**
+   * Toggle skill favorite status
+   */
+  skill_favorite_toggle?: string
   /**
    * Share current session
    */
@@ -1128,6 +1249,10 @@ export type KeybindsConfig = {
    * Previous agent
    */
   agent_cycle_reverse?: string
+  /**
+   * List skills and insert at cursor
+   */
+  skill_list?: string
   /**
    * Cycle model variants
    */
@@ -1316,6 +1441,14 @@ export type KeybindsConfig = {
    * Toggle tips on home screen
    */
   tips_toggle?: string
+  /**
+   * View pending background task results
+   */
+  background_pending?: string
+  /**
+   * Toggle auto-inject for background task results
+   */
+  background_auto_inject_toggle?: string
 }
 
 /**
@@ -1801,6 +1934,12 @@ export type Config = {
      */
     prune?: boolean
   }
+  undo?: {
+    /**
+     * Whether /undo should revert file changes along with messages (default: true)
+     */
+    revertFiles?: boolean
+  }
   experimental?: {
     disable_paste_summary?: boolean
     /**
@@ -1994,6 +2133,14 @@ export type TextPartInput = {
   text: string
   synthetic?: boolean
   ignored?: boolean
+  backgroundTaskResult?: {
+    taskId: string
+    type: "subagent" | "shell"
+    description: string
+    status: "completed" | "failed"
+    agent?: string
+    duration: number
+  }
   time?: {
     start: number
     end?: number
@@ -4486,6 +4633,335 @@ export type McpDisconnectResponses = {
 }
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
+
+export type BackgroundListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Filter by parent session ID
+     */
+    sessionID?: string
+  }
+  url: "/background"
+}
+
+export type BackgroundListResponses = {
+  /**
+   * List of background tasks
+   */
+  200: Array<BackgroundTask>
+}
+
+export type BackgroundListResponse = BackgroundListResponses[keyof BackgroundListResponses]
+
+export type BackgroundGetData = {
+  body?: never
+  path: {
+    /**
+     * Task ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/{id}"
+}
+
+export type BackgroundGetErrors = {
+  /**
+   * Task not found
+   */
+  404: unknown
+}
+
+export type BackgroundGetResponses = {
+  /**
+   * Background task
+   */
+  200: BackgroundTask
+}
+
+export type BackgroundGetResponse = BackgroundGetResponses[keyof BackgroundGetResponses]
+
+export type BackgroundCancelData = {
+  body?: never
+  path: {
+    /**
+     * Task ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/{id}/cancel"
+}
+
+export type BackgroundCancelResponses = {
+  /**
+   * Task cancelled
+   */
+  200: {
+    success: boolean
+  }
+}
+
+export type BackgroundCancelResponse = BackgroundCancelResponses[keyof BackgroundCancelResponses]
+
+export type BackgroundGetAutoInjectData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/session/{sessionID}/auto-inject"
+}
+
+export type BackgroundGetAutoInjectResponses = {
+  /**
+   * Auto-inject setting
+   */
+  200: {
+    autoInject: boolean
+  }
+}
+
+export type BackgroundGetAutoInjectResponse = BackgroundGetAutoInjectResponses[keyof BackgroundGetAutoInjectResponses]
+
+export type BackgroundSetAutoInjectData = {
+  body?: {
+    /**
+     * Enable or disable auto-inject
+     */
+    autoInject: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/session/{sessionID}/auto-inject"
+}
+
+export type BackgroundSetAutoInjectResponses = {
+  /**
+   * Auto-inject setting updated
+   */
+  200: {
+    autoInject: boolean
+  }
+}
+
+export type BackgroundSetAutoInjectResponse = BackgroundSetAutoInjectResponses[keyof BackgroundSetAutoInjectResponses]
+
+export type BackgroundToggleAutoInjectData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/session/{sessionID}/auto-inject/toggle"
+}
+
+export type BackgroundToggleAutoInjectResponses = {
+  /**
+   * Auto-inject setting toggled
+   */
+  200: {
+    autoInject: boolean
+  }
+}
+
+export type BackgroundToggleAutoInjectResponse =
+  BackgroundToggleAutoInjectResponses[keyof BackgroundToggleAutoInjectResponses]
+
+export type BackgroundGetPendingData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/session/{sessionID}/pending"
+}
+
+export type BackgroundGetPendingResponses = {
+  /**
+   * Pending results
+   */
+  200: Array<{
+    taskId: string
+    parentSessionID: string
+    type: "subagent" | "shell"
+    description: string
+    agent?: string
+    output: string
+    error?: string
+    completedAt: number
+    duration: number
+  }>
+}
+
+export type BackgroundGetPendingResponse = BackgroundGetPendingResponses[keyof BackgroundGetPendingResponses]
+
+export type BackgroundAcceptPendingData = {
+  body?: {
+    /**
+     * Trigger LLM to process the result after injection
+     */
+    triggerLLM?: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Task ID
+     */
+    taskId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/session/{sessionID}/pending/{taskId}/accept"
+}
+
+export type BackgroundAcceptPendingResponses = {
+  /**
+   * Result accepted
+   */
+  200: {
+    success: boolean
+  }
+}
+
+export type BackgroundAcceptPendingResponse = BackgroundAcceptPendingResponses[keyof BackgroundAcceptPendingResponses]
+
+export type BackgroundAcceptAllPendingData = {
+  body?: {
+    /**
+     * Trigger LLM to process the results after injection
+     */
+    triggerLLM?: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/session/{sessionID}/pending/accept-all"
+}
+
+export type BackgroundAcceptAllPendingResponses = {
+  /**
+   * All results accepted
+   */
+  200: {
+    count: number
+  }
+}
+
+export type BackgroundAcceptAllPendingResponse =
+  BackgroundAcceptAllPendingResponses[keyof BackgroundAcceptAllPendingResponses]
+
+export type BackgroundDismissPendingData = {
+  body?: {
+    /**
+     * Task IDs to dismiss (all if not specified)
+     */
+    taskIds?: Array<string>
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/background/session/{sessionID}/pending/dismiss"
+}
+
+export type BackgroundDismissPendingResponses = {
+  /**
+   * Results dismissed
+   */
+  200: {
+    count: number
+  }
+}
+
+export type BackgroundDismissPendingResponse =
+  BackgroundDismissPendingResponses[keyof BackgroundDismissPendingResponses]
+
+export type BackgroundGetAutoInjectDefaultData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/background/auto-inject/default"
+}
+
+export type BackgroundGetAutoInjectDefaultResponses = {
+  /**
+   * Auto-inject default
+   */
+  200: {
+    autoInject: boolean
+  }
+}
+
+export type BackgroundGetAutoInjectDefaultResponse =
+  BackgroundGetAutoInjectDefaultResponses[keyof BackgroundGetAutoInjectDefaultResponses]
+
+export type BackgroundToggleAutoInjectDefaultData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/background/auto-inject/default/toggle"
+}
+
+export type BackgroundToggleAutoInjectDefaultResponses = {
+  /**
+   * Auto-inject default toggled
+   */
+  200: {
+    autoInject: boolean
+  }
+}
+
+export type BackgroundToggleAutoInjectDefaultResponse =
+  BackgroundToggleAutoInjectDefaultResponses[keyof BackgroundToggleAutoInjectDefaultResponses]
 
 export type TuiAppendPromptData = {
   body?: {

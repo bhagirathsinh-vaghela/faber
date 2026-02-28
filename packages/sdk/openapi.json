@@ -4836,6 +4836,676 @@
         ]
       }
     },
+    "/background": {
+      "get": {
+        "operationId": "background.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by parent session ID"
+          }
+        ],
+        "summary": "List background tasks",
+        "description": "Get a list of all background tasks, optionally filtered by session.",
+        "responses": {
+          "200": {
+            "description": "List of background tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BackgroundTask"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/{id}": {
+      "get": {
+        "operationId": "background.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Task ID"
+          }
+        ],
+        "summary": "Get background task",
+        "description": "Get a specific background task by ID.",
+        "responses": {
+          "200": {
+            "description": "Background task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found"
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/{id}/cancel": {
+      "post": {
+        "operationId": "background.cancel",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Task ID"
+          }
+        ],
+        "summary": "Cancel background task",
+        "description": "Cancel a running background task.",
+        "responses": {
+          "200": {
+            "description": "Task cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["success"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/session/{sessionID}/auto-inject": {
+      "get": {
+        "operationId": "background.getAutoInject",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get auto-inject setting",
+        "description": "Get the auto-inject setting for a session.",
+        "responses": {
+          "200": {
+            "description": "Auto-inject setting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "autoInject": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["autoInject"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.getAutoInject({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "background.setAutoInject",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Set auto-inject setting",
+        "description": "Set the auto-inject setting for a session.",
+        "responses": {
+          "200": {
+            "description": "Auto-inject setting updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "autoInject": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["autoInject"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "autoInject": {
+                    "description": "Enable or disable auto-inject",
+                    "type": "boolean"
+                  }
+                },
+                "required": ["autoInject"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.setAutoInject({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/session/{sessionID}/auto-inject/toggle": {
+      "post": {
+        "operationId": "background.toggleAutoInject",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Toggle auto-inject setting",
+        "description": "Toggle the auto-inject setting for a session.",
+        "responses": {
+          "200": {
+            "description": "Auto-inject setting toggled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "autoInject": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["autoInject"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.toggleAutoInject({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/session/{sessionID}/pending": {
+      "get": {
+        "operationId": "background.getPending",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get pending results",
+        "description": "Get all pending background task results for a session.",
+        "responses": {
+          "200": {
+            "description": "Pending results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string"
+                      },
+                      "parentSessionID": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": ["subagent", "shell"]
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "agent": {
+                        "type": "string"
+                      },
+                      "output": {
+                        "type": "string"
+                      },
+                      "error": {
+                        "type": "string"
+                      },
+                      "completedAt": {
+                        "type": "number"
+                      },
+                      "duration": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "taskId",
+                      "parentSessionID",
+                      "type",
+                      "description",
+                      "output",
+                      "completedAt",
+                      "duration"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.getPending({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/session/{sessionID}/pending/{taskId}/accept": {
+      "post": {
+        "operationId": "background.acceptPending",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "path",
+            "name": "taskId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Task ID"
+          }
+        ],
+        "summary": "Accept pending result",
+        "description": "Accept and inject a pending background task result into the session.",
+        "responses": {
+          "200": {
+            "description": "Result accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["success"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "triggerLLM": {
+                    "description": "Trigger LLM to process the result after injection",
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.acceptPending({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/session/{sessionID}/pending/accept-all": {
+      "post": {
+        "operationId": "background.acceptAllPending",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Accept all pending results",
+        "description": "Accept and inject all pending background task results into the session.",
+        "responses": {
+          "200": {
+            "description": "All results accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["count"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "triggerLLM": {
+                    "description": "Trigger LLM to process the results after injection",
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.acceptAllPending({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/session/{sessionID}/pending/dismiss": {
+      "post": {
+        "operationId": "background.dismissPending",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Dismiss pending results",
+        "description": "Dismiss (discard) pending background task results without injecting them.",
+        "responses": {
+          "200": {
+            "description": "Results dismissed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["count"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "taskIds": {
+                    "description": "Task IDs to dismiss (all if not specified)",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.dismissPending({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/auto-inject/default": {
+      "get": {
+        "operationId": "background.getAutoInjectDefault",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get auto-inject default",
+        "description": "Get the global default auto-inject setting for new sessions.",
+        "responses": {
+          "200": {
+            "description": "Auto-inject default",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "autoInject": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["autoInject"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.getAutoInjectDefault({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/background/auto-inject/default/toggle": {
+      "post": {
+        "operationId": "background.toggleAutoInjectDefault",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Toggle auto-inject default",
+        "description": "Toggle the global default auto-inject setting for new sessions.",
+        "responses": {
+          "200": {
+            "description": "Auto-inject default toggled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "autoInject": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["autoInject"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.toggleAutoInjectDefault({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/tui/append-prompt": {
       "post": {
         "operationId": "tui.appendPrompt",
@@ -6104,6 +6774,12 @@
           "sessionID": {
             "type": "string"
           },
+          "promptIndex": {
+            "type": "number"
+          },
+          "synthetic": {
+            "type": "boolean"
+          },
           "role": {
             "type": "string",
             "const": "user"
@@ -6297,6 +6973,12 @@
           "sessionID": {
             "type": "string"
           },
+          "promptIndex": {
+            "type": "number"
+          },
+          "synthetic": {
+            "type": "boolean"
+          },
           "role": {
             "type": "string",
             "const": "assistant"
@@ -6394,6 +7076,9 @@
           },
           "finish": {
             "type": "string"
+          },
+          "variant": {
+            "type": "string"
           }
         },
         "required": [
@@ -6487,6 +7172,32 @@
           "ignored": {
             "type": "boolean"
           },
+          "backgroundTaskResult": {
+            "type": "object",
+            "properties": {
+              "taskId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["subagent", "shell"]
+              },
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["completed", "failed"]
+              },
+              "agent": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              }
+            },
+            "required": ["taskId", "type", "description", "status", "duration"]
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -6498,13 +7209,6 @@
               }
             },
             "required": ["start"]
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "text"]
@@ -6571,12 +7275,8 @@
           "text": {
             "type": "string"
           },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
+          "signature": {
+            "type": "string"
           },
           "time": {
             "type": "object",
@@ -6934,13 +7634,6 @@
           },
           "state": {
             "$ref": "#/components/schemas/ToolState"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "callID", "tool", "state"]
@@ -7626,6 +8319,309 @@
         },
         "required": ["type", "properties"]
       },
+      "BackgroundTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentSessionID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["subagent", "shell"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed", "cancelled"]
+          },
+          "description": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "toolCount": {
+                "type": "number"
+              },
+              "tokens": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number"
+                  },
+                  "output": {
+                    "type": "number"
+                  }
+                },
+                "required": ["input", "output"]
+              },
+              "currentActivity": {
+                "type": "string"
+              },
+              "lastUpdate": {
+                "type": "number"
+              }
+            },
+            "required": ["toolCount", "tokens", "lastUpdate"]
+          },
+          "subagent": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["providerID", "modelID"]
+              }
+            },
+            "required": ["sessionID", "agent", "prompt", "model"]
+          },
+          "shell": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "workdir": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            },
+            "required": ["command"]
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "output": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "exitCode": {
+                "type": "number"
+              }
+            },
+            "required": ["output"]
+          }
+        },
+        "required": ["id", "parentSessionID", "type", "status", "description", "time"]
+      },
+      "Event.background.task.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "background.task.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/BackgroundTask"
+              }
+            },
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.background.task.progress": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "background.task.progress"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "taskId": {
+                "type": "string"
+              },
+              "parentSessionID": {
+                "type": "string"
+              },
+              "progress": {
+                "type": "object",
+                "properties": {
+                  "toolCount": {
+                    "type": "number"
+                  },
+                  "tokens": {
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "type": "number"
+                      },
+                      "output": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["input", "output"]
+                  },
+                  "currentActivity": {
+                    "type": "string"
+                  },
+                  "lastUpdate": {
+                    "type": "number"
+                  }
+                },
+                "required": ["toolCount", "tokens", "lastUpdate"]
+              }
+            },
+            "required": ["taskId", "parentSessionID", "progress"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.background.task.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "background.task.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "taskId": {
+                "type": "string"
+              },
+              "parentSessionID": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["completed", "failed", "cancelled"]
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "output": {
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "exitCode": {
+                    "type": "number"
+                  }
+                },
+                "required": ["output"]
+              }
+            },
+            "required": ["taskId", "parentSessionID", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.background.task.result_pending": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "background.task.result_pending"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "pending": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string"
+                  },
+                  "parentSessionID": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["subagent", "shell"]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "agent": {
+                    "type": "string"
+                  },
+                  "output": {
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "completedAt": {
+                    "type": "number"
+                  },
+                  "duration": {
+                    "type": "number"
+                  }
+                },
+                "required": ["taskId", "parentSessionID", "type", "description", "output", "completedAt", "duration"]
+              }
+            },
+            "required": ["sessionID", "pending"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.background.task.auto_inject_changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "background.task.auto_inject_changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "autoInject": {
+                "type": "boolean"
+              }
+            },
+            "required": ["sessionID", "autoInject"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Todo": {
         "type": "object",
         "properties": {
@@ -7978,6 +8974,15 @@
               }
             },
             "required": ["messageID"]
+          },
+          "cacheMarkers": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "systemBlockCount": {
+            "type": "number"
           }
         },
         "required": ["id", "slug", "projectID", "directory", "title", "version", "time"]
@@ -8342,6 +9347,21 @@
             "$ref": "#/components/schemas/Event.file.watcher.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.background.task.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.background.task.progress"
+          },
+          {
+            "$ref": "#/components/schemas/Event.background.task.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.background.task.result_pending"
+          },
+          {
+            "$ref": "#/components/schemas/Event.background.task.auto_inject_changed"
+          },
+          {
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
@@ -8456,7 +9476,7 @@
           },
           "status_view": {
             "description": "View status",
-            "default": "<leader>s",
+            "default": "<leader>k",
             "type": "string"
           },
           "session_export": {
@@ -8506,6 +9526,11 @@
           },
           "model_favorite_toggle": {
             "description": "Toggle model favorite status",
+            "default": "ctrl+f",
+            "type": "string"
+          },
+          "skill_favorite_toggle": {
+            "description": "Toggle skill favorite status",
             "default": "ctrl+f",
             "type": "string"
           },
@@ -8567,6 +9592,11 @@
           "messages_last": {
             "description": "Navigate to last message",
             "default": "ctrl+alt+g,end",
+            "type": "string"
+          },
+          "scroll_to_bottom": {
+            "description": "Force scroll to bottom of conversation",
+            "default": "<leader>.",
             "type": "string"
           },
           "messages_next": {
@@ -8652,6 +9682,11 @@
           "agent_cycle_reverse": {
             "description": "Previous agent",
             "default": "shift+tab",
+            "type": "string"
+          },
+          "skill_list": {
+            "description": "List skills and insert at cursor",
+            "default": "<leader>s",
             "type": "string"
           },
           "variant_cycle": {
@@ -8784,6 +9819,11 @@
             "default": "ctrl+shift+d",
             "type": "string"
           },
+          "prompt_stash": {
+            "description": "Stash or pop the current prompt",
+            "default": "ctrl+s",
+            "type": "string"
+          },
           "input_delete_to_line_end": {
             "description": "Delete to end of line in input",
             "default": "ctrl+k",
@@ -8882,6 +9922,16 @@
           "tips_toggle": {
             "description": "Toggle tips on home screen",
             "default": "<leader>h",
+            "type": "string"
+          },
+          "background_pending": {
+            "description": "View pending background task results",
+            "default": "<leader>z",
+            "type": "string"
+          },
+          "background_auto_inject_toggle": {
+            "description": "Toggle auto-inject for background task results",
+            "default": "alt+i",
             "type": "string"
           }
         },
@@ -9854,6 +10904,15 @@
               }
             }
           },
+          "undo": {
+            "type": "object",
+            "properties": {
+              "revertFiles": {
+                "description": "Whether /undo should revert file changes along with messages (default: true)",
+                "type": "boolean"
+              }
+            }
+          },
           "experimental": {
             "type": "object",
             "properties": {
@@ -10369,6 +11428,32 @@
           "ignored": {
             "type": "boolean"
           },
+          "backgroundTaskResult": {
+            "type": "object",
+            "properties": {
+              "taskId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["subagent", "shell"]
+              },
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["completed", "failed"]
+              },
+              "agent": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              }
+            },
+            "required": ["taskId", "type", "description", "status", "duration"]
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -10380,13 +11465,6 @@
               }
             },
             "required": ["start"]
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
           }
         },
         "required": ["type", "text"]

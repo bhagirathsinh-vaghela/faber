@@ -33,12 +33,14 @@ import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
 import { Statusline } from "../statusline"
+import { KeybindHint } from "../../ui/keybind-hint"
 
 export type PromptProps = {
   sessionID?: string
   visible?: boolean
   disabled?: boolean
   onSubmit?: () => void
+  onMessageSent?: (isPing: boolean) => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
   showPlaceholder?: boolean
@@ -60,6 +62,7 @@ export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
   let anchor: BoxRenderable
   let autocomplete: AutocompleteRef
+  let ctrlCPressTime = 0
 
   const keybind = useKeybind()
   const local = useLocal()
@@ -75,6 +78,81 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const kv = useKV()
+  const [autoInject, setAutoInject] = createSignal(true)
+  const [runningCount, setRunningCount] = createSignal(0)
+  const [resultsCount, setResultsCount] = createSignal(0)
+  const [hoverPending, setHoverPending] = createSignal(false)
+  const [hoverResults, setHoverResults] = createSignal(false)
+  const [hoverAutoInject, setHoverAutoInject] = createSignal(false)
+
+  // Fetch auto-inject state, running tasks, and results count on mount
+  onMount(async () => {
+    if (props.sessionID) {
+      const result = await sdk.client.background.getAutoInject({ sessionID: props.sessionID })
+      setAutoInject(result.data?.autoInject ?? true)
+
+      const pending = await sdk.client.background.getPending({ sessionID: props.sessionID })
+      setResultsCount((pending.data ?? []).length)
+
+      const tasks = await sdk.client.background.list({ sessionID: props.sessionID })
+      const running = (tasks.data ?? []).filter((t) => t.status === "running").length
+      setRunningCount(running)
+    } else {
+      // Home screen - show global default
+      const result = await sdk.client.background.getAutoInjectDefault()
+      setAutoInject(result.data?.autoInject ?? true)
+    }
+  })
+
+  // Listen for auto-inject changes
+  sdk.event.on("background.task.auto_inject_changed", (evt) => {
+    if (props.sessionID && evt.properties.sessionID === props.sessionID) {
+      setAutoInject(evt.properties.autoInject)
+    }
+  })
+
+  // Listen for task created (increment running)
+  sdk.event.on("background.task.created", (evt) => {
+    if (props.sessionID && evt.properties.task.parentSessionID === props.sessionID) {
+      setRunningCount((prev) => prev + 1)
+    }
+  })
+
+  // Listen for task completed (decrement running)
+  sdk.event.on("background.task.completed", (evt) => {
+    if (props.sessionID && evt.properties.parentSessionID === props.sessionID) {
+      setRunningCount((prev) => Math.max(0, prev - 1))
+    }
+  })
+
+  // Listen for pending results (increment results count)
+  sdk.event.on("background.task.result_pending", (evt) => {
+    if (props.sessionID && evt.properties.sessionID === props.sessionID) {
+      setResultsCount((prev) => prev + 1)
+    }
+  })
+
+  // Poll for global default changes and counts
+  onMount(() => {
+    if (!props.sessionID) {
+      const interval = setInterval(async () => {
+        const result = await sdk.client.background.getAutoInjectDefault()
+        setAutoInject(result.data?.autoInject ?? true)
+      }, 500)
+      onCleanup(() => clearInterval(interval))
+    } else {
+      const interval = setInterval(async () => {
+        if (!props.sessionID) return
+        const pending = await sdk.client.background.getPending({ sessionID: props.sessionID })
+        setResultsCount((pending.data ?? []).length)
+
+        const tasks = await sdk.client.background.list({ sessionID: props.sessionID })
+        const running = (tasks.data ?? []).filter((t) => t.status === "running").length
+        setRunningCount(running)
+      }, 1000)
+      onCleanup(() => clearInterval(interval))
+    }
+  })
 
   function promptModelWarning() {
     toast.show({
@@ -356,6 +434,26 @@ export function Prompt(props: PromptProps) {
           ))
         },
       },
+      {
+        title: "Insert skill",
+        value: "prompt.skill_insert",
+        category: "Prompt",
+        keybind: "skill_list",
+        hidden: true,
+        onSelect: () => {
+          const cursorOffset = input.cursorOffset
+          dialog.replace(() => (
+            <DialogSkill
+              onSelect={(skill) => {
+                const text = `[USE-SKILL:${skill}] `
+                input.cursorOffset = cursorOffset
+                input.insertText(text)
+                setStore("prompt", "input", input.plainText)
+              }}
+            />
+          ))
+        },
+      },
     ]
   })
 
@@ -539,6 +637,9 @@ export function Prompt(props: PromptProps) {
       exit()
       return
     }
+
+    // Detect ping message
+    const isPing = trimmed === "." && store.prompt.parts.length === 0
     const selectedModel = local.model.current()
     if (!selectedModel) {
       promptModelWarning()
@@ -587,36 +688,69 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
-    } else if (
-      inputText.startsWith("/") &&
-      iife(() => {
-        const firstLine = inputText.split("\n")[0]
-        const command = firstLine.split(" ")[0].slice(1)
-        return sync.data.command.some((x) => x.name === command)
-      })
-    ) {
-      // Parse command from first line, preserve multi-line content in arguments
-      const firstLineEnd = inputText.indexOf("\n")
-      const firstLine = firstLineEnd === -1 ? inputText : inputText.slice(0, firstLineEnd)
-      const [command, ...firstLineArgs] = firstLine.split(" ")
-      const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
-      const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
+    } else if (inputText.startsWith("/")) {
+      const firstLine = inputText.split("\n")[0]
+      const commandName = firstLine.split(" ")[0].slice(1)
 
-      sdk.client.session.command({
-        sessionID,
-        command: command.slice(1),
-        arguments: args,
-        agent: local.agent.current().name,
-        model: `${selectedModel.providerID}/${selectedModel.modelID}`,
-        messageID,
-        variant,
-        parts: nonTextParts
-          .filter((x) => x.type === "file")
-          .map((x) => ({
-            id: Identifier.ascending("part"),
-            ...x,
-          })),
-      })
+      // Check for TUI-only slash commands first (like /undo, /redo)
+      const allSlashes = command.slashes()
+      const tuiSlash = allSlashes.find((s) => s.display === "/" + commandName || s.aliases?.includes("/" + commandName))
+      if (tuiSlash) {
+        tuiSlash.onSelect()
+        // Clear input without sending to server
+        input.extmarks.clear()
+        setStore("prompt", { input: "", parts: [] })
+        return
+      }
+
+      // Check for server commands
+      if (sync.data.command.some((x) => x.name === commandName)) {
+        // Parse command from first line, preserve multi-line content in arguments
+        const firstLineEnd = inputText.indexOf("\n")
+        const firstLineParsed = firstLineEnd === -1 ? inputText : inputText.slice(0, firstLineEnd)
+        const [, ...firstLineArgs] = firstLineParsed.split(" ")
+        const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
+        const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
+
+        sdk.client.session.command({
+          sessionID,
+          command: commandName,
+          arguments: args,
+          agent: local.agent.current().name,
+          model: `${selectedModel.providerID}/${selectedModel.modelID}`,
+          messageID,
+          variant,
+          parts: nonTextParts
+            .filter((x) => x.type === "file")
+            .map((x) => ({
+              id: Identifier.ascending("part"),
+              ...x,
+            })),
+        })
+      } else {
+        // Unknown slash command - send as regular prompt
+        sdk.client.session
+          .prompt({
+            sessionID,
+            ...selectedModel,
+            messageID,
+            agent: local.agent.current().name,
+            model: selectedModel,
+            variant,
+            parts: [
+              {
+                id: Identifier.ascending("part"),
+                type: "text",
+                text: inputText,
+              },
+              ...nonTextParts.map((x) => ({
+                id: Identifier.ascending("part"),
+                ...x,
+              })),
+            ],
+          })
+          .catch(() => {})
+      }
     } else {
       sdk.client.session
         .prompt({
@@ -651,6 +785,7 @@ export function Prompt(props: PromptProps) {
     })
     setStore("extmarkToPartIndex", new Map())
     props.onSubmit?.()
+    props.onMessageSent?.(isPing)
 
     // temporary hack to make sure the message is sent
     if (!props.sessionID)
@@ -839,6 +974,14 @@ export function Prompt(props: PromptProps) {
                 if ((keybind as any).match("prompt_stash", e)) {
                   e.preventDefault()
                   if (store.prompt.input !== "") {
+                    // Check if there's already something stashed
+                    if (stash.getTransient()) {
+                      toast.show({
+                        message: "Prompt already stashed. Restore it first with Ctrl+S.",
+                        variant: "warning",
+                      })
+                      return
+                    }
                     stash.pushTransient({
                       input: store.prompt.input,
                       parts: store.prompt.parts,
@@ -883,10 +1026,24 @@ export function Prompt(props: PromptProps) {
                 }
                 if (keybind.match("app_exit", e)) {
                   if (store.prompt.input === "") {
-                    await exit()
-                    // Don't preventDefault - let textarea potentially handle the event
-                    e.preventDefault()
-                    return
+                    // Double Ctrl+C to exit
+                    const now = Date.now()
+                    if (now - ctrlCPressTime < 2000) {
+                      // Second Ctrl+C within 2 seconds - exit
+                      await exit()
+                      e.preventDefault()
+                      return
+                    } else {
+                      // First press - record time and show toast
+                      ctrlCPressTime = now
+                      toast.show({
+                        message: "Press again to exit",
+                        variant: "warning",
+                        duration: 2000,
+                      })
+                      e.preventDefault()
+                      return
+                    }
                   }
                 }
                 if (e.name === "!" && input.visualCursor.offset === 0) {
@@ -1153,13 +1310,31 @@ export function Prompt(props: PromptProps) {
             <box gap={2} flexDirection="row">
               <Switch>
                 <Match when={store.mode === "normal"}>
-                  <Show when={local.model.variant.list().length > 0}>
-                    <text fg={theme.text}>
-                      {keybind.print("variant_cycle")} <span style={{ fg: theme.textMuted }}>variants</span>
-                    </text>
-                  </Show>
-                  <text fg={theme.text}>
-                    {keybind.print("agent_cycle")} <span style={{ fg: theme.textMuted }}>agents</span>
+                  <text
+                    fg={theme.text}
+                    onMouseOver={() => setHoverPending(true)}
+                    onMouseOut={() => setHoverPending(false)}
+                  >
+                    <span style={{ fg: theme.textMuted }}>pending</span>{" "}
+                    <span style={{ fg: runningCount() > 0 ? theme.info : theme.success }}>{runningCount()}</span>
+                  </text>
+                  <text
+                    fg={theme.text}
+                    onMouseOver={() => setHoverResults(true)}
+                    onMouseOut={() => setHoverResults(false)}
+                  >
+                    <span style={{ fg: theme.textMuted }}>available</span>{" "}
+                    <span style={{ fg: resultsCount() > 0 ? theme.warning : theme.success }}>{resultsCount()}</span>
+                  </text>
+                  <text
+                    fg={theme.text}
+                    onMouseOver={() => setHoverAutoInject(true)}
+                    onMouseOut={() => setHoverAutoInject(false)}
+                  >
+                    <span style={{ fg: theme.textMuted }}>auto-accept-results</span>{" "}
+                    <span style={{ fg: autoInject() ? theme.success : theme.warning }}>
+                      {autoInject() ? "on" : "off"}
+                    </span>
                   </text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
@@ -1175,6 +1350,9 @@ export function Prompt(props: PromptProps) {
           </Show>
         </box>
       </box>
+      <KeybindHint text="Tasks currently running in background" visible={hoverPending()} />
+      <KeybindHint text="ctrl+x z - inject completed results" visible={hoverResults()} />
+      <KeybindHint text="alt+i - toggle auto-accept" visible={hoverAutoInject()} />
     </>
   )
 }
