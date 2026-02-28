@@ -1,20 +1,17 @@
 // Statusline component naming guide
 //
 // Shared components (used in both input area and assistant message snapshots):
-//   ModelHeader     — "header":   agent · model · provider · variant [· duration] [· interrupted]
+//   ModelHeader     — "header":   agent · model · provider · variant [· duration] [· interrupted] [· directory]
 //   StatuslineContent — renders the lines below, controlled by bold + compact props:
-//     "directory"   — 📁 path:branch                    (input only, compact skips this)
-//     "markers"     — 🔖 Cache: #0-19                   (input only, toggle via cache_markers_toggle keybind)
-//     "tokens"      — ⏳ HH:MM:SS │ 🧠 [bar] N/M │ 📦 cached · ✨ new │ 💬 ↑in ↓out [│ 📁 path]
-//                     compact mode: no cache expiry, directory appended at end
+//     "markers"     — ▣ Cache: #0-19                   (input only, toggle via cache_markers_toggle keybind)
+//     "context"     — ◷ HH:MM:SS │ ▣ [bar] N/M │ ◈ cached · ★ new │ Σ ↑in ↓out
 //
-// Input area: ModelHeader(bold=true) + Statusline wrapper (bold=true, full layout)
-// Snapshot:   ModelHeader(bold=false, +duration) + StatuslineContent(bold=false, compact=true)
+// Input area: ModelHeader(bold=true, directory with branch) + Statusline wrapper (bold=true, full layout)
+// Snapshot:   ModelHeader(bold=false, +duration, directory without branch) + StatuslineContent(bold=false, compact=true)
 
 import { createMemo, createSignal, Show } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { useSync } from "@tui/context/sync"
-import { useDirectory } from "@tui/context/directory"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import { RGBA, hsvToRgb } from "@opentui/core"
 
@@ -53,7 +50,6 @@ export type StatuslineContentProps = {
   bold: boolean
   dimmed?: boolean
   compact?: boolean
-  directory: string
   cacheRanges?: Array<{ start: number; end: number }> | null
   showCacheMarkers?: boolean
   contextStats: { total: number; cached: number; newTokens: number; contextLimit: number; percentage: number } | null
@@ -72,13 +68,14 @@ export function ModelHeader(props: {
   variant?: string | null
   duration?: string | null
   interrupted?: boolean
+  directory?: string | null
 }) {
   const { theme } = useTheme()
   const b = () => props.bold
   const d = () => (props.dimmed ? theme.textMuted : undefined)
 
   return (
-    <box flexDirection="row" gap={1} flexWrap="wrap">
+    <box flexDirection="row" columnGap={1} rowGap={0} flexWrap="wrap">
       <text>
         <span style={{ fg: d() ?? props.agentColor, bold: b() }}>{props.agent}</span>
       </text>
@@ -94,32 +91,21 @@ export function ModelHeader(props: {
           <span style={{ fg: d() ?? theme.textMuted, bold: b() }}>{props.provider}</span>
         </text>
       </Show>
-      <Show when={props.variant}>
-        {(variant) => (
+      {createMemo(() => {
+        const parts: Array<{ color: RGBA; text: string }> = []
+        if (props.variant) parts.push({ color: d() ?? theme.warning, text: props.variant })
+        if (props.duration) parts.push({ color: theme.textMuted, text: props.duration })
+        if (props.interrupted) parts.push({ color: theme.textMuted, text: "interrupted" })
+        if (props.directory) parts.push({ color: d() ?? theme.primary, text: props.directory })
+        return parts.map((p) => (
           <>
             <text fg={theme.textMuted}>·</text>
             <text>
-              <span style={{ fg: d() ?? theme.warning, bold: b() }}>{variant()}</span>
+              <span style={{ fg: p.color, bold: b() }}>{p.text}</span>
             </text>
           </>
-        )}
-      </Show>
-      <Show when={props.duration}>
-        {(dur) => (
-          <>
-            <text fg={theme.textMuted}>·</text>
-            <text>
-              <span style={{ fg: theme.textMuted, bold: b() }}>{dur()}</span>
-            </text>
-          </>
-        )}
-      </Show>
-      <Show when={props.interrupted}>
-        <text fg={theme.textMuted}>·</text>
-        <text>
-          <span style={{ fg: theme.textMuted, bold: b() }}>interrupted</span>
-        </text>
-      </Show>
+        ))
+      })()}
     </box>
   )
 }
@@ -148,23 +134,14 @@ export function StatuslineContent(props: StatuslineContentProps) {
 
   return (
     <box flexDirection="column" gap={0}>
-      {/* Directory line (full mode only) */}
-      <Show when={!props.compact}>
-        <box flexDirection="row">
-          <text>
-            <span style={{ fg: m() }}>📁</span>{" "}
-            <span style={{ fg: c(theme.primary), bold: b() }}>{props.directory}</span>
-          </text>
-        </box>
-      </Show>
-
       {/* Cache-valid blocks (full mode only) */}
       <Show when={!props.compact && props.showCacheMarkers && props.cacheRanges}>
         {(ranges) => (
           <Show when={ranges().length}>
             <box flexDirection="row">
               <text>
-                <span style={{ fg: m() }}>🔖</span> <span style={{ fg: m(), bold: b() }}>Cache markers: </span>
+                <span style={{ fg: c(UTILIZATION_GREEN) }}>{"\u25a3"}</span>{" "}
+                <span style={{ fg: m(), bold: b() }}>Cache markers: </span>
                 <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatRanges(ranges())}</span>
               </text>
             </box>
@@ -172,47 +149,43 @@ export function StatuslineContent(props: StatuslineContentProps) {
         )}
       </Show>
 
-      {/* Token stats line */}
+      {/* Context stats line */}
       <Show when={props.contextStats}>
         {(stats) => (
           <box flexDirection="row">
-            {/* Cache expiry (full mode only) */}
-            <Show when={!props.compact}>
-              <text>
-                <span style={{ fg: m() }}>⏳</span>{" "}
-                <span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span>
-                <span style={{ fg: m() }}> │ </span>
-              </text>
-            </Show>
-            <text>
-              <span style={{ fg: m() }}>🧠</span>{" "}
-            </text>
-            <ProgressBar percent={stats().percentage} width={10} dimmed={props.dimmed} />
-            <text>
-              {" "}
-              <span style={{ fg: c(utilizationColor(stats().percentage)), bold: b() }}>
-                {formatTokens(stats().total)}
-              </span>
-              <span style={{ fg: m() }}>/</span>
-              <span style={{ fg: m(), bold: b() }}>{formatTokens(stats().contextLimit)}</span>
-              <span style={{ fg: m() }}> │ </span>
-              <span style={{ fg: m() }}>📦</span>{" "}
-              <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatTokens(stats().cached)}</span>
-              <span style={{ fg: m() }}> · </span>
-              <span style={{ fg: m() }}>✨</span>{" "}
-              <span style={{ fg: c(theme.warning), bold: b() }}>{formatTokens(stats().newTokens)}</span>
-              <span style={{ fg: m() }}> │ </span>
-              <span style={{ fg: m() }}>💬</span>{" "}
-              <span style={{ fg: c(theme.primary), bold: b() }}>↑{formatTokens(props.sessionTotals.input)}</span>
-              <span style={{ fg: m() }}> · </span>
-              <span style={{ fg: c(theme.warning), bold: b() }}>↓{formatTokens(props.sessionTotals.output)}</span>
-              {/* Directory appended (compact mode only) */}
-              <Show when={props.compact}>
-                <span style={{ fg: m() }}> │ </span>
-                <span style={{ fg: m() }}>📁</span>{" "}
-                <span style={{ fg: c(theme.primary), bold: b() }}>{props.directory}</span>
+            <box flexDirection="row">
+              {/* Cache expiry (full mode only) */}
+              <Show when={!props.compact}>
+                <text>
+                  <span style={{ fg: c(theme.warning) }}>{"\u25f7"}</span>{" "}
+                  <span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span>
+                  <span style={{ fg: m() }}> │ </span>
+                </text>
               </Show>
-            </text>
+              <text>
+                <span style={{ fg: c(utilizationColor(stats().percentage)) }}>{"\u25a3"}</span>{" "}
+              </text>
+              <ProgressBar percent={stats().percentage} width={10} dimmed={props.dimmed} />
+              <text>
+                {" "}
+                <span style={{ fg: c(utilizationColor(stats().percentage)), bold: b() }}>
+                  {formatTokens(stats().total)}
+                </span>
+                <span style={{ fg: m() }}>/</span>
+                <span style={{ fg: m(), bold: b() }}>{formatTokens(stats().contextLimit)}</span>
+                <span style={{ fg: m() }}> │ </span>
+                <span style={{ fg: c(UTILIZATION_GREEN) }}>{"\u25c8"}</span>{" "}
+                <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatTokens(stats().cached)}</span>
+                <span style={{ fg: m() }}> · </span>
+                <span style={{ fg: c(theme.warning) }}>{"\u2605"}</span>{" "}
+                <span style={{ fg: c(theme.warning), bold: b() }}>{formatTokens(stats().newTokens)}</span>
+                <span style={{ fg: m() }}> │ </span>
+                <span style={{ fg: c(theme.primary) }}>{"\u03a3"}</span>{" "}
+                <span style={{ fg: c(theme.primary), bold: b() }}>↑{formatTokens(props.sessionTotals.input)}</span>
+                <span style={{ fg: m() }}> · </span>
+                <span style={{ fg: c(theme.warning), bold: b() }}>↓{formatTokens(props.sessionTotals.output)}</span>
+              </text>
+            </box>
           </box>
         )}
       </Show>
@@ -232,7 +205,6 @@ export function toggleCacheMarkers() {
 
 export function Statusline(props: StatuslineProps) {
   const sync = useSync()
-  const directory = useDirectory()
 
   const session = createMemo(() => (props.sessionID ? sync.session.get(props.sessionID) : undefined))
   const messages = createMemo(() => (props.sessionID ? (sync.data.message[props.sessionID] ?? []) : []))
@@ -250,7 +222,7 @@ export function Statusline(props: StatuslineProps) {
   })
 
   const cacheExpiry = createMemo(() => {
-    const last = lastAssistant()
+    const last = messages().findLast((x) => x.role === "assistant")
     if (!last?.time.completed) return null
     const expiryTime = last.time.completed + 5 * 60 * 1000
     if (expiryTime <= Date.now()) return null
@@ -289,7 +261,6 @@ export function Statusline(props: StatuslineProps) {
     <StatuslineContent
       bold={true}
       dimmed={props.dimmed}
-      directory={directory()}
       cacheRanges={cacheRanges()}
       showCacheMarkers={showCacheMarkers()}
       contextStats={contextStats()}

@@ -1498,6 +1498,10 @@ export type KeybindsConfig = {
    * Toggle paste mode between summary and inline
    */
   paste_mode_toggle?: string
+  /**
+   * Toggle session header bar
+   */
+  header_toggle?: string
 }
 
 /**
@@ -1833,6 +1837,10 @@ export type Config = {
      * Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text
      */
     paste_mode?: "summary" | "inline"
+    /**
+     * Show the session header bar at the top of the TUI
+     */
+    header?: boolean
   }
   server?: ServerConfig
   /**

@@ -902,6 +902,7 @@ export namespace Config {
         .optional()
         .default("alt+p")
         .describe("Toggle paste mode between summary and inline"),
+      header_toggle: z.string().optional().default("none").describe("Toggle session header bar"),
     })
     .strict()
     .meta({
@@ -931,6 +932,7 @@ export namespace Config {
       .optional()
       .default("inline")
       .describe("Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text"),
+    header: z.boolean().optional().default(false).describe("Show the session header bar at the top of the TUI"),
   })
 
   export const Server = z

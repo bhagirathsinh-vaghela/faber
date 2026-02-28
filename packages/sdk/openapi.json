@@ -10048,6 +10048,11 @@
             "description": "Toggle paste mode between summary and inline",
             "default": "alt+p",
             "type": "string"
+          },
+          "header_toggle": {
+            "description": "Toggle session header bar",
+            "default": "none",
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -10675,6 +10680,11 @@
                 "default": "inline",
                 "type": "string",
                 "enum": ["summary", "inline"]
+              },
+              "header": {
+                "description": "Show the session header bar at the top of the TUI",
+                "default": false,
+                "type": "boolean"
               }
             }
           },
