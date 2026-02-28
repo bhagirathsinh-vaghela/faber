@@ -18,6 +18,9 @@ import { SystemPrompt } from "./system"
 import { InstructionPrompt } from "./instruction"
 import { Plugin } from "../plugin"
 import PROMPT_PLAN from "../session/prompt/plan.txt"
+import PROMPT_PLAN_SPARSE from "../session/prompt/plan-sparse.txt"
+import PROMPT_PLAN_REENTRY from "../session/prompt/plan-reentry.txt"
+import PROMPT_PLAN_SUBAGENT from "../session/prompt/plan-subagent.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
 import { defer } from "../util/defer"
@@ -1297,152 +1300,147 @@ export namespace SessionPrompt {
     }
   }
 
+  const PLAN_REMINDER_MARKER = "<!-- plan-mode-reminder -->"
+  const PLAN_EXIT_MARKER = "<!-- plan-mode-exit -->"
+  const TURNS_BETWEEN_REMINDERS = 5
+  const FULL_REMINDER_EVERY_N = 5
+
+  function hasPlanReminder(msg: MessageV2.WithParts) {
+    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(PLAN_REMINDER_MARKER))
+  }
+
+  function hasPlanExit(msg: MessageV2.WithParts) {
+    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(PLAN_EXIT_MARKER))
+  }
+
+  function planFileInfo(planPath: string, exists: boolean) {
+    return exists
+      ? `A plan file already exists at ${planPath}. You can read it and make incremental edits using the edit tool.`
+      : `No plan file exists yet. You should create your plan at ${planPath} using the write tool.`
+  }
+
+  function planFileInfoSubagent(planPath: string, exists: boolean) {
+    return exists
+      ? `A plan file already exists at ${planPath}. You can read it and make incremental edits using the edit tool if you need to.`
+      : `No plan file exists yet. You should create your plan at ${planPath} using the write tool if you need to.`
+  }
+
+  function renderTemplate(template: string, vars: Record<string, string>) {
+    let result = template
+    for (const [key, value] of Object.entries(vars)) result = result.replaceAll(key, value)
+    return result
+  }
+
+  async function persistReminder(userMessage: MessageV2.WithParts, text: string, marker: string) {
+    const userInfo = userMessage.info as MessageV2.User
+    const wrapped = text.includes("<system-reminder>")
+      ? `${marker}\n${text}`
+      : `${marker}\n<system-reminder>\n${text}\n</system-reminder>`
+    const part: MessageV2.TextPart = {
+      id: Identifier.ascending("part"),
+      messageID: userInfo.id,
+      sessionID: userInfo.sessionID,
+      type: "text",
+      text: wrapped,
+      synthetic: true,
+    }
+    await Session.updatePart(part)
+    userMessage.parts.push(part)
+  }
+
   async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 
-    const insertMeta = async (text: string) => {
-      const userInfo = userMessage.info as MessageV2.User
-      const reminder = text.includes("<system-reminder>")
-        ? text
-        : ["<system-reminder>", text, "</system-reminder>"].join("\n")
-      const messageID = Identifier.ascending("message")
-      const metaMessage: MessageV2.WithParts = {
-        info: {
-          id: messageID,
-          sessionID: userInfo.sessionID,
-          role: "user",
-          time: {
-            created: Date.now(),
-          },
-          agent: userInfo.agent,
-          model: userInfo.model,
-          synthetic: true,
-        },
-        parts: [
-          {
-            id: Identifier.ascending("part"),
-            messageID,
-            sessionID: userInfo.sessionID,
-            type: "text",
-            text: reminder,
-            synthetic: true,
-          },
-        ],
-      }
-      const index = input.messages.indexOf(userMessage)
-      if (index === -1) return input.messages
-      input.messages.splice(index, 0, metaMessage)
-      return input.messages
-    }
-
-    // Original logic when experimental plan mode is disabled
-    if (!Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE) {
-      const lastAssistant = input.messages.findLast((msg) => msg.info.role === "assistant")
-      // Only inject on actual mode switch, not every turn in the same mode.
-      // The one-time injection stays in conversation history and remains authoritative
-      // for all subsequent turns. This prevents a sliding synthetic message that
-      // breaks Anthropic prompt cache prefix stability.
-      if (input.agent.name === "plan" && (!lastAssistant || lastAssistant.info.agent !== "plan")) {
-        return await insertMeta(PROMPT_PLAN)
-      }
-      if (input.agent.name === "build" && lastAssistant?.info.agent === "plan") {
-        return await insertMeta(BUILD_SWITCH)
-      }
-      return input.messages
-    }
-
-    // New plan mode logic when flag is enabled
-    const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
+    const plan = Session.plan(input.session)
+    const exists = await Bun.file(plan).exists()
 
     // Switching from plan mode to build mode
-    if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
-      const plan = Session.plan(input.session)
-      const exists = await Bun.file(plan).exists()
-      if (!exists) {
-        return input.messages
+    const lastAssistant = input.messages.findLast((msg) => msg.info.role === "assistant")
+    if (input.agent.name !== "plan" && lastAssistant?.info.agent === "plan") {
+      const exitText = renderTemplate(BUILD_SWITCH, {
+        "${PLAN_FILE_INFO_EXIT}": exists ? ` The plan file is located at ${plan} if you need to reference it.` : "",
+      })
+      await persistReminder(userMessage, exitText, PLAN_EXIT_MARKER)
+      return input.messages
+    }
+
+    // Not in plan mode — check if this is a sub-agent whose parent is in plan mode
+    if (input.agent.name !== "plan") {
+      if (input.session.parentID && !hasPlanReminder(userMessage)) {
+        const parentMsgs = await Session.messages({ sessionID: input.session.parentID })
+        const parentLastUser = parentMsgs.findLast((m) => m.info.role === "user" && !m.info.synthetic)
+        if (parentLastUser && (parentLastUser.info as MessageV2.User).agent === "plan") {
+          const parentSession = await Session.get(input.session.parentID)
+          const parentPlan = Session.plan(parentSession)
+          const parentPlanExists = await Bun.file(parentPlan).exists()
+          const subagentText = renderTemplate(PROMPT_PLAN_SUBAGENT, {
+            "${PLAN_FILE_INFO_SUBAGENT}": planFileInfoSubagent(parentPlan, parentPlanExists),
+          })
+          await persistReminder(userMessage, subagentText, PLAN_REMINDER_MARKER)
+        }
       }
-      return await insertMeta(
-        BUILD_SWITCH + "\n\n" + `A plan file exists at ${plan}. You should execute on the plan defined within it`,
-      )
+      return input.messages
     }
 
-    // Entering plan mode
-    if (input.agent.name === "plan" && assistantMessage?.info.agent !== "plan") {
-      const plan = Session.plan(input.session)
-      const exists = await Bun.file(plan).exists()
-      if (!exists) await fs.mkdir(path.dirname(plan), { recursive: true })
-      return await insertMeta(`<system-reminder>
-Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supersedes any other instructions you have received.
+    // In plan mode — check if we need to inject a reminder
+    if (!exists) await fs.mkdir(path.dirname(plan), { recursive: true })
 
-## Plan File Info:
-${exists ? `A plan file already exists at ${plan}. You can read it and make incremental edits using the edit tool.` : `No plan file exists yet. You should create your plan at ${plan} using the write tool.`}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+    // Check if this user message already has a plan reminder (e.g. from a previous loop iteration)
+    if (hasPlanReminder(userMessage)) return input.messages
 
-## Plan Workflow
-
-### Phase 1: Initial Understanding
-Goal: Gain a comprehensive understanding of the user's request by reading through code and asking them questions. Critical: In this phase you should only use the explore subagent type.
-
-1. Focus on understanding the user's request and the code associated with their request
-
-2. **Launch up to 3 explore agents IN PARALLEL** (single message, multiple tool calls) to efficiently explore the codebase.
-   - Use 1 agent when the task is isolated to known files, the user provided specific file paths, or you're making a small targeted change.
-   - Use multiple agents when: the scope is uncertain, multiple areas of the codebase are involved, or you need to understand existing patterns before planning.
-   - Quality over quantity - 3 agents maximum, but you should try to use the minimum number of agents necessary (usually just 1)
-   - If using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigates testing patterns
-
-3. After exploring the code, use the question tool to clarify ambiguities in the user request up front.
-
-### Phase 2: Design
-Goal: Design an implementation approach.
-
-Launch general agent(s) to design the implementation based on the user's intent and your exploration results from Phase 1.
-
-You can launch up to 1 agent(s) in parallel.
-
-**Guidelines:**
-- **Default**: Launch at least 1 Plan agent for most tasks - it helps validate your understanding and consider alternatives
-- **Skip agents**: Only for truly trivial tasks (typo fixes, single-line changes, simple renames)
-
-Examples of when to use multiple agents:
-- The task touches multiple parts of the codebase
-- It's a large refactor or architectural change
-- There are many edge cases to consider
-- You'd benefit from exploring different approaches
-
-Example perspectives by task type:
-- New feature: simplicity vs performance vs maintainability
-- Bug fix: root cause vs workaround vs prevention
-- Refactoring: minimal change vs clean architecture
-
-In the agent prompt:
-- Provide comprehensive background context from Phase 1 exploration including filenames and code path traces
-- Describe requirements and constraints
-- Request a detailed implementation plan
-
-### Phase 3: Review
-Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's intentions.
-1. Read the critical files identified by agents to deepen your understanding
-2. Ensure that the plans align with the user's original request
-3. Use question tool to clarify any remaining questions with the user
-
-### Phase 4: Final Plan
-Goal: Write your final plan to the plan file (the only file you can edit).
-- Include only your recommended approach, not all alternatives
-- Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
-- Include the paths of critical files to be modified
-- Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
-
-### Phase 5: Call plan_exit tool
-At the very end of your turn, once you have asked the user questions and are happy with your final plan file - you should always call plan_exit to indicate to the user that you are done planning.
-This is critical - your turn should only end with either asking the user a question or calling plan_exit. Do not stop unless it's for these 2 reasons.
-
-**Important:** Use question tool to clarify requirements/approach, use plan_exit to request plan approval. Do NOT use question tool to ask "Is this plan okay?" - that's what plan_exit does.
-
-NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.
-</system-reminder>`)
+    // Count assistant turns since last plan reminder and total reminders since last exit
+    let turnsSinceReminder = 0
+    let totalReminders = 0
+    let hadPlanExit = false
+    for (let i = input.messages.length - 1; i >= 0; i--) {
+      const msg = input.messages[i]
+      if (msg.info.role === "user" && hasPlanExit(msg)) {
+        hadPlanExit = true
+        break
+      }
+      if (msg.info.role === "user" && hasPlanReminder(msg)) {
+        break
+      }
+      if (msg.info.role === "assistant") {
+        turnsSinceReminder++
+      }
     }
+    // Count total plan reminders since last exit for full/sparse cycling
+    for (let i = input.messages.length - 1; i >= 0; i--) {
+      const msg = input.messages[i]
+      if (msg.info.role === "user" && hasPlanExit(msg)) break
+      if (msg.info.role === "user" && hasPlanReminder(msg)) totalReminders++
+    }
+
+    const isEnteringPlan = !lastAssistant || lastAssistant.info.agent !== "plan"
+
+    // Re-entry: entering plan mode again after a previous exit, with an existing plan file
+    if (isEnteringPlan && hadPlanExit && exists) {
+      const reentryText = renderTemplate(PROMPT_PLAN_REENTRY, { "${PLAN_FILE_PATH}": plan })
+      await persistReminder(userMessage, reentryText, PLAN_REMINDER_MARKER)
+    }
+
+    // First entry or re-entry: always inject full reminder
+    if (isEnteringPlan) {
+      const fullText = renderTemplate(PROMPT_PLAN, { "${PLAN_FILE_INFO}": planFileInfo(plan, exists) })
+      await persistReminder(userMessage, fullText, PLAN_REMINDER_MARKER)
+      return input.messages
+    }
+
+    // Continuing in plan mode — periodic injection
+    if (turnsSinceReminder < TURNS_BETWEEN_REMINDERS) return input.messages
+
+    // Determine full vs sparse: full on 1st, every Nth after
+    const isFull = (totalReminders + 1) % FULL_REMINDER_EVERY_N === 1
+    if (isFull) {
+      const fullText = renderTemplate(PROMPT_PLAN, { "${PLAN_FILE_INFO}": planFileInfo(plan, exists) })
+      await persistReminder(userMessage, fullText, PLAN_REMINDER_MARKER)
+    } else {
+      const sparseText = renderTemplate(PROMPT_PLAN_SPARSE, { "${PLAN_FILE_PATH}": plan })
+      await persistReminder(userMessage, sparseText, PLAN_REMINDER_MARKER)
+    }
+
     return input.messages
   }
 
