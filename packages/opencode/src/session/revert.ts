@@ -9,6 +9,7 @@ import { Storage } from "../storage/storage"
 import { Bus } from "../bus"
 import { SessionPrompt } from "./prompt"
 import { SessionSummary } from "./summary"
+import { Config } from "../config/config"
 
 export namespace SessionRevert {
   const log = Log.create({ service: "session.revert" })
@@ -54,9 +55,12 @@ export namespace SessionRevert {
     }
 
     if (revert) {
+      const cfg = await Config.get()
       const session = await Session.get(input.sessionID)
       revert.snapshot = session.revert?.snapshot ?? (await Snapshot.track())
-      await Snapshot.revert(patches)
+      if (cfg.undo?.revertFiles !== false) {
+        await Snapshot.revert(patches)
+      }
       if (revert.snapshot) revert.diff = await Snapshot.diff(revert.snapshot)
       const rangeMessages = all.filter((msg) => msg.info.id >= revert!.messageID)
       const diffs = await SessionSummary.computeDiff({ messages: rangeMessages })
@@ -82,7 +86,10 @@ export namespace SessionRevert {
     SessionPrompt.assertNotBusy(input.sessionID)
     const session = await Session.get(input.sessionID)
     if (!session.revert) return session
-    if (session.revert.snapshot) await Snapshot.restore(session.revert.snapshot)
+    const cfg = await Config.get()
+    if (session.revert.snapshot && cfg.undo?.revertFiles !== false) {
+      await Snapshot.restore(session.revert.snapshot)
+    }
     const next = await Session.update(input.sessionID, (draft) => {
       draft.revert = undefined
     })
