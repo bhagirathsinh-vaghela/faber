@@ -1298,7 +1298,7 @@ export function Prompt(props: PromptProps) {
             </box>
           </Show>
           <Show when={status().type !== "retry"}>
-            <box gap={2} flexDirection="row">
+            <box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={0}>
               <Switch>
                 <Match when={store.mode === "normal"}>
                   <text
@@ -1309,6 +1309,7 @@ export function Prompt(props: PromptProps) {
                     <span style={{ fg: theme.textMuted }}>pending</span>{" "}
                     <span style={{ fg: runningCount() > 0 ? theme.info : theme.success }}>{runningCount()}</span>
                   </text>
+                  <text fg={theme.textMuted}>·</text>
                   <text
                     fg={theme.text}
                     onMouseOver={() => setHoverResults(true)}
@@ -1317,6 +1318,7 @@ export function Prompt(props: PromptProps) {
                     <span style={{ fg: theme.textMuted }}>available</span>{" "}
                     <span style={{ fg: resultsCount() > 0 ? theme.warning : theme.success }}>{resultsCount()}</span>
                   </text>
+                  <text fg={theme.textMuted}>·</text>
                   <text
                     fg={theme.text}
                     onMouseOver={() => setHoverAutoInject(true)}
@@ -1327,7 +1329,7 @@ export function Prompt(props: PromptProps) {
                       {autoInject() ? "on" : "off"}
                     </span>
                   </text>
-
+                  <text fg={theme.textMuted}>·</text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>

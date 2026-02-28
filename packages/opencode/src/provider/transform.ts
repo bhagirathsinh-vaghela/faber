@@ -52,15 +52,6 @@ export namespace ProviderTransform {
     // Anthropic rejects messages with empty content - filter out empty string messages
     // and remove empty text/reasoning parts from array content
     if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/google-vertex/anthropic") {
-      const thinking = options?.["thinking"] as { type?: string } | undefined
-      const hasThinking = thinking?.type === "enabled" || Boolean(options?.["_adaptiveThinking"])
-      msgs = msgs.map((msg) => {
-        if (!hasThinking && msg.role === "assistant" && Array.isArray(msg.content)) {
-          const filtered = msg.content.filter((part) => part.type !== "reasoning")
-          return { ...msg, content: filtered }
-        }
-        return msg
-      })
       // Strip trailing reasoning from the last assistant message so Anthropic
       // doesn't try to continue from a thinking block.  Done here (at send time)
       // rather than in toModelMessages so stored messages stay immutable.
@@ -389,7 +380,6 @@ export namespace ProviderTransform {
   function isSyntheticContent(text: string) {
     const trimmed = text.trim()
     if (trimmed.startsWith("<system-reminder>") && trimmed.endsWith("</system-reminder>")) return true
-    if (trimmed.startsWith("<background-task-result>") && trimmed.endsWith("</background-task-result>")) return true
     return false
   }
 

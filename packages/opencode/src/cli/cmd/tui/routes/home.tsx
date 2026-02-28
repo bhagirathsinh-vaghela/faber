@@ -6,7 +6,7 @@ import { Logo } from "../component/logo"
 import { Tips } from "../component/tips"
 import { Locale } from "@/util/locale"
 import { useSync } from "../context/sync"
-import { Toast } from "../ui/toast"
+import { Toast, useToast } from "../ui/toast"
 import { useArgs } from "../context/args"
 import { useDirectory } from "../context/directory"
 import { useRouteData } from "@tui/context/route"
@@ -14,6 +14,7 @@ import { usePromptRef } from "../context/prompt"
 import { Installation } from "@/installation"
 import { useKV } from "../context/kv"
 import { useCommandDialog } from "../component/dialog-command"
+import { useSDK } from "../context/sdk"
 
 // TODO: what is the best way to do this?
 let once = false
@@ -21,6 +22,8 @@ let once = false
 export function Home() {
   const sync = useSync()
   const kv = useKV()
+  const sdk = useSDK()
+  const toast = useToast()
   const { theme } = useTheme()
   const route = useRouteData("home")
   const promptRef = usePromptRef()
@@ -50,6 +53,25 @@ export function Home() {
       category: "System",
       onSelect: (dialog) => {
         kv.set("tips_hidden", !tipsHidden())
+        dialog.clear()
+      },
+    },
+    {
+      title: "Toggle auto-inject default for background tasks",
+      value: "home.background.auto_inject_default",
+      keybind: "background_auto_inject_toggle",
+      category: "System",
+      slash: {
+        name: "auto-inject",
+        aliases: ["toggle-auto-inject"],
+      },
+      onSelect: async (dialog) => {
+        const result = await sdk.client.background.toggleAutoInjectDefault()
+        const newValue = result.data?.autoInject ?? true
+        toast.show({
+          message: `Auto-inject default: ${newValue ? "enabled" : "disabled"}`,
+          variant: newValue ? "success" : "warning",
+        })
         dialog.clear()
       },
     },
