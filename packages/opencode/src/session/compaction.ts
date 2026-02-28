@@ -14,6 +14,8 @@ import { fn } from "@/util/fn"
 import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
+import { SystemPrompt } from "./system"
+import { InstructionPrompt } from "./instruction"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -97,6 +99,7 @@ export namespace SessionCompaction {
     auto: boolean
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
+    const session = await Session.get(input.sessionID)
     const agent = await Agent.get("compaction")
     const model = agent.model
       ? await Provider.getModel(agent.model.providerID, agent.model.modelID)
@@ -132,6 +135,25 @@ export namespace SessionCompaction {
       model,
       abort: input.abort,
     })
+
+    // Use same tools and system as main session for cache compatibility.
+    // Compaction agent has "*": "deny" permissions so tools won't execute,
+    // but identical schemas preserve Anthropic prompt cache prefix.
+    const tools = await SessionPrompt.resolveTools({
+      agent,
+      model,
+      session,
+      processor,
+      bypassAgentCheck: false,
+      messages: input.messages,
+    })
+    const instructions = await InstructionPrompt.system()
+    const system = {
+      env: await SystemPrompt.environment(Date.now()),
+      globalInstructions: instructions.global,
+      projectInstructions: instructions.project,
+    }
+
     // Allow plugins to inject context or replace compaction prompt
     const compacting = await Plugin.trigger(
       "experimental.session.compacting",
@@ -139,17 +161,17 @@ export namespace SessionCompaction {
       { context: [], prompt: undefined },
     )
     const defaultPrompt =
-      "Provide a detailed prompt for continuing our conversation above. Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next considering new session will not have access to our conversation."
+      "Provide a detailed summary for continuing our conversation. Do not use any tools - only output text. Focus on: what we did, what we're working on, which files are involved, and what to do next."
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
     const result = await processor.process({
       user: userMessage,
       agent,
       abort: input.abort,
       sessionID: input.sessionID,
-      tools: {},
-      system: [],
+      tools,
+      system,
       messages: [
-        ...MessageV2.toModelMessages(input.messages, model),
+        ...MessageV2.toModelMessages(input.messages, model).messages,
         {
           role: "user",
           content: [

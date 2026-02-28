@@ -602,21 +602,44 @@ export namespace SessionPrompt {
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
       const instructions = await InstructionPrompt.system()
+      const variants = model.variants ?? ProviderTransform.variants(model)
+      const variant = lastUser.variant ? variants[lastUser.variant] : undefined
+      const stripReasoning =
+        (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/google-vertex/anthropic") &&
+        variant?.thinking?.type !== "enabled"
+      // Read one-shot cache probe index (if set) and clear it immediately
+      const probeSession = await Session.get(sessionID)
+      const cacheProbeIndex = probeSession?.cacheProbeIndex
+      if (cacheProbeIndex !== undefined) {
+        await Session.update(sessionID, (draft) => {
+          draft.cacheProbeIndex = undefined
+        })
+      }
+
       const result = await processor.process({
         user: lastUser,
         agent,
         abort,
         sessionID,
         system: {
-          env: await SystemPrompt.environment(session.time.created),
+          env: await SystemPrompt.environment(Date.now()),
           globalInstructions: instructions.global,
           projectInstructions: instructions.project,
         },
         ...(() => {
           const { messages, idToIndex } = MessageV2.toModelMessages(sessionMessages, model)
+          const next = stripReasoning
+            ? messages.map((msg) => {
+                if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
+                return {
+                  ...msg,
+                  content: msg.content.filter((part) => part.type !== "reasoning"),
+                }
+              })
+            : messages
           return {
             messages: [
-              ...messages,
+              ...next,
               ...(isLastStep
                 ? [
                     {
@@ -633,6 +656,7 @@ export namespace SessionPrompt {
         assistantMessage: processor.message,
         tools,
         model,
+        cacheProbeIndex,
       })
       if (result === "stop") break
       if (result === "compact") {
@@ -646,6 +670,7 @@ export namespace SessionPrompt {
       continue
     }
     SessionCompaction.prune({ sessionID })
+    await cleanupPing(sessionID)
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
       const queued = state()[sessionID]?.callbacks ?? []
@@ -656,6 +681,61 @@ export namespace SessionPrompt {
     }
     throw new Error("Impossible")
   })
+
+  function isPingText(parts: MessageV2.Part[]) {
+    const text = parts.filter((p) => p.type === "text")
+    if (text.length !== 1) return false
+    return text[0].text.trim() === "."
+  }
+
+  function isPingAssistant(parts: MessageV2.Part[]) {
+    const hasTools = parts.some((p) => p.type === "tool")
+    if (hasTools) return false
+    const text = parts.filter((p) => p.type === "text")
+    if (text.length !== 1) return false
+    return text[0].text.trim() === "."
+  }
+
+  async function cleanupPing(sessionID: string) {
+    const msgs = await Session.messages({ sessionID })
+    if (msgs.length < 2) return
+
+    const last = msgs[msgs.length - 1]
+    const prev = msgs[msgs.length - 2]
+    if (last.info.role !== "assistant" || prev.info.role !== "user") return
+
+    const isPing = isPingText(prev.parts) && isPingAssistant(last.parts)
+
+    if (!isPing) {
+      // Real exchange — clear any lingering ping state
+      const session = await Session.get(sessionID)
+      if (session.ping) {
+        await Session.update(
+          sessionID,
+          (draft) => {
+            draft.ping = undefined
+          },
+          { touch: false },
+        )
+      }
+      return
+    }
+
+    log.info("cleaning up ping", { sessionID })
+
+    const session = await Session.get(sessionID)
+    await Session.update(
+      sessionID,
+      (draft) => {
+        draft.revert = { messageID: prev.info.id }
+        draft.ping = {
+          count: (session.ping?.count ?? 0) + 1,
+          time: Date.now(),
+        }
+      },
+      { touch: false },
+    )
+  }
 
   async function lastModel(sessionID: string) {
     for await (const item of MessageV2.stream(sessionID)) {
@@ -1258,11 +1338,15 @@ export namespace SessionPrompt {
 
     // Original logic when experimental plan mode is disabled
     if (!Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE) {
-      if (input.agent.name === "plan") {
+      const lastAssistant = input.messages.findLast((msg) => msg.info.role === "assistant")
+      // Only inject on actual mode switch, not every turn in the same mode.
+      // The one-time injection stays in conversation history and remains authoritative
+      // for all subsequent turns. This prevents a sliding synthetic message that
+      // breaks Anthropic prompt cache prefix stability.
+      if (input.agent.name === "plan" && (!lastAssistant || lastAssistant.info.agent !== "plan")) {
         return await insertMeta(PROMPT_PLAN)
       }
-      const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
-      if (wasPlan && input.agent.name === "build") {
+      if (input.agent.name === "build" && lastAssistant?.info.agent === "plan") {
         return await insertMeta(BUILD_SWITCH)
       }
       return input.messages
