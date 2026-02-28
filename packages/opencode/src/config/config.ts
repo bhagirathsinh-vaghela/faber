@@ -885,6 +885,7 @@ export namespace Config {
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
       terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
       console_toggle: z.string().optional().default("none").describe("Toggle console"),
+      cache_markers_toggle: z.string().optional().default("none").describe("Toggle cache markers in statusline"),
       tips_toggle: z.string().optional().default("<leader>h").describe("Toggle tips on home screen"),
       accept_pending_results: z
         .string()

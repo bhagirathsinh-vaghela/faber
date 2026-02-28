@@ -86,6 +86,15 @@ export namespace Session {
           diff: z.string().optional(),
         })
         .optional(),
+      ping: z
+        .object({
+          count: z.number(),
+          time: z.number(),
+        })
+        .optional(),
+      cacheMarkers: z.array(z.number()).optional(),
+      systemBlockCount: z.number().optional(),
+      cacheProbeIndex: z.number().optional(),
     })
     .meta({
       ref: "Session",
@@ -469,6 +478,14 @@ export namespace Session {
           read: safe(cacheReadInputTokens),
         },
       }
+
+      // Uncomment to debug cache token accounting:
+      // console.error("[CACHE-DEBUG] raw usage", JSON.stringify({
+      //   raw: { inputTokens: input.usage.inputTokens, outputTokens: input.usage.outputTokens,
+      //     cachedInputTokens: input.usage.cachedInputTokens, reasoningTokens: input.usage.reasoningTokens },
+      //   anthropic: input.metadata?.["anthropic"],
+      //   computed: tokens,
+      // }, null, 2))
 
       const costInfo =
         input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000

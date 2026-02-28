@@ -18,6 +18,7 @@ import { DialogHelp } from "./ui/dialog-help"
 import { CommandProvider, useCommandDialog } from "@tui/component/dialog-command"
 import { DialogAgent } from "@tui/component/dialog-agent"
 import { DialogSessionList } from "@tui/component/dialog-session-list"
+import { toggleCacheMarkers } from "@tui/component/statusline"
 import { KeybindProvider } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
@@ -541,6 +542,16 @@ function App() {
       keybind: "console_toggle",
       onSelect: (dialog) => {
         renderer.console.toggle()
+        dialog.clear()
+      },
+    },
+    {
+      title: "Toggle cache markers",
+      category: "System",
+      value: "app.cache_markers",
+      keybind: "cache_markers_toggle",
+      onSelect: (dialog) => {
+        toggleCacheMarkers()
         dialog.clear()
       },
     },

@@ -134,7 +134,7 @@ export namespace SessionSummary {
     if (textPart && !userMsg.summary?.title) {
       const agent = await Agent.get("title")
       if (!agent) return
-      const stream = await LLM.stream({
+      const { stream } = await LLM.stream({
         agent,
         user: userMsg,
         tools: {},
@@ -156,7 +156,7 @@ export namespace SessionSummary {
         ],
         abort: new AbortController().signal,
         sessionID: userMsg.sessionID,
-        system: [],
+        system: { env: [], globalInstructions: [], projectInstructions: [] },
         retries: 3,
       })
       const result = await stream.text

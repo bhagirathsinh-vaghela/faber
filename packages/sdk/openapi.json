@@ -1618,6 +1618,9 @@
                         "type": "number"
                       }
                     }
+                  },
+                  "cacheProbeIndex": {
+                    "type": "number"
                   }
                 }
               }
@@ -8975,6 +8978,18 @@
             },
             "required": ["messageID"]
           },
+          "ping": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "number"
+              },
+              "time": {
+                "type": "number"
+              }
+            },
+            "required": ["count", "time"]
+          },
           "cacheMarkers": {
             "type": "array",
             "items": {
@@ -8982,6 +8997,9 @@
             }
           },
           "systemBlockCount": {
+            "type": "number"
+          },
+          "cacheProbeIndex": {
             "type": "number"
           }
         },
@@ -9609,6 +9627,21 @@
             "default": "none",
             "type": "string"
           },
+          "messages_next_user": {
+            "description": "Navigate to next user message (when jump mode enabled)",
+            "default": "]",
+            "type": "string"
+          },
+          "messages_previous_user": {
+            "description": "Navigate to previous user message (when jump mode enabled)",
+            "default": "[",
+            "type": "string"
+          },
+          "messages_jump_mode_toggle": {
+            "description": "Toggle user message jump mode ([ and ] jump between user messages)",
+            "default": "<leader>[,<leader>]",
+            "type": "string"
+          },
           "messages_last_user": {
             "description": "Navigate to last user message",
             "default": "none",
@@ -9687,6 +9720,11 @@
           "skill_list": {
             "description": "List skills and insert at cursor",
             "default": "<leader>s",
+            "type": "string"
+          },
+          "cache_probe": {
+            "description": "Set cache probe block index for testing",
+            "default": "none",
             "type": "string"
           },
           "variant_cycle": {
@@ -9919,13 +9957,18 @@
             "default": "none",
             "type": "string"
           },
+          "console_toggle": {
+            "description": "Toggle console",
+            "default": "none",
+            "type": "string"
+          },
           "tips_toggle": {
             "description": "Toggle tips on home screen",
             "default": "<leader>h",
             "type": "string"
           },
-          "background_pending": {
-            "description": "View pending background task results",
+          "accept_pending_results": {
+            "description": "Accept pending background task results",
             "default": "<leader>z",
             "type": "string"
           },
@@ -10548,6 +10591,12 @@
                 "description": "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
                 "type": "string",
                 "enum": ["auto", "stacked"]
+              },
+              "message_limit": {
+                "description": "Maximum number of messages to load when opening a session (default: 100)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
             }
           },
@@ -10910,6 +10959,54 @@
               "revertFiles": {
                 "description": "Whether /undo should revert file changes along with messages (default: true)",
                 "type": "boolean"
+              }
+            }
+          },
+          "background": {
+            "type": "object",
+            "properties": {
+              "auto_inject": {
+                "description": "Auto-inject background task results when they complete (default: false)",
+                "type": "boolean"
+              }
+            }
+          },
+          "anthropic": {
+            "type": "object",
+            "properties": {
+              "beta": {
+                "description": "Beta headers to send for all Anthropic models (e.g., ['interleaved-thinking-2025-05-14'])",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "context": {
+                "description": "Map of model IDs to context/beta config.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "model": {
+                      "description": "Model ID to use for API calls (e.g., 'claude-sonnet-4-5[1m]')",
+                      "type": "string"
+                    },
+                    "limit": {
+                      "description": "Context window limit (used for display and compaction decisions)",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "description": "Beta headers for this model (overrides provider-level beta if set)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
               }
             }
           },

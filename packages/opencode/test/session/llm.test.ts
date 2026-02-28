@@ -284,12 +284,12 @@ describe("session.llm.stream", () => {
           variant: "high",
         } satisfies MessageV2.User
 
-        const stream = await LLM.stream({
+        const { stream } = await LLM.stream({
           user,
           sessionID,
           model: resolved,
           agent,
-          system: ["You are a helpful assistant."],
+          system: { env: [], globalInstructions: [], projectInstructions: ["You are a helpful assistant."] },
           abort: new AbortController().signal,
           messages: [{ role: "user", content: "Hello" }],
           tools: {},
@@ -419,12 +419,12 @@ describe("session.llm.stream", () => {
           variant: "high",
         } satisfies MessageV2.User
 
-        const stream = await LLM.stream({
+        const { stream } = await LLM.stream({
           user,
           sessionID,
           model: resolved,
           agent,
-          system: ["You are a helpful assistant."],
+          system: { env: [], globalInstructions: [], projectInstructions: ["You are a helpful assistant."] },
           abort: new AbortController().signal,
           messages: [{ role: "user", content: "Hello" }],
           tools: {},
@@ -546,12 +546,12 @@ describe("session.llm.stream", () => {
           model: { providerID, modelID: resolved.id },
         } satisfies MessageV2.User
 
-        const stream = await LLM.stream({
+        const { stream } = await LLM.stream({
           user,
           sessionID,
           model: resolved,
           agent,
-          system: ["You are a helpful assistant."],
+          system: { env: [], globalInstructions: [], projectInstructions: ["You are a helpful assistant."] },
           abort: new AbortController().signal,
           messages: [{ role: "user", content: "Hello" }],
           tools: {},
@@ -654,12 +654,12 @@ describe("session.llm.stream", () => {
           model: { providerID, modelID: resolved.id },
         } satisfies MessageV2.User
 
-        const stream = await LLM.stream({
+        const { stream } = await LLM.stream({
           user,
           sessionID,
           model: resolved,
           agent,
-          system: ["You are a helpful assistant."],
+          system: { env: [], globalInstructions: [], projectInstructions: ["You are a helpful assistant."] },
           abort: new AbortController().signal,
           messages: [{ role: "user", content: "Hello" }],
           tools: {},
