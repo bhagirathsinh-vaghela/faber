@@ -1,15 +1,12 @@
-# js
+# Faber server and CLI
 
-To install dependencies:
-
-```bash
-bun install
-```
-
-To run:
+Builds the `opencode` binary: the server, the supervisor and the CLI, with the web UI from `packages/app` embedded.
 
 ```bash
-bun run index.ts
+bun run build                 # binaries in dist/
+bun run dev serve --port 4096 # run from source
+bun test                      # all tests
+bun run typecheck
 ```
 
-This project was created using `bun init` in bun v1.2.12. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+Set `OPENCODE_SKIP_PACK_WEB=1` to reuse the last web UI build when only server code changed.

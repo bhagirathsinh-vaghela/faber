@@ -3,7 +3,7 @@
   "version": "1.1.50",
   "name": "opencode",
   "type": "module",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "private": true,
   "scripts": {
     "typecheck": "tsgo --noEmit",

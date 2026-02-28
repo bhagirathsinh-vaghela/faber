@@ -20,10 +20,10 @@ body:
       required: false
 
   - type: input
-    id: opencode-version
+    id: faber-version
     attributes:
-      label: OpenCode version
-      description: What version of OpenCode are you using?
+      label: Faber version
+      description: Which commit or build of Faber are you using?
     validations:
       required: false
 
@@ -31,7 +31,7 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: How can we reproduce this issue?
+      description: How can I reproduce this issue?
       placeholder: |
         1.
         2.
@@ -40,11 +40,11 @@ body:
       required: false
 
   - type: textarea
-    id: screenshot-or-link
+    id: screenshot
     attributes:
-      label: Screenshot and/or share link
-      description: Run `/share` to get a share link, or attach a screenshot
-      placeholder: Paste link or drag and drop screenshot here
+      label: Screenshot or recording
+      description: Attach a screenshot or screen recording
+      placeholder: Drag and drop a file here
     validations:
       required: false
 
@@ -53,15 +53,15 @@ body:
     attributes:
       label: Operating System
       description: what OS are you using?
-      placeholder: e.g., macOS 26.0.1, Ubuntu 22.04, Windows 11
+      placeholder: e.g., macOS 26.0.1, Ubuntu 22.04
     validations:
       required: false
 
   - type: input
-    id: terminal
+    id: browser
     attributes:
-      label: Terminal
-      description: what terminal are you using?
-      placeholder: e.g., iTerm2, Ghostty, Alacritty, Windows Terminal
+      label: Browser and device
+      description: Which browser and device are you using?
+      placeholder: e.g., Safari on iPhone 15, Chrome on macOS
     validations:
       required: false
