@@ -2,7 +2,7 @@ import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentu
 import { Clipboard } from "@tui/util/clipboard"
 import { TextAttributes } from "@opentui/core"
 import { RouteProvider, useRoute } from "@tui/context/route"
-import { Switch, Match, createEffect, untrack, ErrorBoundary, createSignal, onMount, batch, Show, on } from "solid-js"
+import { Switch, Match, createEffect, untrack, ErrorBoundary, createSignal, onMount, onCleanup, batch, Show, on } from "solid-js"
 import { Installation } from "@/installation"
 import { Flag } from "@/flag/flag"
 import { DialogProvider, useDialog } from "@tui/ui/dialog"
@@ -201,6 +201,18 @@ function App() {
   const sync = useSync()
   const exit = useExit()
   const promptRef = usePromptRef()
+
+  const inTmux = !!process.env.TMUX
+  createEffect(() => {
+    const [r, g, b] = theme.background.toInts()
+    const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
+    const osc = `\x1b]11;${hex}\x07`
+    process.stdout.write(inTmux ? `\x1bPtmux;\x1b${osc}\x1b\\` : osc)
+  })
+  onCleanup(() => {
+    const osc = "\x1b]111;\x07"
+    process.stdout.write(inTmux ? `\x1bPtmux;\x1b${osc}\x1b\\` : osc)
+  })
 
   // Wire up console copy-to-clipboard via opentui's onCopySelection callback
   renderer.console.onCopySelection = async (text: string) => {
