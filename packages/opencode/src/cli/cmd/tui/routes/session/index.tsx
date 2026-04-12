@@ -239,23 +239,40 @@ export function Session() {
   const [autoScroll, setAutoScroll] = createSignal(true)
 
   // Auto-scroll to bottom when content changes and autoScroll is enabled.
-  // Also re-enables autoScroll when user manually scrolls to the bottom.
+  // Detects user scroll-up by monitoring scrollTop changes in the interval
+  // rather than relying on onMouseScroll (which may fire on nested scrollboxes).
   let lastScrollHeight = 0
+  let lastScrollTop = -1
+  let weScrolled = false
   const autoScrollInterval = setInterval(() => {
     if (!scroll || scroll.isDestroyed) return
+    const top = scroll.scrollTop
     const maxScroll = Math.max(0, scroll.scrollHeight - scroll.height)
+
+    // Detect user-initiated scroll-up: scrollTop decreased and we didn't cause it
+    if (lastScrollTop >= 0 && top < lastScrollTop && !weScrolled && autoScroll()) {
+      setAutoScroll(false)
+    }
+    weScrolled = false
+
+    // Re-enable autoScroll when user manually scrolls to the bottom
     if (!autoScroll()) {
-      const distFromBottom = maxScroll - scroll.y
+      const distFromBottom = maxScroll - top
       if (maxScroll > 0 && distFromBottom >= 0 && distFromBottom <= 1) {
         setAutoScroll(true)
       }
+      lastScrollTop = top
       return
     }
+
+    // Scroll to bottom when content grows
     const h = scroll.scrollHeight
     if (h !== lastScrollHeight) {
       lastScrollHeight = h
+      weScrolled = true
       scroll.scrollTo(h)
     }
+    lastScrollTop = scroll.scrollTop
   }, 100)
   onCleanup(() => clearInterval(autoScrollInterval))
 
