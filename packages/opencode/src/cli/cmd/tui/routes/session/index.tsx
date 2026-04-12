@@ -7,6 +7,7 @@ import {
   For,
   Match,
   on,
+  onCleanup,
   Show,
   Switch,
   useContext,
@@ -235,6 +236,28 @@ export function Session() {
   let scroll: ScrollBoxRenderable
   let prompt: PromptRef
   const keybind = useKeybind()
+  const [autoScroll, setAutoScroll] = createSignal(true)
+
+  // Auto-scroll to bottom when content changes and autoScroll is enabled.
+  // Also re-enables autoScroll when user manually scrolls to the bottom.
+  let lastScrollHeight = 0
+  const autoScrollInterval = setInterval(() => {
+    if (!scroll || scroll.isDestroyed) return
+    const maxScroll = Math.max(0, scroll.scrollHeight - scroll.height)
+    if (!autoScroll()) {
+      const distFromBottom = maxScroll - scroll.y
+      if (maxScroll > 0 && distFromBottom >= 0 && distFromBottom <= 1) {
+        setAutoScroll(true)
+      }
+      return
+    }
+    const h = scroll.scrollHeight
+    if (h !== lastScrollHeight) {
+      lastScrollHeight = h
+      scroll.scrollTo(h)
+    }
+  }, 100)
+  onCleanup(() => clearInterval(autoScrollInterval))
 
   // Allow exit when in child session (prompt is hidden)
   const exit = useExit()
@@ -261,6 +284,7 @@ export function Session() {
   // Force scroll to bottom (configurable via scroll_to_bottom keybind)
   useKeyboard((evt) => {
     if (keybind.match("scroll_to_bottom", evt)) {
+      setAutoScroll(true)
       if (scroll) scroll.scrollTo(scroll.scrollHeight)
     }
   })
@@ -317,6 +341,7 @@ export function Session() {
 
   // Helper: Scroll to message in direction or fallback to page scroll
   const scrollToMessage = (direction: "next" | "prev", dialog: ReturnType<typeof useDialog>) => {
+    if (direction === "prev") setAutoScroll(false)
     const targetID = findNextVisibleMessage(direction)
 
     if (!targetID) {
@@ -354,6 +379,7 @@ export function Session() {
 
   // Helper: Scroll to user message in direction
   const scrollToUserMessage = (direction: "next" | "prev", dialog: ReturnType<typeof useDialog>) => {
+    if (direction === "prev") setAutoScroll(false)
     const targetID = findNextUserMessage(direction)
 
     if (!targetID) {
@@ -366,8 +392,17 @@ export function Session() {
     dialog.clear()
   }
 
+  function checkResumeAtBottom() {
+    if (!scroll || autoScroll()) return
+    const max = Math.max(0, scroll.scrollHeight - scroll.height)
+    if (max > 0 && scroll.y >= max - 1) {
+      setAutoScroll(true)
+    }
+  }
+
   function toBottom() {
     if (!scroll || scroll.isDestroyed) return
+    setAutoScroll(true)
     scroll.scrollTo(scroll.scrollHeight)
   }
 
@@ -677,6 +712,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        setAutoScroll(false)
         scroll.scrollBy(-scroll.height / 2)
         dialog.clear()
       },
@@ -689,6 +725,7 @@ export function Session() {
       hidden: true,
       onSelect: (dialog) => {
         scroll.scrollBy(scroll.height / 2)
+        checkResumeAtBottom()
         dialog.clear()
       },
     },
@@ -699,6 +736,7 @@ export function Session() {
       category: "Session",
       disabled: true,
       onSelect: (dialog) => {
+        setAutoScroll(false)
         scroll.scrollBy(-1)
         dialog.clear()
       },
@@ -711,6 +749,7 @@ export function Session() {
       disabled: true,
       onSelect: (dialog) => {
         scroll.scrollBy(1)
+        checkResumeAtBottom()
         dialog.clear()
       },
     },
@@ -721,6 +760,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        setAutoScroll(false)
         scroll.scrollBy(-scroll.height / 4)
         dialog.clear()
       },
@@ -733,6 +773,7 @@ export function Session() {
       hidden: true,
       onSelect: (dialog) => {
         scroll.scrollBy(scroll.height / 4)
+        checkResumeAtBottom()
         dialog.clear()
       },
     },
@@ -743,6 +784,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        setAutoScroll(false)
         scroll.scrollTo(0)
         dialog.clear()
       },
@@ -754,6 +796,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        setAutoScroll(true)
         scroll.scrollTo(scroll.scrollHeight)
         dialog.clear()
       },
@@ -785,6 +828,7 @@ export function Session() {
               return child.id === message.id
             })
             if (child) {
+              setAutoScroll(false)
               scroll.scrollBy(child.y - scroll.y - 1)
             }
             break
@@ -1092,13 +1136,11 @@ export function Session() {
   const dialog = useDialog()
   const renderer = useRenderer()
 
-  // Scroll to bottom on session change. The sync effect handles
-  // scrollBy(100_000) after data loads; this ensures the renderable's
-  // native stickyScroll is at the bottom position for the new session.
   createEffect(
     on(
       () => route.sessionID,
       () => {
+        setAutoScroll(true)
         if (scroll) scroll.scrollTo(scroll.scrollHeight)
       },
     ),
@@ -1128,6 +1170,11 @@ export function Session() {
             <scrollbox
               ref={(r) => {
                 scroll = r
+                r.onMouseScroll = (evt) => {
+                  if (evt.scroll?.direction === "up") {
+                    setAutoScroll(false)
+                  }
+                }
               }}
               viewportOptions={{
                 paddingRight: showScrollbar() ? 1 : 0,
@@ -1140,8 +1187,7 @@ export function Session() {
                   foregroundColor: theme.border,
                 },
               }}
-              stickyScroll={true}
-              stickyStart="bottom"
+              stickyScroll={false}
               flexGrow={1}
               scrollAcceleration={scrollAcceleration()}
             >
