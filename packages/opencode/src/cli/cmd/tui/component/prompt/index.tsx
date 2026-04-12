@@ -136,6 +136,25 @@ export function Prompt(props: PromptProps) {
     }
   })
 
+  // Track active token streaming via message.part.updated events
+  const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  const [streamFrame, setStreamFrame] = createSignal(-1) // -1 = not streaming
+  let streamingTimeout: ReturnType<typeof setTimeout> | undefined
+
+  sdk.event.on("message.part.updated", (evt) => {
+    const part = evt.properties.part
+    if (part.sessionID !== props.sessionID) return
+    if (part.type === "text" && part.text.length > 0) {
+      setStreamFrame((f) => (f + 1) % BRAILLE_FRAMES.length)
+      clearTimeout(streamingTimeout)
+      streamingTimeout = setTimeout(() => setStreamFrame(-1), 1500)
+    }
+  })
+
+  onCleanup(() => {
+    clearTimeout(streamingTimeout)
+  })
+
   // Poll for global default changes and counts
   onMount(() => {
     if (!props.sessionID) {
@@ -1197,7 +1216,11 @@ export function Prompt(props: PromptProps) {
                 directory={directory()}
               />
             </box>
-            <Statusline sessionID={props.sessionID} dimmed={keybind.leader} />
+            <Statusline
+              sessionID={props.sessionID}
+              dimmed={keybind.leader}
+              streamIndicator={streamFrame() >= 0 ? BRAILLE_FRAMES[streamFrame()] : null}
+            />
           </box>
         </box>
         <box

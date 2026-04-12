@@ -55,6 +55,7 @@ export type StatuslineContentProps = {
   contextStats: { total: number; cached: number; newTokens: number; contextLimit: number; percentage: number } | null
   cacheExpiry: string | null
   sessionTotals: { input: number; output: number }
+  streamIndicator?: string | null
 }
 
 export function ModelHeader(props: {
@@ -154,6 +155,12 @@ export function StatuslineContent(props: StatuslineContentProps) {
         {(stats) => (
           <box flexDirection="row">
             <box flexDirection="row">
+              {props.streamIndicator ? (
+                <text>
+                  <span style={{ fg: c(UTILIZATION_GREEN) }}>{props.streamIndicator}</span>
+                  <span style={{ fg: m() }}> │ </span>
+                </text>
+              ) : null}
               {/* Cache expiry (full mode only) */}
               <Show when={!props.compact}>
                 <text>
@@ -196,6 +203,7 @@ export function StatuslineContent(props: StatuslineContentProps) {
 export type StatuslineProps = {
   sessionID?: string
   dimmed?: boolean
+  streamIndicator?: string | null
 }
 
 const [showCacheMarkers, setShowCacheMarkers] = createSignal(false)
@@ -266,6 +274,7 @@ export function Statusline(props: StatuslineProps) {
       contextStats={contextStats()}
       cacheExpiry={cacheExpiry()}
       sessionTotals={sessionTotals()}
+      streamIndicator={props.streamIndicator}
     />
   )
 }
