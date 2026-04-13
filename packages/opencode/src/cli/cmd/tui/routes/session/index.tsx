@@ -260,7 +260,7 @@ export function Session() {
   // rather than relying on onMouseScroll (which may fire on nested scrollboxes).
   let lastScrollHeight = 0
   let lastScrollTop = -1
-  let weScrolled = false
+  let programmaticScroll = false
   let userScrolled = false
   const autoScrollInterval = setInterval(() => {
     if (!scroll || scroll.isDestroyed) return
@@ -269,11 +269,7 @@ export function Session() {
     const wasUserScrolled = userScrolled
     userScrolled = false
 
-    // Detect user-initiated scroll-up: scrollTop decreased and we didn't cause it
-    if (lastScrollTop >= 0 && top < lastScrollTop && !weScrolled && autoScroll()) {
-      setAutoScroll(false)
-    }
-    weScrolled = false
+    programmaticScroll = false
 
     // Re-enable autoScroll when user manually scrolls to the bottom
     if (!autoScroll()) {
@@ -299,7 +295,7 @@ export function Session() {
     const h = scroll.scrollHeight
     if (h !== lastScrollHeight) {
       lastScrollHeight = h
-      weScrolled = true
+      programmaticScroll = true
       scroll.scrollTo(h)
     }
     lastScrollTop = scroll.scrollTop
@@ -333,6 +329,7 @@ export function Session() {
     if (keybind.match("scroll_to_bottom", evt)) {
       markUserScroll()
       setAutoScroll(true)
+      programmaticScroll = true
       if (scroll) scroll.scrollTo(scroll.scrollHeight)
     }
   })
@@ -445,6 +442,7 @@ export function Session() {
   function toBottom() {
     if (!scroll || scroll.isDestroyed) return
     setAutoScroll(true)
+    programmaticScroll = true
     scroll.scrollTo(scroll.scrollHeight)
   }
 
@@ -844,6 +842,7 @@ export function Session() {
       onSelect: (dialog) => {
         markUserScroll()
         setAutoScroll(true)
+        programmaticScroll = true
         scroll.scrollTo(scroll.scrollHeight)
         dialog.clear()
       },
@@ -1189,6 +1188,7 @@ export function Session() {
       () => route.sessionID,
       () => {
         setAutoScroll(true)
+        programmaticScroll = true
         if (scroll) scroll.scrollTo(scroll.scrollHeight)
       },
     ),
