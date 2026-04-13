@@ -244,10 +244,21 @@ export function Session() {
   let lastScrollHeight = 0
   let lastScrollTop = -1
   let weScrolled = false
+  let userScrolled = false
+  const fs = require("fs")
+  const debugFd = fs.openSync("/tmp/scroll-debug.log", "a")
+  function scrollDebug(msg: string) {
+    fs.writeSync(debugFd, `[${new Date().toISOString()}] ${msg}\n`)
+  }
+  function markUserScroll() {
+    userScrolled = true
+  }
   const autoScrollInterval = setInterval(() => {
     if (!scroll || scroll.isDestroyed) return
     const top = scroll.scrollTop
     const maxScroll = Math.max(0, scroll.scrollHeight - scroll.height)
+    const wasUserScrolled = userScrolled
+    userScrolled = false
 
     // Detect user-initiated scroll-up: scrollTop decreased and we didn't cause it
     if (lastScrollTop >= 0 && top < lastScrollTop && !weScrolled && autoScroll()) {
@@ -257,8 +268,23 @@ export function Session() {
 
     // Re-enable autoScroll when user manually scrolls to the bottom
     if (!autoScroll()) {
+      if (lastScrollTop >= 0 && top !== lastScrollTop) {
+        if (wasUserScrolled) {
+          scrollDebug(`scrollTop USER: ${lastScrollTop} -> ${top} (delta=${top - lastScrollTop})`)
+        } else {
+          const children = scroll.getChildren()
+          const firstVisible = children.find((c) => c.y + c.height > top)
+          scrollDebug(`scrollTop AUTO-SHIFTED: ${lastScrollTop} -> ${top} (delta=${top - lastScrollTop}, scrollHeight=${scroll.scrollHeight}, prevScrollHeight=${lastScrollHeight}, maxScroll=${maxScroll}, viewportH=${scroll.height}, contentH=${scroll.content.height}, numChildren=${children.length}, firstVisibleChild=${firstVisible?.id ?? "none"} y=${firstVisible?.y ?? "?"} h=${firstVisible?.height ?? "?"})`)
+        }
+      }
+      if (lastScrollHeight > 0 && scroll.scrollHeight !== lastScrollHeight) {
+        const delta = scroll.scrollHeight - lastScrollHeight
+        scrollDebug(`scrollHeight: ${lastScrollHeight} -> ${scroll.scrollHeight} (delta=${delta}${delta < 0 ? " SHRANK" : ""})`)
+      }
+      lastScrollHeight = scroll.scrollHeight
       const distFromBottom = maxScroll - top
-      if (maxScroll > 0 && distFromBottom >= 0 && distFromBottom <= 1) {
+      if (maxScroll > 0 && distFromBottom >= 0 && distFromBottom <= 5) {
+        scrollDebug(`RE-ENABLING autoScroll: distFromBottom=${distFromBottom}`)
         setAutoScroll(true)
       }
       lastScrollTop = top
@@ -301,6 +327,7 @@ export function Session() {
   // Force scroll to bottom (configurable via scroll_to_bottom keybind)
   useKeyboard((evt) => {
     if (keybind.match("scroll_to_bottom", evt)) {
+      markUserScroll()
       setAutoScroll(true)
       if (scroll) scroll.scrollTo(scroll.scrollHeight)
     }
@@ -358,6 +385,7 @@ export function Session() {
 
   // Helper: Scroll to message in direction or fallback to page scroll
   const scrollToMessage = (direction: "next" | "prev", dialog: ReturnType<typeof useDialog>) => {
+    markUserScroll()
     if (direction === "prev") setAutoScroll(false)
     const targetID = findNextVisibleMessage(direction)
 
@@ -396,6 +424,7 @@ export function Session() {
 
   // Helper: Scroll to user message in direction
   const scrollToUserMessage = (direction: "next" | "prev", dialog: ReturnType<typeof useDialog>) => {
+    markUserScroll()
     if (direction === "prev") setAutoScroll(false)
     const targetID = findNextUserMessage(direction)
 
@@ -729,6 +758,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        markUserScroll()
         setAutoScroll(false)
         scroll.scrollBy(-scroll.height / 2)
         dialog.clear()
@@ -741,6 +771,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        markUserScroll()
         scroll.scrollBy(scroll.height / 2)
         checkResumeAtBottom()
         dialog.clear()
@@ -753,6 +784,7 @@ export function Session() {
       category: "Session",
       disabled: true,
       onSelect: (dialog) => {
+        markUserScroll()
         setAutoScroll(false)
         scroll.scrollBy(-1)
         dialog.clear()
@@ -765,6 +797,7 @@ export function Session() {
       category: "Session",
       disabled: true,
       onSelect: (dialog) => {
+        markUserScroll()
         scroll.scrollBy(1)
         checkResumeAtBottom()
         dialog.clear()
@@ -777,6 +810,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        markUserScroll()
         setAutoScroll(false)
         scroll.scrollBy(-scroll.height / 4)
         dialog.clear()
@@ -789,6 +823,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        markUserScroll()
         scroll.scrollBy(scroll.height / 4)
         checkResumeAtBottom()
         dialog.clear()
@@ -801,6 +836,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        markUserScroll()
         setAutoScroll(false)
         scroll.scrollTo(0)
         dialog.clear()
@@ -813,6 +849,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: (dialog) => {
+        markUserScroll()
         setAutoScroll(true)
         scroll.scrollTo(scroll.scrollHeight)
         dialog.clear()
@@ -825,6 +862,7 @@ export function Session() {
       category: "Session",
       hidden: true,
       onSelect: () => {
+        markUserScroll()
         const messages = sync.data.message[route.sessionID]
         if (!messages || !messages.length) return
 
@@ -1188,9 +1226,24 @@ export function Session() {
               ref={(r) => {
                 scroll = r
                 r.onMouseScroll = (evt) => {
+                  markUserScroll()
                   if (evt.scroll?.direction === "up") {
                     setAutoScroll(false)
                   }
+                }
+                const origScrollTo = r.scrollTo.bind(r)
+                const origScrollBy = r.scrollBy.bind(r)
+                r.scrollTo = (...args: Parameters<typeof r.scrollTo>) => {
+                  if (!autoScroll() && !userScrolled) {
+                    scrollDebug(`scrollTo(${JSON.stringify(args[0])}) called while autoScroll=off WITHOUT user input. stack:\n${new Error().stack}`)
+                  }
+                  return origScrollTo(...args)
+                }
+                r.scrollBy = (...args: Parameters<typeof r.scrollBy>) => {
+                  if (!autoScroll() && !userScrolled) {
+                    scrollDebug(`scrollBy(${JSON.stringify(args[0])}) called while autoScroll=off WITHOUT user input. stack:\n${new Error().stack}`)
+                  }
+                  return origScrollBy(...args)
                 }
               }}
               viewportOptions={{
