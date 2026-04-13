@@ -248,7 +248,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }),
           )
           const updated = store.message[event.properties.info.sessionID]
-          if (updated.length > 100) {
+          const messageLimit = store.config.tui?.message_limit ?? 100
+          if (updated.length > messageLimit) {
             const oldest = updated[0]
             batch(() => {
               setStore(

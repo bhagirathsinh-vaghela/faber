@@ -236,15 +236,6 @@ export function Session() {
   let scroll: ScrollBoxRenderable
   let prompt: PromptRef
   const keybind = useKeybind()
-  const [autoScroll, setAutoScroll] = createSignal(true)
-
-  // Auto-scroll to bottom when content changes and autoScroll is enabled.
-  // Detects user scroll-up by monitoring scrollTop changes in the interval
-  // rather than relying on onMouseScroll (which may fire on nested scrollboxes).
-  let lastScrollHeight = 0
-  let lastScrollTop = -1
-  let weScrolled = false
-  let userScrolled = false
   const fs = require("fs")
   const debugFd = fs.openSync("/tmp/scroll-debug.log", "a")
   function scrollDebug(msg: string) {
@@ -253,6 +244,24 @@ export function Session() {
   function markUserScroll() {
     userScrolled = true
   }
+
+  const [autoScroll, _setAutoScroll] = createSignal(true)
+  function setAutoScroll(value: boolean) {
+    const prev = autoScroll()
+    if (prev !== value) {
+      const caller = new Error().stack?.split("\n")[2]?.trim() ?? "unknown"
+      scrollDebug(`autoScroll ${prev} -> ${value} (${caller})`)
+    }
+    _setAutoScroll(value)
+  }
+
+  // Auto-scroll to bottom when content changes and autoScroll is enabled.
+  // Detects user scroll-up by monitoring scrollTop changes in the interval
+  // rather than relying on onMouseScroll (which may fire on nested scrollboxes).
+  let lastScrollHeight = 0
+  let lastScrollTop = -1
+  let weScrolled = false
+  let userScrolled = false
   const autoScrollInterval = setInterval(() => {
     if (!scroll || scroll.isDestroyed) return
     const top = scroll.scrollTop
@@ -282,11 +291,6 @@ export function Session() {
         scrollDebug(`scrollHeight: ${lastScrollHeight} -> ${scroll.scrollHeight} (delta=${delta}${delta < 0 ? " SHRANK" : ""})`)
       }
       lastScrollHeight = scroll.scrollHeight
-      const distFromBottom = maxScroll - top
-      if (maxScroll > 0 && distFromBottom >= 0 && distFromBottom <= 5) {
-        scrollDebug(`RE-ENABLING autoScroll: distFromBottom=${distFromBottom}`)
-        setAutoScroll(true)
-      }
       lastScrollTop = top
       return
     }
@@ -436,14 +440,6 @@ export function Session() {
     const child = scroll.getChildren().find((c) => c.id === targetID)
     if (child) scroll.scrollBy(child.y - scroll.y - 1)
     dialog.clear()
-  }
-
-  function checkResumeAtBottom() {
-    if (!scroll || autoScroll()) return
-    const max = Math.max(0, scroll.scrollHeight - scroll.height)
-    if (max > 0 && scroll.y >= max - 1) {
-      setAutoScroll(true)
-    }
   }
 
   function toBottom() {
@@ -773,7 +769,6 @@ export function Session() {
       onSelect: (dialog) => {
         markUserScroll()
         scroll.scrollBy(scroll.height / 2)
-        checkResumeAtBottom()
         dialog.clear()
       },
     },
@@ -799,7 +794,6 @@ export function Session() {
       onSelect: (dialog) => {
         markUserScroll()
         scroll.scrollBy(1)
-        checkResumeAtBottom()
         dialog.clear()
       },
     },
@@ -825,7 +819,6 @@ export function Session() {
       onSelect: (dialog) => {
         markUserScroll()
         scroll.scrollBy(scroll.height / 4)
-        checkResumeAtBottom()
         dialog.clear()
       },
     },
