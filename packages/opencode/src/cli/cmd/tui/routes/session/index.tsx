@@ -1653,11 +1653,12 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
     const msg = props.message
     const total = msg.tokens.input + msg.tokens.cache.read + msg.tokens.cache.write
     const cached = msg.tokens.cache.read
-    const newTokens = msg.tokens.input + msg.tokens.cache.write
+    const cacheWritten = msg.tokens.cache.write
+    const nextTurn = msg.tokens.output
     const modelInfo = sync.data.provider.find((x) => x.id === msg.providerID)?.models[msg.modelID]
     const contextLimit = modelInfo?.limit.context ?? 200000
     const percentage = Math.round((total / contextLimit) * 100)
-    return { total, cached, newTokens, contextLimit, percentage }
+    return { total, cached, cacheWritten, nextTurn, contextLimit, percentage }
   })
 
   const sessionTotals = createMemo(() => {
@@ -1793,7 +1794,7 @@ function TextPart(props: {
   messageLast: boolean
   messageFinal: boolean
   messageDuration: number
-  contextStats: { total: number; cached: number; newTokens: number; contextLimit: number; percentage: number }
+  contextStats: { total: number; cached: number; cacheWritten: number; nextTurn: number; contextLimit: number; percentage: number }
   sessionTotals: { input: number; output: number }
   cacheExpiry: string | null
 }) {

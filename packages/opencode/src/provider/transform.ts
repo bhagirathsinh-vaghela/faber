@@ -610,7 +610,7 @@ export namespace ProviderTransform {
           // thinking:{type:"adaptive"} into the request body when the adaptive-thinking
           // beta header is present.
           adaptive: {
-            effort: "medium",
+            effort: "high",
           },
           high: {
             thinking: {

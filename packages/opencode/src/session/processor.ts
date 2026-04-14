@@ -256,7 +256,7 @@ export namespace SessionProcessor {
                     draft.tokens.cacheWrite = usage.tokens.cache.write
                     draft.tokens.output = usage.tokens.output
                     draft.tokens.reasoning = usage.tokens.reasoning
-                    draft.total.input += usage.tokens.input + usage.tokens.cache.write
+                    draft.total.input += usage.tokens.cache.read * 0.1 + usage.tokens.cache.write * 1.25
                     draft.total.output += usage.tokens.output + usage.tokens.reasoning
                   })
                   await Session.updatePart({

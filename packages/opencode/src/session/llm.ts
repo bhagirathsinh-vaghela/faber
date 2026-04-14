@@ -160,17 +160,16 @@ export namespace LLM {
       options.instructions = SystemPrompt.instructions()
     }
 
-    // For Claude models: temperature undefined when thinking enabled, 1 when disabled
-    // "adaptive" variant uses adaptive thinking (injected via fetch wrapper), so treat it as thinking enabled.
-    // We mark options._adaptiveThinking for normalizeMessages to preserve reasoning blocks.
+    // Claude models get temperature 1 unless the agent sets one.
+    // The "adaptive" variant uses adaptive thinking (injected via fetch wrapper);
+    // options._adaptiveThinking tells normalizeMessages to preserve reasoning blocks.
     const isClaude = input.model.id.toLowerCase().includes("claude")
     const isAdaptiveThinking = input.user.variant === "adaptive"
     if (isAdaptiveThinking) options._adaptiveThinking = true
-    const thinkingEnabled = Boolean(variant?.thinking || options?.thinking || isAdaptiveThinking)
     const temperature = (() => {
       if (!input.model.capabilities.temperature) return undefined
       if (input.agent.temperature !== undefined) return input.agent.temperature
-      if (isClaude) return thinkingEnabled ? undefined : 1
+      if (isClaude) return 1
       return ProviderTransform.temperature(input.model)
     })()
 

@@ -4,7 +4,7 @@
 //   ModelHeader     — "header":   agent · model · provider · variant [· duration] [· interrupted] [· directory]
 //   StatuslineContent — renders the lines below, controlled by bold + compact props:
 //     "markers"     — ▣ Cache: #0-19                   (input only, toggle via cache_markers_toggle keybind)
-//     "context"     — ◷ HH:MM:SS │ ▣ [bar] N/M │ ◈ cached · ★ new │ Σ ↑in ↓out
+//     "context"     — ◷ HH:MM:SS │ ▣ [bar] N/M │ ◈ cached · ★ write · ⚠ next │ Σ ↑in ↓out
 //
 // Input area: ModelHeader(bold=true, directory with branch) + Statusline wrapper (bold=true, full layout)
 // Snapshot:   ModelHeader(bold=false, +duration, directory without branch) + StatuslineContent(bold=false, compact=true)
@@ -18,6 +18,8 @@ import { RGBA, hsvToRgb } from "@opentui/core"
 export const MODEL_COLOR = RGBA.fromHex("#E83CF5")
 
 export const UTILIZATION_GREEN = RGBA.fromHex("#22DD22")
+
+const NEXT_TURN_ORANGE = RGBA.fromHex("#E8913C")
 
 export function utilizationColor(percent: number) {
   if (percent < 75) return UTILIZATION_GREEN
@@ -52,7 +54,7 @@ export type StatuslineContentProps = {
   compact?: boolean
   cacheRanges?: Array<{ start: number; end: number }> | null
   showCacheMarkers?: boolean
-  contextStats: { total: number; cached: number; newTokens: number; contextLimit: number; percentage: number } | null
+  contextStats: { total: number; cached: number; cacheWritten: number; nextTurn: number; contextLimit: number; percentage: number } | null
   cacheExpiry: string | null
   sessionTotals: { input: number; output: number }
   streamIndicator?: string | null
@@ -185,7 +187,10 @@ export function StatuslineContent(props: StatuslineContentProps) {
                 <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatTokens(stats().cached)}</span>
                 <span style={{ fg: m() }}> · </span>
                 <span style={{ fg: c(theme.warning) }}>{"\u2605"}</span>{" "}
-                <span style={{ fg: c(theme.warning), bold: b() }}>{formatTokens(stats().newTokens)}</span>
+                <span style={{ fg: c(theme.warning), bold: b() }}>{formatTokens(stats().cacheWritten)}</span>
+                <span style={{ fg: m() }}> · </span>
+                <span style={{ fg: c(NEXT_TURN_ORANGE) }}>{"\u25b2"}</span>{" "}
+                <span style={{ fg: c(NEXT_TURN_ORANGE), bold: b() }}>{formatTokens(stats().nextTurn)}</span>
                 <span style={{ fg: m() }}> │ </span>
                 <span style={{ fg: c(theme.primary) }}>{"\u03a3"}</span>{" "}
                 <span style={{ fg: c(theme.primary), bold: b() }}>↑{formatTokens(props.sessionTotals.input)}</span>
@@ -248,10 +253,11 @@ export function Statusline(props: StatuslineProps) {
     const total = t.input + t.cacheRead + t.cacheWrite
     if (!total) return null
     const cached = t.cacheRead
-    const newTokens = t.input + t.cacheWrite
+    const cacheWritten = t.cacheWrite
+    const nextTurn = t.output
     const contextLimit = modelInfo()?.limit.context ?? 200000
     const percentage = Math.round((total / contextLimit) * 100)
-    return { total, cached, newTokens, contextLimit, percentage }
+    return { total, cached, cacheWritten, nextTurn, contextLimit, percentage }
   })
 
   const sessionTotals = createMemo(() => {

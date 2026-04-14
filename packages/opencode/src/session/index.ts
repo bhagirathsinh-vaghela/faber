@@ -497,14 +497,6 @@ export namespace Session {
         },
       }
 
-      // Uncomment to debug cache token accounting:
-      // console.error("[CACHE-DEBUG] raw usage", JSON.stringify({
-      //   raw: { inputTokens: input.usage.inputTokens, outputTokens: input.usage.outputTokens,
-      //     cachedInputTokens: input.usage.cachedInputTokens, reasoningTokens: input.usage.reasoningTokens },
-      //   anthropic: input.metadata?.["anthropic"],
-      //   computed: tokens,
-      // }, null, 2))
-
       const costInfo =
         input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
           ? input.model.cost.experimentalOver200K
