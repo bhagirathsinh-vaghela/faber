@@ -1,4 +1,7 @@
 import z from "zod"
+import * as fs from "fs"
+import * as os from "os"
+import * as path from "path"
 import { Tool } from "./tool"
 import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch-anthropic.txt"
@@ -38,6 +41,7 @@ export const WebFetchAnthropicTool = Tool.define("webfetch", {
       },
     })
 
+    const startMs = performance.now()
     const timeout = DEFAULT_TIMEOUT
     const { signal, clearTimeout } = abortAfterAny(timeout, ctx.abort)
 
@@ -99,8 +103,27 @@ export const WebFetchAnthropicTool = Tool.define("webfetch", {
       throw new Error("Response too large (exceeds 10MB limit)")
     }
 
-    const rawContent = new TextDecoder().decode(arrayBuffer)
+    const durationMs = Math.round(performance.now() - startMs)
+    const bytes = arrayBuffer.byteLength
     const contentType = response.headers.get("content-type") || ""
+    const meta = { bytes, code: response.status, codeText: response.statusText, durationMs, url }
+
+    // Binary content: save to disk and return path
+    if (isBinaryContent(contentType)) {
+      const ext = extensionForContentType(contentType)
+      const tmpdir = path.join(os.tmpdir(), "opencode-webfetch")
+      fs.mkdirSync(tmpdir, { recursive: true })
+      const filename = `fetch-${Date.now()}${ext}`
+      const filepath = path.join(tmpdir, filename)
+      await Bun.write(filepath, arrayBuffer)
+      return {
+        output: `Binary content saved to: ${filepath}\nContent-Type: ${contentType}\nSize: ${bytes} bytes\n\nUse the Read tool to view this file.`,
+        title: `${params.url} (${contentType})`,
+        metadata: { ...meta, savedTo: filepath },
+      }
+    }
+
+    const rawContent = new TextDecoder().decode(arrayBuffer)
 
     // Convert HTML to markdown
     let content: string
@@ -122,7 +145,7 @@ export const WebFetchAnthropicTool = Tool.define("webfetch", {
       return {
         output: result,
         title,
-        metadata: {},
+        metadata: meta,
       }
     } catch (e) {
       // If model summarization fails, return raw content
@@ -130,7 +153,7 @@ export const WebFetchAnthropicTool = Tool.define("webfetch", {
       return {
         output: content,
         title,
-        metadata: {},
+        metadata: meta,
       }
     }
   },
@@ -190,6 +213,33 @@ async function summarizeWithModel(
 
   const result = await stream.text
   return result || "No response from model"
+}
+
+const BINARY_CONTENT_TYPES = [
+  "application/pdf",
+  "application/zip",
+  "application/gzip",
+  "application/octet-stream",
+  "image/",
+  "audio/",
+  "video/",
+]
+
+function isBinaryContent(contentType: string): boolean {
+  const lower = contentType.toLowerCase()
+  return BINARY_CONTENT_TYPES.some((t) => lower.includes(t))
+}
+
+function extensionForContentType(contentType: string): string {
+  const lower = contentType.toLowerCase()
+  if (lower.includes("application/pdf")) return ".pdf"
+  if (lower.includes("image/png")) return ".png"
+  if (lower.includes("image/jpeg")) return ".jpg"
+  if (lower.includes("image/gif")) return ".gif"
+  if (lower.includes("image/webp")) return ".webp"
+  if (lower.includes("application/zip")) return ".zip"
+  if (lower.includes("application/gzip")) return ".gz"
+  return ".bin"
 }
 
 function convertHTMLToMarkdown(html: string): string {
