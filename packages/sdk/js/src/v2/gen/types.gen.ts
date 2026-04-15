@@ -238,7 +238,7 @@ export type TextPart = {
     taskId: string
     type: "subagent" | "shell"
     description: string
-    status: "completed" | "failed"
+    status: "completed" | "failed" | "cancelled"
     agent?: string
     duration: number
   }
@@ -1467,6 +1467,10 @@ export type KeybindsConfig = {
    */
   session_parent?: string
   /**
+   * Cancel running subtask
+   */
+  session_child_cancel?: string
+  /**
    * Suspend terminal
    */
   terminal_suspend?: string
@@ -2233,7 +2237,7 @@ export type TextPartInput = {
     taskId: string
     type: "subagent" | "shell"
     description: string
-    status: "completed" | "failed"
+    status: "completed" | "failed" | "cancelled"
     agent?: string
     duration: number
   }

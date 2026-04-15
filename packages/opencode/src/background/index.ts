@@ -200,6 +200,9 @@ export namespace BackgroundTask {
     const entry = state().tasks.get(taskId)
     if (!entry) return
 
+    // Don't overwrite cancelled status — user explicitly cancelled this task
+    if (entry.info.status === "cancelled") return
+
     entry.info.status = status
     entry.info.result = result
     entry.info.time.completed = Date.now()

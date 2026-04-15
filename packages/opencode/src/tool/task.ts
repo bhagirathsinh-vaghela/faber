@@ -71,6 +71,15 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
     progressUnsub()
     abort.signal.removeEventListener("abort", handleCancel)
 
+    // If cancelled by user while prompt was completing, inject cancellation instead
+    const currentAfterComplete = BackgroundTask.get(task.id)
+    if (currentAfterComplete?.status === "cancelled") {
+      log.info("background subagent cancelled by user (completed race)", { taskId: task.id })
+      const duration = (task.time.completed ?? Date.now()) - task.time.created
+      await doInject(task, "", undefined, duration, true, "cancelled")
+      return
+    }
+
     const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
 
     BackgroundTask.complete(task.id, "completed", { output: text })
@@ -79,6 +88,15 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
   } catch (error) {
     progressUnsub()
     abort.signal.removeEventListener("abort", handleCancel)
+
+    // If already cancelled (by user via TUI), inject directly bypassing auto-inject check
+    const current = BackgroundTask.get(task.id)
+    if (current?.status === "cancelled") {
+      log.info("background subagent cancelled by user", { taskId: task.id })
+      const duration = (task.time.completed ?? Date.now()) - task.time.created
+      await doInject(task, "", undefined, duration, true, "cancelled")
+      return
+    }
 
     const errorMsg = error instanceof Error ? error.message : String(error)
     log.error("background subagent failed", { taskId: task.id, error: errorMsg })
@@ -123,14 +141,15 @@ async function doInject(
   error: string | undefined,
   duration: number,
   autoTriggerLLM = true,
+  statusOverride?: "cancelled",
 ) {
   const session = await Session.get(task.parentSessionID)
   if (session.revert) {
     await SessionRevert.cleanup(session)
   }
 
-  const status: "completed" | "failed" = error ? "failed" : "completed"
-  const notification = buildNotification(task, output, error, duration)
+  const status: "completed" | "failed" | "cancelled" = statusOverride ?? (error ? "failed" : "completed")
+  const notification = buildNotification(task, output, error, duration, status)
 
   // Get existing messages to calculate next promptIndex and resolve parent session's agent/model
   const existingMessages = await Session.messages({ sessionID: task.parentSessionID })
@@ -287,8 +306,20 @@ function buildMinimalTask(p: BackgroundTask.PendingResult): BackgroundTask.Info 
   }
 }
 
-function buildNotification(task: BackgroundTask.Info, output: string, error: string | undefined, duration: number) {
-  const status = error ? "failed" : "completed"
+function buildNotification(
+  task: BackgroundTask.Info,
+  output: string,
+  error: string | undefined,
+  duration: number,
+  statusOverride?: string,
+) {
+  const status = statusOverride ?? (error ? "failed" : "completed")
+  const body =
+    status === "cancelled"
+      ? "This task was cancelled by the user. Do not retry or continue this task."
+      : error
+        ? `ERROR: ${error}`
+        : output
   return [
     `<background-task-result>`,
     `task_id: ${task.id}`,
@@ -298,7 +329,7 @@ function buildNotification(task: BackgroundTask.Info, output: string, error: str
     task.type === "subagent" ? `agent: ${task.subagent?.agent}` : `command: ${task.shell?.command}`,
     `session_id: ${task.subagent?.sessionID ?? ""}`,
     ``,
-    error ? `ERROR: ${error}` : output,
+    body,
     `</background-task-result>`,
   ].join("\n")
 }

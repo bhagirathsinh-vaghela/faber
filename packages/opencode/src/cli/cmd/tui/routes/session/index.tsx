@@ -134,6 +134,26 @@ export function Session() {
       .filter((x) => x.parentID === parentID || x.id === parentID)
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
+  const [subtaskRunning, setSubtaskRunning] = createSignal(false)
+  // Track whether this subtask's background task is still running
+  createEffect(() => {
+    const parentID = session()?.parentID
+    if (!parentID) {
+      setSubtaskRunning(false)
+      return
+    }
+    const check = async () => {
+      const tasks = await sdk.client.background.list({ sessionID: parentID })
+      const running = (tasks.data ?? []).some(
+        (t) => t.status === "running" && t.subagent?.sessionID === route.sessionID,
+      )
+      setSubtaskRunning(running)
+    }
+    check()
+    const interval = setInterval(check, 2000)
+    onCleanup(() => clearInterval(interval))
+  })
+
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
   const permissions = createMemo(() => {
     if (session()?.parentID) return []
@@ -989,6 +1009,27 @@ export function Session() {
       },
     },
     {
+      title: "Cancel this subtask",
+      value: "session.child.cancel",
+      keybind: "session_child_cancel",
+      category: "Session",
+      hidden: true,
+      enabled: subtaskRunning(),
+      onSelect: async (dialog) => {
+        dialog.clear()
+        const parentID = session()?.parentID
+        if (!parentID) return
+        const tasks = await sdk.client.background.list({ sessionID: parentID })
+        const running = (tasks.data ?? []).find(
+          (t) => t.status === "running" && t.subagent?.sessionID === route.sessionID,
+        )
+        if (running) {
+          await sdk.client.background.cancel({ id: running.id })
+          setSubtaskRunning(false)
+        }
+      },
+    },
+    {
       title: "Export session transcript",
       value: "session.export",
       keybind: "session_export",
@@ -1213,7 +1254,7 @@ export function Session() {
         <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
           <Show when={session()}>
             <Show when={(headerVisible() || session()?.parentID) && (!sidebarVisible() || !wide())}>
-              <Header />
+              <Header subtaskRunning={subtaskRunning()} />
             </Show>
             <scrollbox
               ref={(r) => {

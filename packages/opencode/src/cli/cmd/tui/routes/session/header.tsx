@@ -30,7 +30,7 @@ const ContextInfo = (props: { context: Accessor<string | undefined>; cost: Acces
   )
 }
 
-export function Header() {
+export function Header(props: { subtaskRunning?: boolean }) {
   const route = useRouteData("session")
   const sync = useSync()
   const session = createMemo(() => sync.session.get(route.sessionID)!)
@@ -63,7 +63,7 @@ export function Header() {
   const { theme } = useTheme()
   const keybind = useKeybind()
   const command = useCommandDialog()
-  const [hover, setHover] = createSignal<"parent" | "prev" | "next" | null>(null)
+  const [hover, setHover] = createSignal<"parent" | "prev" | "next" | "cancel" | null>(null)
   const dimensions = useTerminalDimensions()
   const narrow = createMemo(() => dimensions().width < 80)
 
@@ -123,6 +123,18 @@ export function Header() {
                     Next <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle")}</span>
                   </text>
                 </box>
+                <Show when={props.subtaskRunning}>
+                  <box
+                    onMouseOver={() => setHover("cancel")}
+                    onMouseOut={() => setHover(null)}
+                    onMouseUp={() => command.trigger("session.child.cancel")}
+                    backgroundColor={hover() === "cancel" ? theme.backgroundElement : theme.backgroundPanel}
+                  >
+                    <text fg={theme.text}>
+                      Cancel <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cancel")}</span>
+                    </text>
+                  </box>
+                </Show>
               </box>
             </box>
           </Match>

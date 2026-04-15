@@ -882,6 +882,7 @@ export namespace Config {
       session_child_cycle: z.string().optional().default("<leader>right").describe("Next child session"),
       session_child_cycle_reverse: z.string().optional().default("<leader>left").describe("Previous child session"),
       session_parent: z.string().optional().default("<leader>up").describe("Go to parent session"),
+      session_child_cancel: z.string().optional().default("<leader>x").describe("Cancel running subtask"),
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
       terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
       console_toggle: z.string().optional().default("none").describe("Toggle console"),

@@ -63,7 +63,7 @@ export namespace MessageV2 {
     taskId: z.string(),
     type: z.enum(["subagent", "shell"]),
     description: z.string(),
-    status: z.enum(["completed", "failed"]),
+    status: z.enum(["completed", "failed", "cancelled"]),
     agent: z.string().optional(),
     duration: z.number(),
   })
