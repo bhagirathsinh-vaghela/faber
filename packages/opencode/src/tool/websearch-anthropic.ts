@@ -6,9 +6,18 @@ import { Log } from "../util/log"
 
 const log = Log.create({ service: "tool.websearch" })
 
+function currentMonthYear(): string {
+  const now = new Date()
+  const month = now.toLocaleString("en-US", { month: "long" })
+  return `${month} ${now.getFullYear()}`
+}
+
 export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
   return {
-    description: DESCRIPTION,
+    description: DESCRIPTION.replace(
+      "You MUST use the current year",
+      `The current date is ${currentMonthYear()}. You MUST use the current year`,
+    ),
     parameters: z.object({
       query: z.string().min(2).describe("The search query to use"),
       allowed_domains: z.array(z.string()).optional().describe("Only include search results from these domains"),
@@ -44,13 +53,12 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
       if (params.allowed_domains?.length) serverTool.allowed_domains = params.allowed_domains
       if (params.blocked_domains?.length) serverTool.blocked_domains = params.blocked_domains
 
-      // Make a direct API call using the provider's auth
+      // Make a streaming API call using the provider's auth
       const betaHeaders = [
         ...(sdkOpts.headers["anthropic-beta"]?.split(",").filter(Boolean) ?? []),
         "web-search-2025-03-05",
       ]
 
-      // Use the provider's custom fetch (any auth-plugin wrapper and provider-specific logic)
       const providerFetch = sdkOpts.fetch
       const baseURL = sdkOpts.baseURL || "https://api.anthropic.com"
       const response = await providerFetch(`${baseURL}/v1/messages`, {
@@ -65,6 +73,7 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
         body: JSON.stringify({
           model: smallModel.api.id,
           max_tokens: 4096,
+          stream: true,
           system:
             "You are an assistant for performing a web search tool use. Use the web_search tool to answer the query.",
           tools: [serverTool],
@@ -85,38 +94,76 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
         throw new Error(`Web search API error (${response.status}): ${errorText.slice(0, 200)}`)
       }
 
-      const data = (await response.json()) as {
-        content: Array<{
-          type: string
-          tool_use_id?: string
-          content?: Array<{ type: string; url: string; title: string }> | { type: string; error_code: string }
-          text?: string
-        }>
-      }
-
-      // Extract search results from the response content blocks
+      // Parse SSE stream for progress updates
       const searchResults: Array<{ title: string; url: string }> = []
       const textParts: string[] = []
+      let searchCount = 0
 
-      for (const block of data.content) {
-        if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
-          for (const item of block.content) {
-            if (item.type === "web_search_result" && item.url && item.title) {
-              searchResults.push({ title: item.title, url: item.url })
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        let boundary: number
+        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+          const chunk = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue
+            const json = line.slice(6).trim()
+            if (json === "[DONE]") continue
+
+            try {
+              const event = JSON.parse(json) as {
+                type: string
+                content_block?: {
+                  type: string
+                  content?: Array<{ type: string; url: string; title: string }>
+                  text?: string
+                }
+                delta?: { type: string; text?: string }
+              }
+
+              // Track web_search_tool_result blocks for progress
+              if (event.type === "content_block_start" && event.content_block?.type === "web_search_tool_result") {
+                searchCount++
+                if (Array.isArray(event.content_block.content)) {
+                  for (const item of event.content_block.content) {
+                    if (item.type === "web_search_result" && item.url && item.title) {
+                      searchResults.push({ title: item.title, url: item.url })
+                    }
+                  }
+                }
+                ctx.metadata({
+                  title: `Searching... (${searchCount} queries, ${searchResults.length} results)`,
+                  metadata: { searchCount, resultCount: searchResults.length },
+                })
+              }
+
+              // Collect text deltas
+              if (event.type === "content_block_delta" && event.delta?.type === "text_delta" && event.delta.text) {
+                textParts.push(event.delta.text)
+              }
+            } catch {
+              // Skip malformed SSE events
             }
           }
-        } else if (block.type === "text" && block.text) {
-          textParts.push(block.text)
         }
       }
 
-      const durationSeconds = ((performance.now() - startTime) / 1000).toFixed(1)
+      const durationSeconds = Number(((performance.now() - startTime) / 1000).toFixed(1))
 
       // Format output (inspired by Claude Code's web search output)
       let output = `Web search results for query: "${params.query}"\n\n`
 
-      if (textParts.length > 0) {
-        output += textParts.join("\n") + "\n\n"
+      const text = textParts.join("")
+      if (text.length > 0) {
+        output += text + "\n\n"
       }
 
       if (searchResults.length > 0) {
@@ -136,7 +183,11 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
       return {
         output,
         title: `Web search: ${params.query} (${searchResults.length} results, ${durationSeconds}s)`,
-        metadata: {},
+        metadata: {
+          query: params.query,
+          results: searchResults,
+          durationSeconds,
+        },
       }
     },
   }
