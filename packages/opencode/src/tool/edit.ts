@@ -2,7 +2,7 @@ import z from "zod"
 import * as path from "path"
 import { Tool } from "./tool"
 import { LSP } from "../lsp"
-import { createTwoFilesPatch, diffLines } from "diff"
+import { createTwoFilesPatch, diffLines, structuredPatch } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "../file"
 import { FileWatcher } from "../file/watcher"
@@ -58,6 +58,14 @@ export const EditTool = Tool.define("edit", {
     await FileTime.withLock(filePath, async () => {
       if (params.oldString === "") {
         const existed = await Bun.file(filePath).exists()
+        if (existed) {
+          const existing = await Bun.file(filePath).text()
+          if (existing.length > 0) {
+            throw new Error(
+              `Cannot use empty oldString on a file that already has content. Use the Write tool for full overwrites, or provide the specific text to replace.`,
+            )
+          }
+        }
         let encoding: "utf8" | "utf16le" = "utf8"
         let ending: "CRLF" | "LF" = "LF"
         if (existed) {
@@ -155,7 +163,23 @@ export const EditTool = Tool.define("edit", {
       },
     })
 
-    let output = `The file ${filePath} has been updated successfully.`
+    const patch = structuredPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew))
+    const hunks = patch.hunks.map((h) => ({
+      oldStart: h.oldStart,
+      oldLines: h.oldLines,
+      newStart: h.newStart,
+      newLines: h.newLines,
+      lines: h.lines,
+    }))
+
+    let output = `The file ${filePath} has been updated successfully.\n\n`
+    output += hunks
+      .map((h) => {
+        const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`
+        return `${header}\n${h.lines.join("\n")}`
+      })
+      .join("\n")
+
     await LSP.touchFile(filePath, true)
     const diagnostics = await LSP.diagnostics()
     const normalizedFilePath = Filesystem.normalizePath(filePath)
@@ -173,6 +197,7 @@ export const EditTool = Tool.define("edit", {
         diagnostics,
         diff,
         filediff,
+        hunks,
       },
       title: `${path.relative(Instance.worktree, filePath)}`,
       output,
