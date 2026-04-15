@@ -409,6 +409,7 @@ export namespace MessageV2 {
         output: z.number(),
       })
       .optional(),
+    sessionDollarCost: z.number().optional(),
   }).meta({
     ref: "AssistantMessage",
   })

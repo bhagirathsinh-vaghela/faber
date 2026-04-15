@@ -207,6 +207,7 @@ export type AssistantMessage = {
     input: number
     output: number
   }
+  sessionDollarCost?: number
 }
 
 export type Message = UserMessage | AssistantMessage
@@ -927,6 +928,7 @@ export type Session = {
     input: number
     output: number
   }
+  cost?: number
   cacheMarkers?: Array<number>
   systemBlockCount?: number
   cacheProbeIndex?: number
