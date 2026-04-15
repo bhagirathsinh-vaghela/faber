@@ -16,13 +16,32 @@ export const TodoWriteTool = Tool.define("todowrite", {
       metadata: {},
     })
 
+    const previous = await Todo.get(ctx.sessionID)
+    const previousCompleted = new Set(
+      previous.filter((t) => t.status === "completed").map((t) => t.id),
+    )
+    const newlyCompleted = params.todos.filter(
+      (t) => t.status === "completed" && !previousCompleted.has(t.id),
+    )
+
     await Todo.update({
       sessionID: ctx.sessionID,
       todos: params.todos,
     })
+
+    let output = JSON.stringify(params.todos, null, 2)
+    if (newlyCompleted.length >= 3) {
+      const hasVerify = params.todos.some(
+        (t) => t.content.toLowerCase().includes("verif") || t.content.toLowerCase().includes("test"),
+      )
+      if (!hasVerify) {
+        output += "\n\nNote: several tasks were just marked done. Before moving on, confirm the changes work: run the relevant tests or build, and check the output for errors."
+      }
+    }
+
     return {
       title: `${params.todos.filter((x) => x.status !== "completed").length} todos`,
-      output: JSON.stringify(params.todos, null, 2),
+      output,
       metadata: {
         todos: params.todos,
       },
