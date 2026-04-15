@@ -56,22 +56,27 @@ export const GlobTool = Tool.define("glob", {
     }
     files.sort((a, b) => b.mtime - a.mtime)
 
-    const output = []
-    if (files.length === 0) output.push("No files found")
-    if (files.length > 0) {
-      output.push(...files.map((f) => f.path))
+    const filenames = files.map((f) => f.path)
+    const numFiles = filenames.length
+
+    const lines = []
+    if (numFiles === 0) lines.push("No files found")
+    if (numFiles > 0) {
+      lines.push(...filenames)
       if (truncated) {
-        output.push("")
-        output.push("(Results are truncated. Consider using a more specific path or pattern.)")
+        lines.push("")
+        lines.push("(Results are truncated. Consider using a more specific path or pattern.)")
       }
     }
 
     return {
       title: path.relative(Instance.worktree, search),
       metadata: {
-        count: files.length,
+        filenames,
+        numFiles,
+        truncated,
       },
-      output: output.join("\n"),
+      output: lines.join("\n"),
     }
   },
 })
