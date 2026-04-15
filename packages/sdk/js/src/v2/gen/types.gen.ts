@@ -647,6 +647,14 @@ export type EventQuestionRejected = {
   }
 }
 
+export type EventQuestionDeferred = {
+  type: "question.deferred"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -1040,6 +1048,7 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventQuestionDeferred
   | EventSessionCompacted
   | EventBackgroundTaskCreated
   | EventBackgroundTaskProgress
@@ -1475,6 +1484,14 @@ export type KeybindsConfig = {
    * Show subtask list
    */
   task_list?: string
+  /**
+   * Show pending questions
+   */
+  question_list?: string
+  /**
+   * Dismiss pending question permanently
+   */
+  question_dismiss?: string
   /**
    * Suspend terminal
    */
@@ -4194,6 +4211,39 @@ export type QuestionRejectResponses = {
 }
 
 export type QuestionRejectResponse = QuestionRejectResponses[keyof QuestionRejectResponses]
+
+export type QuestionDeferData = {
+  body?: never
+  path: {
+    requestID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/question/{requestID}/defer"
+}
+
+export type QuestionDeferErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type QuestionDeferError = QuestionDeferErrors[keyof QuestionDeferErrors]
+
+export type QuestionDeferResponses = {
+  /**
+   * Question deferred successfully
+   */
+  200: boolean
+}
+
+export type QuestionDeferResponse = QuestionDeferResponses[keyof QuestionDeferResponses]
 
 export type ProviderListData = {
   body?: never

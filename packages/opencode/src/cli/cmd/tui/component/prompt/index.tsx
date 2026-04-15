@@ -40,6 +40,7 @@ export type PromptProps = {
   sessionID?: string
   visible?: boolean
   disabled?: boolean
+  questionCount?: number
   onSubmit?: () => void
   onMessageSent?: (isPing: boolean) => void
   ref?: (ref: PromptRef) => void
@@ -88,6 +89,7 @@ export function Prompt(props: PromptProps) {
   const [hoverAutoInject, setHoverAutoInject] = createSignal(false)
   const [pasteMode, setPasteMode] = createSignal<"summary" | "inline">(sync.data.config.tui?.paste_mode ?? "inline")
   const [hoverPasteMode, setHoverPasteMode] = createSignal(false)
+  const [hoverQuestions, setHoverQuestions] = createSignal(false)
 
   // Fetch auto-inject state, running tasks, and results count on mount
   onMount(async () => {
@@ -514,8 +516,8 @@ export function Prompt(props: PromptProps) {
   }
 
   createEffect(() => {
-    if (props.visible !== false) input?.focus()
-    if (props.visible === false) input?.blur()
+    if (props.visible !== false && !props.disabled) input?.focus()
+    if (props.visible === false || props.disabled) input?.blur()
   })
 
   function restoreExtmarksFromParts(parts: PromptInfo["parts"]) {
@@ -1362,6 +1364,17 @@ export function Prompt(props: PromptProps) {
                       {autoInject() ? "on" : "off"}
                     </span>
                   </text>
+                  <Show when={(props.questionCount ?? 0) > 0}>
+                    <text fg={theme.textMuted}>·</text>
+                    <text
+                      fg={theme.text}
+                      onMouseOver={() => setHoverQuestions(true)}
+                      onMouseOut={() => setHoverQuestions(false)}
+                    >
+                      <span style={{ fg: theme.textMuted }}>questions</span>{" "}
+                      <span style={{ fg: theme.warning }}>{props.questionCount}</span>
+                    </text>
+                  </Show>
                   <text fg={theme.textMuted}>·</text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
@@ -1389,6 +1402,7 @@ export function Prompt(props: PromptProps) {
           </Show>
         </box>
       </box>
+      <KeybindHint text={`${keybind.print("question_list")} - show pending questions`} visible={hoverQuestions()} />
       <KeybindHint text="Tasks currently running in background" visible={hoverPending()} />
       <KeybindHint text="ctrl+x z - accept pending results" visible={hoverResults()} />
       <KeybindHint text="alt+i - toggle auto-accept" visible={hoverAutoInject()} />

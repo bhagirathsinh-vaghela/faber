@@ -884,6 +884,8 @@ export namespace Config {
       session_parent: z.string().optional().default("<leader>up").describe("Go to parent session"),
       session_child_cancel: z.string().optional().default("<leader>x").describe("Cancel running subtask"),
       task_list: z.string().optional().default("alt+a").describe("Show subtask list"),
+      question_list: z.string().optional().default("<leader>?").describe("Show pending questions"),
+      question_dismiss: z.string().optional().default("none").describe("Dismiss pending question permanently"),
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
       terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
       console_toggle: z.string().optional().default("none").describe("Toggle console"),

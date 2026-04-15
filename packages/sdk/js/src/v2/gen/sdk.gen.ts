@@ -104,6 +104,8 @@ import type {
   PtyUpdateErrors,
   PtyUpdateResponses,
   QuestionAnswer,
+  QuestionDeferErrors,
+  QuestionDeferResponses,
   QuestionListResponses,
   QuestionRejectErrors,
   QuestionRejectResponses,
@@ -2041,6 +2043,36 @@ export class Question extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<QuestionRejectResponses, QuestionRejectErrors, ThrowOnError>({
       url: "/question/{requestID}/reject",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Defer question request
+   *
+   * Defer a question request. The user may answer later.
+   */
+  public defer<ThrowOnError extends boolean = false>(
+    parameters: {
+      requestID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "requestID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<QuestionDeferResponses, QuestionDeferErrors, ThrowOnError>({
+      url: "/question/{requestID}/defer",
       ...options,
       ...params,
     })

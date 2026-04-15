@@ -42,6 +42,7 @@ import type {
 import { useLocal } from "@tui/context/local"
 import { useDirectory } from "@tui/context/directory"
 import { Locale } from "@/util/locale"
+import { Identifier } from "@/id/id"
 import type { Tool } from "@/tool/tool"
 import type { ReadTool } from "@/tool/read"
 import type { WriteTool } from "@/tool/write"
@@ -160,10 +161,28 @@ export function Session() {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.permission[x.id] ?? [])
   })
-  const questions = createMemo(() => {
+  const pendingQuestions = createMemo(() => {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.question[x.id] ?? [])
   })
+  const [deferredQuestions, setDeferredQuestions] = createSignal<typeof sync.data.question[string]>([])
+  const questions = createMemo(() => {
+    const ids = new Set(pendingQuestions().map((q) => q.id))
+    const deferred = deferredQuestions().filter((q) => !ids.has(q.id))
+    return [...pendingQuestions(), ...deferred]
+  })
+  const [showQuestion, setShowQuestion] = createSignal(false)
+  createEffect(on(() => pendingQuestions().length, (len, prev) => {
+    if (len > 0 && (prev === 0 || prev === undefined)) {
+      setShowQuestion(true)
+    }
+  }))
+  createEffect(() => {
+    if (questions().length === 0) {
+      setShowQuestion(false)
+    }
+  })
+  const questionVisible = createMemo(() => questions().length > 0 && showQuestion())
 
   const pending = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant" && !x.time.completed)?.id
@@ -1023,6 +1042,17 @@ export function Session() {
       },
     },
     {
+      title: "Show pending questions",
+      value: "session.question_list",
+      keybind: "question_list",
+      category: "Session",
+      enabled: questions().length > 0,
+      onSelect: (dialog) => {
+        dialog.clear()
+        setShowQuestion((prev) => !prev)
+      },
+    },
+    {
       title: "Cancel this subtask",
       value: "session.child.cancel",
       keybind: "session_child_cancel",
@@ -1422,11 +1452,51 @@ export function Session() {
               <Show when={permissions().length > 0}>
                 <PermissionPrompt request={permissions()[0]} />
               </Show>
-              <Show when={permissions().length === 0 && questions().length > 0}>
-                <QuestionPrompt request={questions()[0]} />
+              <Show when={permissions().length === 0 && questionVisible()}>
+                <QuestionPrompt
+                  requests={questions()}
+                  pendingIDs={new Set(pendingQuestions().map((q) => q.id))}
+                  onHide={(reqs) => {
+                    setDeferredQuestions((prev) => {
+                      const ids = new Set(prev.map((q) => q.id))
+                      return [...prev, ...reqs.filter((q) => !ids.has(q.id))]
+                    })
+                    setShowQuestion(false)
+                  }}
+                  onAnswered={(id, answers, qs) => {
+                    setDeferredQuestions((prev) => prev.filter((q) => q.id !== id))
+                    toBottom()
+                    if (!pendingQuestions().some((q) => q.id === id)) {
+                      const formatted = qs.map((q, i) => {
+                        const ans = answers[i]?.join(", ") || "Unanswered"
+                        return `"${q.question}" = "${ans}"`
+                      }).join("\n")
+                      const sid = session()?.parentID ?? session()?.id ?? route.sessionID
+                      const selectedModel = local.model.current()
+                      sdk.client.session.prompt({
+                        sessionID: sid,
+                        messageID: Identifier.ascending("message"),
+                        agent: local.agent.current().name,
+                        model: selectedModel ? {
+                          providerID: selectedModel.providerID,
+                          modelID: selectedModel.modelID,
+                        } : undefined,
+                        variant: local.model.variant.current(),
+                        parts: [{
+                          id: Identifier.ascending("part"),
+                          type: "text",
+                          text: `Answering your earlier deferred question:\n${formatted}`,
+                        }],
+                      }).catch(() => {})
+                    }
+                  }}
+                  onDismissed={(id) => {
+                    setDeferredQuestions((prev) => prev.filter((q) => q.id !== id))
+                  }}
+                />
               </Show>
               <Prompt
-                visible={!session()?.parentID && permissions().length === 0 && questions().length === 0}
+                visible={!session()?.parentID && permissions().length === 0 && !questionVisible()}
                 ref={(r) => {
                   prompt = r
                   promptRef.set(r)
@@ -1435,7 +1505,8 @@ export function Session() {
                     r.set(route.initialPrompt)
                   }
                 }}
-                disabled={permissions().length > 0 || questions().length > 0}
+                disabled={permissions().length > 0 || questionVisible()}
+                questionCount={questions().length}
                 onMessageSent={(isPing) => {
                   if (isPing) {
                     setSavedScrollPosition(scroll.y)

@@ -1,27 +1,37 @@
 import { createStore } from "solid-js/store"
-import { createMemo, For, Show } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
 import { useKeybind } from "../../context/keybind"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
-import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2"
+import type { QuestionRequest } from "@opencode-ai/sdk/v2"
 import { useSDK } from "../../context/sdk"
 import { SplitBorder } from "../../component/border"
 import { useTextareaKeybindings } from "../../component/textarea-keybindings"
 import { useDialog } from "../../ui/dialog"
 
-export function QuestionPrompt(props: { request: QuestionRequest }) {
+export function QuestionPrompt(props: {
+  requests: QuestionRequest[]
+  pendingIDs: Set<string>
+  onHide: (requests: QuestionRequest[]) => void
+  onAnswered: (id: string, answers: string[][], questions: QuestionRequest["questions"]) => void
+  onDismissed: (id: string) => void
+}) {
   const sdk = useSDK()
   const { theme } = useTheme()
   const keybind = useKeybind()
   const bindings = useTextareaKeybindings()
 
-  const questions = createMemo(() => props.request.questions)
+  const [requestIndex, setRequestIndex] = createSignal(0)
+  const request = createMemo(() => props.requests[requestIndex()] ?? props.requests[0])
+  const multiRequest = createMemo(() => props.requests.length > 1)
+
+  const questions = createMemo(() => request()?.questions ?? [])
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
-  const tabs = createMemo(() => (single() ? 1 : questions().length + 1)) // questions + confirm tab (no confirm for single select)
+  const tabs = createMemo(() => (single() ? 1 : questions().length + 1))
   const [store, setStore] = createStore({
     tab: 0,
-    answers: [] as QuestionAnswer[],
+    answers: [] as string[][],
     custom: [] as string[],
     selected: 0,
     editing: false,
@@ -42,34 +52,54 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
     return store.answers[store.tab]?.includes(value) ?? false
   })
 
+  function isPending(id: string) {
+    return props.pendingIDs.has(id)
+  }
+
   function submit() {
+    const r = request()
+    if (!r) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
-    sdk.client.question.reply({
-      requestID: props.request.id,
-      answers,
-    })
+    if (isPending(r.id)) {
+      sdk.client.question.reply({ requestID: r.id, answers })
+    }
+    props.onAnswered(r.id, answers, r.questions)
   }
 
   function reject() {
-    sdk.client.question.reject({
-      requestID: props.request.id,
-    })
+    const r = request()
+    if (!r) return
+    if (isPending(r.id)) {
+      sdk.client.question.reject({ requestID: r.id })
+    }
+    props.onDismissed(r.id)
   }
 
-  function pick(answer: string, custom: boolean = false) {
+  function defer() {
+    for (const r of props.requests) {
+      if (isPending(r.id)) {
+        sdk.client.question.defer({ requestID: r.id })
+      }
+    }
+    props.onHide(props.requests)
+  }
+
+  function pick(answer: string, isCustom: boolean = false) {
     const answers = [...store.answers]
     answers[store.tab] = [answer]
     setStore("answers", answers)
-    if (custom) {
+    if (isCustom) {
       const inputs = [...store.custom]
       inputs[store.tab] = answer
       setStore("custom", inputs)
     }
     if (single()) {
-      sdk.client.question.reply({
-        requestID: props.request.id,
-        answers: [[answer]],
-      })
+      const r = request()
+      if (!r) return
+      if (isPending(r.id)) {
+        sdk.client.question.reply({ requestID: r.id, answers: [[answer]] })
+      }
+      props.onAnswered(r.id, [[answer]], r.questions)
       return
     }
     setStore("tab", store.tab + 1)
@@ -119,11 +149,31 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
     pick(opt.label)
   }
 
+  function resetStoreForRequest() {
+    setStore("tab", 0)
+    setStore("answers", [])
+    setStore("custom", [])
+    setStore("selected", 0)
+    setStore("editing", false)
+  }
+
+  function cycleRequest(direction: number) {
+    const len = props.requests.length
+    if (len <= 1) return
+    setRequestIndex((prev) => (prev + direction + len) % len)
+    resetStoreForRequest()
+  }
+
   const dialog = useDialog()
 
   useKeyboard((evt) => {
-    // Skip processing if a dialog (e.g., command palette) is open
     if (dialog.stack.length > 0) return
+
+    if (keybind.match("question_dismiss", evt)) {
+      evt.preventDefault()
+      reject()
+      return
+    }
 
     // When editing custom answer textarea
     if (store.editing && !confirm()) {
@@ -184,24 +234,32 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
         setStore("editing", false)
         return
       }
-      // Let textarea handle all other keys
       return
     }
 
-    if (evt.name === "left" || evt.name === "h") {
-      evt.preventDefault()
-      selectTab((store.tab - 1 + tabs()) % tabs())
-    }
-
-    if (evt.name === "right" || evt.name === "l") {
-      evt.preventDefault()
-      selectTab((store.tab + 1) % tabs())
-    }
-
-    if (evt.name === "tab") {
+    // Tab cycles between requests when multiple are pending
+    if (evt.name === "tab" && multiRequest() && !single()) {
       evt.preventDefault()
       const direction = evt.shift ? -1 : 1
-      selectTab((store.tab + direction + tabs()) % tabs())
+      cycleRequest(direction)
+      return
+    }
+
+    // Within a single multi-question request, h/l cycle question tabs
+    if (!multiRequest()) {
+      if (evt.name === "left" || evt.name === "h") {
+        evt.preventDefault()
+        selectTab((store.tab - 1 + tabs()) % tabs())
+      }
+      if (evt.name === "right" || evt.name === "l") {
+        evt.preventDefault()
+        selectTab((store.tab + 1) % tabs())
+      }
+      if (evt.name === "tab") {
+        evt.preventDefault()
+        const direction = evt.shift ? -1 : 1
+        selectTab((store.tab + direction + tabs()) % tabs())
+      }
     }
 
     if (confirm()) {
@@ -211,7 +269,7 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
       }
       if (evt.name === "escape" || keybind.match("app_exit", evt)) {
         evt.preventDefault()
-        reject()
+        defer()
       }
     } else {
       const opts = options()
@@ -244,7 +302,7 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
 
       if (evt.name === "escape" || keybind.match("app_exit", evt)) {
         evt.preventDefault()
-        reject()
+        defer()
       }
     }
   })
@@ -257,6 +315,33 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
       customBorderChars={SplitBorder.customBorderChars}
     >
       <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1}>
+        <Show when={multiRequest()}>
+          <box flexDirection="row" gap={1} paddingLeft={1}>
+            <For each={props.requests}>
+              {(r, index) => {
+                const isActive = () => index() === requestIndex()
+                return (
+                  <box
+                    paddingLeft={1}
+                    paddingRight={1}
+                    backgroundColor={isActive() ? theme.accent : theme.backgroundElement}
+                    onMouseUp={() => {
+                      setRequestIndex(index())
+                      resetStoreForRequest()
+                    }}
+                  >
+                    <text
+                      fg={isActive() ? selectedForeground(theme, theme.accent) : theme.textMuted}
+                    >
+                      {r.questions[0]?.header ?? `Q${index() + 1}`}
+                    </text>
+                  </box>
+                )
+              }}
+            </For>
+          </box>
+        </Show>
+
         <Show when={!single()}>
           <box flexDirection="row" gap={1} paddingLeft={1}>
             <For each={questions()}>
@@ -426,7 +511,12 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
         justifyContent="space-between"
       >
         <box flexDirection="row" gap={2}>
-          <Show when={!single()}>
+          <Show when={multiRequest()}>
+            <text fg={theme.text}>
+              {"⇆"} <span style={{ fg: theme.textMuted }}>tab switch</span>
+            </text>
+          </Show>
+          <Show when={!single() && !multiRequest()}>
             <text fg={theme.text}>
               {"⇆"} <span style={{ fg: theme.textMuted }}>tab</span>
             </text>
@@ -444,8 +534,14 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
           </text>
 
           <text fg={theme.text}>
-            esc <span style={{ fg: theme.textMuted }}>dismiss</span>
+            esc <span style={{ fg: theme.textMuted }}>defer</span>
           </text>
+
+          <Show when={keybind.print("question_dismiss")}>
+            <text fg={theme.text}>
+              {keybind.print("question_dismiss")} <span style={{ fg: theme.textMuted }}>dismiss</span>
+            </text>
+          </Show>
         </box>
       </box>
     </box>
