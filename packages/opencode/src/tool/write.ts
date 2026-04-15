@@ -1,8 +1,9 @@
 import z from "zod"
+import * as fs from "fs"
 import * as path from "path"
 import { Tool } from "./tool"
 import { LSP } from "../lsp"
-import { createTwoFilesPatch } from "diff"
+import { createTwoFilesPatch, structuredPatch } from "diff"
 import DESCRIPTION from "./write.txt"
 import { Bus } from "../bus"
 import { File } from "../file"
@@ -53,6 +54,11 @@ export const WriteTool = Tool.define("write", {
       },
     })
 
+    const dir = path.dirname(filepath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+
     await Bun.write(filepath, encodeContent(applyLineEnding(params.content, ending), encoding))
     await Bus.publish(File.Event.Edited, {
       file: filepath,
@@ -63,7 +69,28 @@ export const WriteTool = Tool.define("write", {
     })
     FileTime.read(ctx.sessionID, filepath)
 
-    let output = "Wrote file successfully."
+    let output = exists
+      ? `The file ${filepath} has been updated successfully.`
+      : `File created successfully at: ${filepath}`
+
+    if (exists) {
+      const patch = structuredPatch(filepath, filepath, lf(contentOld), lf(params.content))
+      const hunks = patch.hunks.map((h) => ({
+        oldStart: h.oldStart,
+        oldLines: h.oldLines,
+        newStart: h.newStart,
+        newLines: h.newLines,
+        lines: h.lines,
+      }))
+      if (hunks.length > 0) {
+        output += "\n\n" + hunks
+          .map((h) => {
+            const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`
+            return `${header}\n${h.lines.join("\n")}`
+          })
+          .join("\n")
+      }
+    }
     await LSP.touchFile(filepath, true)
     const diagnostics = await LSP.diagnostics()
     const normalizedFilepath = Filesystem.normalizePath(filepath)
