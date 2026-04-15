@@ -250,15 +250,23 @@ export namespace SessionProcessor {
                   input.assistantMessage.finish = value.finishReason
                   input.assistantMessage.cost += usage.cost
                   input.assistantMessage.tokens = usage.tokens
-                  await Session.update(input.sessionID, (draft) => {
+                  const weightedInput = usage.tokens.cache.read * 0.1 + usage.tokens.cache.write * 1.25
+                  const weightedOutput = usage.tokens.output + usage.tokens.reasoning
+                  const updated = await Session.update(input.sessionID, (draft) => {
                     draft.tokens.input = usage.tokens.input
                     draft.tokens.cacheRead = usage.tokens.cache.read
                     draft.tokens.cacheWrite = usage.tokens.cache.write
                     draft.tokens.output = usage.tokens.output
                     draft.tokens.reasoning = usage.tokens.reasoning
-                    draft.total.input += usage.tokens.cache.read * 0.1 + usage.tokens.cache.write * 1.25
-                    draft.total.output += usage.tokens.output + usage.tokens.reasoning
+                    draft.total.input += weightedInput
+                    draft.total.output += weightedOutput
                   })
+                  if (updated.parentID) {
+                    await Session.update(updated.parentID, (draft) => {
+                      draft.total.input += weightedInput
+                      draft.total.output += weightedOutput
+                    })
+                  }
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     reason: value.finishReason,
