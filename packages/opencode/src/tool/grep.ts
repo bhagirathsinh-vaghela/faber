@@ -31,7 +31,7 @@ export const GrepTool = Tool.define("grep", {
     head_limit: z.number().optional().describe("Limit output to first N entries after offset"),
     offset: z.number().optional().describe("Skip first N entries before applying head_limit"),
     multiline: z.boolean().optional().describe("Enable multiline matching mode"),
-  }),
+  }).strict(),
   async execute(params, ctx) {
     if (!params.pattern) {
       throw new Error("pattern is required")

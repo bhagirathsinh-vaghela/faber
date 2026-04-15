@@ -21,7 +21,7 @@ export const WebFetchAnthropicTool = Tool.define("webfetch", {
   parameters: z.object({
     url: z.string().describe("The URL to fetch content from"),
     prompt: z.string().describe("The prompt to run on the fetched content"),
-  }),
+  }).strict(),
   async execute(params, ctx) {
     // Validate URL
     if (!params.url.startsWith("http://") && !params.url.startsWith("https://")) {

@@ -9,5 +9,6 @@ Usage:
 - Results are returned using cat -n format, with line numbers starting at 1
 - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
+- If you re-read a file that has not changed since your last read in this session, a short <file_unchanged> stub is returned instead of the full content. This is normal — the file content you saw previously is still current.
 - You can read image files using this tool.
 - You can read PDF files. Use the `pages` parameter to read specific page ranges (e.g., "1-5", "3", "10-"). Maximum 20 pages per request. Requires poppler-utils (pdftoppm) for page extraction.

@@ -309,7 +309,7 @@ const parameters = z.object({
   subagent_type: z.string().describe("The type of specialized agent to use for this task"),
   session_id: z.string().describe("Existing Task session to continue").optional(),
   command: z.string().describe("The command that triggered this task").optional(),
-})
+}).strict()
 
 export const TaskTool = Tool.define("task", async (ctx) => {
   const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary"))

@@ -59,7 +59,7 @@ export const WebSearchTool = Tool.define("websearch", async () => {
         .number()
         .optional()
         .describe("Maximum characters for context string optimized for LLMs (default: 10000)"),
-    }),
+    }).strict(),
     async execute(params, ctx) {
       await ctx.ask({
         permission: "websearch",

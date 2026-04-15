@@ -26,7 +26,7 @@ export const ReadTool = Tool.define("read", {
       .string()
       .optional()
       .describe('Page range for PDF files (e.g., "1-5", "3", "10-"). Maximum 20 pages per request.'),
-  }),
+  }).strict(),
   async execute(params, ctx) {
     let filepath = params.filePath
     if (!path.isAbsolute(filepath)) {
@@ -104,6 +104,21 @@ export const ReadTool = Tool.define("read", {
     const isBinary = await isBinaryFile(filepath, file)
     if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
+    // Dedup: if file hasn't changed since last read in this session, return a stub
+    const stat = await file.stat()
+    const lastRead = FileTime.get(ctx.sessionID, filepath)
+    if (lastRead && stat.mtime.getTime() <= lastRead.mtime) {
+      FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime())
+      return {
+        title,
+        output: `<file_unchanged>${filepath}</file_unchanged>`,
+        metadata: {
+          preview: "(file unchanged since last read)",
+          truncated: false,
+        },
+      }
+    }
+
     const limit = params.limit ?? DEFAULT_READ_LIMIT
     const offset = params.offset || 0
     const lines = await file.text().then((text) => text.split("\n"))
@@ -147,7 +162,7 @@ export const ReadTool = Tool.define("read", {
 
     // just warms the lsp client
     LSP.touchFile(filepath, false)
-    FileTime.read(ctx.sessionID, filepath)
+    FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime())
 
     if (instructions.length > 0) {
       output += `\n\n<system-reminder>\n${instructions.map((i) => i.content).join("\n\n")}\n</system-reminder>`

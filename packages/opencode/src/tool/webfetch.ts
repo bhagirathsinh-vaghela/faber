@@ -17,7 +17,7 @@ export const WebFetchTool = Tool.define("webfetch", {
       .default("markdown")
       .describe("The format to return the content in (text, markdown, or html). Defaults to markdown."),
     timeout: z.number().describe("Optional timeout in seconds (max 120)").optional(),
-  }),
+  }).strict(),
   async execute(params, ctx) {
     // Validate URL
     if (!params.url.startsWith("http://") && !params.url.startsWith("https://")) {

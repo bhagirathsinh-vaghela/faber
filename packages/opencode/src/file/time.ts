@@ -11,7 +11,7 @@ export namespace FileTime {
   export const state = Instance.state(() => {
     const read: {
       [sessionID: string]: {
-        [path: string]: Date | undefined
+        [path: string]: { readAt: Date; mtime: number } | undefined
       }
     } = {}
     const locks = new Map<string, Promise<void>>()
@@ -21,11 +21,11 @@ export namespace FileTime {
     }
   })
 
-  export function read(sessionID: string, file: string) {
+  export function read(sessionID: string, file: string, mtime?: number) {
     log.info("read", { sessionID, file })
     const { read } = state()
     read[sessionID] = read[sessionID] || {}
-    read[sessionID][file] = new Date()
+    read[sessionID][file] = { readAt: new Date(), mtime: mtime ?? Date.now() }
   }
 
   export function get(sessionID: string, file: string) {
@@ -57,12 +57,12 @@ export namespace FileTime {
       return
     }
 
-    const time = get(sessionID, filepath)
-    if (!time) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
+    const entry = get(sessionID, filepath)
+    if (!entry) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
     const stats = await Bun.file(filepath).stat()
-    if (stats.mtime.getTime() > time.getTime()) {
+    if (stats.mtime.getTime() > entry.readAt.getTime()) {
       throw new Error(
-        `File ${filepath} has been modified since it was last read.\nLast modification: ${stats.mtime.toISOString()}\nLast read: ${time.toISOString()}\n\nPlease read the file again before modifying it.`,
+        `File ${filepath} has been modified since it was last read.\nLast modification: ${stats.mtime.toISOString()}\nLast read: ${entry.readAt.toISOString()}\n\nPlease read the file again before modifying it.`,
       )
     }
   }

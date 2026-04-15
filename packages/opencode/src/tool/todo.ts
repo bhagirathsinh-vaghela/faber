@@ -7,7 +7,7 @@ export const TodoWriteTool = Tool.define("todowrite", {
   description: DESCRIPTION_WRITE,
   parameters: z.object({
     todos: z.array(z.object(Todo.Info.shape)).describe("The updated todo list"),
-  }),
+  }).strict(),
   async execute(params, ctx) {
     await ctx.ask({
       permission: "todowrite",

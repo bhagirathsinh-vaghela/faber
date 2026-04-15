@@ -7,7 +7,7 @@ export const QuestionTool = Tool.define("question", {
   description: DESCRIPTION,
   parameters: z.object({
     questions: z.array(Question.Info.omit({ custom: true })).describe("Questions to ask"),
-  }),
+  }).strict(),
   async execute(params, ctx) {
     const answers = await Question.ask({
       sessionID: ctx.sessionID,
