@@ -9,7 +9,6 @@ import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
 import { SessionRevert } from "../session/revert"
 import { iife } from "@/util/iife"
-import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
 import { BackgroundTask } from "@/background"
 import { Log } from "@/util/log"
@@ -22,13 +21,11 @@ interface BackgroundSubagentInput {
   session: Session.Info
   agent: Agent.Info
   model: { modelID: string; providerID: string }
-  config: Config.Info
   promptParts: Awaited<ReturnType<typeof SessionPrompt.resolvePromptParts>>
-  hasTaskPermission: boolean
 }
 
 async function runSubagentInBackground(input: BackgroundSubagentInput) {
-  const { task, abort, session, agent, model, config, promptParts, hasTaskPermission } = input
+  const { task, abort, session, agent, model, promptParts } = input
 
   let toolCount = 0
   const messageID = Identifier.ascending("message")
@@ -59,12 +56,7 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
       sessionID: session.id,
       model,
       agent: agent.name,
-      tools: {
-        todowrite: false,
-        todoread: false,
-        ...(hasTaskPermission ? {} : { task: false }),
-        ...Object.fromEntries((config.experimental?.primary_tools ?? []).map((t) => [t, false])),
-      },
+      tools: {},
       parts: promptParts,
     })
 
@@ -339,6 +331,7 @@ const parameters = z.object({
   prompt: z.string().describe("The task for the agent to perform"),
   subagent_type: z.string().describe("The type of specialized agent to use for this task"),
   session_id: z.string().describe("Existing Task session to continue").optional(),
+  include_context: z.boolean().describe("When true, the subtask inherits the parent conversation history for shared context and prompt cache reuse").optional(),
   command: z.string().describe("The command that triggered this task").optional(),
 }).strict()
 
@@ -361,7 +354,14 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
-      const config = await Config.get()
+      const caller = await Session.get(ctx.sessionID)
+      if (caller.parentID) {
+        return {
+          title: params.description,
+          metadata: {} as Record<string, unknown>,
+          output: "Subtasks cannot spawn further subtasks. Execute the work directly using your available tools instead.",
+        }
+      }
 
       // Skip permission check when user explicitly invoked via @ or command subtask
       if (!ctx.extra?.bypassAgentCheck) {
@@ -376,10 +376,8 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         })
       }
 
-      const agent = await Agent.get(params.subagent_type)
-      if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
-
-      const hasTaskPermission = agent.permission.some((rule) => rule.permission === "task")
+      const agent = await Agent.get(ctx.agent)
+      if (!agent) throw new Error(`Unknown agent type: ${ctx.agent} is not a valid agent type`)
 
       const session = await iife(async () => {
         if (params.session_id) {
@@ -387,44 +385,50 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           if (found) return found
         }
 
-        return await Session.create({
+        const created = await Session.create({
           parentID: ctx.sessionID,
-          title: params.description + ` (@${agent.name} subagent)`,
-          permission: [
-            {
-              permission: "todowrite",
-              pattern: "*",
-              action: "deny",
-            },
-            {
-              permission: "todoread",
-              pattern: "*",
-              action: "deny",
-            },
-            ...(hasTaskPermission
-              ? []
-              : [
-                  {
-                    permission: "task" as const,
-                    pattern: "*" as const,
-                    action: "deny" as const,
-                  },
-                ]),
-            ...(config.experimental?.primary_tools?.map((t) => ({
-              pattern: "*",
-              action: "allow" as const,
-              permission: t,
-            })) ?? []),
-          ],
+          title: params.description + ` (@${params.subagent_type} subagent)`,
         })
+        const allowed = Agent.allowedTools(params.subagent_type)
+        if (allowed) {
+          await Session.update(created.id, (draft) => {
+            draft.allowedTools = allowed
+          })
+        }
+        return created
       })
+      // Copy parent conversation into child session for shared context + cache reuse
+      if (params.include_context && !params.session_id) {
+        const parentMessages = await Session.messages({ sessionID: ctx.sessionID })
+        const idMap = new Map<string, string>()
+        for (const parentMsg of parentMessages) {
+          const newID = Identifier.ascending("message")
+          idMap.set(parentMsg.info.id, newID)
+          const parentID =
+            parentMsg.info.role === "assistant" && parentMsg.info.parentID
+              ? idMap.get(parentMsg.info.parentID)
+              : undefined
+          await Session.updateMessage({
+            ...parentMsg.info,
+            sessionID: session.id,
+            id: newID,
+            ...(parentID && { parentID }),
+          })
+          for (const part of parentMsg.parts) {
+            await Session.updatePart({
+              ...part,
+              id: Identifier.ascending("part"),
+              messageID: newID,
+              sessionID: session.id,
+            })
+          }
+        }
+      }
+
       const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
       if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
 
-      const model = agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
+      const model = { modelID: msg.info.modelID, providerID: msg.info.providerID }
 
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
 
@@ -447,9 +451,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         session,
         agent,
         model,
-        config,
         promptParts,
-        hasTaskPermission,
       })
 
       return {

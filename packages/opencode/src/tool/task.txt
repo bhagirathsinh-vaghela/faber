@@ -14,6 +14,23 @@ When NOT to use the Task tool:
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Task tool, to find the match more quickly
 - Other tasks that are not related to the agent descriptions above
 
+## Context inheritance
+
+Set `include_context: true` to pass your full conversation history to the subtask. The subtask inherits everything you've seen — file contents, tool results, discussion — and shares your prompt cache prefix for cheaper API calls.
+
+**Use include_context when:**
+- The subtask needs knowledge you've already gathered (file contents, codebase structure, prior findings)
+- You want to avoid re-explaining background or re-reading files the subtask will need
+- Research can be broken into independent questions — launch parallel context-inheriting subtasks in one message
+
+**Don't use include_context when:**
+- The subtask is self-contained (e.g., "run tests", "list files in /tmp")
+- You want an independent perspective without your prior context biasing the result
+- The prompt is fully self-contained with all necessary details
+
+When include_context is false (default), the subtask starts with zero context. Brief it like a colleague who just walked into the room — explain what you're trying to accomplish, what you've learned, and give enough context for judgment calls.
+
+When include_context is true, the prompt is a *directive* — what to do, not what the situation is. The subtask already has your context, so be specific about scope rather than re-explaining background.
 
 Usage notes:
 1. Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses

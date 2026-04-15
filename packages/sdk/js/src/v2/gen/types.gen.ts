@@ -923,6 +923,7 @@ export type Session = {
   systemBlockCount?: number
   cacheProbeIndex?: number
   cacheProbeMessageID?: string
+  allowedTools?: Array<string>
 }
 
 export type EventSessionCreated = {

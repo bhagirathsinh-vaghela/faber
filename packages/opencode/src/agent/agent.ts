@@ -335,4 +335,20 @@ export namespace Agent {
     const result = await generateObject(params)
     return result.object
   }
+
+  /**
+   * Central mapping of which tools each subagent type is allowed to execute.
+   * Subtasks always use the parent's agent/model/tools for cache-identical
+   * prefixes, but tool execution is restricted based on subagent_type.
+   * Tools not in this list are present in the schema but rejected at runtime.
+   * Returns undefined for unknown agent types (no restrictions applied).
+   */
+  const SUBAGENT_ALLOWED_TOOLS: Record<string, string[]> = {
+    explore: ["grep", "glob", "list", "bash", "read", "webfetch", "websearch", "codesearch", "lsp"],
+    general: ["grep", "glob", "list", "bash", "read", "write", "edit", "patch", "multiedit", "webfetch", "websearch", "codesearch", "lsp", "question", "skill"],
+  }
+
+  export function allowedTools(agentType: string): string[] | undefined {
+    return SUBAGENT_ALLOWED_TOOLS[agentType]
+  }
 }

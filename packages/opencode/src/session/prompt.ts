@@ -808,6 +808,13 @@ export namespace SessionPrompt {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const ctx = context(args, options)
+          if (input.session.allowedTools && !input.session.allowedTools.includes(item.id)) {
+            return {
+              title: item.id,
+              metadata: {},
+              output: `Tool "${item.id}" is not available for this subtask type. Available tools: ${input.session.allowedTools.join(", ")}`,
+            }
+          }
           await Plugin.trigger(
             "tool.execute.before",
             {

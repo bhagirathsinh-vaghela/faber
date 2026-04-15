@@ -111,6 +111,7 @@ export namespace Session {
       systemBlockCount: z.number().optional(),
       cacheProbeIndex: z.number().optional(),
       cacheProbeMessageID: z.string().optional(),
+      allowedTools: z.string().array().optional(),
     })
     .meta({
       ref: "Session",
