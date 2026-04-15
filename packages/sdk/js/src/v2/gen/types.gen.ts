@@ -1471,6 +1471,10 @@ export type KeybindsConfig = {
    */
   session_child_cancel?: string
   /**
+   * Show subtask list
+   */
+  task_list?: string
+  /**
    * Suspend terminal
    */
   terminal_suspend?: string

@@ -30,7 +30,10 @@ const ContextInfo = (props: { context: Accessor<string | undefined>; cost: Acces
   )
 }
 
-export function Header(props: { subtaskRunning?: boolean }) {
+export function Header(props: {
+  subtaskRunning?: boolean
+  subtaskStatus?: "running" | "completed" | "failed" | "cancelled" | null
+}) {
   const route = useRouteData("session")
   const sync = useSync()
   const session = createMemo(() => sync.session.get(route.sessionID)!)
@@ -134,6 +137,17 @@ export function Header(props: { subtaskRunning?: boolean }) {
                       Cancel <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cancel")}</span>
                     </text>
                   </box>
+                </Show>
+                <Show when={!props.subtaskRunning && props.subtaskStatus}>
+                  <text fg={
+                    props.subtaskStatus === "completed" ? theme.success
+                    : props.subtaskStatus === "cancelled" ? theme.warning
+                    : theme.error
+                  }>
+                    {props.subtaskStatus === "completed" ? "\u2714 completed"
+                    : props.subtaskStatus === "cancelled" ? "\u2718 cancelled"
+                    : "\u2757 failed"}
+                  </text>
                 </Show>
               </box>
             </box>

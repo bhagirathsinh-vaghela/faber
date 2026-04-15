@@ -819,7 +819,7 @@ export namespace Config {
         .default("ctrl+shift+a")
         .describe("Select to start of line in input"),
       input_select_line_end: z.string().optional().default("ctrl+shift+e").describe("Select to end of line in input"),
-      input_visual_line_home: z.string().optional().default("alt+a").describe("Move to start of visual line in input"),
+      input_visual_line_home: z.string().optional().default("none").describe("Move to start of visual line in input"),
       input_visual_line_end: z.string().optional().default("alt+e").describe("Move to end of visual line in input"),
       input_select_visual_line_home: z
         .string()
@@ -883,6 +883,7 @@ export namespace Config {
       session_child_cycle_reverse: z.string().optional().default("<leader>left").describe("Previous child session"),
       session_parent: z.string().optional().default("<leader>up").describe("Go to parent session"),
       session_child_cancel: z.string().optional().default("<leader>x").describe("Cancel running subtask"),
+      task_list: z.string().optional().default("alt+a").describe("Show subtask list"),
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
       terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
       console_toggle: z.string().optional().default("none").describe("Toggle console"),

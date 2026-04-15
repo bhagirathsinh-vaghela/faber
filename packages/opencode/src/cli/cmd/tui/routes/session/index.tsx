@@ -67,6 +67,7 @@ import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
+import { DialogTasks } from "@tui/component/dialog-tasks"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
@@ -134,20 +135,20 @@ export function Session() {
       .filter((x) => x.parentID === parentID || x.id === parentID)
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
-  const [subtaskRunning, setSubtaskRunning] = createSignal(false)
-  // Track whether this subtask's background task is still running
+  const [subtaskStatus, setSubtaskStatus] = createSignal<"running" | "completed" | "failed" | "cancelled" | null>(null)
+  const subtaskRunning = createMemo(() => subtaskStatus() === "running")
   createEffect(() => {
     const parentID = session()?.parentID
     if (!parentID) {
-      setSubtaskRunning(false)
+      setSubtaskStatus(null)
       return
     }
     const check = async () => {
       const tasks = await sdk.client.background.list({ sessionID: parentID })
-      const running = (tasks.data ?? []).some(
-        (t) => t.status === "running" && t.subagent?.sessionID === route.sessionID,
+      const task = (tasks.data ?? []).find(
+        (t) => t.subagent?.sessionID === route.sessionID,
       )
-      setSubtaskRunning(running)
+      setSubtaskStatus((task?.status as any) ?? null)
     }
     check()
     const interval = setInterval(check, 2000)
@@ -1009,6 +1010,19 @@ export function Session() {
       },
     },
     {
+      title: "Subtask list",
+      value: "session.tasks",
+      keybind: "task_list",
+      category: "Session",
+      slash: {
+        name: "tasks",
+        aliases: ["subtasks"],
+      },
+      onSelect: (dialog) => {
+        dialog.replace(() => <DialogTasks />)
+      },
+    },
+    {
       title: "Cancel this subtask",
       value: "session.child.cancel",
       keybind: "session_child_cancel",
@@ -1025,7 +1039,7 @@ export function Session() {
         )
         if (running) {
           await sdk.client.background.cancel({ id: running.id })
-          setSubtaskRunning(false)
+          setSubtaskStatus("cancelled")
         }
       },
     },
@@ -1254,7 +1268,7 @@ export function Session() {
         <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
           <Show when={session()}>
             <Show when={(headerVisible() || session()?.parentID) && (!sidebarVisible() || !wide())}>
-              <Header subtaskRunning={subtaskRunning()} />
+              <Header subtaskRunning={subtaskRunning()} subtaskStatus={subtaskStatus()} />
             </Show>
             <scrollbox
               ref={(r) => {
