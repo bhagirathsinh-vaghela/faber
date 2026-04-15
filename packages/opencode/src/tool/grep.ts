@@ -7,7 +7,9 @@ import { Instance } from "../project/instance"
 import path from "path"
 import { assertExternalDirectory } from "./external-directory"
 
-const VCS_EXCLUDES = ["!.git", "!.svn", "!.hg", "!.bzr"]
+const VCS_EXCLUDES = ["!.git", "!.svn", "!.hg", "!.bzr", "!.jj", "!.sl"]
+const DEFAULT_HEAD_LIMIT = 250
+const RIPGREP_TIMEOUT_MS = 20_000
 
 export const GrepTool = Tool.define("grep", {
   description: DESCRIPTION,
@@ -21,6 +23,14 @@ export const GrepTool = Tool.define("grep", {
       .describe(
         'Output mode: "files_with_matches" (default) returns file paths, "content" returns matching lines, "count" returns match counts',
       ),
+    before_context: z
+      .number()
+      .optional()
+      .describe("Number of lines to show before each match (only for output_mode content)"),
+    after_context: z
+      .number()
+      .optional()
+      .describe("Number of lines to show after each match (only for output_mode content)"),
     context: z
       .number()
       .optional()
@@ -28,7 +38,12 @@ export const GrepTool = Tool.define("grep", {
     case_insensitive: z.boolean().optional().describe("Enable case-insensitive matching"),
     line_numbers: z.boolean().optional().describe("Show line numbers (only for output_mode content, default true)"),
     type: z.string().optional().describe('File type filter using ripgrep type definitions (e.g. "js", "py", "rust")'),
-    head_limit: z.number().optional().describe("Limit output to first N entries after offset"),
+    head_limit: z
+      .number()
+      .optional()
+      .describe(
+        `Limit output to first N entries after offset. Defaults to ${DEFAULT_HEAD_LIMIT} when unspecified. Pass 0 for unlimited (use sparingly).`,
+      ),
     offset: z.number().optional().describe("Skip first N entries before applying head_limit"),
     multiline: z.boolean().optional().describe("Enable multiline matching mode"),
   }).strict(),
@@ -77,6 +92,12 @@ export const GrepTool = Tool.define("grep", {
       if (params.context !== undefined) {
         args.push("-C", String(params.context))
       }
+      if (params.before_context !== undefined) {
+        args.push("-B", String(params.before_context))
+      }
+      if (params.after_context !== undefined) {
+        args.push("-A", String(params.after_context))
+      }
     }
 
     if (params.case_insensitive) {
@@ -97,39 +118,46 @@ export const GrepTool = Tool.define("grep", {
 
     args.push("--regexp", params.pattern, searchPath)
 
+    const timeout = AbortSignal.timeout(RIPGREP_TIMEOUT_MS)
+    const signal = AbortSignal.any([ctx.abort, timeout])
     const proc = Bun.spawn([rgPath, ...args], {
       stdout: "pipe",
       stderr: "pipe",
-      signal: ctx.abort,
+      signal,
     })
 
     const output = await new Response(proc.stdout).text()
     const errorOutput = await new Response(proc.stderr).text()
     const exitCode = await proc.exited
 
-    if (exitCode === 1 || (exitCode === 2 && !output.trim())) {
+    const timedOut = timeout.aborted
+    const appliedLimit = params.head_limit === 0 ? undefined : (params.head_limit ?? DEFAULT_HEAD_LIMIT)
+    const appliedOffset = params.offset ?? 0
+
+    if (!timedOut && (exitCode === 1 || (exitCode === 2 && !output.trim()))) {
       return {
         title: params.pattern,
-        metadata: { matches: 0 },
+        metadata: { numFiles: 0, filenames: [] as string[], totalBeforePagination: 0, appliedLimit, appliedOffset },
         output: "No files found",
       }
     }
 
-    if (exitCode !== 0 && exitCode !== 2) {
+    if (!timedOut && exitCode !== 0 && exitCode !== 2) {
       throw new Error(`ripgrep failed: ${errorOutput}`)
     }
 
-    const hasErrors = exitCode === 2
+    const hasErrors = exitCode === 2 || timedOut
+    const paginationParams = { ...params, head_limit: appliedLimit, offset: appliedOffset }
 
     if (mode === "files_with_matches") {
-      return formatFilesWithMatches(output, params, hasErrors)
+      return formatFilesWithMatches(output, paginationParams, hasErrors, timedOut)
     }
 
     if (mode === "count") {
-      return formatCount(output, searchPath, params, hasErrors)
+      return formatCount(output, searchPath, paginationParams, hasErrors, timedOut)
     }
 
-    return formatContent(output, searchPath, params, hasErrors)
+    return formatContent(output, searchPath, paginationParams, hasErrors, timedOut)
   },
 })
 
@@ -137,44 +165,51 @@ async function formatFilesWithMatches(
   output: string,
   params: { pattern: string; head_limit?: number; offset?: number },
   hasErrors: boolean,
+  timedOut: boolean,
 ) {
   let files = output
     .trim()
     .split(/\r?\n/)
     .filter((l) => l)
 
-  // Sort by mtime (most recent first)
-  const entries = await Promise.all(
+  const totalBeforePagination = files.length
+
+  // Sort by mtime (most recent first), tolerating files deleted between grep and stat
+  const results = await Promise.allSettled(
     files.map(async (f) => {
-      const stats = await Bun.file(f)
-        .stat()
-        .catch(() => null)
-      return { path: f, mtime: stats ? stats.mtime.getTime() : 0 }
+      const stats = await Bun.file(f).stat()
+      return { path: f, mtime: stats.mtime.getTime() }
     }),
   )
+  const entries = results
+    .filter((r): r is PromiseFulfilledResult<{ path: string; mtime: number }> => r.status === "fulfilled")
+    .map((r) => r.value)
   entries.sort((a, b) => b.mtime - a.mtime)
   files = entries.map((e) => e.path)
 
-  // Apply offset + head_limit
   files = paginate(files, params.offset, params.head_limit)
 
   if (files.length === 0) {
     return {
       title: params.pattern,
-      metadata: { matches: 0 },
-      output: "No files found",
+      metadata: { numFiles: 0, filenames: [] as string[], totalBeforePagination, appliedLimit: params.head_limit, appliedOffset: params.offset ?? 0 },
+      output: timedOut ? "No files found\n\n(Search timed out — results may be incomplete)" : "No files found",
     }
   }
 
   const lines = [`Found ${files.length} file(s)`, ...files]
-
-  if (hasErrors) {
-    lines.push("", "(Some paths were inaccessible and skipped)")
-  }
+  if (timedOut) lines.push("", "(Search timed out — results may be incomplete)")
+  if (hasErrors && !timedOut) lines.push("", "(Some paths were inaccessible and skipped)")
 
   return {
     title: params.pattern,
-    metadata: { matches: files.length },
+    metadata: {
+      numFiles: files.length,
+      filenames: files,
+      totalBeforePagination,
+      appliedLimit: params.head_limit,
+      appliedOffset: params.offset ?? 0,
+    },
     output: lines.join("\n"),
   }
 }
@@ -184,6 +219,7 @@ function formatCount(
   searchPath: string,
   params: { pattern: string; head_limit?: number; offset?: number },
   hasErrors: boolean,
+  timedOut: boolean,
 ) {
   let entries = output
     .trim()
@@ -199,27 +235,32 @@ function formatCount(
     })
     .filter((e) => e.count > 0)
 
+  const totalBeforePagination = entries.length
   entries = paginate(entries, params.offset, params.head_limit)
 
   if (entries.length === 0) {
     return {
       title: params.pattern,
-      metadata: { matches: 0 },
-      output: "No files found",
+      metadata: { numFiles: 0, numMatches: 0, totalBeforePagination, appliedLimit: params.head_limit, appliedOffset: params.offset ?? 0 },
+      output: timedOut ? "No files found\n\n(Search timed out — results may be incomplete)" : "No files found",
     }
   }
 
   const total = entries.reduce((sum, e) => sum + e.count, 0)
   const lines = entries.map((e) => `${e.file}:${e.count}`)
   lines.push("", `Found ${total} total occurrences across ${entries.length} files.`)
-
-  if (hasErrors) {
-    lines.push("", "(Some paths were inaccessible and skipped)")
-  }
+  if (timedOut) lines.push("", "(Search timed out — results may be incomplete)")
+  if (hasErrors && !timedOut) lines.push("", "(Some paths were inaccessible and skipped)")
 
   return {
     title: params.pattern,
-    metadata: { matches: total },
+    metadata: {
+      numFiles: entries.length,
+      numMatches: total,
+      totalBeforePagination,
+      appliedLimit: params.head_limit,
+      appliedOffset: params.offset ?? 0,
+    },
     output: lines.join("\n"),
   }
 }
@@ -229,6 +270,7 @@ function formatContent(
   searchPath: string,
   params: { pattern: string; head_limit?: number; offset?: number },
   hasErrors: boolean,
+  timedOut: boolean,
 ) {
   let lines = output.trimEnd().split(/\r?\n/)
 
@@ -239,23 +281,30 @@ function formatContent(
     lines = lines.map((line) => (line.startsWith(prefix) ? line.slice(prefix.length) : line))
   }
 
+  const totalBeforePagination = lines.length
   lines = paginate(lines, params.offset, params.head_limit)
 
   if (lines.length === 0) {
     return {
       title: params.pattern,
-      metadata: { matches: 0 },
-      output: "No files found",
+      metadata: { numLines: 0, totalBeforePagination, appliedLimit: params.head_limit, appliedOffset: params.offset ?? 0 },
+      output: timedOut ? "No files found\n\n(Search timed out — results may be incomplete)" : "No files found",
     }
   }
 
-  if (hasErrors) {
-    lines.push("", "(Some paths were inaccessible and skipped)")
-  }
+  // Count result lines before the notices are appended
+  const numLines = lines.length
+  if (timedOut) lines.push("", "(Search timed out — results may be incomplete)")
+  if (hasErrors && !timedOut) lines.push("", "(Some paths were inaccessible and skipped)")
 
   return {
     title: params.pattern,
-    metadata: { matches: lines.length },
+    metadata: {
+      numLines,
+      totalBeforePagination,
+      appliedLimit: params.head_limit,
+      appliedOffset: params.offset ?? 0,
+    },
     output: lines.join("\n"),
   }
 }
