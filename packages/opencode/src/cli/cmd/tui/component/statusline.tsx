@@ -28,6 +28,10 @@ export function utilizationColor(percent: number) {
   return hsvToRgb(hue, 0.85, 0.9)
 }
 
+export function formatCost(dollars: number): string {
+  return "$" + dollars.toFixed(2)
+}
+
 // Format token count (e.g., 1234 -> "1k", 1234567 -> "1M")
 export function formatTokens(count: number): string {
   if (count >= 1_000_000) return Math.round(count / 1_000_000) + "M"
@@ -57,6 +61,7 @@ export type StatuslineContentProps = {
   contextStats: { total: number; cached: number; cacheWritten: number; nextTurn: number; contextLimit: number; percentage: number } | null
   cacheExpiry: string | null
   sessionTotals: { input: number; output: number }
+  sessionCost: number
   streamIndicator?: string | null
 }
 
@@ -77,38 +82,46 @@ export function ModelHeader(props: {
   const b = () => props.bold
   const d = () => (props.dimmed ? theme.textMuted : undefined)
 
+  const parts = createMemo(() => {
+    const result: Array<{ color: RGBA; text: string }> = []
+    if (props.variant) result.push({ color: d() ?? theme.warning, text: props.variant })
+    if (props.duration) result.push({ color: theme.textMuted, text: props.duration })
+    if (props.interrupted) result.push({ color: theme.textMuted, text: "interrupted" })
+    if (props.directory) result.push({ color: d() ?? theme.primary, text: props.directory })
+    return result
+  })
+
   return (
-    <box flexDirection="row" columnGap={1} rowGap={0} flexWrap="wrap">
-      <text>
-        <span style={{ fg: d() ?? props.agentColor, bold: b() }}>{props.agent}</span>
-      </text>
-      <Show when={props.model}>
-        <text fg={theme.textMuted}>·</text>
-        <text flexShrink={0}>
-          <span style={{ fg: d() ?? props.modelColor ?? theme.textMuted, bold: b() }}>{props.model}</span>
+    <box flexDirection="row" columnGap={0} rowGap={0} flexWrap="wrap">
+      <box flexShrink={0} flexDirection="row">
+        <text>
+          <span style={{ fg: d() ?? props.agentColor, bold: b() }}>{props.agent}</span>
         </text>
+      </box>
+      <Show when={props.model}>
+        <box flexShrink={0} flexDirection="row">
+          <text>
+            <span style={{ fg: theme.textMuted }}> · </span>
+            <span style={{ fg: d() ?? props.modelColor ?? theme.textMuted, bold: b() }}>{props.model}</span>
+          </text>
+        </box>
       </Show>
       <Show when={props.provider}>
-        <text fg={theme.textMuted}>·</text>
-        <text>
-          <span style={{ fg: d() ?? theme.textMuted, bold: b() }}>{props.provider}</span>
-        </text>
+        <box flexShrink={0} flexDirection="row">
+          <text>
+            <span style={{ fg: theme.textMuted }}> · </span>
+            <span style={{ fg: d() ?? theme.textMuted, bold: b() }}>{props.provider}</span>
+          </text>
+        </box>
       </Show>
-      {createMemo(() => {
-        const parts: Array<{ color: RGBA; text: string }> = []
-        if (props.variant) parts.push({ color: d() ?? theme.warning, text: props.variant })
-        if (props.duration) parts.push({ color: theme.textMuted, text: props.duration })
-        if (props.interrupted) parts.push({ color: theme.textMuted, text: "interrupted" })
-        if (props.directory) parts.push({ color: d() ?? theme.primary, text: props.directory })
-        return parts.map((p) => (
-          <>
-            <text fg={theme.textMuted}>·</text>
-            <text>
-              <span style={{ fg: p.color, bold: b() }}>{p.text}</span>
-            </text>
-          </>
-        ))
-      })()}
+      {parts().map((p) => (
+        <box flexShrink={0} flexDirection="row">
+          <text>
+            <span style={{ fg: theme.textMuted }}> · </span>
+            <span style={{ fg: p.color, bold: b() }}>{p.text}</span>
+          </text>
+        </box>
+      ))}
     </box>
   )
 }
@@ -155,22 +168,28 @@ export function StatuslineContent(props: StatuslineContentProps) {
       {/* Context stats line */}
       <Show when={props.contextStats}>
         {(stats) => (
-          <box flexDirection="row">
-            <box flexDirection="row">
-              {props.streamIndicator ? (
+          <box flexDirection="row" flexWrap="wrap" columnGap={0} rowGap={0}>
+            {/* Stream indicator segment */}
+            <Show when={props.streamIndicator}>
+              <box flexShrink={0} flexDirection="row">
                 <text>
                   <span style={{ fg: c(UTILIZATION_GREEN) }}>{props.streamIndicator}</span>
                   <span style={{ fg: m() }}> │ </span>
                 </text>
-              ) : null}
-              {/* Cache expiry (full mode only) */}
-              <Show when={!props.compact}>
+              </box>
+            </Show>
+            {/* Cache expiry segment (full mode only) */}
+            <Show when={!props.compact}>
+              <box flexShrink={0} flexDirection="row">
                 <text>
                   <span style={{ fg: c(theme.warning) }}>{"\u25f7"}</span>{" "}
                   <span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span>
                   <span style={{ fg: m() }}> │ </span>
                 </text>
-              </Show>
+              </box>
+            </Show>
+            {/* Context bar segment */}
+            <box flexShrink={0} flexDirection="row">
               <text>
                 <span style={{ fg: c(utilizationColor(stats().percentage)) }}>{"\u25a3"}</span>{" "}
               </text>
@@ -183,6 +202,11 @@ export function StatuslineContent(props: StatuslineContentProps) {
                 <span style={{ fg: m() }}>/</span>
                 <span style={{ fg: m(), bold: b() }}>{formatTokens(stats().contextLimit)}</span>
                 <span style={{ fg: m() }}> │ </span>
+              </text>
+            </box>
+            {/* Cache stats segment */}
+            <box flexShrink={0} flexDirection="row">
+              <text>
                 <span style={{ fg: c(UTILIZATION_GREEN) }}>{"\u25c8"}</span>{" "}
                 <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatTokens(stats().cached)}</span>
                 <span style={{ fg: m() }}> · </span>
@@ -192,10 +216,17 @@ export function StatuslineContent(props: StatuslineContentProps) {
                 <span style={{ fg: c(NEXT_TURN_ORANGE) }}>{"\u25b2"}</span>{" "}
                 <span style={{ fg: c(NEXT_TURN_ORANGE), bold: b() }}>{formatTokens(stats().nextTurn)}</span>
                 <span style={{ fg: m() }}> │ </span>
+              </text>
+            </box>
+            {/* Session totals segment */}
+            <box flexShrink={0} flexDirection="row">
+              <text>
                 <span style={{ fg: c(theme.primary) }}>{"\u03a3"}</span>{" "}
                 <span style={{ fg: c(theme.primary), bold: b() }}>↑{formatTokens(props.sessionTotals.input)}</span>
                 <span style={{ fg: m() }}> · </span>
                 <span style={{ fg: c(theme.warning), bold: b() }}>↓{formatTokens(props.sessionTotals.output)}</span>
+                <span style={{ fg: m() }}> · </span>
+                <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatCost(props.sessionCost)}</span>
               </text>
             </box>
           </box>
@@ -264,6 +295,10 @@ export function Statusline(props: StatuslineProps) {
     return session()?.total ?? { input: 0, output: 0 }
   })
 
+  const sessionCost = createMemo(() => {
+    return session()?.cost ?? 0
+  })
+
   const cacheRanges = createMemo(() => {
     const s = session()
     const markers = s?.cacheMarkers
@@ -280,6 +315,7 @@ export function Statusline(props: StatuslineProps) {
       contextStats={contextStats()}
       cacheExpiry={cacheExpiry()}
       sessionTotals={sessionTotals()}
+      sessionCost={sessionCost()}
       streamIndicator={props.streamIndicator}
     />
   )

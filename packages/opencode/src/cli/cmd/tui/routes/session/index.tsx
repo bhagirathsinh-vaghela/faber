@@ -1774,6 +1774,10 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
     return props.message.time.completed - user.time.created
   })
 
+  const modelInfo = createMemo(() => {
+    return sync.data.provider.find((x) => x.id === props.message.providerID)?.models[props.message.modelID]
+  })
+
   // Context window stats from this message
   const contextStats = createMemo(() => {
     const msg = props.message
@@ -1781,14 +1785,17 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
     const cached = msg.tokens.cache.read
     const cacheWritten = msg.tokens.cache.write
     const nextTurn = msg.tokens.output
-    const modelInfo = sync.data.provider.find((x) => x.id === msg.providerID)?.models[msg.modelID]
-    const contextLimit = modelInfo?.limit.context ?? 200000
+    const contextLimit = modelInfo()?.limit.context ?? 200000
     const percentage = Math.round((total / contextLimit) * 100)
     return { total, cached, cacheWritten, nextTurn, contextLimit, percentage }
   })
 
   const sessionTotals = createMemo(() => {
     return props.message.sessionCost ?? { input: 0, output: 0 }
+  })
+
+  const messageCost = createMemo(() => {
+    return props.message.sessionDollarCost ?? 0
   })
 
   // Cache expiry - 5 minutes from message completion
@@ -1822,6 +1829,7 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
                 messageDuration={duration()}
                 contextStats={contextStats()}
                 sessionTotals={sessionTotals()}
+                sessionCost={messageCost()}
                 cacheExpiry={cacheExpiry()}
               />
             </Show>
@@ -1922,6 +1930,7 @@ function TextPart(props: {
   messageDuration: number
   contextStats: { total: number; cached: number; cacheWritten: number; nextTurn: number; contextLimit: number; percentage: number }
   sessionTotals: { input: number; output: number }
+  sessionCost: number
   cacheExpiry: string | null
 }) {
   const ctx = use()
@@ -2023,6 +2032,7 @@ function TextPart(props: {
             contextStats={props.contextStats}
             cacheExpiry={props.cacheExpiry}
             sessionTotals={props.sessionTotals}
+            sessionCost={props.sessionCost}
           />
         </Show>
       </box>

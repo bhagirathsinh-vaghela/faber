@@ -1333,64 +1333,86 @@ export function Prompt(props: PromptProps) {
             </box>
           </Show>
           <Show when={status().type !== "retry"}>
-            <box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={0}>
+            <box flexDirection="row" flexWrap="wrap" columnGap={0} rowGap={0}>
               <Switch>
                 <Match when={store.mode === "normal"}>
-                  <text
-                    fg={theme.text}
-                    onMouseOver={() => setHoverPending(true)}
-                    onMouseOut={() => setHoverPending(false)}
-                  >
-                    <span style={{ fg: theme.textMuted }}>pending</span>{" "}
-                    <span style={{ fg: runningCount() > 0 ? theme.info : theme.success }}>{runningCount()}</span>
-                  </text>
-                  <text fg={theme.textMuted}>·</text>
-                  <text
-                    fg={theme.text}
-                    onMouseOver={() => setHoverResults(true)}
-                    onMouseOut={() => setHoverResults(false)}
-                  >
-                    <span style={{ fg: theme.textMuted }}>available</span>{" "}
-                    <span style={{ fg: resultsCount() > 0 ? theme.warning : theme.success }}>{resultsCount()}</span>
-                  </text>
-                  <text fg={theme.textMuted}>·</text>
-                  <text
-                    fg={theme.text}
-                    onMouseOver={() => setHoverAutoInject(true)}
-                    onMouseOut={() => setHoverAutoInject(false)}
-                  >
-                    <span style={{ fg: theme.textMuted }}>auto-accept-results</span>{" "}
-                    <span style={{ fg: autoInject() ? theme.success : theme.warning }}>
-                      {autoInject() ? "on" : "off"}
-                    </span>
-                  </text>
-                  <Show when={(props.questionCount ?? 0) > 0}>
-                    <text fg={theme.textMuted}>·</text>
+                  <box flexShrink={0} flexDirection="row">
                     <text
                       fg={theme.text}
-                      onMouseOver={() => setHoverQuestions(true)}
-                      onMouseOut={() => setHoverQuestions(false)}
+                      onMouseOver={() => setHoverPending(true)}
+                      onMouseOut={() => setHoverPending(false)}
                     >
-                      <span style={{ fg: theme.textMuted }}>questions</span>{" "}
-                      <span style={{ fg: theme.warning }}>{props.questionCount}</span>
+                      <span style={{ fg: theme.textMuted }}>pending</span>{" "}
+                      <span style={{ fg: runningCount() > 0 ? theme.info : theme.success }}>{runningCount()}</span>
                     </text>
+                  </box>
+                  <box flexShrink={0} flexDirection="row">
+                    <text>
+                      <span style={{ fg: theme.textMuted }}> · </span>
+                    </text>
+                    <text
+                      fg={theme.text}
+                      onMouseOver={() => setHoverResults(true)}
+                      onMouseOut={() => setHoverResults(false)}
+                    >
+                      <span style={{ fg: theme.textMuted }}>available</span>{" "}
+                      <span style={{ fg: resultsCount() > 0 ? theme.warning : theme.success }}>{resultsCount()}</span>
+                    </text>
+                  </box>
+                  <box flexShrink={0} flexDirection="row">
+                    <text>
+                      <span style={{ fg: theme.textMuted }}> · </span>
+                    </text>
+                    <text
+                      fg={theme.text}
+                      onMouseOver={() => setHoverAutoInject(true)}
+                      onMouseOut={() => setHoverAutoInject(false)}
+                    >
+                      <span style={{ fg: theme.textMuted }}>auto-inject</span>{" "}
+                      <span style={{ fg: autoInject() ? theme.success : theme.warning }}>
+                        {autoInject() ? "on" : "off"}
+                      </span>
+                    </text>
+                  </box>
+                  <Show when={(props.questionCount ?? 0) > 0}>
+                    <box flexShrink={0} flexDirection="row">
+                      <text>
+                        <span style={{ fg: theme.textMuted }}> · </span>
+                      </text>
+                      <text
+                        fg={theme.text}
+                        onMouseOver={() => setHoverQuestions(true)}
+                        onMouseOut={() => setHoverQuestions(false)}
+                      >
+                        <span style={{ fg: theme.textMuted }}>questions</span>{" "}
+                        <span style={{ fg: theme.warning }}>{props.questionCount}</span>
+                      </text>
+                    </box>
                   </Show>
-                  <text fg={theme.textMuted}>·</text>
-                  <text fg={theme.text}>
-                    {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
-                  </text>
-                  <text fg={theme.textMuted}>·</text>
-                  <text
-                    fg={theme.text}
-                    onMouseOver={() => setHoverPasteMode(true)}
-                    onMouseOut={() => setHoverPasteMode(false)}
-                  >
-                    <span style={{ fg: theme.textMuted }}>│</span>
-                    <span style={{ fg: pasteMode() === "inline" ? UTILIZATION_GREEN : theme.textMuted }}>
-                      {pasteMode() === "inline" ? "◆" : "◇"}
-                    </span>
-                    <span style={{ fg: theme.textMuted }}>│</span>
-                  </text>
+                  <box flexShrink={0} flexDirection="row">
+                    <text>
+                      <span style={{ fg: theme.textMuted }}> · </span>
+                    </text>
+                    <text fg={theme.text}>
+                      {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
+                    </text>
+                  </box>
+                  <box flexShrink={0} flexDirection="row">
+                    <text>
+                      <span style={{ fg: theme.textMuted }}> · </span>
+                    </text>
+                    <text
+                      fg={theme.text}
+                      onMouseOver={() => setHoverPasteMode(true)}
+                      onMouseOut={() => setHoverPasteMode(false)}
+                    >
+                      <span style={{ fg: theme.textMuted }}>│</span>
+                      <span style={{ fg: pasteMode() === "inline" ? UTILIZATION_GREEN : theme.textMuted }}>
+                        {pasteMode() === "inline" ? "◆" : "◇"}
+                      </span>
+                      <span style={{ fg: theme.textMuted }}>│</span>
+                    </text>
+                  </box>
                 </Match>
                 <Match when={store.mode === "shell"}>
                   <text fg={theme.text}>
