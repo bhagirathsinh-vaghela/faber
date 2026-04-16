@@ -141,8 +141,16 @@ export namespace LLM {
       }
     }
 
-    const variant =
+    let variant =
       !input.small && input.model.variants && input.user.variant ? input.model.variants[input.user.variant] : {}
+    // Apply local effort override for anthropic if configured (supersedes models.dev-derived variant).
+    if (
+      input.user.variant === "adaptive" &&
+      input.model.providerID === "anthropic" &&
+      cfg.anthropic?.context?.[input.model.id]?.effort !== undefined
+    ) {
+      variant = { ...variant, effort: cfg.anthropic.context[input.model.id].effort }
+    }
     const base = input.small
       ? ProviderTransform.smallOptions(input.model)
       : ProviderTransform.options({
@@ -160,6 +168,10 @@ export namespace LLM {
       options.instructions = SystemPrompt.instructions()
     }
 
+    // Local anthropic.context[modelID] overrides (supersede models.dev).
+    const anthropicOverride =
+      input.model.providerID === "anthropic" ? cfg.anthropic?.context?.[input.model.id] : undefined
+
     // Claude models get temperature 1 unless the agent sets one.
     // The "adaptive" variant uses adaptive thinking (injected via fetch wrapper);
     // options._adaptiveThinking tells normalizeMessages to preserve reasoning blocks.
@@ -167,6 +179,9 @@ export namespace LLM {
     const isAdaptiveThinking = input.user.variant === "adaptive"
     if (isAdaptiveThinking) options._adaptiveThinking = true
     const temperature = (() => {
+      if (anthropicOverride && "temperature" in anthropicOverride) {
+        return anthropicOverride.temperature ?? undefined
+      }
       if (!input.model.capabilities.temperature) return undefined
       if (input.agent.temperature !== undefined) return input.agent.temperature
       if (isClaude) return 1
@@ -223,13 +238,15 @@ export namespace LLM {
     const maxOutputTokens =
       isCodex || provider.id.includes("github-copilot")
         ? undefined
-        : ProviderTransform.maxOutputTokens(
-            input.model.api.npm,
-            params.options,
-            input.model.limit.output,
-            OUTPUT_TOKEN_MAX,
-            input.model.id,
-          )
+        : anthropicOverride?.maxTokens !== undefined
+          ? anthropicOverride.maxTokens
+          : ProviderTransform.maxOutputTokens(
+              input.model.api.npm,
+              params.options,
+              input.model.limit.output,
+              OUTPUT_TOKEN_MAX,
+              input.model.id,
+            )
 
     const tools = await resolveTools(input)
 

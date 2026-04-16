@@ -591,7 +591,29 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
-  type AnthropicContextConfig = Record<string, { model?: string; limit?: number; beta?: string[] }>
+  type AnthropicContextConfig = Record<
+    string,
+    {
+      model?: string
+      limit?: number
+      beta?: string[]
+      maxTokens?: number
+      temperature?: number | null
+      effort?: string
+      capabilities?: {
+        reasoning?: boolean
+        temperature?: boolean
+        attachment?: boolean
+        toolCall?: boolean
+      }
+      cost?: {
+        input?: number
+        output?: number
+        cacheRead?: number
+        cacheWrite?: number
+      }
+    }
+  >
 
   function fromModelsDevModel(
     provider: ModelsDev.Provider,
@@ -613,11 +635,11 @@ export namespace Provider {
       headers: model.headers ?? {},
       options: model.options ?? {},
       cost: {
-        input: model.cost?.input ?? 0,
-        output: model.cost?.output ?? 0,
+        input: contextConfig?.cost?.input ?? model.cost?.input ?? 0,
+        output: contextConfig?.cost?.output ?? model.cost?.output ?? 0,
         cache: {
-          read: model.cost?.cache_read ?? 0,
-          write: model.cost?.cache_write ?? 0,
+          read: contextConfig?.cost?.cacheRead ?? model.cost?.cache_read ?? 0,
+          write: contextConfig?.cost?.cacheWrite ?? model.cost?.cache_write ?? 0,
         },
         experimentalOver200K: model.cost?.context_over_200k
           ? {
@@ -636,10 +658,10 @@ export namespace Provider {
         output: model.limit.output,
       },
       capabilities: {
-        temperature: model.temperature,
-        reasoning: model.reasoning,
-        attachment: model.attachment,
-        toolcall: model.tool_call,
+        temperature: contextConfig?.capabilities?.temperature ?? model.temperature,
+        reasoning: contextConfig?.capabilities?.reasoning ?? model.reasoning,
+        attachment: contextConfig?.capabilities?.attachment ?? model.attachment,
+        toolcall: contextConfig?.capabilities?.toolCall ?? model.tool_call,
         input: {
           text: model.modalities?.input?.includes("text") ?? false,
           audio: model.modalities?.input?.includes("audio") ?? false,
@@ -1021,12 +1043,25 @@ export namespace Provider {
         // Anthropic adaptive thinking: the @ai-sdk/anthropic SDK only supports thinking.type="enabled".
         // When the "adaptive" variant is selected, the SDK omits the thinking field entirely because
         // type="adaptive" doesn't match its check. We inject it into the request body here.
+        // Also restore temperature when config pins it: the SDK hardcodes certain models
+        // (e.g. claude-opus-4-7) as rejectsSamplingParameters=true and strips temperature,
+        // but Anthropic's server accepts it.
         if (model.api.npm === "@ai-sdk/anthropic" && opts.body && opts.method === "POST") {
           const body = JSON.parse(opts.body as string)
+          let mutated = false
           if (!body.thinking && mergedHeaders["anthropic-beta"]?.includes("adaptive-thinking")) {
             body.thinking = { type: "adaptive" }
-            opts.body = JSON.stringify(body)
+            mutated = true
           }
+          if (body.temperature === undefined) {
+            const cfg = await Config.get()
+            const override = cfg.anthropic?.context?.[model.id]
+            if (override && "temperature" in override && override.temperature !== null) {
+              body.temperature = override.temperature
+              mutated = true
+            }
+          }
+          if (mutated) opts.body = JSON.stringify(body)
         }
 
         // Strip openai itemId metadata following what codex does

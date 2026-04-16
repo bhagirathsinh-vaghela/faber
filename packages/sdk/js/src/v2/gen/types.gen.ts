@@ -2061,6 +2061,36 @@ export type Config = {
          * Beta headers for this model (overrides provider-level beta if set)
          */
         beta?: Array<string>
+        /**
+         * max_tokens sent on the wire; overrides models.dev and built-in ladder
+         */
+        maxTokens?: number
+        /**
+         * Temperature to send; null means don't send; undefined falls back to built-in logic
+         */
+        temperature?: number | null
+        /**
+         * Reasoning effort passed via adaptive variant (e.g., 'high', 'xhigh')
+         */
+        effort?: string
+        /**
+         * Model capability overrides (supersede models.dev)
+         */
+        capabilities?: {
+          reasoning?: boolean
+          temperature?: boolean
+          attachment?: boolean
+          toolCall?: boolean
+        }
+        /**
+         * Per-million-token cost overrides
+         */
+        cost?: {
+          input?: number
+          output?: number
+          cacheRead?: number
+          cacheWrite?: number
+        }
       }
     }
   }

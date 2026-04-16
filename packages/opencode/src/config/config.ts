@@ -1208,6 +1208,36 @@ export namespace Config {
                   .array(z.string())
                   .optional()
                   .describe("Beta headers for this model (overrides provider-level beta if set)"),
+                maxTokens: z
+                  .number()
+                  .optional()
+                  .describe("max_tokens sent on the wire; overrides models.dev and built-in ladder"),
+                temperature: z
+                  .union([z.number(), z.null()])
+                  .optional()
+                  .describe("Temperature to send; null means don't send; undefined falls back to built-in logic"),
+                effort: z
+                  .string()
+                  .optional()
+                  .describe("Reasoning effort passed via adaptive variant (e.g., 'high', 'xhigh')"),
+                capabilities: z
+                  .object({
+                    reasoning: z.boolean().optional(),
+                    temperature: z.boolean().optional(),
+                    attachment: z.boolean().optional(),
+                    toolCall: z.boolean().optional(),
+                  })
+                  .optional()
+                  .describe("Model capability overrides (supersede models.dev)"),
+                cost: z
+                  .object({
+                    input: z.number().optional(),
+                    output: z.number().optional(),
+                    cacheRead: z.number().optional(),
+                    cacheWrite: z.number().optional(),
+                  })
+                  .optional()
+                  .describe("Per-million-token cost overrides"),
               }),
             )
             .optional()
