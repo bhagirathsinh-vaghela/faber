@@ -1771,6 +1771,10 @@ export type McpLocalConfig = {
    */
   enabled?: boolean
   /**
+   * Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).
+   */
+  deny?: Array<string>
+  /**
    * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
    */
   timeout?: number
@@ -1804,6 +1808,10 @@ export type McpRemoteConfig = {
    * Enable or disable the MCP server on startup
    */
   enabled?: boolean
+  /**
+   * Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).
+   */
+  deny?: Array<string>
   /**
    * Headers to send with the request
    */

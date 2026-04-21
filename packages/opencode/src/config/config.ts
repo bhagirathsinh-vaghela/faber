@@ -489,6 +489,12 @@ export namespace Config {
         .optional()
         .describe("Environment variables to set when running the MCP server"),
       enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
+      deny: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).",
+        ),
       timeout: z
         .number()
         .int()
@@ -521,6 +527,12 @@ export namespace Config {
       type: z.literal("remote").describe("Type of MCP server connection"),
       url: z.string().describe("URL of the remote MCP server"),
       enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
+      deny: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).",
+        ),
       headers: z.record(z.string(), z.string()).optional().describe("Headers to send with the request"),
       oauth: z
         .union([McpOAuth, z.literal(false)])
