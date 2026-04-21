@@ -113,6 +113,10 @@ export namespace ToolRegistry {
     const isAnthropic = providerID === "anthropic"
     const anthropicSearch = await nativeSearch(providerID)
 
+    // Sort by id for deterministic ordering. tools[] sits at the front of
+    // Anthropic's prefix cache hash chain; any order change invalidates all
+    // downstream cache entries. Custom tools come from filesystem enumeration
+    // which is OS/fs-dependent. Same pattern as the skill ordering fix.
     return [
       InvalidTool,
       ...(["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) ? [QuestionTool] : []),
@@ -134,7 +138,7 @@ export namespace ToolRegistry {
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
       ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool, PlanEnterTool] : []),
       ...custom,
-    ]
+    ].sort((a, b) => a.id.localeCompare(b.id))
   }
 
   export async function ids() {
