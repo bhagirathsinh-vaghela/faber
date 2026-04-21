@@ -59,6 +59,7 @@ export const McpCommand = cmd({
       .command(McpAuthCommand)
       .command(McpLogoutCommand)
       .command(McpDebugCommand)
+      .command(McpToolsCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -749,6 +750,105 @@ export const McpDebugCommand = cmd({
         }
 
         prompts.outro("Debug complete")
+      },
+    })
+  },
+})
+
+export const McpToolsCommand = cmd({
+  command: "tools <name>",
+  describe: "list tools exposed by an MCP server (name, description, size, required params)",
+  builder: (yargs) =>
+    yargs
+      .positional("name", {
+        describe: "name of the MCP server",
+        type: "string",
+        demandOption: true,
+      })
+      .option("json", {
+        describe: "output as JSON (one object per tool)",
+        type: "boolean",
+        default: false,
+      }),
+  async handler(args) {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        const serverName = args.name as string
+        const config = await Config.get()
+        const mcpServers = config.mcp ?? {}
+        const serverConfig = mcpServers[serverName]
+
+        if (!serverConfig) {
+          process.stderr.write(`MCP server not found: ${serverName}\n`)
+          process.stderr.write(`Available: ${Object.keys(mcpServers).join(", ") || "(none configured)"}\n`)
+          process.exit(1)
+        }
+
+        if (!isMcpConfigured(serverConfig)) {
+          process.stderr.write(`MCP server ${serverName} is an override entry (needs full config in a higher scope)\n`)
+          process.exit(1)
+        }
+
+        if (serverConfig.enabled === false) {
+          process.stderr.write(`MCP server ${serverName} is disabled in config (enabled: false)\n`)
+          process.exit(1)
+        }
+
+        // Wait for MCP clients to connect before querying
+        const clients = await MCP.clients()
+        const client = clients[serverName]
+        if (!client) {
+          const statuses = await MCP.status()
+          const status = statuses[serverName]
+          process.stderr.write(
+            `MCP server ${serverName} is not connected (status: ${status?.status ?? "unknown"})\n`,
+          )
+          if (status?.status === "failed" && "error" in status) {
+            process.stderr.write(`Error: ${status.error}\n`)
+          }
+          process.exit(1)
+        }
+
+        const listed = await client.listTools()
+        const tools = listed.tools
+
+        if (args.json) {
+          for (const t of tools) {
+            const size = JSON.stringify({ name: t.name, description: t.description, input_schema: t.inputSchema }).length
+            const required = (t.inputSchema as { required?: string[] } | undefined)?.required ?? []
+            process.stdout.write(
+              JSON.stringify({
+                name: t.name,
+                description: t.description,
+                required,
+                size,
+              }) + "\n",
+            )
+          }
+          return
+        }
+
+        // Human-readable output
+        const totalSize = tools.reduce((sum, t) => {
+          return (
+            sum + JSON.stringify({ name: t.name, description: t.description, input_schema: t.inputSchema }).length
+          )
+        }, 0)
+
+        process.stdout.write(`${serverName}: ${tools.length} tools, ~${totalSize.toLocaleString()} bytes total\n\n`)
+
+        const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name))
+        for (const t of sorted) {
+          const size = JSON.stringify({ name: t.name, description: t.description, input_schema: t.inputSchema }).length
+          const required = (t.inputSchema as { required?: string[] } | undefined)?.required ?? []
+          const desc = (t.description ?? "").split("\n")[0].trim()
+          const truncatedDesc = desc.length > 160 ? desc.slice(0, 157) + "..." : desc
+          process.stdout.write(`  ${t.name}  —  ${size.toLocaleString()} bytes\n`)
+          if (truncatedDesc) process.stdout.write(`    ${truncatedDesc}\n`)
+          if (required.length > 0) process.stdout.write(`    required: ${required.join(", ")}\n`)
+          process.stdout.write(`\n`)
+        }
       },
     })
   },
