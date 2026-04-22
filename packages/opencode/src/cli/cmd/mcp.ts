@@ -229,12 +229,18 @@ export const McpAuthCommand = cmd({
         const spinner = prompts.spinner()
         spinner.start("Starting OAuth flow...")
 
-        // Subscribe to browser open failure events to show URL for manual opening
+        // Subscribe to browser open failure events to show URL for manual opening.
+        // In remote/SSH sessions there's no usable browser here; the user must
+        // open the URL on a machine that can also reach the local callback
+        // server (typically via `ssh -L 19876:127.0.0.1:19876 <this-host>`).
         const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
           if (evt.properties.mcpName === serverName) {
-            spinner.stop("Could not open browser automatically")
-            prompts.log.warn("Please open this URL in your browser to authenticate:")
-            prompts.log.info(evt.properties.url)
+            spinner.stop("No local browser available for auth")
+            prompts.log.warn("Open this URL in a browser on a machine that can reach 127.0.0.1:19876 on this host:")
+            // Emit a stable, grep-able line so automation can scrape the URL.
+            prompts.log.info(`OAUTH_URL: ${evt.properties.url}`)
+            prompts.log.info("If you're on SSH, forward the callback port first:")
+            prompts.log.info("  ssh -L 19876:127.0.0.1:19876 <this-host>")
             spinner.start("Waiting for authorization...")
           }
         })

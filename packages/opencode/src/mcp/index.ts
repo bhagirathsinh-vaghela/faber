@@ -782,6 +782,21 @@ export namespace MCP {
   }
 
   /**
+   * Detect a headless/remote session where launching a local browser will
+   * either fail silently or succeed uselessly. In these cases the caller
+   * should surface the auth URL for the user to open on a machine that has
+   * a browser (typically reaching the callback server via SSH port-forward).
+   */
+  function isHeadless(): boolean {
+    const env = process.env
+    if (env["SSH_TTY"] || env["SSH_CONNECTION"] || env["SSH_CLIENT"]) return true
+    // Linux GUI sessions set DISPLAY or WAYLAND_DISPLAY. Absence on Linux
+    // strongly implies no browser. macOS has no such var, so don't infer from it.
+    if (process.platform === "linux" && !env["DISPLAY"] && !env["WAYLAND_DISPLAY"]) return true
+    return false
+  }
+
+  /**
    * Complete OAuth authentication after user authorizes in browser.
    * Opens the browser and waits for callback.
    */
@@ -808,31 +823,41 @@ export namespace MCP {
     // when the IdP has an active SSO session and redirects immediately
     const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
 
-    try {
-      const subprocess = await open(authorizationUrl)
-      // The open package spawns a detached process and returns immediately.
-      // We need to listen for errors which fire asynchronously:
-      // - "error" event: command not found (ENOENT)
-      // - "exit" with non-zero code: command exists but failed (e.g., no display)
-      await new Promise<void>((resolve, reject) => {
-        // Give the process a moment to fail if it's going to
-        const timeout = setTimeout(() => resolve(), 500)
-        subprocess.on("error", (error) => {
-          clearTimeout(timeout)
-          reject(error)
-        })
-        subprocess.on("exit", (code) => {
-          if (code !== null && code !== 0) {
-            clearTimeout(timeout)
-            reject(new Error(`Browser open failed with exit code ${code}`))
-          }
-        })
-      })
-    } catch (error) {
-      // Browser opening failed (e.g., in remote/headless sessions like SSH, devcontainers)
-      // Emit event so CLI can display the URL for manual opening
-      log.warn("failed to open browser, user must open URL manually", { mcpName, error })
+    if (isHeadless()) {
+      // Remote/headless session (SSH, devcontainer, etc). Don't try to open a
+      // browser on this machine — there isn't one, or worse, open() exits 0
+      // with no display and we hang forever. Surface the URL so the user can
+      // open it on a machine that has a browser and reach the callback via
+      // port forwarding.
+      log.info("headless session detected, skipping browser open", { mcpName })
       Bus.publish(BrowserOpenFailed, { mcpName, url: authorizationUrl })
+    } else {
+      try {
+        const subprocess = await open(authorizationUrl)
+        // The open package spawns a detached process and returns immediately.
+        // We need to listen for errors which fire asynchronously:
+        // - "error" event: command not found (ENOENT)
+        // - "exit" with non-zero code: command exists but failed (e.g., no display)
+        await new Promise<void>((resolve, reject) => {
+          // Give the process a moment to fail if it's going to
+          const timeout = setTimeout(() => resolve(), 500)
+          subprocess.on("error", (error) => {
+            clearTimeout(timeout)
+            reject(error)
+          })
+          subprocess.on("exit", (code) => {
+            if (code !== null && code !== 0) {
+              clearTimeout(timeout)
+              reject(new Error(`Browser open failed with exit code ${code}`))
+            }
+          })
+        })
+      } catch (error) {
+        // Browser opening failed (e.g., in remote/headless sessions like SSH, devcontainers)
+        // Emit event so CLI can display the URL for manual opening
+        log.warn("failed to open browser, user must open URL manually", { mcpName, error })
+        Bus.publish(BrowserOpenFailed, { mcpName, url: authorizationUrl })
+      }
     }
 
     // Wait for callback using the already-registered promise

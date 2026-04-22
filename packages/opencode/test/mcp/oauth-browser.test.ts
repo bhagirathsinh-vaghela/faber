@@ -1,4 +1,4 @@
-import { test, expect, mock, beforeEach } from "bun:test"
+import { test, expect, mock, beforeEach, afterEach } from "bun:test"
 import { EventEmitter } from "events"
 
 // Track open() calls and control failure behavior
@@ -92,10 +92,38 @@ mock.module("@modelcontextprotocol/sdk/client/auth.js", () => ({
   UnauthorizedError: MockUnauthorizedError,
 }))
 
+// Save and clear env vars that make isHeadless() return true, so tests that
+// exercise the open() path run deterministically regardless of the host
+// environment (e.g. SSH sessions set SSH_TTY).
+const HEADLESS_ENV_VARS = ["SSH_TTY", "SSH_CONNECTION", "SSH_CLIENT", "DISPLAY", "WAYLAND_DISPLAY"] as const
+const savedEnv: Partial<Record<(typeof HEADLESS_ENV_VARS)[number], string | undefined>> = {}
+
+function clearHeadlessEnv() {
+  for (const key of HEADLESS_ENV_VARS) {
+    savedEnv[key] = process.env[key]
+    delete process.env[key]
+  }
+  // On Linux, an empty DISPLAY triggers headless detection. Set a fake value
+  // so tests that want to simulate a GUI session pass the check.
+  if (process.platform === "linux") process.env["DISPLAY"] = ":0"
+}
+
+function restoreHeadlessEnv() {
+  for (const key of HEADLESS_ENV_VARS) {
+    if (savedEnv[key] === undefined) delete process.env[key]
+    else process.env[key] = savedEnv[key]
+  }
+}
+
 beforeEach(() => {
   openShouldFail = false
   openCalledWith = undefined
   transportCalls.length = 0
+  clearHeadlessEnv()
+})
+
+afterEach(() => {
+  restoreHeadlessEnv()
 })
 
 // Import modules after mocking
@@ -244,6 +272,53 @@ test("open() is called with the authorization URL", async () => {
       expect(openCalledWith).toBeDefined()
       expect(typeof openCalledWith).toBe("string")
       expect(openCalledWith!).toContain("https://")
+    },
+  })
+})
+
+test("headless session skips open() and publishes BrowserOpenFailed", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/opencode.json`,
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          mcp: {
+            "test-oauth-server-4": {
+              type: "remote",
+              url: "https://example.com/mcp",
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // Simulate SSH session — isHeadless() should return true and skip open()
+      process.env["SSH_TTY"] = "/dev/ttys000"
+
+      const events: Array<{ mcpName: string; url: string }> = []
+      const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
+        events.push(evt.properties)
+      })
+
+      const authPromise = MCP.authenticate("test-oauth-server-4").catch(() => undefined)
+
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+
+      await McpOAuthCallback.stop()
+      await authPromise
+
+      unsubscribe()
+
+      // open() must NOT have been called; BrowserOpenFailed must have fired
+      expect(openCalledWith).toBeUndefined()
+      expect(events.length).toBe(1)
+      expect(events[0].mcpName).toBe("test-oauth-server-4")
+      expect(events[0].url).toContain("https://")
     },
   })
 })
