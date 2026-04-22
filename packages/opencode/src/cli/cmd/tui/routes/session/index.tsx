@@ -1913,6 +1913,7 @@ function ReasoningPart(props: {
           syntaxStyle={subtleSyntax()}
           content={content()}
           conceal={ctx.conceal()}
+          tableOptions={{ columnFitter: "balanced" }}
         />
       </box>
     </Show>
@@ -2010,6 +2011,7 @@ function TextPart(props: {
           syntaxStyle={syntax()}
           content={props.part.text.trim()}
           conceal={ctx.conceal()}
+          tableOptions={{ columnFitter: "balanced" }}
         />
         <Show when={showSnapshot()}>
           <box marginTop={1}>
@@ -2726,7 +2728,13 @@ function Task(props: ToolProps<typeof TaskTool>) {
           </box>
           <Show when={outputText()}>
             <box marginTop={1} paddingTop={1} border={["top"]} borderColor={theme.borderSubtle}>
-              <markdown streaming={false} syntaxStyle={syntax()} content={outputText()} conceal={ctx.conceal()} />
+              <markdown
+                streaming={false}
+                syntaxStyle={syntax()}
+                content={outputText()}
+                conceal={ctx.conceal()}
+                tableOptions={{ columnFitter: "balanced" }}
+              />
             </box>
           </Show>
           <text fg={theme.text}>
