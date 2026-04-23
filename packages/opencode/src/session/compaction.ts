@@ -149,7 +149,7 @@ export namespace SessionCompaction {
     })
     const instructions = await InstructionPrompt.system()
     const system = {
-      env: await SystemPrompt.environment(Date.now()),
+      env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
       globalInstructions: instructions.global,
       projectInstructions: instructions.project,
     }

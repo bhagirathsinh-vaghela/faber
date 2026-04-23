@@ -900,6 +900,7 @@ export type Session = {
   }
   title: string
   version: string
+  branch?: string
   time: {
     created: number
     updated: number

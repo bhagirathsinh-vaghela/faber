@@ -14,6 +14,7 @@ import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { Instance } from "../project/instance"
+import { Vcs } from "../project/vcs"
 import { SessionPrompt } from "./prompt"
 import { fn } from "@/util/fn"
 import { Command } from "../command"
@@ -71,6 +72,7 @@ export namespace Session {
         .optional(),
       title: z.string(),
       version: z.string(),
+      branch: z.string().optional(),
       time: z.object({
         created: z.number(),
         updated: z.number(),
@@ -237,6 +239,7 @@ export namespace Session {
     directory: string
     permission?: PermissionNext.Ruleset
   }) {
+    const branch = Instance.project.vcs === "git" ? await Vcs.branch() : undefined
     const result: Info = {
       id: Identifier.descending("session", input.id),
       slug: Slug.create(),
@@ -246,6 +249,7 @@ export namespace Session {
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
+      branch,
       time: {
         created: Date.now(),
         updated: Date.now(),

@@ -627,7 +627,7 @@ export namespace SessionPrompt {
         abort,
         sessionID,
         system: {
-          env: await SystemPrompt.environment(Date.now()),
+          env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
           globalInstructions: instructions.global,
           projectInstructions: instructions.project,
         },

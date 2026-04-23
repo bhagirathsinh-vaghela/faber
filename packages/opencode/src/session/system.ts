@@ -6,7 +6,6 @@ import PROMPT_GEMINI from "./prompt/gemini.txt"
 import PROMPT_CODEX from "./prompt/codex_header.txt"
 import type { Provider } from "@/provider/provider"
 import { Instance } from "@/project/instance"
-import { Vcs } from "@/project/vcs"
 import os from "os"
 
 export namespace SystemPrompt {
@@ -23,10 +22,8 @@ export namespace SystemPrompt {
     return [PROMPT_ANTHROPIC_WITHOUT_TODO]
   }
 
-  export async function environment(created: number) {
+  export function environment(input: { created: number; branch?: string }) {
     const project = Instance.project
-    const date = new Date(created).toDateString()
-    const branch = project.vcs === "git" ? await Vcs.branch() : undefined
     const shell = os.userInfo().shell?.split("/").pop() ?? "unknown"
     const lines = [
       `Here is some useful information about the environment you are running in:`,
@@ -34,12 +31,12 @@ export namespace SystemPrompt {
       `  Working directory: ${Instance.directory}`,
       `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
     ]
-    if (branch) lines.push(`  Git branch: ${branch}`)
+    if (input.branch) lines.push(`  Git branch at session start: ${input.branch}`)
     lines.push(
       `  Platform: ${process.platform}`,
       `  Arch: ${process.arch}`,
       `  Shell: ${shell}`,
-      `  Today's date: ${date}`,
+      `  Session started: ${new Date(input.created).toDateString()}`,
       `</env>`,
     )
     return [lines.join("\n")]
