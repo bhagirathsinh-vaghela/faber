@@ -976,8 +976,8 @@ export function Prompt(props: PromptProps) {
           >
             <textarea
               placeholder={props.sessionID ? undefined : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
-              textColor={keybind.leader ? theme.textMuted : theme.text}
-              focusedTextColor={keybind.leader ? theme.textMuted : theme.text}
+              textColor={keybind.leader || props.disabled ? theme.textMuted : theme.text}
+              focusedTextColor={keybind.leader || props.disabled ? theme.textMuted : theme.text}
               minHeight={1}
               maxHeight={6}
               onContentChange={() => {
@@ -1208,7 +1208,7 @@ export function Prompt(props: PromptProps) {
             <box flexShrink={0} paddingTop={1}>
               <ModelHeader
                 bold={true}
-                dimmed={keybind.leader}
+                dimmed={keybind.leader || props.disabled}
                 agent={store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}
                 agentColor={highlight()}
                 model={store.mode === "normal" ? local.model.parsed().model : ""}
@@ -1220,7 +1220,7 @@ export function Prompt(props: PromptProps) {
             </box>
             <Statusline
               sessionID={props.sessionID}
-              dimmed={keybind.leader}
+              dimmed={keybind.leader || props.disabled}
               streamIndicator={streamFrame() >= 0 ? BRAILLE_FRAMES[streamFrame()] : null}
             />
           </box>

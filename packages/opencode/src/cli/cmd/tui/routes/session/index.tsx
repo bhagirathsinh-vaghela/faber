@@ -1496,7 +1496,7 @@ export function Session() {
                 />
               </Show>
               <Prompt
-                visible={!session()?.parentID && permissions().length === 0 && !questionVisible()}
+                visible={!session()?.parentID && permissions().length === 0}
                 ref={(r) => {
                   prompt = r
                   promptRef.set(r)
