@@ -949,6 +949,12 @@ export namespace Config {
       .default("inline")
       .describe("Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text"),
     header: z.boolean().optional().default(false).describe("Show the session header bar at the top of the TUI"),
+    question_timeout: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe("Seconds before a pending question auto-defers (default: 120, 0 disables)"),
   })
 
   export const Server = z

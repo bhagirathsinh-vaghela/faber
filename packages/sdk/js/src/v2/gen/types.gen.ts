@@ -1878,6 +1878,10 @@ export type Config = {
      * Show the session header bar at the top of the TUI
      */
     header?: boolean
+    /**
+     * Seconds before a pending question auto-defers (default: 120, 0 disables)
+     */
+    question_timeout?: number
   }
   server?: ServerConfig
   /**
