@@ -256,7 +256,27 @@ export namespace Config {
     await BunProc.run(["install"], { cwd: dir }).catch(() => {})
   }
 
+  // Source globs that import @opencode-ai/plugin (custom tools and plugins).
+  // Markdown-only dirs (agent/, command/, mode/) don't need the SDK installed.
+  const PLUGIN_SOURCE_GLOB = new Bun.Glob("{tool,tools,plugin,plugins}/*.{ts,js,mjs}")
+
+  async function hasPluginSources(dir: string) {
+    for await (const _ of PLUGIN_SOURCE_GLOB.scan({
+      cwd: dir,
+      absolute: true,
+      followSymlinks: true,
+      dot: true,
+    })) {
+      return true
+    }
+    return false
+  }
+
   async function needsInstall(dir: string) {
+    // Skip the install entirely if the dir has no source files that would import
+    // @opencode-ai/plugin. Saves a `bun info` registry round-trip per config dir.
+    if (!(await hasPluginSources(dir))) return false
+
     const nodeModules = path.join(dir, "node_modules")
     if (!existsSync(nodeModules)) return true
 
