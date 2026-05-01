@@ -1,21 +1,14 @@
 import { $ } from "bun"
-import type { CliRenderer } from "@opentui/core"
 import { platform, release } from "os"
 import clipboardy from "clipboardy"
 import { lazy } from "../../../../util/lazy.js"
 import { tmpdir } from "os"
 import path from "path"
 
-const rendererRef = { current: undefined as CliRenderer | undefined }
-
 export namespace Clipboard {
   export interface Content {
     data: string
     mime: string
-  }
-
-  export function setRenderer(renderer: CliRenderer | undefined): void {
-    rendererRef.current = renderer
   }
 
   export async function read(): Promise<Content | undefined> {
@@ -145,13 +138,21 @@ export namespace Clipboard {
     }
   })
 
+  function emitOsc52(text: string): boolean {
+    if (!process.stdout.isTTY) return false
+    const payload = Buffer.from(text, "utf8").toString("base64")
+    const osc = `\x1b]52;c;${payload}\x07`
+    const data = process.env["TMUX"] ? `\x1bPtmux;${osc.replace(/\x1b/g, "\x1b\x1b")}\x1b\\` : osc
+    return process.stdout.write(data)
+  }
+
   export async function copy(text: string): Promise<void> {
-    const renderer = rendererRef.current
-    if (renderer) {
-      // Try OSC52 but don't early return - always fall back to native method
-      // OSC52 may report success but not actually work in all terminals
-      renderer.copyToClipboardOSC52(text)
-    }
+    // Emit OSC 52 directly. OpenTUI's renderer.copyToClipboardOSC52 gates
+    // emission on terminfo-derived capability detection, which returns false
+    // for common tmux/SSH terminfo entries (e.g. tmux-256color lacks Ms) even
+    // when OSC 52 works end-to-end. Direct emission with tmux passthrough
+    // wrapping when $TMUX is set covers that case reliably.
+    emitOsc52(text)
     await getCopyMethod()(text)
   }
 }
