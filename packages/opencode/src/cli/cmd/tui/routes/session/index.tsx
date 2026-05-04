@@ -2686,12 +2686,14 @@ function Task(props: ToolProps<typeof TaskTool>) {
 
   const isRunning = createMemo(() => props.part.state.status === "running")
 
-  // Extract the text output, stripping the task_metadata section and cleaning for user display
+  // Extract the text output, stripping system-reminder and legacy task_metadata sections for user display
   const outputText = createMemo(() => {
     if (!props.output) return ""
     const text = String(props.output)
-    // Remove the <task_metadata>...</task_metadata> section
-    const cleaned = text.replace(/<task_metadata>[\s\S]*?<\/task_metadata>/g, "").trim()
+    const cleaned = text
+      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+      .replace(/<task_metadata>[\s\S]*?<\/task_metadata>/g, "")
+      .trim()
 
     // Clean lines we don't want to show user
     const lines = cleaned.split("\n")
