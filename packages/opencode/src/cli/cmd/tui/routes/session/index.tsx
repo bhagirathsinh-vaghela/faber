@@ -95,6 +95,12 @@ import { DialogPending } from "../../component/dialog-pending"
 
 addDefaultParsers(parsers.parsers)
 
+const THEMATIC_BREAK_DASHES = /^( {0,3})-{3,}$/gm
+
+function sanitizeMarkdown(text: string) {
+  return text.trim().replace(THEMATIC_BREAK_DASHES, "$1***")
+}
+
 class CustomSpeedScroll implements ScrollAcceleration {
   constructor(private speed: number) {}
 
@@ -1911,7 +1917,7 @@ function ReasoningPart(props: {
         <markdown
           streaming={!props.message.time.completed}
           syntaxStyle={subtleSyntax()}
-          content={content()}
+          content={sanitizeMarkdown(content())}
           conceal={ctx.conceal()}
           tableOptions={{ columnFitter: "balanced" }}
         />
@@ -1977,7 +1983,7 @@ function TextPart(props: {
   })
 
   return (
-    <Show when={props.part.text.trim()}>
+    <Show when={sanitizeMarkdown(props.part.text)}>
       <box
         id={"text-" + props.part.id}
         marginTop={1}
@@ -2009,7 +2015,7 @@ function TextPart(props: {
         <markdown
           streaming={!props.messageFinal}
           syntaxStyle={syntax()}
-          content={props.part.text.trim()}
+          content={sanitizeMarkdown(props.part.text)}
           conceal={ctx.conceal()}
           tableOptions={{ columnFitter: "balanced" }}
         />
@@ -2731,7 +2737,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
               <markdown
                 streaming={false}
                 syntaxStyle={syntax()}
-                content={outputText()}
+                content={sanitizeMarkdown(outputText()!)}
                 conceal={ctx.conceal()}
                 tableOptions={{ columnFitter: "balanced" }}
               />
