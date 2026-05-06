@@ -41,6 +41,7 @@ export type PromptProps = {
   visible?: boolean
   disabled?: boolean
   questionCount?: number
+  autoScrollLock?: () => boolean
   onSubmit?: () => void
   onMessageSent?: (isPing: boolean) => void
   ref?: (ref: PromptRef) => void
@@ -1374,6 +1375,17 @@ export function Prompt(props: PromptProps) {
                       </span>
                     </text>
                   </box>
+                  <Show when={props.autoScrollLock?.()}>
+                    <box flexShrink={0} flexDirection="row">
+                      <text>
+                        <span style={{ fg: theme.textMuted }}> · </span>
+                      </text>
+                      <text fg={theme.text}>
+                        <span style={{ fg: theme.textMuted }}>scroll-lock</span>{" "}
+                        <span style={{ fg: theme.warning }}>on</span>
+                      </text>
+                    </box>
+                  </Show>
                   <Show when={(props.questionCount ?? 0) > 0}>
                     <box flexShrink={0} flexDirection="row">
                       <text>

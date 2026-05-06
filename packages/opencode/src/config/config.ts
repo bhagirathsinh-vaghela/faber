@@ -938,6 +938,7 @@ export namespace Config {
         .optional()
         .default("alt+p")
         .describe("Toggle paste mode between summary and inline"),
+      auto_scroll_lock_toggle: z.string().optional().default("none").describe("Toggle auto-scroll lock to prevent scroll resuming"),
       header_toggle: z.string().optional().default("none").describe("Toggle session header bar"),
     })
     .strict()

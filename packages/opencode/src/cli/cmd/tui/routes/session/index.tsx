@@ -291,6 +291,7 @@ export function Session() {
     userScrolled = true
   }
 
+  const [autoScrollLock, setAutoScrollLock] = createSignal(false)
   const [autoScroll, _setAutoScroll] = createSignal(true)
   function setAutoScroll(value: boolean) {
     const prev = autoScroll()
@@ -374,7 +375,7 @@ export function Session() {
   useKeyboard((evt) => {
     if (keybind.match("scroll_to_bottom", evt)) {
       markUserScroll()
-      setAutoScroll(true)
+      if (!autoScrollLock()) setAutoScroll(true)
       programmaticScroll = true
       if (scroll) scroll.scrollTo(scroll.scrollHeight)
     }
@@ -487,6 +488,7 @@ export function Session() {
 
   function toBottom() {
     if (!scroll || scroll.isDestroyed) return
+    if (autoScrollLock()) return
     setAutoScroll(true)
     programmaticScroll = true
     scroll.scrollTo(scroll.scrollHeight)
@@ -887,7 +889,7 @@ export function Session() {
       hidden: true,
       onSelect: (dialog) => {
         markUserScroll()
-        setAutoScroll(true)
+        if (!autoScrollLock()) setAutoScroll(true)
         programmaticScroll = true
         scroll.scrollTo(scroll.scrollHeight)
         dialog.clear()
@@ -1220,6 +1222,28 @@ export function Session() {
         dialog.clear()
       },
     },
+    {
+      title: "Toggle auto-scroll lock",
+      value: "session.auto_scroll_lock",
+      keybind: "auto_scroll_lock_toggle",
+      category: "Session",
+      onSelect: (dialog) => {
+        const locked = !autoScrollLock()
+        setAutoScrollLock(locked)
+        if (locked) {
+          setAutoScroll(false)
+        } else {
+          setAutoScroll(true)
+          programmaticScroll = true
+          if (scroll) scroll.scrollTo(scroll.scrollHeight)
+        }
+        toast.show({
+          message: `Auto-scroll lock ${locked ? "enabled" : "disabled"}`,
+          variant: locked ? "warning" : "success",
+        })
+        dialog.clear()
+      },
+    },
   ])
 
   const ping = createMemo(() => session()?.ping)
@@ -1278,9 +1302,11 @@ export function Session() {
     on(
       () => route.sessionID,
       () => {
-        setAutoScroll(true)
-        programmaticScroll = true
-        if (scroll) scroll.scrollTo(scroll.scrollHeight)
+        if (!autoScrollLock()) {
+          setAutoScroll(true)
+          programmaticScroll = true
+          if (scroll) scroll.scrollTo(scroll.scrollHeight)
+        }
       },
     ),
   )
@@ -1513,6 +1539,7 @@ export function Session() {
                 }}
                 disabled={permissions().length > 0 || questionVisible()}
                 questionCount={questions().length}
+                autoScrollLock={autoScrollLock}
                 onMessageSent={(isPing) => {
                   if (isPing) {
                     setSavedScrollPosition(scroll.y)

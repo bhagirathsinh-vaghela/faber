@@ -1528,6 +1528,10 @@ export type KeybindsConfig = {
    */
   paste_mode_toggle?: string
   /**
+   * Toggle auto-scroll lock to prevent scroll resuming
+   */
+  auto_scroll_lock_toggle?: string
+  /**
    * Toggle session header bar
    */
   header_toggle?: string
