@@ -10,8 +10,8 @@ import { Log } from "../util/log"
 
 const log = Log.create({ service: "mcp.oauth" })
 
-const OAUTH_CALLBACK_PORT = 19876
-const OAUTH_CALLBACK_PATH = "/mcp/oauth/callback"
+const DEFAULT_OAUTH_CALLBACK_PORT = 19876
+const DEFAULT_OAUTH_CALLBACK_PATH = "/mcp/oauth/callback"
 
 export interface McpOAuthConfig {
   clientId?: string
@@ -24,15 +24,23 @@ export interface McpOAuthCallbacks {
 }
 
 export class McpOAuthProvider implements OAuthClientProvider {
+  readonly callbackPort: number
+  readonly callbackPath: string
+
   constructor(
     private mcpName: string,
     private serverUrl: string,
     private config: McpOAuthConfig,
     private callbacks: McpOAuthCallbacks,
-  ) {}
+    callbackPort?: number,
+    callbackPath?: string,
+  ) {
+    this.callbackPort = callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT
+    this.callbackPath = callbackPath ?? DEFAULT_OAUTH_CALLBACK_PATH
+  }
 
   get redirectUrl(): string {
-    return `http://127.0.0.1:${OAUTH_CALLBACK_PORT}${OAUTH_CALLBACK_PATH}`
+    return `http://localhost:${this.callbackPort}${this.callbackPath}`
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -151,4 +159,4 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 }
 
-export { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_PATH }
+export { DEFAULT_OAUTH_CALLBACK_PORT, DEFAULT_OAUTH_CALLBACK_PATH }

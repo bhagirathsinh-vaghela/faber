@@ -232,15 +232,17 @@ export const McpAuthCommand = cmd({
         // Subscribe to browser open failure events to show URL for manual opening.
         // In remote/SSH sessions there's no usable browser here; the user must
         // open the URL on a machine that can also reach the local callback
-        // server (typically via `ssh -L 19876:127.0.0.1:19876 <this-host>`).
+        // server (typically via `ssh -L <port>:127.0.0.1:<port> <this-host>`).
+        const authCfg = await Config.get()
+        const oauthPort = authCfg.experimental?.mcp_oauth_port ?? 19876
         const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
           if (evt.properties.mcpName === serverName) {
             spinner.stop("No local browser available for auth")
-            prompts.log.warn("Open this URL in a browser on a machine that can reach 127.0.0.1:19876 on this host:")
+            prompts.log.warn(`Open this URL in a browser on a machine that can reach 127.0.0.1:${oauthPort} on this host:`)
             // Emit a stable, grep-able line so automation can scrape the URL.
             prompts.log.info(`OAUTH_URL: ${evt.properties.url}`)
             prompts.log.info("If you're on SSH, forward the callback port first:")
-            prompts.log.info("  ssh -L 19876:127.0.0.1:19876 <this-host>")
+            prompts.log.info(`  ssh -L ${oauthPort}:127.0.0.1:${oauthPort} <this-host>`)
             spinner.start("Waiting for authorization...")
           }
         })
@@ -689,6 +691,7 @@ export const McpDebugCommand = cmd({
 
             // Try to discover OAuth metadata
             const oauthConfig = typeof serverConfig.oauth === "object" ? serverConfig.oauth : undefined
+            const cfg = await Config.get()
             const authProvider = new McpOAuthProvider(
               serverName,
               serverConfig.url,
@@ -700,6 +703,8 @@ export const McpDebugCommand = cmd({
               {
                 onRedirect: async () => {},
               },
+              cfg.experimental?.mcp_oauth_port,
+              cfg.experimental?.mcp_oauth_path,
             )
 
             prompts.log.info("Testing OAuth flow (without completing authorization)...")

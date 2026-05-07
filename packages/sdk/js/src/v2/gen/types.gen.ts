@@ -2133,6 +2133,14 @@ export type Config = {
      * Timeout in milliseconds for model context protocol (MCP) requests
      */
     mcp_timeout?: number
+    /**
+     * Override the local port for the MCP OAuth callback server. Defaults to 19876.
+     */
+    mcp_oauth_port?: number
+    /**
+     * Override the path for the MCP OAuth callback endpoint. Defaults to "/mcp/oauth/callback".
+     */
+    mcp_oauth_path?: string
   }
 }
 

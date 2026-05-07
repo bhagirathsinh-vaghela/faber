@@ -1302,6 +1302,16 @@ export namespace Config {
             .positive()
             .optional()
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
+          mcp_oauth_port: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe("Override the local port for the MCP OAuth callback server. Defaults to 19876."),
+          mcp_oauth_path: z
+            .string()
+            .optional()
+            .describe('Override the path for the MCP OAuth callback endpoint. Defaults to "/mcp/oauth/callback".'),
         })
         .optional(),
     })

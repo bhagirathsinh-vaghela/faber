@@ -308,6 +308,7 @@ export namespace MCP {
       let authProvider: McpOAuthProvider | undefined
 
       if (!oauthDisabled) {
+        const cfg = await Config.get()
         authProvider = new McpOAuthProvider(
           key,
           mcp.url,
@@ -322,6 +323,8 @@ export namespace MCP {
               // Store the URL - actual browser opening is handled by startAuth
             },
           },
+          cfg.experimental?.mcp_oauth_port,
+          cfg.experimental?.mcp_oauth_path,
         )
       }
 
@@ -728,16 +731,6 @@ export namespace MCP {
       throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
     }
 
-    // Start the callback server
-    await McpOAuthCallback.ensureRunning()
-
-    // Generate and store a cryptographically secure state parameter BEFORE creating the provider
-    // The SDK will call provider.state() to read this value
-    const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-    await McpAuth.updateOAuthState(mcpName, oauthState)
-
     // Create a new auth provider for this flow
     // OAuth config is optional - if not provided, we'll use auto-discovery
     const oauthConfig = typeof mcpConfig.oauth === "object" ? mcpConfig.oauth : undefined
@@ -755,7 +748,19 @@ export namespace MCP {
           capturedUrl = url
         },
       },
+      cfg.experimental?.mcp_oauth_port,
+      cfg.experimental?.mcp_oauth_path,
     )
+
+    // Start the callback server on the provider's configured port/path
+    await McpOAuthCallback.ensureRunning(authProvider.callbackPort, authProvider.callbackPath)
+
+    // Generate and store a cryptographically secure state parameter BEFORE creating the provider
+    // The SDK will call provider.state() to read this value
+    const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+    await McpAuth.updateOAuthState(mcpName, oauthState)
 
     // Create transport with auth provider
     const transport = new StreamableHTTPClientTransport(new URL(mcpConfig.url), {
