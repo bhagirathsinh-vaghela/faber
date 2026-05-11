@@ -267,7 +267,7 @@ export namespace ProviderTransform {
 
     const providerOptions = {
       anthropic: {
-        cacheControl: { type: "ephemeral" },
+        cacheControl: { type: "ephemeral", ttl: "5m" },
       },
       openrouter: {
         cacheControl: { type: "ephemeral" },
