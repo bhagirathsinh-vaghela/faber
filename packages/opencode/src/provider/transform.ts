@@ -195,7 +195,8 @@ export namespace ProviderTransform {
    *
    * Strategy (up to 4 markers, all with 1h TTL for system):
    * - Last 2 system blocks get markers (S0 is within lookback of S1's marker)
-   * - Last user-typed prompt: stable checkpoint for the current turn
+   * - Previous turn's last assistant (falls back to the last user prompt on the
+   *   first turn): stable checkpoint for the current turn
    * - Last message (N): moves with each API call for incremental caching
    */
   function selectCacheMarkers(
@@ -218,29 +219,33 @@ export namespace ProviderTransform {
     }
 
     const lastUserPrompt = conversationMsgs.findLast((msg) => msg.role === "user" && !isMetaMessage(msg))
-    if (lastUserPrompt) {
-      markers.push(lastUserPrompt)
-      indices.push(msgs.indexOf(lastUserPrompt))
+    const lastUserPromptIndex = lastUserPrompt ? msgs.indexOf(lastUserPrompt) : -1
+
+    // Marker 3: last assistant before the current typed prompt (previous turn's final output).
+    // Falls back to lastUserPrompt on the first turn when no previous assistant exists.
+    const prevAssistant = lastUserPromptIndex > 0
+      ? msgs.findLast((msg, i) => i < lastUserPromptIndex && msg.role === "assistant")
+      : undefined
+    const marker3 = prevAssistant ?? lastUserPrompt
+    if (marker3) {
+      markers.push(marker3)
+      indices.push(msgs.indexOf(marker3))
     }
 
+    // Marker 4: last block in msgs (moves forward with each API call in a tool loop).
+    // When using a cache probe, use the probe target instead.
     if (probeIndex !== undefined && probeIndex >= 0 && probeIndex < msgs.length) {
       const probeMsg = msgs[probeIndex]
-      if (probeMsg && probeMsg !== lastUserPrompt && probeMsg.role !== "system") {
+      if (probeMsg && probeMsg !== marker3 && probeMsg.role !== "system") {
         log.info("cache probe marker", { probeIndex })
         markers.push(probeMsg)
         indices.push(probeIndex)
       }
     } else {
       const lastMessage = msgs[msgs.length - 1]
-      if (lastMessage && lastMessage !== lastUserPrompt && lastMessage.role !== "system") {
+      if (lastMessage && lastMessage !== marker3 && lastMessage.role !== "system") {
         markers.push(lastMessage)
         indices.push(msgs.length - 1)
-      } else {
-        const lastAssistant = conversationMsgs.findLast((msg) => msg.role === "assistant")
-        if (lastAssistant && lastAssistant !== lastUserPrompt) {
-          markers.push(lastAssistant)
-          indices.push(msgs.indexOf(lastAssistant))
-        }
       }
     }
 
@@ -326,11 +331,12 @@ export namespace ProviderTransform {
    * A block at index N can get a cache hit if:
    *   markers.some(marker => N >= marker - 19 && N <= marker)
    *
-   * For example, if markers are at [0, 1, 150, 180] (system, system, user prompt, N):
+   * For example, if markers are at [0, 1, 150, 180] (system, system, previous turn's
+   * last assistant, N):
    *   - Blocks 0-1 are within lookback of markers 0, 1 (system cache)
-   *   - Blocks 131-150 are within lookback of marker 150 (user prompt checkpoint)
+   *   - Blocks 131-150 are within lookback of marker 150 (turn-boundary checkpoint)
    *   - Blocks 161-180 are within lookback of marker 180 (N - current position)
-   *   - The user prompt marker at 150 stays fixed during a turn, while N moves
+   *   - The checkpoint marker at 150 stays fixed during a turn, while N moves
    *     with each API call, enabling incremental caching throughout long tool chains
    */
   export function cacheMarkerIndices(msgs: ModelMessage[], probeIndex?: number): number[] {
