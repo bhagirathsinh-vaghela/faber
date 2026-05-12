@@ -64,11 +64,15 @@ export namespace SessionRevert {
 
     if (revert) {
       const cfg = await Config.get()
+      if (cfg.undo?.revertFiles === false) {
+        return Session.update(input.sessionID, (draft) => {
+          draft.revert = revert
+          draft.ping = undefined
+        })
+      }
       const session = await Session.get(input.sessionID)
       revert.snapshot = session.revert?.snapshot ?? (await Snapshot.track())
-      if (cfg.undo?.revertFiles !== false) {
-        await Snapshot.revert(patches)
-      }
+      await Snapshot.revert(patches)
       if (revert.snapshot) revert.diff = await Snapshot.diff(revert.snapshot)
       const rangeMessages = all.filter((msg) => msg.info.id >= revert!.messageID)
       const diffs = await SessionSummary.computeDiff({ messages: rangeMessages })

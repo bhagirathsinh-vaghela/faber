@@ -9,6 +9,20 @@ import { useLocal } from "@tui/context/local"
 import { Identifier } from "@/id/id"
 import { useToast } from "../../ui/toast"
 
+function waitForIdle(sync: ReturnType<typeof useSync>, sessionID: string, timeout: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const deadline = setTimeout(() => resolve(false), timeout)
+    const poll = setInterval(() => {
+      const status = sync.data.session_status?.[sessionID]
+      if (!status || status.type === "idle") {
+        clearTimeout(deadline)
+        clearInterval(poll)
+        resolve(true)
+      }
+    }, 200)
+  })
+}
+
 export function DialogMessage(props: {
   messageID: string
   sessionID: string
@@ -59,6 +73,12 @@ export function DialogMessage(props: {
             variant: local.model.variant.current(),
             parts: [{ id: Identifier.ascending("part"), type: "text", text: "." }],
           })
+
+          const idle = await waitForIdle(sync, props.sessionID, 10_000)
+          if (!idle) {
+            toast.show({ message: "Session busy — revert abandoned", variant: "error", duration: 3000 })
+            return
+          }
 
           await sdk.client.session.revert({
             sessionID: props.sessionID,
