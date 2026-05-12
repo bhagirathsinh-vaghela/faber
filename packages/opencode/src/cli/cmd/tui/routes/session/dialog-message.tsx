@@ -38,6 +38,8 @@ export function DialogMessage(props: {
 
           dialog.clear()
 
+          await sdk.client.session.unrevert({ sessionID: props.sessionID })
+
           await sdk.client.session.update({
             sessionID: props.sessionID,
             cacheProbeMessageID: assistant.id,
