@@ -2,7 +2,7 @@ import { dynamicTool, type Tool, jsonSchema, type JSONSchema7 } from "ai"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+import { BunStdioTransport } from "./stdio"
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 import {
   CallToolResultSchema,
@@ -27,6 +27,23 @@ import open from "open"
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
   const DEFAULT_TIMEOUT = 30_000
+
+  async function readStderr(transport: BunStdioTransport, key: string) {
+    const stream = transport.stderr
+    if (!stream) return
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        log.info(`mcp stderr: ${decoder.decode(value, { stream: true })}`, { key })
+      }
+    } catch {
+    } finally {
+      reader.releaseLock()
+    }
+  }
 
   export const Resource = z
     .object({
@@ -411,8 +428,7 @@ export namespace MCP {
     if (mcp.type === "local") {
       const [cmd, ...args] = mcp.command
       const cwd = Instance.directory
-      const transport = new StdioClientTransport({
-        stderr: "pipe",
+      const transport = new BunStdioTransport({
         command: cmd,
         args,
         cwd,
@@ -422,9 +438,7 @@ export namespace MCP {
           ...mcp.environment,
         },
       })
-      transport.stderr?.on("data", (chunk: Buffer) => {
-        log.info(`mcp stderr: ${chunk.toString()}`, { key })
-      })
+      readStderr(transport, key)
 
       const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
       try {
