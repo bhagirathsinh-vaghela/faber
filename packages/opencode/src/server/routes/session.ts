@@ -7,6 +7,7 @@ import { MessageV2 } from "../../session/message-v2"
 import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
+import { SessionPing } from "../../session/ping"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
@@ -902,6 +903,47 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const session = await SessionRevert.unrevert({ sessionID })
         return c.json(session)
+      },
+    )
+    .post(
+      "/:sessionID/ping",
+      describeRoute({
+        summary: "Cache probe ping",
+        description: "Send a cache-warming ping with an optional probe marker at a specific message position.",
+        operationId: "session.ping",
+        responses: {
+          200: {
+            description: "Ping completed",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ ok: z.boolean() })),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          cacheProbeMessageID: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        if (body.cacheProbeMessageID) {
+          await SessionPing.probe(sessionID, body.cacheProbeMessageID)
+        } else {
+          await SessionPing.probe(sessionID, "")
+        }
+        return c.json({ ok: true })
       },
     )
     .post(

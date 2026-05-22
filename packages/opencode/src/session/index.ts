@@ -92,6 +92,7 @@ export namespace Session {
         .object({
           count: z.number(),
           time: z.number(),
+          pending: z.boolean().optional(),
         })
         .optional(),
       tokens: z

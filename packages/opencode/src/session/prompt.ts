@@ -46,6 +46,7 @@ import { Tool } from "@/tool/tool"
 import { PermissionNext } from "@/permission/next"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
+import { SessionPing } from "./ping"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
@@ -153,8 +154,14 @@ export namespace SessionPrompt {
   export type PromptInput = z.infer<typeof PromptInput>
 
   export const prompt = fn(PromptInput, async (input) => {
+    SessionPing.stop(input.sessionID)
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
+    if (session.ping) {
+      await Session.update(input.sessionID, (draft) => {
+        draft.ping = undefined
+      })
+    }
 
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)
@@ -676,7 +683,7 @@ export namespace SessionPrompt {
       continue
     }
     SessionCompaction.prune({ sessionID })
-    await cleanupPing(sessionID)
+    if (!session.parentID) SessionPing.start(sessionID)
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
       const queued = state()[sessionID]?.callbacks ?? []
@@ -687,61 +694,6 @@ export namespace SessionPrompt {
     }
     throw new Error("Impossible")
   })
-
-  function isPingText(parts: MessageV2.Part[]) {
-    const text = parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
-    if (text.length !== 1) return false
-    return text[0].text.trim() === "."
-  }
-
-  function isPingAssistant(parts: MessageV2.Part[]) {
-    const hasTools = parts.some((p) => p.type === "tool")
-    if (hasTools) return false
-    const text = parts.filter((p) => p.type === "text")
-    if (text.length !== 1) return false
-    return text[0].text.trim() === "."
-  }
-
-  async function cleanupPing(sessionID: string) {
-    const msgs = await Session.messages({ sessionID })
-    if (msgs.length < 2) return
-
-    const last = msgs[msgs.length - 1]
-    const prev = msgs[msgs.length - 2]
-    if (last.info.role !== "assistant" || prev.info.role !== "user") return
-
-    const isPing = isPingText(prev.parts) && isPingAssistant(last.parts)
-
-    if (!isPing) {
-      // Real exchange — clear any lingering ping state
-      const session = await Session.get(sessionID)
-      if (session.ping) {
-        await Session.update(
-          sessionID,
-          (draft) => {
-            draft.ping = undefined
-          },
-          { touch: false },
-        )
-      }
-      return
-    }
-
-    log.info("cleaning up ping", { sessionID })
-
-    const session = await Session.get(sessionID)
-    await Session.update(
-      sessionID,
-      (draft) => {
-        draft.revert = { messageID: prev.info.id }
-        draft.ping = {
-          count: (session.ping?.count ?? 0) + 1,
-          time: Date.now(),
-        }
-      },
-      { touch: false },
-    )
-  }
 
   async function lastModel(sessionID: string) {
     for await (const item of MessageV2.stream(sessionID)) {

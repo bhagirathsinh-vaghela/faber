@@ -132,6 +132,8 @@ import type {
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
+  SessionPingErrors,
+  SessionPingResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
@@ -1783,6 +1785,43 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/unrevert",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Cache probe ping
+   *
+   * Send a cache-warming ping with an optional probe marker at a specific message position.
+   */
+  public ping<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      cacheProbeMessageID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "cacheProbeMessageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionPingResponses, SessionPingErrors, ThrowOnError>({
+      url: "/session/{sessionID}/ping",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

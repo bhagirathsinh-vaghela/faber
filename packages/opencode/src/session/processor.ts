@@ -26,7 +26,7 @@ const ANTHROPIC_COST_TIERS: Array<{ match: (id: string) => boolean; input: numbe
   { match: (id) => id.includes("haiku"), input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 },
 ]
 
-function computeStepCost(
+export function computeStepCost(
   providerID: string,
   modelID: string,
   tokens: { input: number; output: number; cache: { read: number; write: number } },

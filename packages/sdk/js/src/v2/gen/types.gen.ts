@@ -917,6 +917,7 @@ export type Session = {
   ping?: {
     count: number
     time: number
+    pending?: boolean
   }
   tokens?: {
     input: number
@@ -2049,6 +2050,12 @@ export type Config = {
      * Whether /undo should revert file changes along with messages (default: true)
      */
     revertFiles?: boolean
+  }
+  ping?: {
+    /**
+     * Send a cache ping this many seconds before the cache expires (default: 10)
+     */
+    before_expiry?: number
   }
   background?: {
     /**
@@ -4089,6 +4096,43 @@ export type SessionUnrevertResponses = {
 }
 
 export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnrevertResponses]
+
+export type SessionPingData = {
+  body?: {
+    cacheProbeMessageID?: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/ping"
+}
+
+export type SessionPingErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionPingError = SessionPingErrors[keyof SessionPingErrors]
+
+export type SessionPingResponses = {
+  /**
+   * Ping completed
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type SessionPingResponse = SessionPingResponses[keyof SessionPingResponses]
 
 export type PermissionRespondData = {
   body?: {

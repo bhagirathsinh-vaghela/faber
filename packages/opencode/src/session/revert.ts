@@ -67,7 +67,6 @@ export namespace SessionRevert {
       if (cfg.undo?.revertFiles === false) {
         return Session.update(input.sessionID, (draft) => {
           draft.revert = revert
-          draft.ping = undefined
         })
       }
       const session = await Session.get(input.sessionID)
@@ -83,7 +82,6 @@ export namespace SessionRevert {
       })
       return Session.update(input.sessionID, (draft) => {
         draft.revert = revert
-        draft.ping = undefined
         draft.summary = {
           additions: diffs.reduce((sum, x) => sum + x.additions, 0),
           deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),

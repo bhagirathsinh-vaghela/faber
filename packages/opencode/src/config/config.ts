@@ -1220,6 +1220,14 @@ export namespace Config {
             .describe("Whether /undo should revert file changes along with messages (default: true)"),
         })
         .optional(),
+      ping: z
+        .object({
+          before_expiry: z
+            .number()
+            .optional()
+            .describe("Send a cache ping this many seconds before the cache expires (default: 10)"),
+        })
+        .optional(),
       background: z
         .object({
           auto_inject: z
