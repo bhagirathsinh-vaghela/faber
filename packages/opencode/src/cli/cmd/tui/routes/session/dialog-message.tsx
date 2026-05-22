@@ -5,8 +5,6 @@ import { useSDK } from "@tui/context/sdk"
 import { useRoute } from "@tui/context/route"
 import { Clipboard } from "@tui/util/clipboard"
 import type { PromptInfo } from "@tui/component/prompt/history"
-import { useLocal } from "@tui/context/local"
-import { Identifier } from "@/id/id"
 import { useToast } from "../../ui/toast"
 
 function waitForIdle(sync: ReturnType<typeof useSync>, sessionID: string, timeout: number): Promise<boolean> {
@@ -30,7 +28,6 @@ export function DialogMessage(props: {
 }) {
   const sync = useSync()
   const sdk = useSDK()
-  const local = useLocal()
   const toast = useToast()
   const message = createMemo(() => sync.data.message[props.sessionID]?.find((x) => x.id === props.messageID))
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
@@ -54,31 +51,10 @@ export function DialogMessage(props: {
 
           await sdk.client.session.unrevert({ sessionID: props.sessionID })
 
-          await sdk.client.session.update({
+          await sdk.client.session.ping({
             sessionID: props.sessionID,
             cacheProbeMessageID: assistant.id,
           })
-
-          const selectedModel = local.model.current()
-          if (!selectedModel) return
-
-          await sdk.client.session.prompt({
-            sessionID: props.sessionID,
-            messageID: Identifier.ascending("message"),
-            agent: local.agent.current().name,
-            model: {
-              providerID: selectedModel.providerID,
-              modelID: selectedModel.modelID,
-            },
-            variant: local.model.variant.current(),
-            parts: [{ id: Identifier.ascending("part"), type: "text", text: "." }],
-          })
-
-          const idle = await waitForIdle(sync, props.sessionID, 10_000)
-          if (!idle) {
-            toast.show({ message: "Session busy — revert abandoned", variant: "error", duration: 3000 })
-            return
-          }
 
           await sdk.client.session.revert({
             sessionID: props.sessionID,
