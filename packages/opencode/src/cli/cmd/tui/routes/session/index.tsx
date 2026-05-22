@@ -1246,8 +1246,6 @@ export function Session() {
     },
   ])
 
-  const ping = createMemo(() => session()?.ping)
-
   const revertInfo = createMemo(() => session()?.revert)
   const revertMessageID = createMemo(() => revertInfo()?.messageID)
 
@@ -1429,18 +1427,6 @@ export function Session() {
                                     )}
                                   </For>
                                 </box>
-                              </Show>
-                              <Show when={ping()}>
-                                {(p) => (
-                                  <text fg={theme.textMuted}>
-                                    Cache refreshed ({p().count}x), last ping at{" "}
-                                    {new Date(p().time).toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                      second: "2-digit",
-                                    })}
-                                  </text>
-                                )}
                               </Show>
                             </box>
                           </box>
@@ -2066,6 +2052,9 @@ function TextPart(props: {
             compact={true}
             contextStats={props.contextStats}
             cacheExpiry={props.cacheExpiry}
+            cacheExpiryAbsolute={null}
+            pingCount={0}
+            pingPending={false}
             sessionTotals={props.sessionTotals}
             sessionCost={props.sessionCost}
           />

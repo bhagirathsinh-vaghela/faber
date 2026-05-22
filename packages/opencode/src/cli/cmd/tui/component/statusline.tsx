@@ -9,11 +9,25 @@
 // Input area: ModelHeader(bold=true, directory with branch) + Statusline wrapper (bold=true, full layout)
 // Snapshot:   ModelHeader(bold=false, +duration, directory without branch) + StatuslineContent(bold=false, compact=true)
 
-import { createMemo, createSignal, Show } from "solid-js"
+import { createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { useSync } from "@tui/context/sync"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import { RGBA, hsvToRgb } from "@opentui/core"
+import { CACHE_TTL } from "@/session/ping"
+import "opentui-spinner/solid"
+
+const STAR_SEQ = ["·", "✧", "✦", "✶", "✹", "✺", "✹", "✶", "✦", "✧", "·", "·"]
+
+export function createStarWaveFrames(count: number, spacing = 2, separator = "") {
+  const offsets = Array.from({ length: count }, (_, i) => i * spacing)
+  const len = STAR_SEQ.length
+  return Array.from({ length: len }, (_, i) =>
+    offsets.map((o) => STAR_SEQ[(i + o) % len]).join(separator),
+  )
+}
+
+const PING_PULSE_FRAMES = createStarWaveFrames(3, 3, " ")
 
 export const MODEL_COLOR = RGBA.fromHex("#E83CF5")
 
@@ -60,6 +74,9 @@ export type StatuslineContentProps = {
   showCacheMarkers?: boolean
   contextStats: { total: number; cached: number; cacheWritten: number; nextTurn: number; contextLimit: number; percentage: number } | null
   cacheExpiry: string | null
+  cacheExpiryAbsolute: string | null
+  pingCount: number
+  pingPending: boolean
   sessionTotals: { input: number; output: number }
   sessionCost: number
   streamIndicator?: string | null
@@ -147,6 +164,7 @@ export function StatuslineContent(props: StatuslineContentProps) {
   const b = () => props.bold
   const m = () => theme.textMuted
   const c = (color: RGBA) => (props.dimmed ? m() : color)
+  const [cacheHover, setCacheHover] = createSignal(false)
 
   return (
     <box flexDirection="column" gap={0}>
@@ -181,9 +199,36 @@ export function StatuslineContent(props: StatuslineContentProps) {
             {/* Cache expiry segment (full mode only) */}
             <Show when={!props.compact}>
               <box flexShrink={0} flexDirection="row">
+                <box
+                  flexDirection="row"
+                  onMouseOver={() => setCacheHover(true)}
+                  onMouseOut={() => setCacheHover(false)}
+                >
+                  <text>
+                    <span style={{ fg: c(theme.warning) }}>{"\u25f7"}</span>{" "}
+                  </text>
+                  <Show when={props.pingPending && !props.cacheExpiry} fallback={
+                    <text><span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span></text>
+                  }>
+                    <spinner frames={PING_PULSE_FRAMES} interval={150} color={c(theme.warning)} />
+                  </Show>
+                  <Show when={cacheHover()}>
+                    <box position="absolute" left={-1} top={-1} zIndex={1000}>
+                      <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
+                        <text>
+                          <span style={{ fg: c(theme.warning) }}>{"\u25f7"}</span>{" "}
+                          {props.cacheExpiryAbsolute
+                            ? <><span style={{ fg: c(MODEL_COLOR) }}>expires </span><span style={{ fg: c(theme.text), bold: b() }}>{props.cacheExpiryAbsolute}</span></>
+                            : <span style={{ fg: c(theme.text), bold: b() }}>--</span>}
+                          {props.pingCount > 0
+                            ? <span style={{ fg: c(theme.warning), bold: b() }}> ({props.pingCount}x pinged)</span>
+                            : null}
+                        </text>
+                      </box>
+                    </box>
+                  </Show>
+                </box>
                 <text>
-                  <span style={{ fg: c(theme.warning) }}>{"\u25f7"}</span>{" "}
-                  <span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span>
                   <span style={{ fg: m() }}> │ </span>
                 </text>
               </box>
@@ -265,17 +310,41 @@ export function Statusline(props: StatuslineProps) {
     return sync.data.provider.find((x) => x.id === last.providerID)?.models[last.modelID]
   })
 
-  const cacheExpiry = createMemo(() => {
+  const cacheBase = createMemo(() => {
     const last = messages().findLast((x) => x.role === "assistant")
     if (!last?.time.completed) return null
-    const expiryTime = last.time.completed + 5 * 60 * 1000
-    if (expiryTime <= Date.now()) return null
-    const date = new Date(expiryTime)
-    const hours = date.getHours().toString().padStart(2, "0")
-    const minutes = date.getMinutes().toString().padStart(2, "0")
-    const seconds = date.getSeconds().toString().padStart(2, "0")
-    return `${hours}:${minutes}:${seconds}`
+    return Math.max(last.time.completed, session()?.ping?.time ?? 0)
   })
+
+  const [now, setNow] = createSignal(Date.now())
+  const timer = setInterval(() => setNow(Date.now()), 1000)
+  onCleanup(() => clearInterval(timer))
+
+  const before = createMemo(() => (sync.data.config.ping?.before_expiry ?? 10) * 1000)
+
+  const cacheCountdown = createMemo(() => {
+    const base = cacheBase()
+    if (!base) return null
+    if (base + CACHE_TTL <= now()) return null // cache expired
+    const pingAt = base + CACHE_TTL - before()
+    const remaining = pingAt - now()
+    if (remaining <= 0) return null
+    const mins = Math.floor(remaining / 60000)
+    const secs = Math.floor((remaining % 60000) / 1000)
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  })
+
+  const cacheExpiryAbsolute = createMemo(() => {
+    const base = cacheBase()
+    if (!base) return null
+    const expiry = base + CACHE_TTL
+    if (expiry <= Date.now()) return null
+    const date = new Date(expiry)
+    return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}:${date.getSeconds().toString().padStart(2, "0")}`
+  })
+
+  const pingCount = createMemo(() => session()?.ping?.count ?? 0)
+  const pingPending = createMemo(() => session()?.ping?.pending ?? false)
 
   const contextStats = createMemo(() => {
     const s = session()
@@ -313,7 +382,10 @@ export function Statusline(props: StatuslineProps) {
       cacheRanges={cacheRanges()}
       showCacheMarkers={showCacheMarkers()}
       contextStats={contextStats()}
-      cacheExpiry={cacheExpiry()}
+      cacheExpiry={cacheCountdown()}
+      cacheExpiryAbsolute={cacheExpiryAbsolute()}
+      pingCount={pingCount()}
+      pingPending={pingPending()}
       sessionTotals={sessionTotals()}
       sessionCost={sessionCost()}
       streamIndicator={props.streamIndicator}

@@ -24,7 +24,7 @@ import { TuiEvent } from "../../event"
 import { iife } from "@/util/iife"
 import { Locale } from "@/util/locale"
 import { formatDuration } from "@/util/format"
-import { createColors, createFrames } from "../../ui/spinner.ts"
+import { createStarWaveFrames } from "@tui/component/statusline"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
@@ -918,20 +918,8 @@ export function Prompt(props: PromptProps) {
   const spinnerDef = createMemo(() => {
     const color = local.agent.color(local.agent.current().name)
     return {
-      frames: createFrames({
-        color,
-        style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
-      }),
-      color: createColors({
-        color,
-        style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
-      }),
+      frames: createStarWaveFrames(5, 2, " "),
+      color,
     }
   })
 
@@ -1263,7 +1251,7 @@ export function Prompt(props: PromptProps) {
               <box flexShrink={0} flexDirection="row" gap={1}>
                 <box marginLeft={1}>
                   <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
-                    <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
+                    <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={100} />
                   </Show>
                 </box>
                 <box flexDirection="row" gap={1} flexShrink={0}>
