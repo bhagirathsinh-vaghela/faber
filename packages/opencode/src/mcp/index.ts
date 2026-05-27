@@ -177,12 +177,22 @@ export namespace MCP {
     return typeof entry === "object" && entry !== null && "type" in entry
   }
 
+  // Tools cache: per-client snapshot of listTools() taken once when the client
+  // is created. tools() serves from this cache for the lifetime of the OpenCode
+  // instance — never re-calls listTools(). This keeps the tool catalog stable
+  // through transient MCP failures (token blips, network blips, server
+  // restarts); the cost is that tool catalog changes mid-session (servers
+  // adding/removing tools) require an OpenCode restart to pick up. Acceptable
+  // tradeoff for stability.
+  type ToolsListResult = Awaited<ReturnType<MCPClient["listTools"]>>
+
   const state = Instance.state(
     async () => {
       const cfg = await Config.get()
       const config = cfg.mcp ?? {}
       const clients: Record<string, MCPClient> = {}
       const status: Record<string, Status> = {}
+      const tools: Record<string, ToolsListResult> = {}
 
       await Promise.all(
         Object.entries(config).map(async ([key, mcp]) => {
@@ -204,12 +214,14 @@ export namespace MCP {
 
           if (result.mcpClient) {
             clients[key] = result.mcpClient
+            if (result.tools) tools[key] = result.tools
           }
         }),
       )
       return {
         status,
         clients,
+        tools,
       }
     },
     async (state) => {
@@ -299,6 +311,11 @@ export namespace MCP {
     }
     s.clients[name] = result.mcpClient
     s.status[name] = result.status
+    if (result.tools) {
+      s.tools[name] = result.tools
+    } else {
+      delete s.tools[name]
+    }
 
     return {
       status: s.status,
@@ -507,6 +524,7 @@ export namespace MCP {
     return {
       mcpClient,
       status,
+      tools: result,
     }
   }
 
@@ -565,6 +583,11 @@ export namespace MCP {
         })
       }
       s.clients[name] = result.mcpClient
+      if (result.tools) {
+        s.tools[name] = result.tools
+      } else {
+        delete s.tools[name]
+      }
     }
   }
 
@@ -577,10 +600,20 @@ export namespace MCP {
       })
       delete s.clients[name]
     }
+    delete s.tools[name]
     s.status[name] = { status: "disabled" }
   }
 
   export async function tools() {
+    // Serve from the per-client tools cache populated at create() time.
+    // We deliberately do NOT call client.listTools() here — that caused MCP
+    // servers to disappear from the catalog on any transient failure
+    // (token rotation, network blip, server restart, timeout). The cached
+    // list stays valid for the lifetime of the OpenCode instance.
+    //
+    // The deny filter is still applied per-call against current Config.get(),
+    // so mcp.<name>.deny edits take effect on the next tools() call without
+    // a session restart.
     const result: Record<string, Tool> = {}
     const s = await state()
     const cfg = await Config.get()
@@ -594,17 +627,11 @@ export namespace MCP {
         continue
       }
 
-      const toolsResult = await client.listTools().catch((e) => {
-        log.error("failed to get tools", { clientName, error: e.message })
-        const failedStatus = {
-          status: "failed" as const,
-          error: e instanceof Error ? e.message : String(e),
-        }
-        s.status[clientName] = failedStatus
-        delete s.clients[clientName]
-        return undefined
-      })
+      const toolsResult = s.tools[clientName]
       if (!toolsResult) {
+        // No cached tools for this client — this is unexpected because
+        // create() returns tools on success. Skip rather than crash.
+        log.error("no cached tools for connected client", { clientName })
         continue
       }
       const mcpConfig = config[clientName]
