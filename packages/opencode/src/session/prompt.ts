@@ -356,6 +356,11 @@ export namespace SessionPrompt {
             created: Date.now(),
           },
         })) as MessageV2.Assistant
+        // Internal subtask path (no LLM to pick a toolset): map the agent name
+        // to a built-in toolset, defaulting to "general" (full tools) for
+        // custom agents, which preserves their pre-toolset unrestricted access.
+        const toolsets = await Agent.toolsets()
+        const toolset = toolsets[task.agent] ? task.agent : "general"
         let part = (await Session.updatePart({
           id: Identifier.ascending("part"),
           messageID: assistantMessage.id,
@@ -369,6 +374,7 @@ export namespace SessionPrompt {
               prompt: task.prompt,
               description: task.description,
               subagent_type: task.agent,
+              toolset,
               command: task.command,
             },
             time: {
@@ -380,6 +386,7 @@ export namespace SessionPrompt {
           prompt: task.prompt,
           description: task.description,
           subagent_type: task.agent,
+          toolset,
           command: task.command,
         }
         await Plugin.trigger(

@@ -1129,6 +1129,12 @@ export namespace Config {
         .catchall(Agent)
         .optional()
         .describe("Agent configuration, see https://opencode.ai/docs/agents"),
+      subagent_toolsets: z
+        .record(z.string(), z.array(z.string()))
+        .optional()
+        .describe(
+          "Named tool presets a subtask may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
+        ),
       provider: z
         .record(z.string(), Provider)
         .optional()

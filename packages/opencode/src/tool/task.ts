@@ -329,7 +329,16 @@ function buildNotification(
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
   prompt: z.string().describe("The task for the agent to perform"),
+  summary: z
+    .string()
+    .describe(
+      "A one-sentence TL;DR of what the subtask is being asked to do, so the main thread and user can see the ask without reading the full prompt. ALWAYS provide this when invoking the Task tool. MUST faithfully reflect the prompt — do not editorialize or add intent the prompt does not contain.",
+    )
+    .optional(),
   subagent_type: z.string().describe("The type of specialized agent to use for this task"),
+  toolset: z
+    .string()
+    .describe("The named tool preset the subtask runs with. Must be one of the toolsets listed in this tool's description."),
   session_id: z.string().describe("Existing Task session to continue").optional(),
   include_context: z.boolean().describe("When true, the subtask inherits the parent conversation history for shared context and prompt cache reuse").optional(),
   command: z.string().describe("The command that triggered this task").optional(),
@@ -344,10 +353,16 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
     : agents
 
+  const toolsets = await Agent.toolsets()
   const description = DESCRIPTION.replace(
     "{agents}",
     accessibleAgents
       .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)
+      .join("\n"),
+  ).replace(
+    "{toolsets}",
+    Object.entries(toolsets)
+      .map(([name, tools]) => `- ${name}: ${tools.join(", ")}`)
       .join("\n"),
   )
   return {
@@ -360,6 +375,16 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           title: params.description,
           metadata: {} as Record<string, unknown>,
           output: "Subtasks cannot spawn further subtasks. Execute the work directly using your available tools instead.",
+        }
+      }
+
+      const toolsets = await Agent.toolsets()
+      const allowed = toolsets[params.toolset]
+      if (!allowed) {
+        return {
+          title: params.description,
+          metadata: {} as Record<string, unknown>,
+          output: `Unknown toolset "${params.toolset}". Available toolsets: ${Object.keys(toolsets).join(", ")}.`,
         }
       }
 
@@ -389,12 +414,9 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           parentID: ctx.sessionID,
           title: params.description + ` (@${params.subagent_type} subagent)`,
         })
-        const allowed = Agent.allowedTools(params.subagent_type)
-        if (allowed) {
-          await Session.update(created.id, (draft) => {
-            draft.allowedTools = allowed
-          })
-        }
+        await Session.update(created.id, (draft) => {
+          draft.allowedTools = allowed
+        })
         return created
       })
       // Copy parent conversation into child session for shared context + cache reuse
@@ -461,11 +483,15 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           taskId: task.id,
           sessionId: session.id,
           model,
-          summary: [],
+          toolset: params.toolset,
+          tools: allowed,
+          summary: params.summary,
         } as Record<string, unknown>,
         output: [
           `Background task started: ${params.description}`,
           `agent: ${agent.name}`,
+          `toolset: ${params.toolset} (${allowed.join(", ")})`,
+          ...(params.summary ? [`summary: ${params.summary}`] : []),
           `task_id: ${task.id}`,
           `session_id: ${session.id}`,
           ``,

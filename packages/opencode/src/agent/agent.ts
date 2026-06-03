@@ -337,18 +337,25 @@ export namespace Agent {
   }
 
   /**
-   * Central mapping of which tools each subagent type is allowed to execute.
-   * Subtasks always use the parent's agent/model/tools for cache-identical
-   * prefixes, but tool execution is restricted based on subagent_type.
-   * Tools not in this list are present in the schema but rejected at runtime.
-   * Returns undefined for unknown agent types (no restrictions applied).
+   * Built-in named tool presets. Subtasks always use the parent's
+   * agent/model/tools for cache-identical prefixes, but tool execution is
+   * restricted to the tools in the chosen preset — tools not in the list are
+   * present in the schema but rejected at runtime.
    */
-  const SUBAGENT_ALLOWED_TOOLS: Record<string, string[]> = {
+  const BUILTIN_TOOLSETS: Record<string, string[]> = {
     explore: ["grep", "glob", "list", "bash", "read", "webfetch", "websearch", "codesearch", "lsp"],
     general: ["grep", "glob", "list", "bash", "read", "write", "edit", "patch", "multiedit", "webfetch", "websearch", "codesearch", "lsp", "question", "skill"],
   }
 
-  export function allowedTools(agentType: string): string[] | undefined {
-    return SUBAGENT_ALLOWED_TOOLS[agentType]
+  /**
+   * Named tool presets a subtask may run with. Built-in presets are merged
+   * with config `subagent_toolsets` (config wins on name collision), so users
+   * can add presets or override built-ins without a rebuild. The parent agent
+   * picks one by name via the Task tool's `toolset` param; the runtime stamps
+   * the resolved list onto the subtask session and rejects any tool not on it.
+   */
+  export async function toolsets(): Promise<Record<string, string[]>> {
+    const cfg = await Config.get()
+    return { ...BUILTIN_TOOLSETS, ...cfg.subagent_toolsets }
   }
 }

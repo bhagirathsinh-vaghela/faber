@@ -5,6 +5,22 @@ Available agent types and the tools they have access to:
 
 When using the Task tool, you must specify a subagent_type parameter to select which agent type to use.
 
+ALWAYS provide a `summary` — a one-sentence TL;DR of what you are asking the subtask to do. It is shown to the user and the main thread so they can see the ask without reading the full prompt. The summary MUST faithfully reflect the prompt; do not editorialize or add intent the prompt does not contain.
+
+## Toolsets (required)
+
+Every Task call MUST specify a `toolset` — a named preset that restricts which
+tools the subtask can execute at runtime. Tools outside the chosen toolset are
+rejected even if the subtask tries to call them, so pick the NARROWEST toolset
+that still lets the subtask do its job. For a subtask that should only read and
+return text (a drafter/researcher), pick a read-only toolset; only pick a
+write-capable toolset when the subtask must create or edit files.
+
+Available toolsets and the tools they allow:
+{toolsets}
+
+Passing a `toolset` name not in this list fails the call.
+
 When to use the Task tool:
 - When you are instructed to execute custom slash commands. Use the Task tool with the slash command invocation as the entire prompt. The slash command can take arguments. For example: Task(description="Check the file", prompt="/check-file path/to/file.py")
 

@@ -1973,6 +1973,12 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
+   * Named tool presets a subtask may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.
+   */
+  subagent_toolsets?: {
+    [key: string]: Array<string>
+  }
+  /**
    * Custom provider configurations and model overrides
    */
   provider?: {
