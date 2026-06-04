@@ -756,10 +756,17 @@ export namespace SessionPrompt {
       },
     })
 
-    for (const item of await ToolRegistry.tools(
+    const registered = await ToolRegistry.tools(
       { modelID: input.model.api.id, providerID: input.model.providerID },
       input.agent,
-    )) {
+    )
+    const ruleset = PermissionNext.merge(input.agent.permission, input.session.permission ?? [])
+    const denied = PermissionNext.disabled(
+      registered.map((item) => item.id),
+      ruleset,
+    )
+    for (const item of registered) {
+      if (denied.has(item.id)) continue
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
         id: item.id as any,
