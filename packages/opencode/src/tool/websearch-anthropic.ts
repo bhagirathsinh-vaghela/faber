@@ -18,11 +18,13 @@ export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
       "You MUST use the current year",
       `The current date is ${currentMonthYear()}. You MUST use the current year`,
     ),
-    parameters: z.object({
-      query: z.string().min(2).describe("The search query to use"),
-      allowed_domains: z.array(z.string()).optional().describe("Only include search results from these domains"),
-      blocked_domains: z.array(z.string()).optional().describe("Never include search results from these domains"),
-    }).strict(),
+    parameters: z
+      .object({
+        query: z.string().min(2).describe("The search query to use"),
+        allowed_domains: z.array(z.string()).optional().describe("Only include search results from these domains"),
+        blocked_domains: z.array(z.string()).optional().describe("Never include search results from these domains"),
+      })
+      .strict(),
     async execute(params, ctx) {
       if (params.allowed_domains?.length && params.blocked_domains?.length) {
         throw new Error("Cannot specify both allowed_domains and blocked_domains in the same request")

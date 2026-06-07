@@ -238,7 +238,9 @@ export const McpAuthCommand = cmd({
         const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
           if (evt.properties.mcpName === serverName) {
             spinner.stop("No local browser available for auth")
-            prompts.log.warn(`Open this URL in a browser on a machine that can reach 127.0.0.1:${oauthPort} on this host:`)
+            prompts.log.warn(
+              `Open this URL in a browser on a machine that can reach 127.0.0.1:${oauthPort} on this host:`,
+            )
             // Emit a stable, grep-able line so automation can scrape the URL.
             prompts.log.info(`OAUTH_URL: ${evt.properties.url}`)
             prompts.log.info("If you're on SSH, forward the callback port first:")
@@ -812,9 +814,7 @@ export const McpToolsCommand = cmd({
         if (!client) {
           const statuses = await MCP.status()
           const status = statuses[serverName]
-          process.stderr.write(
-            `MCP server ${serverName} is not connected (status: ${status?.status ?? "unknown"})\n`,
-          )
+          process.stderr.write(`MCP server ${serverName} is not connected (status: ${status?.status ?? "unknown"})\n`)
           if (status?.status === "failed" && "error" in status) {
             process.stderr.write(`Error: ${status.error}\n`)
           }
@@ -826,7 +826,11 @@ export const McpToolsCommand = cmd({
 
         if (args.json) {
           for (const t of tools) {
-            const size = JSON.stringify({ name: t.name, description: t.description, input_schema: t.inputSchema }).length
+            const size = JSON.stringify({
+              name: t.name,
+              description: t.description,
+              input_schema: t.inputSchema,
+            }).length
             const required = (t.inputSchema as { required?: string[] } | undefined)?.required ?? []
             process.stdout.write(
               JSON.stringify({
@@ -842,9 +846,7 @@ export const McpToolsCommand = cmd({
 
         // Human-readable output
         const totalSize = tools.reduce((sum, t) => {
-          return (
-            sum + JSON.stringify({ name: t.name, description: t.description, input_schema: t.inputSchema }).length
-          )
+          return sum + JSON.stringify({ name: t.name, description: t.description, input_schema: t.inputSchema }).length
         }, 0)
 
         process.stdout.write(`${serverName}: ${tools.length} tools, ~${totalSize.toLocaleString()} bytes total\n\n`)

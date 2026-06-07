@@ -26,12 +26,12 @@ export function DialogTasks() {
   useKeyboard((evt) => {
     if (evt.name === "tab" && !evt.ctrl && !evt.meta && !evt.shift) {
       evt.preventDefault()
-      setTab((prev) => prev === "running" ? "completed" : "running")
+      setTab((prev) => (prev === "running" ? "completed" : "running"))
     }
   })
 
   const [tasks, { refetch }] = createResource(
-    () => route.data.type === "session" ? route.data.sessionID : undefined,
+    () => (route.data.type === "session" ? route.data.sessionID : undefined),
     async (sessionID) => {
       const result = await sdk.client.background.list({ sessionID })
       return result.data ?? []
@@ -42,9 +42,7 @@ export function DialogTasks() {
   onCleanup(() => clearInterval(interval))
 
   const running = createMemo(() =>
-    (tasks() ?? [])
-      .filter((t) => t.status === "running")
-      .toSorted((a, b) => b.time.created - a.time.created),
+    (tasks() ?? []).filter((t) => t.status === "running").toSorted((a, b) => b.time.created - a.time.created),
   )
 
   const completed = createMemo(() =>
@@ -56,21 +54,27 @@ export function DialogTasks() {
   const options = createMemo<DialogSelectOption<string>[]>(() => {
     const items = tab() === "running" ? running() : completed()
     if (items.length === 0) {
-      return [{
-        title: tab() === "running" ? "No running subtasks" : "No completed subtasks",
-        value: "",
-        disabled: true,
-      }]
+      return [
+        {
+          title: tab() === "running" ? "No running subtasks" : "No completed subtasks",
+          value: "",
+          disabled: true,
+        },
+      ]
     }
     return items.map((t) => {
       const agent = t.subagent?.agent ?? t.type
       const duration = t.time.completed
         ? `${Math.round((t.time.completed - t.time.created) / 1000)}s`
         : `${Math.round((Date.now() - t.time.created) / 1000)}s`
-      const status = t.status === "running" ? "running"
-        : t.status === "completed" ? "done"
-        : t.status === "cancelled" ? "cancelled"
-        : "failed"
+      const status =
+        t.status === "running"
+          ? "running"
+          : t.status === "completed"
+            ? "done"
+            : t.status === "cancelled"
+              ? "cancelled"
+              : "failed"
       return {
         title: `${t.description}`,
         description: `${agent} · ${status} · ${duration}`,
@@ -90,9 +94,7 @@ export function DialogTasks() {
   const title = createMemo(() => {
     const r = running().length
     const c = completed().length
-    return tab() === "running"
-      ? `Subtasks · Running (${r})`
-      : `Subtasks · Completed (${c})`
+    return tab() === "running" ? `Subtasks · Running (${r})` : `Subtasks · Completed (${c})`
   })
 
   return (
@@ -106,20 +108,24 @@ export function DialogTasks() {
           title: tab() === "running" ? "Completed" : "Running",
           onTrigger: () => {},
         },
-        ...(tab() === "running" ? [{
-          keybind: { name: "x", ctrl: false, meta: false, shift: false, leader: false },
-          title: "Cancel",
-          onTrigger: async (option: DialogSelectOption<string>) => {
-            if (!option.value) return
-            const task = (tasks() ?? []).find(
-              (t) => (t.subagent?.sessionID ?? t.id) === option.value && t.status === "running",
-            )
-            if (task) {
-              await sdk.client.background.cancel({ id: task.id })
-              refetch()
-            }
-          },
-        }] : []),
+        ...(tab() === "running"
+          ? [
+              {
+                keybind: { name: "x", ctrl: false, meta: false, shift: false, leader: false },
+                title: "Cancel",
+                onTrigger: async (option: DialogSelectOption<string>) => {
+                  if (!option.value) return
+                  const task = (tasks() ?? []).find(
+                    (t) => (t.subagent?.sessionID ?? t.id) === option.value && t.status === "running",
+                  )
+                  if (task) {
+                    await sdk.client.background.cancel({ id: task.id })
+                    refetch()
+                  }
+                },
+              },
+            ]
+          : []),
       ]}
     />
   )

@@ -223,9 +223,10 @@ export namespace ProviderTransform {
 
     // Marker 3: last assistant before the current typed prompt (previous turn's final output).
     // Falls back to lastUserPrompt on the first turn when no previous assistant exists.
-    const prevAssistant = lastUserPromptIndex > 0
-      ? msgs.findLast((msg, i) => i < lastUserPromptIndex && msg.role === "assistant")
-      : undefined
+    const prevAssistant =
+      lastUserPromptIndex > 0
+        ? msgs.findLast((msg, i) => i < lastUserPromptIndex && msg.role === "assistant")
+        : undefined
     const marker3 = prevAssistant ?? lastUserPrompt
     if (marker3) {
       markers.push(marker3)

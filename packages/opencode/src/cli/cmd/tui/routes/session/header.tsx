@@ -139,14 +139,20 @@ export function Header(props: {
                   </box>
                 </Show>
                 <Show when={!props.subtaskRunning && props.subtaskStatus}>
-                  <text fg={
-                    props.subtaskStatus === "completed" ? theme.success
-                    : props.subtaskStatus === "cancelled" ? theme.warning
-                    : theme.error
-                  }>
-                    {props.subtaskStatus === "completed" ? "\u2714 completed"
-                    : props.subtaskStatus === "cancelled" ? "\u2718 cancelled"
-                    : "\u2757 failed"}
+                  <text
+                    fg={
+                      props.subtaskStatus === "completed"
+                        ? theme.success
+                        : props.subtaskStatus === "cancelled"
+                          ? theme.warning
+                          : theme.error
+                    }
+                  >
+                    {props.subtaskStatus === "completed"
+                      ? "\u2714 completed"
+                      : props.subtaskStatus === "cancelled"
+                        ? "\u2718 cancelled"
+                        : "\u2757 failed"}
                   </text>
                 </Show>
               </box>

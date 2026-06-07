@@ -81,18 +81,12 @@ export class BunStdioTransport implements Transport {
     }
 
     // Give the process a moment to exit gracefully, then kill
-    const exited = Promise.race([
-      proc.exited,
-      new Promise((r) => setTimeout(r, 2000)),
-    ])
+    const exited = Promise.race([proc.exited, new Promise((r) => setTimeout(r, 2000))])
     await exited
 
     if (!proc.killed) {
       proc.kill()
-      await Promise.race([
-        proc.exited,
-        new Promise((r) => setTimeout(r, 2000)),
-      ])
+      await Promise.race([proc.exited, new Promise((r) => setTimeout(r, 2000))])
       if (!proc.killed) proc.kill("SIGKILL")
     }
 

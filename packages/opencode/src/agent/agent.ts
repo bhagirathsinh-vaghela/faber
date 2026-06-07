@@ -344,7 +344,23 @@ export namespace Agent {
    */
   const BUILTIN_TOOLSETS: Record<string, string[]> = {
     explore: ["grep", "glob", "list", "bash", "read", "webfetch", "websearch", "codesearch", "lsp"],
-    general: ["grep", "glob", "list", "bash", "read", "write", "edit", "patch", "multiedit", "webfetch", "websearch", "codesearch", "lsp", "question", "skill"],
+    general: [
+      "grep",
+      "glob",
+      "list",
+      "bash",
+      "read",
+      "write",
+      "edit",
+      "patch",
+      "multiedit",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "lsp",
+      "question",
+      "skill",
+    ],
   }
 
   /**

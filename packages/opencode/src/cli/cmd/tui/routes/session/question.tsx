@@ -68,9 +68,14 @@ export function QuestionPrompt(props: {
     return Boolean(r && isPending(r.id))
   })
 
-  createEffect(on(() => request()?.id, (id) => {
-    if (id && isPending(id)) setRemaining(TIMEOUT)
-  }))
+  createEffect(
+    on(
+      () => request()?.id,
+      (id) => {
+        if (id && isPending(id)) setRemaining(TIMEOUT)
+      },
+    ),
+  )
 
   createEffect(() => {
     if (!timerActive()) return
@@ -371,9 +376,7 @@ export function QuestionPrompt(props: {
                       resetStoreForRequest()
                     }}
                   >
-                    <text
-                      fg={isActive() ? selectedForeground(theme, theme.accent) : theme.textMuted}
-                    >
+                    <text fg={isActive() ? selectedForeground(theme, theme.accent) : theme.textMuted}>
                       {r.questions[0]?.header ?? `Q${index() + 1}`}
                     </text>
                   </box>

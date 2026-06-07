@@ -326,23 +326,32 @@ function buildNotification(
   ].join("\n")
 }
 
-const parameters = z.object({
-  description: z.string().describe("A short (3-5 words) description of the task"),
-  prompt: z.string().describe("The task for the agent to perform"),
-  summary: z
-    .string()
-    .describe(
-      "A one-sentence TL;DR of what the subtask is being asked to do, so the main thread and user can see the ask without reading the full prompt. ALWAYS provide this when invoking the Task tool. MUST faithfully reflect the prompt — do not editorialize or add intent the prompt does not contain.",
-    )
-    .optional(),
-  subagent_type: z.string().describe("The type of specialized agent to use for this task"),
-  toolset: z
-    .string()
-    .describe("The named tool preset the subtask runs with. Must be one of the toolsets listed in this tool's description."),
-  session_id: z.string().describe("Existing Task session to continue").optional(),
-  include_context: z.boolean().describe("When true, the subtask inherits the parent conversation history for shared context and prompt cache reuse").optional(),
-  command: z.string().describe("The command that triggered this task").optional(),
-}).strict()
+const parameters = z
+  .object({
+    description: z.string().describe("A short (3-5 words) description of the task"),
+    prompt: z.string().describe("The task for the agent to perform"),
+    summary: z
+      .string()
+      .describe(
+        "A one-sentence TL;DR of what the subtask is being asked to do, so the main thread and user can see the ask without reading the full prompt. ALWAYS provide this when invoking the Task tool. MUST faithfully reflect the prompt — do not editorialize or add intent the prompt does not contain.",
+      )
+      .optional(),
+    subagent_type: z.string().describe("The type of specialized agent to use for this task"),
+    toolset: z
+      .string()
+      .describe(
+        "The named tool preset the subtask runs with. Must be one of the toolsets listed in this tool's description.",
+      ),
+    session_id: z.string().describe("Existing Task session to continue").optional(),
+    include_context: z
+      .boolean()
+      .describe(
+        "When true, the subtask inherits the parent conversation history for shared context and prompt cache reuse",
+      )
+      .optional(),
+    command: z.string().describe("The command that triggered this task").optional(),
+  })
+  .strict()
 
 export const TaskTool = Tool.define("task", async (ctx) => {
   const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary"))
@@ -374,7 +383,8 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         return {
           title: params.description,
           metadata: {} as Record<string, unknown>,
-          output: "Subtasks cannot spawn further subtasks. Execute the work directly using your available tools instead.",
+          output:
+            "Subtasks cannot spawn further subtasks. Execute the work directly using your available tools instead.",
         }
       }
 

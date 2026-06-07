@@ -21,10 +21,12 @@ const MAX_CONTENT_CHARS = 100_000 // Truncate content before summarization
 
 export const WebFetchAnthropicTool = Tool.define("webfetch", {
   description: DESCRIPTION,
-  parameters: z.object({
-    url: z.string().describe("The URL to fetch content from"),
-    prompt: z.string().describe("The prompt to run on the fetched content"),
-  }).strict(),
+  parameters: z
+    .object({
+      url: z.string().describe("The URL to fetch content from"),
+      prompt: z.string().describe("The prompt to run on the fetched content"),
+    })
+    .strict(),
   async execute(params, ctx) {
     // Validate URL
     if (!params.url.startsWith("http://") && !params.url.startsWith("https://")) {

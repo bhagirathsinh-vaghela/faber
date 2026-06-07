@@ -5,9 +5,11 @@ import { Todo } from "../session/todo"
 
 export const TodoWriteTool = Tool.define("todowrite", {
   description: DESCRIPTION_WRITE,
-  parameters: z.object({
-    todos: z.array(z.object(Todo.Info.shape)).describe("The updated todo list"),
-  }).strict(),
+  parameters: z
+    .object({
+      todos: z.array(z.object(Todo.Info.shape)).describe("The updated todo list"),
+    })
+    .strict(),
   async execute(params, ctx) {
     await ctx.ask({
       permission: "todowrite",
@@ -17,12 +19,8 @@ export const TodoWriteTool = Tool.define("todowrite", {
     })
 
     const previous = await Todo.get(ctx.sessionID)
-    const previousCompleted = new Set(
-      previous.filter((t) => t.status === "completed").map((t) => t.id),
-    )
-    const newlyCompleted = params.todos.filter(
-      (t) => t.status === "completed" && !previousCompleted.has(t.id),
-    )
+    const previousCompleted = new Set(previous.filter((t) => t.status === "completed").map((t) => t.id))
+    const newlyCompleted = params.todos.filter((t) => t.status === "completed" && !previousCompleted.has(t.id))
 
     await Todo.update({
       sessionID: ctx.sessionID,

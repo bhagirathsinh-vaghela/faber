@@ -20,10 +20,12 @@ const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
 export const WriteTool = Tool.define("write", {
   description: DESCRIPTION,
-  parameters: z.object({
-    content: z.string().describe("The content to write to the file"),
-    filePath: z.string().describe("The absolute path to the file to write (must be absolute, not relative)"),
-  }).strict(),
+  parameters: z
+    .object({
+      content: z.string().describe("The content to write to the file"),
+      filePath: z.string().describe("The absolute path to the file to write (must be absolute, not relative)"),
+    })
+    .strict(),
   async execute(params, ctx) {
     const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
     await assertExternalDirectory(ctx, filepath)
@@ -83,12 +85,14 @@ export const WriteTool = Tool.define("write", {
         lines: h.lines,
       }))
       if (hunks.length > 0) {
-        output += "\n\n" + hunks
-          .map((h) => {
-            const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`
-            return `${header}\n${h.lines.join("\n")}`
-          })
-          .join("\n")
+        output +=
+          "\n\n" +
+          hunks
+            .map((h) => {
+              const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`
+              return `${header}\n${h.lines.join("\n")}`
+            })
+            .join("\n")
       }
     }
     await LSP.touchFile(filepath, true)

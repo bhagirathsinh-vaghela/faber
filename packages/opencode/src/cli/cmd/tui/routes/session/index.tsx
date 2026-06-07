@@ -152,9 +152,7 @@ export function Session() {
     }
     const check = async () => {
       const tasks = await sdk.client.background.list({ sessionID: parentID })
-      const task = (tasks.data ?? []).find(
-        (t) => t.subagent?.sessionID === route.sessionID,
-      )
+      const task = (tasks.data ?? []).find((t) => t.subagent?.sessionID === route.sessionID)
       setSubtaskStatus((task?.status as any) ?? null)
     }
     check()
@@ -171,18 +169,23 @@ export function Session() {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.question[x.id] ?? [])
   })
-  const [deferredQuestions, setDeferredQuestions] = createSignal<typeof sync.data.question[string]>([])
+  const [deferredQuestions, setDeferredQuestions] = createSignal<(typeof sync.data.question)[string]>([])
   const questions = createMemo(() => {
     const ids = new Set(pendingQuestions().map((q) => q.id))
     const deferred = deferredQuestions().filter((q) => !ids.has(q.id))
     return [...pendingQuestions(), ...deferred]
   })
   const [showQuestion, setShowQuestion] = createSignal(false)
-  createEffect(on(() => pendingQuestions().length, (len, prev) => {
-    if (len > 0 && (prev === 0 || prev === undefined)) {
-      setShowQuestion(true)
-    }
-  }))
+  createEffect(
+    on(
+      () => pendingQuestions().length,
+      (len, prev) => {
+        if (len > 0 && (prev === 0 || prev === undefined)) {
+          setShowQuestion(true)
+        }
+      },
+    ),
+  )
   createEffect(() => {
     if (questions().length === 0) {
       setShowQuestion(false)
@@ -326,12 +329,16 @@ export function Session() {
         } else {
           const children = scroll.getChildren()
           const firstVisible = children.find((c) => c.y + c.height > top)
-          scrollDebug(`scrollTop AUTO-SHIFTED: ${lastScrollTop} -> ${top} (delta=${top - lastScrollTop}, scrollHeight=${scroll.scrollHeight}, prevScrollHeight=${lastScrollHeight}, maxScroll=${maxScroll}, viewportH=${scroll.height}, contentH=${scroll.content.height}, numChildren=${children.length}, firstVisibleChild=${firstVisible?.id ?? "none"} y=${firstVisible?.y ?? "?"} h=${firstVisible?.height ?? "?"})`)
+          scrollDebug(
+            `scrollTop AUTO-SHIFTED: ${lastScrollTop} -> ${top} (delta=${top - lastScrollTop}, scrollHeight=${scroll.scrollHeight}, prevScrollHeight=${lastScrollHeight}, maxScroll=${maxScroll}, viewportH=${scroll.height}, contentH=${scroll.content.height}, numChildren=${children.length}, firstVisibleChild=${firstVisible?.id ?? "none"} y=${firstVisible?.y ?? "?"} h=${firstVisible?.height ?? "?"})`,
+          )
         }
       }
       if (lastScrollHeight > 0 && scroll.scrollHeight !== lastScrollHeight) {
         const delta = scroll.scrollHeight - lastScrollHeight
-        scrollDebug(`scrollHeight: ${lastScrollHeight} -> ${scroll.scrollHeight} (delta=${delta}${delta < 0 ? " SHRANK" : ""})`)
+        scrollDebug(
+          `scrollHeight: ${lastScrollHeight} -> ${scroll.scrollHeight} (delta=${delta}${delta < 0 ? " SHRANK" : ""})`,
+        )
       }
       lastScrollHeight = scroll.scrollHeight
       lastScrollTop = top
@@ -1343,13 +1350,17 @@ export function Session() {
                 const origScrollBy = r.scrollBy.bind(r)
                 r.scrollTo = (...args: Parameters<typeof r.scrollTo>) => {
                   if (!autoScroll() && !userScrolled) {
-                    scrollDebug(`scrollTo(${JSON.stringify(args[0])}) called while autoScroll=off WITHOUT user input. stack:\n${new Error().stack}`)
+                    scrollDebug(
+                      `scrollTo(${JSON.stringify(args[0])}) called while autoScroll=off WITHOUT user input. stack:\n${new Error().stack}`,
+                    )
                   }
                   return origScrollTo(...args)
                 }
                 r.scrollBy = (...args: Parameters<typeof r.scrollBy>) => {
                   if (!autoScroll() && !userScrolled) {
-                    scrollDebug(`scrollBy(${JSON.stringify(args[0])}) called while autoScroll=off WITHOUT user input. stack:\n${new Error().stack}`)
+                    scrollDebug(
+                      `scrollBy(${JSON.stringify(args[0])}) called while autoScroll=off WITHOUT user input. stack:\n${new Error().stack}`,
+                    )
                   }
                   return origScrollBy(...args)
                 }
@@ -1485,27 +1496,35 @@ export function Session() {
                     setDeferredQuestions((prev) => prev.filter((q) => q.id !== id))
                     toBottom()
                     if (!pendingQuestions().some((q) => q.id === id)) {
-                      const formatted = qs.map((q, i) => {
-                        const ans = answers[i]?.join(", ") || "Unanswered"
-                        return `"${q.question}" = "${ans}"`
-                      }).join("\n")
+                      const formatted = qs
+                        .map((q, i) => {
+                          const ans = answers[i]?.join(", ") || "Unanswered"
+                          return `"${q.question}" = "${ans}"`
+                        })
+                        .join("\n")
                       const sid = session()?.parentID ?? session()?.id ?? route.sessionID
                       const selectedModel = local.model.current()
-                      sdk.client.session.prompt({
-                        sessionID: sid,
-                        messageID: Identifier.ascending("message"),
-                        agent: local.agent.current().name,
-                        model: selectedModel ? {
-                          providerID: selectedModel.providerID,
-                          modelID: selectedModel.modelID,
-                        } : undefined,
-                        variant: local.model.variant.current(),
-                        parts: [{
-                          id: Identifier.ascending("part"),
-                          type: "text",
-                          text: `Answering your earlier deferred question:\n${formatted}`,
-                        }],
-                      }).catch(() => {})
+                      sdk.client.session
+                        .prompt({
+                          sessionID: sid,
+                          messageID: Identifier.ascending("message"),
+                          agent: local.agent.current().name,
+                          model: selectedModel
+                            ? {
+                                providerID: selectedModel.providerID,
+                                modelID: selectedModel.modelID,
+                              }
+                            : undefined,
+                          variant: local.model.variant.current(),
+                          parts: [
+                            {
+                              id: Identifier.ascending("part"),
+                              type: "text",
+                              text: `Answering your earlier deferred question:\n${formatted}`,
+                            },
+                          ],
+                        })
+                        .catch(() => {})
                     }
                   }}
                   onDismissed={(id) => {
@@ -1779,10 +1798,32 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
+  const renderer = useRenderer()
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
 
   const final = createMemo(() => {
     return !!props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
+  })
+
+  // When a streaming message finalizes, the bordered snapshot box reflows on
+  // several axes at once (markdown leaves streaming mode, the ModelHeader gains
+  // an "interrupted"/duration segment, the box height changes). The incremental
+  // cell diff can leave stale border/fill cells, showing as garbled output until
+  // a full repaint (which opening any dialog happens to trigger). Force that
+  // repaint here on the streaming -> final edge: clear the on-screen buffer so
+  // the next frame re-emits every cell. Matches the util/editor.ts pattern.
+  // Only fires on the transition seen within this component's lifetime, so
+  // messages that load already-final (scrollback/resume) don't repaint on mount.
+  let wasStreaming = false
+  createEffect(() => {
+    if (!final()) {
+      wasStreaming = true
+      return
+    }
+    if (!wasStreaming) return
+    wasStreaming = false
+    renderer.currentRenderBuffer.clear()
+    renderer.requestRender()
   })
 
   const duration = createMemo(() => {
@@ -1948,7 +1989,14 @@ function TextPart(props: {
   messageLast: boolean
   messageFinal: boolean
   messageDuration: number
-  contextStats: { total: number; cached: number; cacheWritten: number; nextTurn: number; contextLimit: number; percentage: number }
+  contextStats: {
+    total: number
+    cached: number
+    cacheWritten: number
+    nextTurn: number
+    contextLimit: number
+    percentage: number
+  }
   sessionTotals: { input: number; output: number }
   sessionCost: number
   cacheExpiry: string | null

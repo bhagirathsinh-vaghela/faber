@@ -18,15 +18,17 @@ const MAX_PDF_PAGES = 20
 
 export const ReadTool = Tool.define("read", {
   description: DESCRIPTION,
-  parameters: z.object({
-    filePath: z.string().describe("The path to the file to read"),
-    offset: z.coerce.number().describe("The line number to start reading from (0-based)").optional(),
-    limit: z.coerce.number().describe("The number of lines to read (defaults to 2000)").optional(),
-    pages: z
-      .string()
-      .optional()
-      .describe('Page range for PDF files (e.g., "1-5", "3", "10-"). Maximum 20 pages per request.'),
-  }).strict(),
+  parameters: z
+    .object({
+      filePath: z.string().describe("The path to the file to read"),
+      offset: z.coerce.number().describe("The line number to start reading from (0-based)").optional(),
+      limit: z.coerce.number().describe("The number of lines to read (defaults to 2000)").optional(),
+      pages: z
+        .string()
+        .optional()
+        .describe('Page range for PDF files (e.g., "1-5", "3", "10-"). Maximum 20 pages per request.'),
+    })
+    .strict(),
   async execute(params, ctx) {
     let filepath = params.filePath
     if (!path.isAbsolute(filepath)) {

@@ -64,9 +64,11 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
     .join(", ")
   const hint = examples.length > 0 ? ` (e.g., ${examples}, ...)` : ""
 
-  const parameters = z.object({
-    name: z.string().describe(`The name of the skill from available_skills${hint}`),
-  }).strict()
+  const parameters = z
+    .object({
+      name: z.string().describe(`The name of the skill from available_skills${hint}`),
+    })
+    .strict()
 
   return {
     description,

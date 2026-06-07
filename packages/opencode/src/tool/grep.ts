@@ -13,40 +13,42 @@ const RIPGREP_TIMEOUT_MS = 20_000
 
 export const GrepTool = Tool.define("grep", {
   description: DESCRIPTION,
-  parameters: z.object({
-    pattern: z.string().describe("The regex pattern to search for in file contents"),
-    path: z.string().optional().describe("The directory to search in. Defaults to the current working directory."),
-    include: z.string().optional().describe('File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")'),
-    output_mode: z
-      .enum(["content", "files_with_matches", "count"])
-      .optional()
-      .describe(
-        'Output mode: "files_with_matches" (default) returns file paths, "content" returns matching lines, "count" returns match counts',
-      ),
-    before_context: z
-      .number()
-      .optional()
-      .describe("Number of lines to show before each match (only for output_mode content)"),
-    after_context: z
-      .number()
-      .optional()
-      .describe("Number of lines to show after each match (only for output_mode content)"),
-    context: z
-      .number()
-      .optional()
-      .describe("Number of context lines before and after each match (only for output_mode content)"),
-    case_insensitive: z.boolean().optional().describe("Enable case-insensitive matching"),
-    line_numbers: z.boolean().optional().describe("Show line numbers (only for output_mode content, default true)"),
-    type: z.string().optional().describe('File type filter using ripgrep type definitions (e.g. "js", "py", "rust")'),
-    head_limit: z
-      .number()
-      .optional()
-      .describe(
-        `Limit output to first N entries after offset. Defaults to ${DEFAULT_HEAD_LIMIT} when unspecified. Pass 0 for unlimited (use sparingly).`,
-      ),
-    offset: z.number().optional().describe("Skip first N entries before applying head_limit"),
-    multiline: z.boolean().optional().describe("Enable multiline matching mode"),
-  }).strict(),
+  parameters: z
+    .object({
+      pattern: z.string().describe("The regex pattern to search for in file contents"),
+      path: z.string().optional().describe("The directory to search in. Defaults to the current working directory."),
+      include: z.string().optional().describe('File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")'),
+      output_mode: z
+        .enum(["content", "files_with_matches", "count"])
+        .optional()
+        .describe(
+          'Output mode: "files_with_matches" (default) returns file paths, "content" returns matching lines, "count" returns match counts',
+        ),
+      before_context: z
+        .number()
+        .optional()
+        .describe("Number of lines to show before each match (only for output_mode content)"),
+      after_context: z
+        .number()
+        .optional()
+        .describe("Number of lines to show after each match (only for output_mode content)"),
+      context: z
+        .number()
+        .optional()
+        .describe("Number of context lines before and after each match (only for output_mode content)"),
+      case_insensitive: z.boolean().optional().describe("Enable case-insensitive matching"),
+      line_numbers: z.boolean().optional().describe("Show line numbers (only for output_mode content, default true)"),
+      type: z.string().optional().describe('File type filter using ripgrep type definitions (e.g. "js", "py", "rust")'),
+      head_limit: z
+        .number()
+        .optional()
+        .describe(
+          `Limit output to first N entries after offset. Defaults to ${DEFAULT_HEAD_LIMIT} when unspecified. Pass 0 for unlimited (use sparingly).`,
+        ),
+      offset: z.number().optional().describe("Skip first N entries before applying head_limit"),
+      multiline: z.boolean().optional().describe("Enable multiline matching mode"),
+    })
+    .strict(),
   async execute(params, ctx) {
     if (!params.pattern) {
       throw new Error("pattern is required")

@@ -5,9 +5,11 @@ import DESCRIPTION from "./question.txt"
 
 export const QuestionTool = Tool.define("question", {
   description: DESCRIPTION,
-  parameters: z.object({
-    questions: z.array(Question.Info.omit({ custom: true })).describe("Questions to ask"),
-  }).strict(),
+  parameters: z
+    .object({
+      questions: z.array(Question.Info.omit({ custom: true })).describe("Questions to ask"),
+    })
+    .strict(),
   async execute(params, ctx) {
     await ctx.ask({
       permission: "question",
@@ -26,7 +28,8 @@ export const QuestionTool = Tool.define("question", {
     if (allDeferred) {
       return {
         title: "Question deferred",
-        output: "The user deferred this question and will not answer right now. Continue without this answer. You may re-ask later if you still need it.",
+        output:
+          "The user deferred this question and will not answer right now. Continue without this answer. You may re-ask later if you still need it.",
         metadata: { answers, deferred: true },
       }
     }

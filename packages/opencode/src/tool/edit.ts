@@ -34,12 +34,14 @@ function findActualString(content: string, oldString: string): string | null {
 
 export const EditTool = Tool.define("edit", {
   description: DESCRIPTION,
-  parameters: z.object({
-    filePath: z.string().describe("The absolute path to the file to modify"),
-    oldString: z.string().describe("The text to replace"),
-    newString: z.string().describe("The text to replace it with (must be different from oldString)"),
-    replaceAll: z.boolean().optional().describe("Replace all occurrences of oldString (default false)"),
-  }).strict(),
+  parameters: z
+    .object({
+      filePath: z.string().describe("The absolute path to the file to modify"),
+      oldString: z.string().describe("The text to replace"),
+      newString: z.string().describe("The text to replace it with (must be different from oldString)"),
+      replaceAll: z.boolean().optional().describe("Replace all occurrences of oldString (default false)"),
+    })
+    .strict(),
   async execute(params, ctx) {
     if (!params.filePath) {
       throw new Error("filePath is required")
@@ -163,7 +165,12 @@ export const EditTool = Tool.define("edit", {
       },
     })
 
-    const patch = structuredPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew))
+    const patch = structuredPatch(
+      filePath,
+      filePath,
+      normalizeLineEndings(contentOld),
+      normalizeLineEndings(contentNew),
+    )
     const hunks = patch.hunks.map((h) => ({
       oldStart: h.oldStart,
       oldLines: h.oldLines,
