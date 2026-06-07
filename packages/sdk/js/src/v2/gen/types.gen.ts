@@ -919,6 +919,9 @@ export type Session = {
     time: number
     pending?: boolean
   }
+  cache?: {
+    lastRequestAt: number
+  }
   tokens?: {
     input: number
     cacheRead: number

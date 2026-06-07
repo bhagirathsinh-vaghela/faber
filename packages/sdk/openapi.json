@@ -3216,6 +3216,88 @@
         ]
       }
     },
+    "/session/{sessionID}/ping": {
+      "post": {
+        "operationId": "session.ping",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Cache probe ping",
+        "description": "Send a cache-warming ping with an optional probe marker at a specific message position.",
+        "responses": {
+          "200": {
+            "description": "Ping completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cacheProbeMessageID": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.ping({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/permissions/{permissionID}": {
       "post": {
         "operationId": "permission.respond",
@@ -3597,6 +3679,68 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.reject({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/question/{requestID}/defer": {
+      "post": {
+        "operationId": "question.defer",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "requestID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Defer question request",
+        "description": "Defer a question request. The user may answer later.",
+        "responses": {
+          "200": {
+            "description": "Question deferred successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.defer({\n  ...\n})"
           }
         ]
       }
@@ -7097,6 +7241,9 @@
               }
             },
             "required": ["input", "output"]
+          },
+          "sessionDollarCost": {
+            "type": "number"
           }
         },
         "required": [
@@ -7205,7 +7352,7 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["completed", "failed"]
+                "enum": ["completed", "failed", "cancelled"]
               },
               "agent": {
                 "type": "string"
@@ -8336,6 +8483,28 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.question.deferred": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.deferred"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "requestID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -8972,6 +9141,9 @@
           "version": {
             "type": "string"
           },
+          "branch": {
+            "type": "string"
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -9019,9 +9191,21 @@
               },
               "time": {
                 "type": "number"
+              },
+              "pending": {
+                "type": "boolean"
               }
             },
             "required": ["count", "time"]
+          },
+          "cache": {
+            "type": "object",
+            "properties": {
+              "lastRequestAt": {
+                "type": "number"
+              }
+            },
+            "required": ["lastRequestAt"]
           },
           "tokens": {
             "default": {
@@ -9067,6 +9251,10 @@
             },
             "required": ["input", "output"]
           },
+          "cost": {
+            "default": 0,
+            "type": "number"
+          },
           "cacheMarkers": {
             "type": "array",
             "items": {
@@ -9081,6 +9269,12 @@
           },
           "cacheProbeMessageID": {
             "type": "string"
+          },
+          "allowedTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": ["id", "slug", "projectID", "directory", "title", "version", "time"]
@@ -9425,6 +9619,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.question.rejected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.deferred"
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"
@@ -9876,7 +10073,7 @@
           },
           "input_visual_line_home": {
             "description": "Move to start of visual line in input",
-            "default": "alt+a",
+            "default": "none",
             "type": "string"
           },
           "input_visual_line_end": {
@@ -10009,6 +10206,26 @@
             "default": "<leader>up",
             "type": "string"
           },
+          "session_child_cancel": {
+            "description": "Cancel running subtask",
+            "default": "<leader>x",
+            "type": "string"
+          },
+          "task_list": {
+            "description": "Show subtask list",
+            "default": "alt+a",
+            "type": "string"
+          },
+          "question_list": {
+            "description": "Show pending questions",
+            "default": "<leader>?",
+            "type": "string"
+          },
+          "question_dismiss": {
+            "description": "Dismiss pending question permanently",
+            "default": "none",
+            "type": "string"
+          },
           "terminal_suspend": {
             "description": "Suspend terminal",
             "default": "ctrl+z",
@@ -10047,6 +10264,11 @@
           "paste_mode_toggle": {
             "description": "Toggle paste mode between summary and inline",
             "default": "alt+p",
+            "type": "string"
+          },
+          "auto_scroll_lock_toggle": {
+            "description": "Toggle auto-scroll lock to prevent scroll resuming",
+            "default": "none",
             "type": "string"
           },
           "header_toggle": {
@@ -10546,6 +10768,13 @@
             "description": "Enable or disable the MCP server on startup",
             "type": "boolean"
           },
+          "deny": {
+            "description": "Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "timeout": {
             "description": "Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.",
             "type": "integer",
@@ -10589,6 +10818,13 @@
           "enabled": {
             "description": "Enable or disable the MCP server on startup",
             "type": "boolean"
+          },
+          "deny": {
+            "description": "Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "headers": {
             "description": "Headers to send with the request",
@@ -10685,6 +10921,12 @@
                 "description": "Show the session header bar at the top of the TUI",
                 "default": false,
                 "type": "boolean"
+              },
+              "question_timeout": {
+                "description": "Seconds before a pending question auto-defers (default: 120, 0 disables)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             }
           },
@@ -10846,6 +11088,19 @@
             },
             "additionalProperties": {
               "$ref": "#/components/schemas/AgentConfig"
+            }
+          },
+          "subagent_toolsets": {
+            "description": "Named tool presets a subtask may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "provider": {
@@ -11050,6 +11305,15 @@
               }
             }
           },
+          "ping": {
+            "type": "object",
+            "properties": {
+              "before_expiry": {
+                "description": "Send a cache ping this many seconds before the cache expires (default: 10)",
+                "type": "number"
+              }
+            }
+          },
           "background": {
             "type": "object",
             "properties": {
@@ -11092,6 +11356,61 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "maxTokens": {
+                      "description": "max_tokens sent on the wire; overrides models.dev and built-in ladder",
+                      "type": "number"
+                    },
+                    "temperature": {
+                      "description": "Temperature to send; null means don't send; undefined falls back to built-in logic",
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
+                      "description": "Reasoning effort passed via adaptive variant (e.g., 'high', 'xhigh')",
+                      "type": "string"
+                    },
+                    "capabilities": {
+                      "description": "Model capability overrides (supersede models.dev)",
+                      "type": "object",
+                      "properties": {
+                        "reasoning": {
+                          "type": "boolean"
+                        },
+                        "temperature": {
+                          "type": "boolean"
+                        },
+                        "attachment": {
+                          "type": "boolean"
+                        },
+                        "toolCall": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "cost": {
+                      "description": "Per-million-token cost overrides",
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "cacheRead": {
+                          "type": "number"
+                        },
+                        "cacheWrite": {
+                          "type": "number"
+                        }
+                      }
                     }
                   }
                 }
@@ -11128,6 +11447,16 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              },
+              "mcp_oauth_port": {
+                "description": "Override the local port for the MCP OAuth callback server. Defaults to 19876.",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "mcp_oauth_path": {
+                "description": "Override the path for the MCP OAuth callback endpoint. Defaults to \"/mcp/oauth/callback\".",
+                "type": "string"
               }
             }
           }
@@ -11628,7 +11957,7 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["completed", "failed"]
+                "enum": ["completed", "failed", "cancelled"]
               },
               "agent": {
                 "type": "string"

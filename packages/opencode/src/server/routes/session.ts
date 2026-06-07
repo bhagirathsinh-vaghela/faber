@@ -119,6 +119,11 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         log.info("SEARCH", { url: c.req.url })
         const session = await Session.get(sessionID)
+        // Re-arm the cache ping daemon on attach/resume. Idempotent (no-op if
+        // already running) and self-stops if the cache window is dead, so a
+        // resumed session within a live window keeps getting pinged even though
+        // no new prompt has been sent this process.
+        if (!session.parentID) SessionPing.start(sessionID)
         return c.json(session)
       },
     )

@@ -22,9 +22,7 @@ const STAR_SEQ = ["·", "✧", "✦", "✶", "✹", "✺", "✹", "✶", "✦", 
 export function createStarWaveFrames(count: number, spacing = 2, separator = "") {
   const offsets = Array.from({ length: count }, (_, i) => i * spacing)
   const len = STAR_SEQ.length
-  return Array.from({ length: len }, (_, i) =>
-    offsets.map((o) => STAR_SEQ[(i + o) % len]).join(separator),
-  )
+  return Array.from({ length: len }, (_, i) => offsets.map((o) => STAR_SEQ[(i + o) % len]).join(separator))
 }
 
 const PING_PULSE_FRAMES = createStarWaveFrames(3, 3, " ")
@@ -72,7 +70,14 @@ export type StatuslineContentProps = {
   compact?: boolean
   cacheRanges?: Array<{ start: number; end: number }> | null
   showCacheMarkers?: boolean
-  contextStats: { total: number; cached: number; cacheWritten: number; nextTurn: number; contextLimit: number; percentage: number } | null
+  contextStats: {
+    total: number
+    cached: number
+    cacheWritten: number
+    nextTurn: number
+    contextLimit: number
+    percentage: number
+  } | null
   cacheExpiry: string | null
   cacheExpiryAbsolute: string | null
   pingCount: number
@@ -207,9 +212,14 @@ export function StatuslineContent(props: StatuslineContentProps) {
                   <text>
                     <span style={{ fg: c(theme.warning) }}>{"\u25f7"}</span>{" "}
                   </text>
-                  <Show when={props.pingPending && !props.cacheExpiry} fallback={
-                    <text><span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span></text>
-                  }>
+                  <Show
+                    when={props.pingPending && !props.cacheExpiry}
+                    fallback={
+                      <text>
+                        <span style={{ fg: c(theme.warning), bold: b() }}>{props.cacheExpiry ?? "--"}</span>
+                      </text>
+                    }
+                  >
                     <spinner frames={PING_PULSE_FRAMES} interval={150} color={c(theme.warning)} />
                   </Show>
                   <Show when={cacheHover()}>
@@ -217,12 +227,17 @@ export function StatuslineContent(props: StatuslineContentProps) {
                       <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
                         <text>
                           <span style={{ fg: c(theme.warning) }}>{"\u25f7"}</span>{" "}
-                          {props.cacheExpiryAbsolute
-                            ? <><span style={{ fg: c(MODEL_COLOR) }}>expires </span><span style={{ fg: c(theme.text), bold: b() }}>{props.cacheExpiryAbsolute}</span></>
-                            : <span style={{ fg: c(theme.text), bold: b() }}>--</span>}
-                          {props.pingCount > 0
-                            ? <span style={{ fg: c(theme.warning), bold: b() }}> ({props.pingCount}x pinged)</span>
-                            : null}
+                          {props.cacheExpiryAbsolute ? (
+                            <>
+                              <span style={{ fg: c(MODEL_COLOR) }}>expires </span>
+                              <span style={{ fg: c(theme.text), bold: b() }}>{props.cacheExpiryAbsolute}</span>
+                            </>
+                          ) : (
+                            <span style={{ fg: c(theme.text), bold: b() }}>--</span>
+                          )}
+                          {props.pingCount > 0 ? (
+                            <span style={{ fg: c(theme.warning), bold: b() }}> ({props.pingCount}x pinged)</span>
+                          ) : null}
                         </text>
                       </box>
                     </box>
@@ -310,11 +325,10 @@ export function Statusline(props: StatuslineProps) {
     return sync.data.provider.find((x) => x.id === last.providerID)?.models[last.modelID]
   })
 
-  const cacheBase = createMemo(() => {
-    const last = messages().findLast((x) => x.role === "assistant")
-    if (!last?.time.completed) return null
-    return Math.max(last.time.completed, session()?.ping?.time ?? 0)
-  })
+  // Cache TTL is anchored to the last request's dispatch time (organic turn or
+  // ping), stamped server-side. No fallback: until the first request of this
+  // session stamps it, the countdown simply shows nothing.
+  const cacheBase = createMemo(() => session()?.cache?.lastRequestAt ?? null)
 
   const [now, setNow] = createSignal(Date.now())
   const timer = setInterval(() => setNow(Date.now()), 1000)

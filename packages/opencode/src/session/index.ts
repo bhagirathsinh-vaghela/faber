@@ -95,6 +95,11 @@ export namespace Session {
           pending: z.boolean().optional(),
         })
         .optional(),
+      cache: z
+        .object({
+          lastRequestAt: z.number(),
+        })
+        .optional(),
       tokens: z
         .object({
           input: z.number(),

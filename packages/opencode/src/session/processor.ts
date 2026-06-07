@@ -18,11 +18,29 @@ import { Question } from "@/question"
 
 // Anthropic model cost rates ($/million tokens)
 // https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table
-const ANTHROPIC_COST_TIERS: Array<{ match: (id: string) => boolean; input: number; output: number; cacheRead: number; cacheWrite: number }> = [
-  { match: (id) => id.includes("opus-4-0") || id.includes("opus-4-1"), input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+const ANTHROPIC_COST_TIERS: Array<{
+  match: (id: string) => boolean
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}> = [
+  {
+    match: (id) => id.includes("opus-4-0") || id.includes("opus-4-1"),
+    input: 15,
+    output: 75,
+    cacheRead: 1.5,
+    cacheWrite: 18.75,
+  },
   { match: (id) => id.includes("opus"), input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   { match: (id) => id.includes("sonnet"), input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  { match: (id) => id.includes("haiku-4-5") || id.includes("haiku-4.5"), input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+  {
+    match: (id) => id.includes("haiku-4-5") || id.includes("haiku-4.5"),
+    input: 1,
+    output: 5,
+    cacheRead: 0.1,
+    cacheWrite: 1.25,
+  },
   { match: (id) => id.includes("haiku"), input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 },
 ]
 
@@ -78,10 +96,14 @@ export namespace SessionProcessor {
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const { stream, cacheMarkers, systemBlockCount } = await LLM.stream(streamInput)
 
-            // Store cache markers and system block count on session for TUI display
+            // Store cache markers and system block count on session for TUI display.
+            // Anchor the cache TTL to request dispatch time (parent sessions only) —
+            // every request that reaches Anthropic restarts the 5m cache window.
+            const dispatchedAt = Date.now()
             await Session.update(input.sessionID, (draft) => {
               draft.cacheMarkers = cacheMarkers
               draft.systemBlockCount = systemBlockCount
+              if (!draft.parentID) draft.cache = { lastRequestAt: dispatchedAt }
             })
 
             for await (const value of stream.fullStream) {
