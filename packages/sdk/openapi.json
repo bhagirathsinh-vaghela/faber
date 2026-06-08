@@ -7230,7 +7230,7 @@
           "variant": {
             "type": "string"
           },
-          "sessionCost": {
+          "sessionTotal": {
             "type": "object",
             "properties": {
               "input": {
@@ -7238,12 +7238,15 @@
               },
               "output": {
                 "type": "number"
+              },
+              "cacheWrite": {
+                "type": "number"
+              },
+              "cost": {
+                "type": "number"
               }
             },
-            "required": ["input", "output"]
-          },
-          "sessionDollarCost": {
-            "type": "number"
+            "required": ["input", "output", "cacheWrite", "cost"]
           }
         },
         "required": [
@@ -9238,7 +9241,8 @@
           "total": {
             "default": {
               "input": 0,
-              "output": 0
+              "output": 0,
+              "cacheWrite": 0
             },
             "type": "object",
             "properties": {
@@ -9247,9 +9251,12 @@
               },
               "output": {
                 "type": "number"
+              },
+              "cacheWrite": {
+                "type": "number"
               }
             },
-            "required": ["input", "output"]
+            "required": ["input", "output", "cacheWrite"]
           },
           "cost": {
             "default": 0,

@@ -113,8 +113,9 @@ export namespace Session {
         .object({
           input: z.number(),
           output: z.number(),
+          cacheWrite: z.number(),
         })
-        .default({ input: 0, output: 0 }),
+        .default({ input: 0, output: 0, cacheWrite: 0 }),
       cost: z.number().default(0),
       cacheMarkers: z.array(z.number()).optional(),
       systemBlockCount: z.number().optional(),
@@ -261,7 +262,7 @@ export namespace Session {
         updated: Date.now(),
       },
       tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
-      total: { input: 0, output: 0 },
+      total: { input: 0, output: 0, cacheWrite: 0 },
       cost: 0,
     }
     log.info("created", result)

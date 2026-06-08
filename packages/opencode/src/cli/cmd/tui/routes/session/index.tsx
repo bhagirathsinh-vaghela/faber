@@ -1851,11 +1851,11 @@ function AssistantMessage(props: { message: AssistantWithVariant; parts: Part[];
   })
 
   const sessionTotals = createMemo(() => {
-    return props.message.sessionCost ?? { input: 0, output: 0 }
+    return props.message.sessionTotal ?? { input: 0, output: 0 }
   })
 
   const messageCost = createMemo(() => {
-    return props.message.sessionDollarCost ?? 0
+    return props.message.sessionTotal?.cost ?? 0
   })
 
   // Cache expiry - 5 minutes from message completion
@@ -1997,7 +1997,7 @@ function TextPart(props: {
     contextLimit: number
     percentage: number
   }
-  sessionTotals: { input: number; output: number }
+  sessionTotals: { input: number; output: number; cacheWrite?: number }
   sessionCost: number
   cacheExpiry: string | null
 }) {

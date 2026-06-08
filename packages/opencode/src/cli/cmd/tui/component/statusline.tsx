@@ -4,7 +4,7 @@
 //   ModelHeader     — "header":   agent · model · provider · variant [· duration] [· interrupted] [· directory]
 //   StatuslineContent — renders the lines below, controlled by bold + compact props:
 //     "markers"     — ▣ Cache: #0-19                   (input only, toggle via cache_markers_toggle keybind)
-//     "context"     — ◷ HH:MM:SS │ ▣ [bar] N/M │ ◈ cached · ★ write · ⚠ next │ Σ ↑in ↓out
+//     "context"     — ◷ HH:MM:SS │ ▣ [bar] N/M │ ◈ cached · ★ write · ⚠ next │ Σ ↑in ↓out · ⊕total cache write · $cost
 //
 // Input area: ModelHeader(bold=true, directory with branch) + Statusline wrapper (bold=true, full layout)
 // Snapshot:   ModelHeader(bold=false, +duration, directory without branch) + StatuslineContent(bold=false, compact=true)
@@ -31,7 +31,7 @@ export const MODEL_COLOR = RGBA.fromHex("#E83CF5")
 
 export const UTILIZATION_GREEN = RGBA.fromHex("#22DD22")
 
-const NEXT_TURN_ORANGE = RGBA.fromHex("#E8913C")
+const NEXT_TURN_ORANGE = RGBA.fromHex("#DB6A2E")
 
 export function utilizationColor(percent: number) {
   if (percent < 75) return UTILIZATION_GREEN
@@ -82,7 +82,7 @@ export type StatuslineContentProps = {
   cacheExpiryAbsolute: string | null
   pingCount: number
   pingPending: boolean
-  sessionTotals: { input: number; output: number }
+  sessionTotals: { input: number; output: number; cacheWrite?: number }
   sessionCost: number
   streamIndicator?: string | null
 }
@@ -286,6 +286,10 @@ export function StatuslineContent(props: StatuslineContentProps) {
                 <span style={{ fg: m() }}> · </span>
                 <span style={{ fg: c(theme.warning), bold: b() }}>↓{formatTokens(props.sessionTotals.output)}</span>
                 <span style={{ fg: m() }}> · </span>
+                <span style={{ fg: c(NEXT_TURN_ORANGE), bold: b() }}>
+                  {"\u2295 " + formatTokens(props.sessionTotals.cacheWrite ?? 0)}
+                </span>
+                <span style={{ fg: m() }}> · </span>
                 <span style={{ fg: c(UTILIZATION_GREEN), bold: b() }}>{formatCost(props.sessionCost)}</span>
               </text>
             </box>
@@ -375,7 +379,7 @@ export function Statusline(props: StatuslineProps) {
   })
 
   const sessionTotals = createMemo(() => {
-    return session()?.total ?? { input: 0, output: 0 }
+    return session()?.total ?? { input: 0, output: 0, cacheWrite: 0 }
   })
 
   const sessionCost = createMemo(() => {

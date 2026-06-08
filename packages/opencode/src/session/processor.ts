@@ -309,12 +309,14 @@ export namespace SessionProcessor {
                     draft.tokens.reasoning = usage.tokens.reasoning
                     draft.total.input += weightedInput
                     draft.total.output += weightedOutput
+                    draft.total.cacheWrite += usage.tokens.cache.write
                     draft.cost += stepCost
                   })
                   if (updated.parentID) {
                     await Session.update(updated.parentID, (draft) => {
                       draft.total.input += weightedInput
                       draft.total.output += weightedOutput
+                      draft.total.cacheWrite += usage.tokens.cache.write
                       draft.cost += stepCost
                     })
                   }
@@ -471,8 +473,7 @@ export namespace SessionProcessor {
           }
           input.assistantMessage.time.completed = Date.now()
           const completed = await Session.get(input.sessionID)
-          input.assistantMessage.sessionCost = completed.total
-          input.assistantMessage.sessionDollarCost = completed.cost
+          input.assistantMessage.sessionTotal = { ...completed.total, cost: completed.cost }
           await Session.updateMessage(input.assistantMessage)
           if (needsCompaction) return "compact"
           if (blocked) return "stop"

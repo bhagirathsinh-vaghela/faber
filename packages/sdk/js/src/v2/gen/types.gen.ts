@@ -203,11 +203,12 @@ export type AssistantMessage = {
   }
   finish?: string
   variant?: string
-  sessionCost?: {
+  sessionTotal?: {
     input: number
     output: number
+    cacheWrite: number
+    cost: number
   }
-  sessionDollarCost?: number
 }
 
 export type Message = UserMessage | AssistantMessage
@@ -932,6 +933,7 @@ export type Session = {
   total?: {
     input: number
     output: number
+    cacheWrite: number
   }
   cost?: number
   cacheMarkers?: Array<number>
