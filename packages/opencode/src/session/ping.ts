@@ -20,6 +20,18 @@ const DEFAULT_BEFORE_EXPIRY = 10
 // Coarse on purpose: when a window IS live the loop sleeps the exact time to
 // the ping instead, so this never affects ping timing.
 const IDLE_TICK = 10 * 1000
+// Hard deadline for a single ping's stream. Healthy pings observed at 1.7-39s
+// against a 5m TTL, so 60s bounds a stalled body without ever clipping a live
+// one. Applies to the daemon's ping path ONLY — organic user turns are
+// unbounded (the user owns that request). A stall past this is what stranded
+// the daemon for 16m before this guard existed.
+const PING_TIMEOUT = 60 * 1000
+// Consecutive ping misses tolerated before the daemon stands down. A miss is a
+// ping whose stream never emitted "start" (request never reached the server).
+// Seeing "start" means the cache was read server-side, so the ping succeeded
+// for warming purposes even if the body later errors or stalls. Any success
+// resets this to 0; any organic turn re-arms from scratch.
+const MAX_MISSES = 2
 
 export async function beforeExpiry() {
   const cfg = await Config.get()
@@ -31,9 +43,16 @@ export namespace SessionPing {
   const log = Log.create({ service: "session.ping" })
 
   const active = new Map<string, { abort: AbortController; id: number }>()
+  // Consecutive misses per session (in-memory: a process restart re-arms fresh,
+  // which is itself a clean retry, consistent with "anything new resets").
+  const misses = new Map<string, number>()
   let loopId = 0
 
   export function start(sessionID: string) {
+    // Re-arm: every call (including from an organic turn via prompt.ts) clears
+    // the miss counter, even when a loop is already running. This is the "you
+    // came back" reset, so it must run before the idempotency check below.
+    misses.delete(sessionID)
     if (active.has(sessionID)) return
     const abort = new AbortController()
     const id = ++loopId
@@ -90,6 +109,11 @@ export namespace SessionPing {
     if (!session) return { type: "idle" }
     // Subtasks/child sessions never ping; if one somehow started, stop it.
     if (session.parentID) return { type: "stop" }
+    // Stand down after too many consecutive misses (persistent network failure):
+    // stay alive so an organic turn can re-arm via start(), but stop burning
+    // cache-write cost on pings that keep failing. The user accepts a cold cache
+    // on return in this case. start() clears misses, lifting the stand-down.
+    if ((misses.get(sessionID) ?? 0) >= MAX_MISSES) return { type: "idle" }
     const base = session.cache?.lastRequestAt
     if (!base) return { type: "idle" } // no request dispatched yet this session
     const now = Date.now()
@@ -164,31 +188,51 @@ export namespace SessionPing {
       draft.cache = { lastRequestAt: dispatchedAt }
     })
 
-    const { stream } = await LLM.stream({
-      user: lastUser,
-      agent,
-      abort: signal,
-      sessionID,
-      system: {
-        env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
-        globalInstructions: instructions.global,
-        projectInstructions: instructions.project,
-      },
-      messages: allMessages,
-      sessionMessages,
-      messageIdToIndex: idToIndex,
-      tools,
-      model,
-      cacheProbeMessageID: options?.cacheProbeMessageID,
-    })
+    // Bound the ping with its own controller: abort on EITHER the daemon signal
+    // (explicit stop / new prompt) OR a PING_TIMEOUT deadline. The deadline is
+    // contained here so a stalled body aborts the ping WITHOUT killing the loop;
+    // only a daemon-signal abort propagates out to break run().
+    const pingAbort = new AbortController()
+    const onParentAbort = () => pingAbort.abort()
+    signal.addEventListener("abort", onParentAbort, { once: true })
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      pingAbort.abort()
+    }, PING_TIMEOUT)
 
-    // Consume stream until finish-step to get usage metadata, then stop.
-    // The finally clears `pending` on every exit path (abort, throw, or a
-    // stream that ends without finish-step) so the TUI spinner can never be
-    // orphaned in the "in flight" state.
+    // "start" means the server accepted the request and began responding, i.e.
+    // the cache prefix was read server-side. That alone makes the ping a success
+    // for warming purposes — a later mid-stream error or a stalled body does not
+    // un-warm the cache. So success is classified on `started`, independent of
+    // whether we reach finish-step (usage metadata still requires finish-step,
+    // so token/cost accounting stays gated on it).
+    let started = false
     try {
+      // LLM.stream itself can throw before returning (auth/provider/plugin
+      // setup), so it lives inside the try — otherwise a setup failure would
+      // skip cleanup and classification entirely.
+      const { stream } = await LLM.stream({
+        user: lastUser,
+        agent,
+        abort: pingAbort.signal,
+        sessionID,
+        system: {
+          env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
+          globalInstructions: instructions.global,
+          projectInstructions: instructions.project,
+        },
+        messages: allMessages,
+        sessionMessages,
+        messageIdToIndex: idToIndex,
+        tools,
+        model,
+        cacheProbeMessageID: options?.cacheProbeMessageID,
+      })
+
       for await (const value of stream.fullStream) {
-        if (signal.aborted) break
+        if (pingAbort.signal.aborted) break
+        if (value.type === "start") started = true
         if (value.type === "finish-step") {
           const usage = Session.getUsage({
             model,
@@ -207,28 +251,52 @@ export namespace SessionPing {
             draft.total.input += weightedInput
             draft.total.output += weightedOutput
             draft.cost += stepCost
-            // count/time are ping telemetry; time records the dispatch moment,
-            // not stream completion. The cache anchor was already stamped at
-            // dispatch above.
-            draft.ping = {
-              count: (draft.ping?.count ?? 0) + 1,
-              time: dispatchedAt,
-            }
           })
           log.info("ping complete", {
             sessionID,
-            count: (session.ping?.count ?? 0) + 1,
             cacheRead: usage.tokens.cache.read,
             cost: stepCost,
           })
           break
         }
       }
+    } catch (e: any) {
+      // A daemon-signal abort (superseding prompt / explicit stop) is not a ping
+      // outcome — the prompt path owns the next state and is about to reset it,
+      // so classify NOTHING and rethrow so run() breaks. Everything else (our
+      // own PING_TIMEOUT, or a genuine stream/setup error) is a real ping
+      // outcome: classify by `started`, then swallow a timeout (loop recovers)
+      // or rethrow a genuine error (so probe() is not fooled into success).
+      if (signal.aborted) throw e
+      await classify(sessionID, started ? dispatchedAt : undefined)
+      if (!timedOut) throw e
+      return
     } finally {
+      clearTimeout(timer)
+      signal.removeEventListener("abort", onParentAbort)
       await Session.update(sessionID, (draft) => {
         if (draft.ping?.pending) draft.ping = { ...draft.ping, pending: false }
       })
     }
+
+    await classify(sessionID, started ? dispatchedAt : undefined)
+  }
+
+  // Seeing "start" => cache warmed => success: reset the miss counter and
+  // advance telemetry count. Never seeing "start" => the request never reached
+  // the server => miss: increment toward stand-down. The dispatch-time anchor is
+  // kept in BOTH cases — the daemon stays armed so the next scheduled ping
+  // rewarms; a single miss costs one rewrite, not a permanently cold cache.
+  async function classify(sessionID: string, dispatchedAt?: number) {
+    if (dispatchedAt !== undefined) {
+      misses.delete(sessionID)
+      await Session.update(sessionID, (draft) => {
+        draft.ping = { count: (draft.ping?.count ?? 0) + 1, time: dispatchedAt }
+      })
+      return
+    }
+    misses.set(sessionID, (misses.get(sessionID) ?? 0) + 1)
+    log.info("ping miss", { sessionID, consecutive: misses.get(sessionID) })
   }
 
   function sleep(ms: number, signal: AbortSignal) {
