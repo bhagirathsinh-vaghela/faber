@@ -1232,6 +1232,10 @@ export namespace Config {
         .optional(),
       ping: z
         .object({
+          enabled: z
+            .boolean()
+            .optional()
+            .describe("Enable the cache ping daemon (default: false)"),
           before_expiry: z
             .number()
             .optional()

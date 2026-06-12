@@ -2064,6 +2064,10 @@ export type Config = {
   }
   ping?: {
     /**
+     * Enable the cache ping daemon (default: false)
+     */
+    enabled?: boolean
+    /**
      * Send a cache ping this many seconds before the cache expires (default: 10)
      */
     before_expiry?: number

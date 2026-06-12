@@ -54,10 +54,20 @@ export namespace SessionPing {
     // came back" reset, so it must run before the idempotency check below.
     misses.delete(sessionID)
     if (active.has(sessionID)) return
-    const abort = new AbortController()
-    const id = ++loopId
-    active.set(sessionID, { abort, id })
-    run(sessionID, abort.signal, id)
+    // The daemon is opt-in. Read config off the synchronous call path so the two
+    // sync callers (prompt.ts, session.ts) stay unchanged. When disabled, no loop
+    // is armed: organic turns still re-anchor the cache TTL and the statusline
+    // countdown still ticks (sliding to "--" on expiry), but no automatic ping
+    // fires. probe() is unaffected — explicit cache-safe revert still pings.
+    Config.get().then((cfg) => {
+      if (!cfg.ping?.enabled) return
+      // Re-check after the await: an organic turn may have armed a loop already.
+      if (active.has(sessionID)) return
+      const abort = new AbortController()
+      const id = ++loopId
+      active.set(sessionID, { abort, id })
+      run(sessionID, abort.signal, id)
+    })
   }
 
   export function stop(sessionID: string) {
