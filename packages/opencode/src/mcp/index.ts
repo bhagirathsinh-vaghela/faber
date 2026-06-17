@@ -644,7 +644,19 @@ export namespace MCP {
           continue
         }
         const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
-        const sanitizedToolName = mcpTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
+        // Many MCP servers self-namespace their tools with the server name
+        // (datadog -> "datadog_aggregate_logs", notion -> "notion-search").
+        // When the config key matches that self-prefix, composing
+        // clientName + "_" + toolName double-prefixes
+        // ("datadog_datadog_aggregate_logs"). Strip a leading copy of the
+        // client name plus its "_"/"-" separator. The separator check keeps a
+        // short key (e.g. "note") from mangling an unrelated tool
+        // ("notebook_create").
+        const deduped =
+          mcpTool.name.startsWith(clientName + "_") || mcpTool.name.startsWith(clientName + "-")
+            ? mcpTool.name.slice(clientName.length + 1)
+            : mcpTool.name
+        const sanitizedToolName = deduped.replace(/[^a-zA-Z0-9_-]/g, "_")
         result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(mcpTool, client, timeout)
       }
     }
