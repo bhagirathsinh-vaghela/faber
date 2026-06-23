@@ -18,6 +18,7 @@ import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 import { PromptInput } from "@/components/prompt-input"
+import { Statusline } from "@/components/statusline"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
@@ -2160,6 +2161,7 @@ export default function Page() {
                   onSubmit={resumeScroll}
                 />
               </Show>
+              <Statusline />
             </div>
           </div>
 
