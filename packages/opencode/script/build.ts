@@ -25,6 +25,10 @@ await Bun.write(
 )
 console.log("Generated models-snapshot.ts")
 
+// Build packages/app and pack its dist/ into an embedded blob so the binary
+// serves its own web UI (no dependency on app.opencode.ai).
+await import("./pack-web.ts")
+
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
