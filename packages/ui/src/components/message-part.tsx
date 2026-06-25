@@ -95,6 +95,7 @@ export interface MessageProps {
   // When set, renders the message inside a TUI-style bordered, agent-tinted
   // box with a "◈ ROLE" header.
   boxed?: boolean
+  defaultOpen?: boolean
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -310,7 +311,11 @@ export function Message(props: MessageProps) {
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
         {(assistantMessage) => (
-          <AssistantMessageDisplay message={assistantMessage() as AssistantMessage} parts={props.parts} />
+          <AssistantMessageDisplay
+            message={assistantMessage() as AssistantMessage}
+            parts={props.parts}
+            defaultOpen={props.defaultOpen}
+          />
         )}
       </Match>
     </Switch>
@@ -320,8 +325,10 @@ export function Message(props: MessageProps) {
 // TUI-style message box: rounded border + agent-tinted background + a
 // "◈ USER" / "◈ ASSISTANT" header. User boxes use the agent color;
 // assistant boxes use the success/green accent (mirrors the TUI).
-export function MessageBox(props: { message: MessageType; children: JSX.Element }) {
+export function MessageBox(props: { message: MessageType; numberKey?: string; children: JSX.Element }) {
+  const data = useData()
   const isUser = props.message.role === "user"
+  const number = createMemo(() => data.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id))
   const accent = isUser
     ? messageAgentColor((props.message as any).agent)
     : "var(--color-text-success, #22DD22)"
@@ -351,6 +358,9 @@ export function MessageBox(props: { message: MessageType; children: JSX.Element 
         }}
       >
         <span>{"\u25c8"}</span>
+        <Show when={number() !== undefined}>
+          <span style={{ color: "var(--color-text-weak)" }}>{"#" + number()}</span>
+        </Show>
         <span>{isUser ? "USER" : "ASSISTANT"}</span>
         <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
           {messageTime(props.message.time.created)}
@@ -361,7 +371,19 @@ export function MessageBox(props: { message: MessageType; children: JSX.Element 
   )
 }
 
-export function AssistantMessageDisplay(props: { message: AssistantMessage; parts: PartType[] }) {
+function BlockNumber(props: { sessionID: string; id: string }) {
+  const data = useData()
+  const number = createMemo(() => data.blockNumber(props.sessionID, props.id))
+  return (
+    <Show when={number() !== undefined}>
+      <span data-slot="block-number" style={{ color: "var(--color-text-weak)", "font-size": "11px", "font-weight": "600" }}>
+        {"#" + number()}
+      </span>
+    </Show>
+  )
+}
+
+export function AssistantMessageDisplay(props: { message: AssistantMessage; parts: PartType[]; defaultOpen?: boolean }) {
   const emptyParts: PartType[] = []
   const filteredParts = createMemo(
     () =>
@@ -371,7 +393,11 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
     emptyParts,
     { equals: same },
   )
-  return <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
+  return (
+    <For each={filteredParts()}>
+      {(part) => <Part part={part} message={props.message} defaultOpen={props.defaultOpen} />}
+    </For>
+  )
 }
 
 export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
@@ -677,6 +703,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
   return (
     <div data-component="tool-part-wrapper" data-permission={showPermission()} data-question={showQuestion()}>
+      <BlockNumber sessionID={props.message.sessionID} id={part.id} />
       <Switch>
         <Match when={part.state.status === "error" && part.state.error}>
           {(error) => {
@@ -757,6 +784,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   return (
     <Show when={throttledText()}>
       <div data-component="text-part">
+        <BlockNumber sessionID={props.message.sessionID} id={part.id} />
         <div data-slot="text-part-body">
           <Markdown text={throttledText()} cacheKey={part.id} />
           <div data-slot="text-part-copy-wrapper">

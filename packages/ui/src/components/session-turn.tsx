@@ -122,7 +122,7 @@ function AssistantMessageItem(props: {
     return parts.filter((part) => part?.id !== responsePartId)
   })
 
-  return <Message message={props.message} parts={filteredParts()} />
+  return <Message message={props.message} parts={filteredParts()} defaultOpen />
 }
 
 export function SessionTurn(
@@ -744,7 +744,7 @@ export function SessionTurn(
                               }
                             >
                               {(assistant) => (
-                                <MessageBox message={assistant()}>
+                                <MessageBox message={assistant()} numberKey={responsePartId()}>
                                   <Markdown
                                     data-slot="session-turn-markdown"
                                     data-diffs={hasDiffs()}

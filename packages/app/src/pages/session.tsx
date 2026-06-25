@@ -627,7 +627,7 @@ export default function Page() {
   createEffect(() => {
     const id = lastUserMessage()?.id
     if (!id) return
-    setStore("expanded", id, status().type !== "idle")
+    if (status().type !== "idle") setStore("expanded", id, true)
   })
 
   const selectionPreview = (path: string, selection: FileSelection) => {
@@ -2041,7 +2041,7 @@ export default function Page() {
                                     sessionID={params.id!}
                                     messageID={message.id}
                                     lastUserMessageID={lastUserMessage()?.id}
-                                    stepsExpanded={store.expanded[message.id] ?? false}
+                                    stepsExpanded={store.expanded[message.id] ?? true}
                                     onStepsExpandedToggle={() =>
                                       setStore("expanded", message.id, (open: boolean | undefined) => !open)
                                     }

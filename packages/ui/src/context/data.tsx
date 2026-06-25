@@ -9,6 +9,7 @@ import type {
   QuestionAnswer,
 } from "@opencode-ai/sdk/v2"
 import { createSimpleContext } from "./helper"
+import { createMemo } from "solid-js"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 
 type Data = {
@@ -58,12 +59,30 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     onQuestionReject?: QuestionRejectFn
     onNavigateToSession?: NavigateToSessionFn
   }) => {
+    const numbers = createMemo(() => {
+      const result: Record<string, Map<string, number>> = {}
+      for (const sessionID in props.data.message) {
+        const map = new Map<string, number>()
+        let n = 0
+        for (const message of props.data.message[sessionID]) {
+          if (message.role === "user") map.set(message.id, ++n)
+          for (const part of props.data.part[message.id] ?? []) {
+            if (part.type === "text" || part.type === "tool") map.set(part.id, ++n)
+          }
+        }
+        result[sessionID] = map
+      }
+      return result
+    })
     return {
       get store() {
         return props.data
       },
       get directory() {
         return props.directory
+      },
+      blockNumber(sessionID: string, id: string) {
+        return numbers()[sessionID]?.get(id)
       },
       respondToPermission: props.onPermissionRespond,
       replyToQuestion: props.onQuestionReply,
