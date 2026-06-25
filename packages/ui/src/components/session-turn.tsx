@@ -18,7 +18,7 @@ import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import { Binary } from "@opencode-ai/util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
-import { Message, Part } from "./message-part"
+import { Message, MessageBox, Part } from "./message-part"
 import { Markdown } from "./markdown"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
@@ -594,7 +594,7 @@ export function SessionTurn(
                     <div data-slot="session-turn-sticky" ref={setStickyRef}>
                       {/* User Message */}
                       <div data-slot="session-turn-message-content" aria-live="off">
-                        <Message message={msg()} parts={stickyParts()} />
+                        <Message message={msg()} parts={stickyParts()} boxed />
                       </div>
 
                       {/* Trigger (sticky) */}
@@ -732,12 +732,28 @@ export function SessionTurn(
                         <div data-slot="session-turn-summary-header">
                           <h2 data-slot="session-turn-summary-title">{i18n.t("ui.sessionTurn.summary.response")}</h2>
                           <div data-slot="session-turn-response">
-                            <Markdown
-                              data-slot="session-turn-markdown"
-                              data-diffs={hasDiffs()}
-                              text={response() ?? ""}
-                              cacheKey={responsePartId()}
-                            />
+                            <Show
+                              when={lastAssistantMessage()}
+                              fallback={
+                                <Markdown
+                                  data-slot="session-turn-markdown"
+                                  data-diffs={hasDiffs()}
+                                  text={response() ?? ""}
+                                  cacheKey={responsePartId()}
+                                />
+                              }
+                            >
+                              {(assistant) => (
+                                <MessageBox message={assistant()}>
+                                  <Markdown
+                                    data-slot="session-turn-markdown"
+                                    data-diffs={hasDiffs()}
+                                    text={response() ?? ""}
+                                    cacheKey={responsePartId()}
+                                  />
+                                </MessageBox>
+                              )}
+                            </Show>
                             <Show when={response()}>
                               <div data-slot="session-turn-response-copy-wrapper">
                                 <Tooltip

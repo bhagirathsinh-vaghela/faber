@@ -92,6 +92,26 @@ function DiagnosticsDisplay(props: { diagnostics: Diagnostic[] }): JSX.Element {
 export interface MessageProps {
   message: MessageType
   parts: PartType[]
+  // When set, renders the message inside a TUI-style bordered, agent-tinted
+  // box with a "◈ ROLE" header.
+  boxed?: boolean
+}
+
+const AGENT_COLORS: Record<string, string> = {
+  ask: "var(--color-icon-agent-ask-base)",
+  build: "var(--color-icon-agent-build-base)",
+  docs: "var(--color-icon-agent-docs-base)",
+  plan: "var(--color-icon-agent-plan-base)",
+}
+
+function messageAgentColor(name: string | undefined): string {
+  if (!name) return "var(--color-icon-agent-build-base)"
+  return AGENT_COLORS[name] ?? AGENT_COLORS[name.toLowerCase()] ?? "var(--color-icon-agent-build-base)"
+}
+
+function messageTime(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`
 }
 
 export interface MessagePartProps {
@@ -277,7 +297,16 @@ export function Message(props: MessageProps) {
   return (
     <Switch>
       <Match when={props.message.role === "user" && props.message}>
-        {(userMessage) => <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
+        {(userMessage) => (
+          <Show
+            when={props.boxed}
+            fallback={<UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
+          >
+            <MessageBox message={userMessage() as UserMessage}>
+              <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />
+            </MessageBox>
+          </Show>
+        )}
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
         {(assistantMessage) => (
@@ -285,6 +314,50 @@ export function Message(props: MessageProps) {
         )}
       </Match>
     </Switch>
+  )
+}
+
+// TUI-style message box: rounded border + agent-tinted background + a
+// "◈ USER" / "◈ ASSISTANT" header. User boxes use the agent color;
+// assistant boxes use the success/green accent (mirrors the TUI).
+export function MessageBox(props: { message: MessageType; children: JSX.Element }) {
+  const isUser = props.message.role === "user"
+  const accent = isUser
+    ? messageAgentColor((props.message as any).agent)
+    : "var(--color-text-success, #22DD22)"
+  return (
+    <div
+      data-component="message-box"
+      data-role={props.message.role}
+      style={{
+        border: `1px solid color-mix(in srgb, ${accent} 55%, transparent)`,
+        "border-radius": "8px",
+        background: `color-mix(in srgb, ${accent} 7%, var(--color-background-panel, transparent))`,
+        padding: "0.5rem 0.75rem",
+        "margin-bottom": "0.75rem",
+      }}
+    >
+      <div
+        data-slot="message-box-header"
+        style={{
+          display: "flex",
+          "align-items": "center",
+          gap: "0.5rem",
+          "margin-bottom": "0.375rem",
+          color: accent,
+          "font-size": "11px",
+          "font-weight": "600",
+          "letter-spacing": "0.04em",
+        }}
+      >
+        <span>{"\u25c8"}</span>
+        <span>{isUser ? "USER" : "ASSISTANT"}</span>
+        <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
+          {messageTime(props.message.time.created)}
+        </span>
+      </div>
+      {props.children}
+    </div>
   )
 }
 
