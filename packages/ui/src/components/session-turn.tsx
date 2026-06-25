@@ -16,7 +16,7 @@ import { findLast } from "@opencode-ai/util/array"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
 
 import { Binary } from "@opencode-ai/util/binary"
-import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, For, type JSX, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { Message, MessageBox, Part } from "./message-part"
 import { Markdown } from "./markdown"
@@ -134,6 +134,7 @@ export function SessionTurn(
     stepsExpanded?: boolean
     onStepsExpandedToggle?: () => void
     onUserInteracted?: () => void
+    footer?: (message: AssistantMessage) => JSX.Element
     classes?: {
       root?: string
       content?: string
@@ -751,6 +752,7 @@ export function SessionTurn(
                                     text={response() ?? ""}
                                     cacheKey={responsePartId()}
                                   />
+                                  <Show when={props.footer}>{props.footer!(assistant())}</Show>
                                 </MessageBox>
                               )}
                             </Show>

@@ -19,6 +19,7 @@ import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange
 import { createStore } from "solid-js/store"
 import { PromptInput } from "@/components/prompt-input"
 import { Statusline } from "@/components/statusline"
+import { MessageFooter } from "@/components/message-footer"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
@@ -2041,6 +2042,7 @@ export default function Page() {
                                     sessionID={params.id!}
                                     messageID={message.id}
                                     lastUserMessageID={lastUserMessage()?.id}
+                                    footer={(m) => <MessageFooter message={m} />}
                                     stepsExpanded={store.expanded[message.id] ?? true}
                                     onStepsExpandedToggle={() =>
                                       setStore("expanded", message.id, (open: boolean | undefined) => !open)
