@@ -49,6 +49,8 @@ export type QuestionRejectFn = (input: { requestID: string }) => void
 
 export type NavigateToSessionFn = (sessionID: string) => void
 
+export type RevertMessageFn = (input: { sessionID: string; messageID: string }) => void
+
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
@@ -58,6 +60,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     onQuestionReply?: QuestionReplyFn
     onQuestionReject?: QuestionRejectFn
     onNavigateToSession?: NavigateToSessionFn
+    onRevertMessage?: RevertMessageFn
   }) => {
     const numbers = createMemo(() => {
       const result: Record<string, Map<string, number>> = {}
@@ -88,6 +91,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       replyToQuestion: props.onQuestionReply,
       rejectQuestion: props.onQuestionReject,
       navigateToSession: props.onNavigateToSession,
+      revertMessage: props.onRevertMessage,
     }
   },
 })

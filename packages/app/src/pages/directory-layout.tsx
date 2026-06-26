@@ -51,6 +51,18 @@ export default function Layout(props: ParentProps) {
               navigate(`/${params.dir}/session/${sessionID}`)
             }
 
+            // Cache-safe revert: prime the cache at the prior assistant via a
+            // ping probe before reverting, so the conversation cache survives.
+            const revertMessage = async (input: { sessionID: string; messageID: string }) => {
+              const msgs = sync.data.message[input.sessionID] ?? []
+              const prevAssistant = msgs.findLast((m) => m.id < input.messageID && m.role === "assistant")
+              await sdk.client.session.unrevert({ sessionID: input.sessionID })
+              if (prevAssistant) {
+                await sdk.client.session.ping({ sessionID: input.sessionID, cacheProbeMessageID: prevAssistant.id })
+              }
+              await sdk.client.session.revert({ sessionID: input.sessionID, messageID: input.messageID })
+            }
+
             return (
               <DataProvider
                 data={sync.data}
@@ -59,6 +71,7 @@ export default function Layout(props: ParentProps) {
                 onQuestionReply={replyToQuestion}
                 onQuestionReject={rejectQuestion}
                 onNavigateToSession={navigateToSession}
+                onRevertMessage={revertMessage}
               >
                 <LocalProvider>{props.children}</LocalProvider>
               </DataProvider>

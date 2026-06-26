@@ -34,6 +34,7 @@ import { createStore } from "solid-js/store"
 import { DateTime, DurationUnit, Interval } from "luxon"
 import { createAutoScroll } from "../hooks"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { copyText } from "../util/clipboard"
 
 type Translator = (key: UiI18nKey, params?: UiI18nParams) => string
 
@@ -419,7 +420,7 @@ export function SessionTurn(
   const handleCopy = async () => {
     const content = response() ?? ""
     if (!content) return
-    await navigator.clipboard.writeText(content)
+    await copyText(content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

@@ -32,6 +32,8 @@ import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
+import { Dialog } from "./dialog"
+import { copyText } from "../util/clipboard"
 import { useI18n } from "../context/i18n"
 import { BasicTool } from "./basic-tool"
 import { GenericTool } from "./basic-tool"
@@ -327,7 +329,46 @@ export function Message(props: MessageProps) {
 // assistant boxes use the success/green accent (mirrors the TUI).
 export function MessageBox(props: { message: MessageType; numberKey?: string; children: JSX.Element }) {
   const data = useData()
+  const dialog = useDialog()
   const isUser = props.message.role === "user"
+
+  function confirmRevert() {
+    const doRevert = () => {
+      dialog.close()
+      data.revertMessage?.({ sessionID: props.message.sessionID, messageID: props.message.id })
+    }
+    // Enter-to-confirm: Kobalte owns dialog focus, so a global keydown for the
+    // dialog's lifetime is more reliable than an element handler. Escape is
+    // handled natively by Kobalte.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return
+      e.preventDefault()
+      document.removeEventListener("keydown", onKey)
+      doRevert()
+    }
+    document.addEventListener("keydown", onKey)
+
+    dialog.show(() => {
+      onCleanup(() => document.removeEventListener("keydown", onKey))
+      return (
+        <Dialog title="Revert to this message?" fit>
+          <div style={{ display: "flex", "flex-direction": "column", gap: "1rem", padding: "0 0.625rem 0.75rem 1.5rem" }}>
+            <span style={{ color: "var(--color-text-strong)" }}>
+              Roll the session back to this message. Later messages are undone; the cache is preserved.
+            </span>
+            <div style={{ display: "flex", "justify-content": "flex-end", gap: "0.5rem" }}>
+              <Button variant="ghost" size="large" onClick={() => dialog.close()}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="large" onClick={doRevert}>
+                Revert
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )
+    })
+  }
   const number = createMemo(() => data.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id))
   const accent = isUser
     ? messageAgentColor((props.message as any).agent)
@@ -365,6 +406,15 @@ export function MessageBox(props: { message: MessageType; numberKey?: string; ch
         <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
           {messageTime(props.message.time.created)}
         </span>
+        <Show when={isUser && data.revertMessage}>
+          <div data-slot="message-box-revert" style={{ "margin-left": "auto" }}>
+            <Tooltip value="Cache-safe revert" placement="top" gutter={8}>
+              <Button variant="secondary" size="small" onClick={confirmRevert}>
+                Revert here
+              </Button>
+            </Tooltip>
+          </div>
+        </Show>
       </div>
       {props.children}
     </div>
@@ -458,7 +508,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   const handleCopy = async () => {
     const content = text()
     if (!content) return
-    await navigator.clipboard.writeText(content)
+    await copyText(content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -776,7 +826,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   const handleCopy = async () => {
     const content = displayText()
     if (!content) return
-    await navigator.clipboard.writeText(content)
+    await copyText(content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

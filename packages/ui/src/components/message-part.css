@@ -111,6 +111,15 @@
   }
 }
 
+[data-slot="message-box-revert"] {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+[data-component="message-box"]:hover [data-slot="message-box-revert"] {
+  opacity: 1;
+}
+
 [data-component="text-part"] {
   width: 100%;
 
