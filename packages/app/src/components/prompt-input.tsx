@@ -44,6 +44,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { ModelSelectorPopover } from "@/components/dialog-select-model"
 import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid"
+import { DialogSkill } from "@/components/dialog-skill"
 import { useProviders } from "@/hooks/use-providers"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
@@ -909,6 +910,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     handleInput()
     setStore("popover", null)
   }
+
+  const insertSkill = (name: string) => {
+    // The dialog stole focus; restore the caret to the prompt before addPart,
+    // which inserts at the current selection.
+    editorRef.focus()
+    requestAnimationFrame(() => {
+      const cursor = prompt.cursor() ?? promptLength(prompt.current())
+      setCursorPosition(editorRef, cursor)
+      addPart({ type: "text", content: `[USE-SKILL:${name}] `, start: 0, end: 0 })
+    })
+  }
+
+  command.register(() => [
+    {
+      id: "prompt.skill",
+      title: language.t("command.prompt.skill"),
+      description: language.t("command.prompt.skill.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+s",
+      onSelect: () => dialog.show(() => <DialogSkill onSelect={insertSkill} />),
+    },
+  ])
 
   const abort = async () => {
     const sessionID = params.id

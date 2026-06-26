@@ -168,4 +168,21 @@ export namespace Skill {
   export async function dirs() {
     return state().then((x) => x.dirs)
   }
+
+  // Favorites live in the same skill.json the TUI writes, so a TUI and a
+  // browser client on one binary share one list.
+  const favoriteFile = path.join(Global.Path.state, "skill.json")
+
+  export async function favorites() {
+    const parsed = await Bun.file(favoriteFile)
+      .json()
+      .catch(() => undefined)
+    const list = parsed?.favorite
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : []
+  }
+
+  export async function setFavorites(favorite: string[]) {
+    await Bun.write(favoriteFile, JSON.stringify({ favorite }))
+    return favorite
+  }
 }

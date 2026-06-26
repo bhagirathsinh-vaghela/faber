@@ -29,8 +29,22 @@ function signature(key: string, ctrl: boolean, meta: boolean, shift: boolean, al
   return `${key}:${mask}`
 }
 
+// On macOS, Option+<letter> composes a glyph (Option+S → "ß"), so event.key no
+// longer equals the bound letter and the keybind can't match. event.code is the
+// physical key regardless of composition, so recover the letter/digit from it
+// whenever Alt is held.
+function eventKey(event: KeyboardEvent) {
+  if (event.altKey) {
+    const letter = event.code.match(/^Key([A-Z])$/)
+    if (letter) return letter[1].toLowerCase()
+    const digit = event.code.match(/^Digit([0-9])$/)
+    if (digit) return digit[1]
+  }
+  return normalizeKey(event.key)
+}
+
 function signatureFromEvent(event: KeyboardEvent) {
-  return signature(normalizeKey(event.key), event.ctrlKey, event.metaKey, event.shiftKey, event.altKey)
+  return signature(eventKey(event), event.ctrlKey, event.metaKey, event.shiftKey, event.altKey)
 }
 
 export type KeybindConfig = string
@@ -110,10 +124,10 @@ export function parseKeybind(config: string): Keybind[] {
 }
 
 export function matchKeybind(keybinds: Keybind[], event: KeyboardEvent): boolean {
-  const eventKey = normalizeKey(event.key)
+  const pressed = eventKey(event)
 
   for (const kb of keybinds) {
-    const keyMatch = kb.key === eventKey
+    const keyMatch = kb.key === pressed
     const ctrlMatch = kb.ctrl === (event.ctrlKey || false)
     const metaMatch = kb.meta === (event.metaKey || false)
     const shiftMatch = kb.shift === (event.shiftKey || false)

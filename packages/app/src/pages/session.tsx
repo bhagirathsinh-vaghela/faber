@@ -59,6 +59,8 @@ import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { useStash } from "@/context/stash"
 import { DialogStash } from "@/components/dialog-stash"
+import { DialogTasks } from "@/components/dialog-tasks"
+import { DialogPending } from "@/components/dialog-pending"
 import { useComments, type LineComment } from "@/context/comments"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
@@ -975,6 +977,24 @@ export default function Page() {
       category: language.t("command.category.session"),
       keybind: "ctrl+shift+s",
       onSelect: () => dialog.show(() => <DialogStash />),
+    },
+    {
+      id: "task.list",
+      title: language.t("command.task.list"),
+      description: language.t("command.task.list.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+a",
+      disabled: !params.id,
+      onSelect: () => dialog.show(() => <DialogTasks />),
+    },
+    {
+      id: "task.pending",
+      title: language.t("command.task.pending"),
+      description: language.t("command.task.pending.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+z",
+      disabled: !params.id,
+      onSelect: () => dialog.show(() => <DialogPending />),
     },
     ...(sync.data.config.share !== "disabled"
       ? [

@@ -218,10 +218,35 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })()
 
+    const skill = (() => {
+      const [store, setStore] = createStore<{ favorite: string[] }>({ favorite: [] })
+
+      sdk.client.app.skillFavorites().then((res) => {
+        if (res.data) setStore("favorite", res.data)
+      })
+
+      const persist = (favorite: string[]) => {
+        setStore("favorite", favorite)
+        sdk.client.app.setSkillFavorites({ body: favorite })
+      }
+
+      return {
+        favorite: createMemo(() => store.favorite),
+        isFavorite(name: string) {
+          return store.favorite.includes(name)
+        },
+        toggleFavorite(name: string) {
+          const exists = store.favorite.includes(name)
+          persist(exists ? store.favorite.filter((x) => x !== name) : [name, ...store.favorite])
+        },
+      }
+    })()
+
     const result = {
       slug: createMemo(() => base64Encode(sdk.directory)),
       model,
       agent,
+      skill,
     }
     return result
   },

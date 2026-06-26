@@ -7,6 +7,8 @@ import type {
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
+  AppSetSkillFavoritesResponses,
+  AppSkillFavoritesResponses,
   AppSkillsResponses,
   Auth as Auth3,
   AuthRemoveErrors,
@@ -3569,6 +3571,60 @@ export class App extends HeyApiClient {
       url: "/skill",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * List favorite skills
+   *
+   * Get the names of skills the user has favorited.
+   */
+  public skillFavorites<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppSkillFavoritesResponses, unknown, ThrowOnError>({
+      url: "/skill/favorite",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set favorite skills
+   *
+   * Replace the list of favorited skill names.
+   */
+  public setSkillFavorites<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      body?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "body", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<AppSetSkillFavoritesResponses, unknown, ThrowOnError>({
+      url: "/skill/favorite",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

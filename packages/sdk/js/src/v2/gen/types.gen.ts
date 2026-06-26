@@ -5689,6 +5689,42 @@ export type AppSkillsResponses = {
 
 export type AppSkillsResponse = AppSkillsResponses[keyof AppSkillsResponses]
 
+export type AppSkillFavoritesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/skill/favorite"
+}
+
+export type AppSkillFavoritesResponses = {
+  /**
+   * Favorite skill names
+   */
+  200: Array<string>
+}
+
+export type AppSkillFavoritesResponse = AppSkillFavoritesResponses[keyof AppSkillFavoritesResponses]
+
+export type AppSetSkillFavoritesData = {
+  body?: Array<string>
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/skill/favorite"
+}
+
+export type AppSetSkillFavoritesResponses = {
+  /**
+   * Updated favorite skill names
+   */
+  200: Array<string>
+}
+
+export type AppSetSkillFavoritesResponse = AppSetSkillFavoritesResponses[keyof AppSetSkillFavoritesResponses]
+
 export type LspStatusData = {
   body?: never
   path?: never

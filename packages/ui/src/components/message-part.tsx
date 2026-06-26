@@ -49,7 +49,6 @@ import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/pa
 import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { IconButton } from "./icon-button"
-import { createAutoScroll } from "../hooks"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 
 interface Diagnostic {
@@ -284,6 +283,12 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
         icon: "bubble-5",
         title: i18n.t("ui.tool.questions"),
       }
+    case "skill":
+      return {
+        icon: "code-lines",
+        title: i18n.t("ui.tool.skill"),
+        subtitle: input.name,
+      }
     default:
       return {
         icon: "mcp",
@@ -296,9 +301,79 @@ export function registerPartComponent(type: string, component: PartComponent) {
   PART_MAPPING[type] = component
 }
 
+function taskResultPart(parts: PartType[]): TextPart | undefined {
+  return parts.find((p) => p.type === "text" && (p as TextPart).backgroundTaskResult) as TextPart | undefined
+}
+
+const TASK_ACCENT = "var(--color-icon-warning-base)"
+
+function taskAccent(status: string): string {
+  return status === "failed" ? "var(--color-text-error)" : TASK_ACCENT
+}
+
+function stripTaskMeta(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith("task_id:")) return false
+      if (trimmed.startsWith("session_id:")) return false
+      if (trimmed === "Results will be delivered when the task completes.") return false
+      return true
+    })
+    .join("\n")
+    .trim()
+}
+
+function stripTaskResult(text: string): string {
+  const match = text.match(/<background-task-result>([\s\S]*?)<\/background-task-result>/)
+  return stripTaskMeta(match ? match[1] : text)
+}
+
+function stripTaskOutput(text: string): string {
+  const cleaned = text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/<task_metadata>[\s\S]*?<\/task_metadata>/g, "")
+    .trim()
+  return stripTaskMeta(cleaned)
+}
+
+function TaskResultDisplay(props: { part: TextPart }) {
+  const meta = () => props.part.backgroundTaskResult!
+  const content = createMemo(() => stripTaskResult(props.part.text))
+  return (
+    <div data-component="task-result">
+      <div data-slot="task-result-meta" class="text-text-weak text-sm mb-2 flex flex-wrap gap-x-2">
+        <span>{meta().agent ?? meta().type}</span>
+        <span>·</span>
+        <span>{meta().status}</span>
+        <span>·</span>
+        <span>{Math.round(meta().duration / 1000) + "s"}</span>
+      </div>
+      <Markdown text={content()} cacheKey={props.part.id} />
+    </div>
+  )
+}
+
 export function Message(props: MessageProps) {
   return (
     <Switch>
+      <Match when={props.message.role === "user" && taskResultPart(props.parts)}>
+        {(part) => (
+          <Show
+            when={props.boxed}
+            fallback={<TaskResultDisplay part={part()} />}
+          >
+            <MessageBox
+              message={props.message}
+              label="TASK RESULT"
+              accent={taskAccent(part().backgroundTaskResult!.status)}
+            >
+              <TaskResultDisplay part={part()} />
+            </MessageBox>
+          </Show>
+        )}
+      </Match>
       <Match when={props.message.role === "user" && props.message}>
         {(userMessage) => (
           <Show
@@ -327,7 +402,13 @@ export function Message(props: MessageProps) {
 // TUI-style message box: rounded border + agent-tinted background + a
 // "◈ USER" / "◈ ASSISTANT" header. User boxes use the agent color;
 // assistant boxes use the success/green accent (mirrors the TUI).
-export function MessageBox(props: { message: MessageType; numberKey?: string; children: JSX.Element }) {
+export function MessageBox(props: {
+  message: MessageType
+  numberKey?: string
+  label?: string
+  accent?: string
+  children: JSX.Element
+}) {
   const data = useData()
   const dialog = useDialog()
   const isUser = props.message.role === "user"
@@ -370,9 +451,9 @@ export function MessageBox(props: { message: MessageType; numberKey?: string; ch
     })
   }
   const number = createMemo(() => data.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id))
-  const accent = isUser
-    ? messageAgentColor((props.message as any).agent)
-    : "var(--color-text-success, #22DD22)"
+  const accent =
+    props.accent ??
+    (isUser ? messageAgentColor((props.message as any).agent) : "var(--color-text-success, #22DD22)")
   return (
     <div
       data-component="message-box"
@@ -402,7 +483,7 @@ export function MessageBox(props: { message: MessageType; numberKey?: string; ch
         <Show when={number() !== undefined}>
           <span style={{ color: "var(--color-text-weak)" }}>{"#" + number()}</span>
         </Show>
-        <span>{isUser ? "USER" : "ASSISTANT"}</span>
+        <span>{props.label ?? (isUser ? "USER" : "ASSISTANT")}</span>
         <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
           {messageTime(props.message.time.created)}
         </span>
@@ -1025,14 +1106,6 @@ ToolRegistry.register({
   render(props) {
     const data = useData()
     const i18n = useI18n()
-    const summary = () =>
-      (props.metadata.summary ?? []) as { id: string; tool: string; state: { status: string; title?: string } }[]
-
-    const autoScroll = createAutoScroll({
-      working: () => true,
-      overflowAnchor: "auto",
-    })
-
     const childSessionId = () => props.metadata.sessionId as string | undefined
 
     const childPermission = createMemo(() => {
@@ -1138,42 +1211,68 @@ ToolRegistry.register({
             </>
           </Match>
           <Match when={true}>
-            <BasicTool
-              icon="task"
-              defaultOpen={true}
-              trigger={{
-                title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
-                titleClass: "capitalize",
-                subtitle: props.input.description,
+            <div
+              data-component="task-output"
+              style={{
+                border: `1px solid color-mix(in srgb, ${TASK_ACCENT} 55%, transparent)`,
+                "border-radius": "8px",
+                background: `color-mix(in srgb, ${TASK_ACCENT} 7%, var(--color-background-panel, transparent))`,
+                padding: "0.5rem 0.75rem",
               }}
-              onSubtitleClick={handleSubtitleClick}
             >
               <div
-                ref={autoScroll.scrollRef}
-                onScroll={autoScroll.handleScroll}
-                data-component="tool-output"
-                data-scrollable
+                data-slot="task-output-header"
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  gap: "0.5rem",
+                  "margin-bottom": "0.375rem",
+                  color: TASK_ACCENT,
+                  "font-size": "11px",
+                  "font-weight": "600",
+                  "letter-spacing": "0.04em",
+                }}
               >
-                <div ref={autoScroll.contentRef} data-component="task-tools">
-                  <For each={summary()}>
-                    {(item) => {
-                      const info = getToolInfo(item.tool)
-                      return (
-                        <div data-slot="task-tool-item">
-                          <Icon name={info.icon} size="small" />
-                          <span data-slot="task-tool-title">{info.title}</span>
-                          <Show when={item.state.title}>
-                            <span data-slot="task-tool-subtitle">{item.state.title}</span>
-                          </Show>
-                        </div>
-                      )
-                    }}
-                  </For>
-                </div>
+                <span>{"\u25c8"}</span>
+                <span>TASK OUTPUT</span>
+                <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
+                  {"\u2502 " + i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool })}
+                </span>
+                <Show when={childSessionId() && data.navigateToSession}>
+                  <button
+                    style={{ "margin-left": "auto", color: "var(--color-text-weak)", "font-weight": "400" }}
+                    onClick={handleSubtitleClick}
+                  >
+                    {props.input.description}
+                  </button>
+                </Show>
               </div>
-            </BasicTool>
+              <Show when={props.output && stripTaskOutput(props.output)}>
+                {(body) => (
+                  <div data-slot="task-output-body" data-component="tool-output">
+                    <Markdown text={body()} />
+                  </div>
+                )}
+              </Show>
+            </div>
           </Match>
         </Switch>
+      </div>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "skill",
+  render(props) {
+    const i18n = useI18n()
+    return (
+      <div data-component="skill-inline" class="text-text-weak flex items-center gap-1 py-1">
+        <span>{"\u2192"}</span>
+        <span>{i18n.t("ui.tool.skill")}</span>
+        <Show when={props.input.name}>
+          <span>{'"' + props.input.name + '"'}</span>
+        </Show>
       </div>
     )
   },

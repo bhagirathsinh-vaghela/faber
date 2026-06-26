@@ -435,6 +435,51 @@ export namespace Server {
           },
         )
         .get(
+          "/skill/favorite",
+          describeRoute({
+            summary: "List favorite skills",
+            description: "Get the names of skills the user has favorited.",
+            operationId: "app.skillFavorites",
+            responses: {
+              200: {
+                description: "Favorite skill names",
+                content: {
+                  "application/json": {
+                    schema: resolver(z.string().array()),
+                  },
+                },
+              },
+            },
+          }),
+          async (c) => {
+            const favorites = await Skill.favorites()
+            return c.json(favorites)
+          },
+        )
+        .put(
+          "/skill/favorite",
+          describeRoute({
+            summary: "Set favorite skills",
+            description: "Replace the list of favorited skill names.",
+            operationId: "app.setSkillFavorites",
+            responses: {
+              200: {
+                description: "Updated favorite skill names",
+                content: {
+                  "application/json": {
+                    schema: resolver(z.string().array()),
+                  },
+                },
+              },
+            },
+          }),
+          validator("json", z.string().array()),
+          async (c) => {
+            const favorites = await Skill.setFavorites(c.req.valid("json"))
+            return c.json(favorites)
+          },
+        )
+        .get(
           "/lsp",
           describeRoute({
             summary: "Get LSP status",
