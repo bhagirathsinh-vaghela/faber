@@ -1952,7 +1952,7 @@ export default function Page() {
                               "sticky top-0 z-30 bg-background-stronger": true,
                               "w-full": true,
                               "px-4 md:px-6": true,
-                              "md:max-w-200 md:mx-auto 3xl:max-w-[1200px] 4xl:max-w-[1600px] 5xl:max-w-[1900px]":
+                              "md:max-w-[90%] md:mx-auto":
                                 centered(),
                             }}
                           >
@@ -1981,7 +1981,7 @@ export default function Page() {
                           class="flex flex-col gap-12 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
                           classList={{
                             "w-full": true,
-                            "md:max-w-200 md:mx-auto 3xl:max-w-[1200px] 4xl:max-w-[1600px] 5xl:max-w-[1900px]":
+                            "md:max-w-[90%] md:mx-auto":
                               centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
@@ -2035,7 +2035,6 @@ export default function Page() {
                                   data-message-id={message.id}
                                   classList={{
                                     "min-w-0 w-full max-w-full": true,
-                                    "md:max-w-200 3xl:max-w-[1200px] 4xl:max-w-[1600px] 5xl:max-w-[1900px]": centered(),
                                   }}
                                 >
                                   <SessionTurn
@@ -2092,8 +2091,8 @@ export default function Page() {
           >
             <div
               classList={{
-                "w-full px-4 pointer-events-auto": true,
-                "md:max-w-200 3xl:max-w-[1200px] 4xl:max-w-[1600px] 5xl:max-w-[1900px]": centered(),
+                "w-full pointer-events-auto": true,
+                "md:max-w-[90%] md:mx-auto": centered(),
               }}
             >
               <Show when={request()} keyed>
