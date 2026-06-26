@@ -1,6 +1,7 @@
 import { createMemo, For, Show } from "solid-js"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import { useSync } from "@/context/sync"
+import { UsageLine, statsFromMessage } from "@/components/usage-line"
 
 // Mirrors the TUI ModelHeader: agent · model · provider · variant [· duration]
 // [· interrupted] [· directory]. MODEL_COLOR matches the TUI (#E83CF5).
@@ -61,6 +62,8 @@ export function MessageFooter(props: { message: AssistantMessage }) {
 
   const interrupted = createMemo(() => props.message.error?.name === "MessageAbortedError")
 
+  const stats = createMemo(() => statsFromMessage(props.message, sync.data.provider.all))
+
   const tail = createMemo(() => {
     const result: { color: string; text: string }[] = []
     if (props.message.variant) result.push({ color: WARNING, text: props.message.variant })
@@ -71,17 +74,28 @@ export function MessageFooter(props: { message: AssistantMessage }) {
   })
 
   return (
-    <div class="flex flex-row flex-wrap items-center pt-1 text-11-regular font-mono leading-tight">
-      <span class="font-semibold" style={{ color: "var(--color-text-base)" }}>
-        {titlecase(props.message.mode)}
-      </span>
-      <Show when={model().model}>
-        <Segment color={MODEL} text={model().model} />
+    <>
+      <div class="flex flex-row flex-wrap items-center pt-1 text-11-regular font-mono leading-tight">
+        <span class="font-semibold" style={{ color: "var(--color-text-base)" }}>
+          {titlecase(props.message.mode)}
+        </span>
+        <Show when={model().model}>
+          <Segment color={MODEL} text={model().model} />
+        </Show>
+        <Show when={model().provider}>
+          <Segment color={MUTED} text={model().provider} />
+        </Show>
+        <For each={tail()}>{(p) => <Segment color={p.color} text={p.text} />}</For>
+      </div>
+      <Show when={stats()}>
+        {(s) => (
+          <UsageLine
+            stats={s()}
+            totals={props.message.sessionTotal ?? { input: 0, output: 0, cacheWrite: 0 }}
+            cost={props.message.sessionTotal?.cost ?? 0}
+          />
+        )}
       </Show>
-      <Show when={model().provider}>
-        <Segment color={MUTED} text={model().provider} />
-      </Show>
-      <For each={tail()}>{(p) => <Segment color={p.color} text={p.text} />}</For>
-    </div>
+    </>
   )
 }
