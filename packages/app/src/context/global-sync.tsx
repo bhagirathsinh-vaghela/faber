@@ -928,7 +928,8 @@ function createGlobalSync() {
         break
       }
       case "question.replied":
-      case "question.rejected": {
+      case "question.rejected":
+      case "question.deferred": {
         const questions = store.question[event.properties.sessionID]
         if (!questions) break
         const result = Binary.search(questions, event.properties.requestID, (q) => q.id)

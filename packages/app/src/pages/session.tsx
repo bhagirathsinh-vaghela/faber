@@ -19,6 +19,7 @@ import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange
 import { createStore } from "solid-js/store"
 import { PromptInput } from "@/components/prompt-input"
 import { Statusline } from "@/components/statusline"
+import { QuestionPanel } from "@/components/question-panel"
 import { MessageFooter } from "@/components/message-footer"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -2095,6 +2096,8 @@ export default function Page() {
                 "md:max-w-[90%] md:mx-auto": centered(),
               }}
             >
+              <QuestionPanel />
+
               <Show when={request()} keyed>
                 {(perm) => (
                   <div data-component="tool-part-wrapper" data-permission="true" class="mb-3">
