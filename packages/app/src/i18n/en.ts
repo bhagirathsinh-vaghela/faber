@@ -80,6 +80,10 @@ export const dict = {
   "command.session.compact.description": "Summarize the session to reduce context size",
   "command.session.fork": "Fork from message",
   "command.session.fork.description": "Create a new session from a previous message",
+  "command.prompt.stash": "Stash prompt",
+  "command.prompt.stash.description": "Save the current prompt to the stash and clear the input",
+  "command.prompt.stash.list": "Stash list",
+  "command.prompt.stash.list.description": "Browse stashed prompts and restore one",
   "command.session.share": "Share session",
   "command.session.share.description": "Share this session and copy the URL to clipboard",
   "command.session.unshare": "Unshare session",
@@ -254,6 +258,11 @@ export const dict = {
   "mcp.status.disabled": "disabled",
 
   "dialog.fork.empty": "No messages to fork from",
+
+  "dialog.stash.title": "Stash",
+  "dialog.stash.empty": "Stash is empty",
+  "dialog.stash.empty.item": "(empty prompt)",
+  "dialog.stash.remove": "Remove from stash",
 
   "dialog.directory.search.placeholder": "Search folders",
   "dialog.directory.empty": "No folders found",

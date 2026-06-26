@@ -100,7 +100,7 @@ function clonePart(part: ContentPart): ContentPart {
   }
 }
 
-function clonePrompt(prompt: Prompt): Prompt {
+export function clonePrompt(prompt: Prompt): Prompt {
   return prompt.map(clonePart)
 }
 

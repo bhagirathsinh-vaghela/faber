@@ -57,6 +57,8 @@ import { UserMessage } from "@opencode-ai/sdk/v2"
 import type { FileDiff } from "@opencode-ai/sdk/v2/client"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
+import { useStash } from "@/context/stash"
+import { DialogStash } from "@/components/dialog-stash"
 import { useComments, type LineComment } from "@/context/comments"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
@@ -241,6 +243,7 @@ export default function Page() {
   const navigate = useNavigate()
   const sdk = useSDK()
   const prompt = usePrompt()
+  const stash = useStash()
   const comments = useComments()
   const permission = usePermission()
 
@@ -952,6 +955,26 @@ export default function Page() {
       slash: "fork",
       disabled: !params.id || visibleUserMessages().length === 0,
       onSelect: () => dialog.show(() => <DialogFork />),
+    },
+    {
+      id: "prompt.stash",
+      title: language.t("command.prompt.stash"),
+      description: language.t("command.prompt.stash.description"),
+      category: language.t("command.category.session"),
+      keybind: "ctrl+s",
+      disabled: !prompt.dirty(),
+      onSelect: () => {
+        stash.push(prompt.current())
+        prompt.reset()
+      },
+    },
+    {
+      id: "prompt.stash.list",
+      title: language.t("command.prompt.stash.list"),
+      description: language.t("command.prompt.stash.list.description"),
+      category: language.t("command.category.session"),
+      keybind: "ctrl+shift+s",
+      onSelect: () => dialog.show(() => <DialogStash />),
     },
     ...(sync.data.config.share !== "disabled"
       ? [
