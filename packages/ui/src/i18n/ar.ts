@@ -96,7 +96,9 @@ export const dict = {
   "ui.patch.action.patched": "مصحح",
 
   "ui.question.subtitle.answered": "{{count}} أجيب",
+  "ui.question.subtitle.deferred": "مؤجل",
   "ui.question.answer.none": "(لا توجد إجابة)",
+  "ui.question.answer.deferred": "مؤجل",
   "ui.question.review.notAnswered": "(لم يتم الرد)",
   "ui.question.multiHint": "(حدد كل ما ينطبق)",
   "ui.question.custom.placeholder": "اكتب إجابتك...",

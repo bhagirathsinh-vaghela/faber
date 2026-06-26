@@ -1,33 +1,73 @@
 import { createStore } from "solid-js/store"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import type { QuestionRequest } from "@opencode-ai/sdk/v2"
 import { Button } from "@opencode-ai/ui/button"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
-import { useParams } from "@solidjs/router"
+import { useCommand } from "@/context/command"
+import { useLanguage } from "@/context/language"
+import { useQuestion } from "@/context/question"
 
 // Pinned question prompt. Mirrors the TUI QuestionPrompt
 // (packages/opencode/src/cli/cmd/tui/routes/session/question.tsx): tabbed
 // multi-question/multi-request flow, single-question fast path, custom answers,
 // multi-select, review/confirm, and a countdown bar that auto-defers on timeout.
-// Driven by the same store.question[sessionID] the inline prompt uses; the two
-// coexist. Reply/defer/reject go straight to the SDK like directory-layout.tsx.
+//
+// Deferred-question state (pending ∪ deferred list, visibility) lives in the
+// shared question context so the prompt action bar's count sees deferred ones
+// too; question_list (alt+y) toggles visibility to bring a deferred one back.
 export function QuestionPanel() {
-  const sync = useSync()
-  const params = useParams()
+  const command = useCommand()
+  const language = useLanguage()
+  const question = useQuestion()
 
-  const requests = createMemo(() => (params.id ? (sync.data.question[params.id] ?? []) : []))
+  createEffect(
+    on(
+      () => question.pending().length,
+      (len, prev) => {
+        if (len > 0 && !prev) question.show()
+      },
+    ),
+  )
+  createEffect(() => {
+    if (question.count === 0 && question.visible()) question.toggle()
+  })
+
+  command.register(() => [
+    {
+      id: "question.list",
+      title: language.t("command.question.list"),
+      description: language.t("command.question.list.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+y",
+      disabled: question.count === 0,
+      onSelect: () => question.toggle(),
+    },
+  ])
 
   return (
-    <Show when={requests().length > 0}>
-      <Panel requests={requests()} />
+    <Show when={question.count > 0 && question.visible()}>
+      <Panel
+        requests={question.requests()}
+        pendingIDs={question.pendingIDs()}
+        onHide={question.hide}
+        onAnswered={question.answered}
+        onDismissed={question.drop}
+      />
     </Show>
   )
 }
 
-function Panel(props: { requests: QuestionRequest[] }) {
+function Panel(props: {
+  requests: QuestionRequest[]
+  pendingIDs: Set<string>
+  onHide: (reqs: QuestionRequest[]) => void
+  onAnswered: (id: string, answers: string[][], questions: QuestionRequest["questions"]) => void
+  onDismissed: (id: string) => void
+}) {
   const sdk = useSDK()
   const sync = useSync()
+  const command = useCommand()
 
   const [requestIndex, setRequestIndex] = createSignal(0)
   const request = createMemo(() => props.requests[requestIndex()] ?? props.requests[0])
@@ -60,24 +100,32 @@ function Panel(props: { requests: QuestionRequest[] }) {
     return store.answers[store.tab]?.includes(value) ?? false
   })
 
+  const isPending = (id: string) => props.pendingIDs.has(id)
+
   const TIMEOUT = (sync.data.config as any)?.tui?.question_timeout ?? 120
   const [remaining, setRemaining] = createSignal(TIMEOUT)
+  const timerActive = createMemo(() => {
+    if (TIMEOUT === 0) return false
+    const r = request()
+    return Boolean(r && isPending(r.id))
+  })
 
   createEffect(
     on(
       () => request()?.id,
-      () => setRemaining(TIMEOUT),
+      (id) => {
+        if (id && isPending(id)) setRemaining(TIMEOUT)
+      },
     ),
   )
 
   createEffect(() => {
-    if (TIMEOUT === 0) return
-    if (!request()) return
+    if (!timerActive()) return
     const handle = setInterval(() => {
       setRemaining((prev) => {
         const next = prev - 1
         if (next <= 0) {
-          for (const r of props.requests) sdk.client.question.defer({ requestID: r.id })
+          defer()
           return 0
         }
         return next
@@ -106,17 +154,22 @@ function Panel(props: { requests: QuestionRequest[] }) {
     const r = request()
     if (!r) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
-    sdk.client.question.reply({ requestID: r.id, answers })
+    if (isPending(r.id)) sdk.client.question.reply({ requestID: r.id, answers })
+    props.onAnswered(r.id, answers, r.questions)
   }
 
   function reject() {
     const r = request()
     if (!r) return
-    sdk.client.question.reject({ requestID: r.id })
+    if (isPending(r.id)) sdk.client.question.reject({ requestID: r.id })
+    props.onDismissed(r.id)
   }
 
   function defer() {
-    for (const r of props.requests) sdk.client.question.defer({ requestID: r.id })
+    for (const r of props.requests) {
+      if (isPending(r.id)) sdk.client.question.defer({ requestID: r.id })
+    }
+    props.onHide(props.requests)
   }
 
   function pick(answer: string, isCustom = false) {
@@ -131,7 +184,8 @@ function Panel(props: { requests: QuestionRequest[] }) {
     if (single()) {
       const r = request()
       if (!r) return
-      sdk.client.question.reply({ requestID: r.id, answers: [[answer]] })
+      if (isPending(r.id)) sdk.client.question.reply({ requestID: r.id, answers: [[answer]] })
+      props.onAnswered(r.id, [[answer]], r.questions)
       return
     }
     setStore("tab", store.tab + 1)
@@ -194,16 +248,111 @@ function Panel(props: { requests: QuestionRequest[] }) {
     setStore("editing", false)
   }
 
+  const total = createMemo(() => options().length + (custom() ? 1 : 0))
+
+  function move(direction: number) {
+    const count = total()
+    if (count === 0) return
+    setStore("selected", (store.selected + direction + count) % count)
+  }
+
+  function cycleTab(direction: number) {
+    if (multiRequest()) {
+      cycleRequest(direction)
+      return
+    }
+    if (single()) return
+    selectTab((store.tab + direction + tabs()) % tabs())
+  }
+
+  let panel: HTMLDivElement | undefined
+
+  // A pending question owns all input. The capture-phase keydown handler runs
+  // before any focused element (prompt contenteditable included) sees the key,
+  // and both preventDefault + stopPropagation so the prompt's own handler never
+  // fires — the question is answered before anything else can be typed. The
+  // global command keymap is suspended for the panel's lifetime too. The
+  // custom-answer textarea is the one exception: it keeps its own Enter/Escape
+  // handling, so yield while it has focus.
+  function handleKey(event: KeyboardEvent) {
+    if (store.editing) return
+
+    // Yield while the user is typing in an editable field (the prompt
+    // contenteditable, a textarea, an input). The panel grabs focus on mount so
+    // arrows drive the question by default; if the user deliberately clicks into
+    // the prompt to type, Enter and arrows belong to the prompt, not the panel.
+    const active = document.activeElement as HTMLElement | null
+    if (active && active !== panel) {
+      const editable =
+        active.isContentEditable || active.tagName === "TEXTAREA" || active.tagName === "INPUT"
+      if (editable) return
+    }
+
+    const stop = () => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    if (event.altKey && event.code === "KeyD") {
+      stop()
+      reject()
+      return
+    }
+
+    switch (event.key) {
+      case "ArrowUp":
+        stop()
+        move(-1)
+        return
+      case "ArrowDown":
+        stop()
+        move(1)
+        return
+      case "ArrowLeft":
+        stop()
+        cycleTab(-1)
+        return
+      case "ArrowRight":
+        stop()
+        cycleTab(1)
+        return
+      case "Enter":
+        stop()
+        if (confirm()) submit()
+        else activate(store.selected)
+        return
+      case "Escape":
+        stop()
+        defer()
+        return
+    }
+  }
+
+  onMount(() => {
+    command.keybinds(false)
+    // Pull focus off the prompt so the question is the clearly-active surface
+    // and the caret stops blinking in the input behind it.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    panel?.focus()
+    document.addEventListener("keydown", handleKey, true)
+    onCleanup(() => {
+      command.keybinds(true)
+      document.removeEventListener("keydown", handleKey, true)
+    })
+  })
+
   return (
     <div
-      class="relative mb-3 rounded-md border-2 border-primary bg-background-base/95 shadow-md"
+      ref={(el) => (panel = el)}
+      tabindex={-1}
+      class="relative mb-3 rounded-md border-2 border-primary bg-background-base/95 shadow-md outline-none"
       data-component="question-panel"
     >
       {/* Circular countdown ring, straddling the top-right corner. Faint full
           track + colored arc that depletes clockwise from 12 o'clock (circle
           rotated -90° so the dash starts at top). pathLength=100 makes the dash
           math size-independent. Seconds number sits inside. */}
-      <Show when={TIMEOUT > 0}>
+      <Show when={timerActive()}>
         <div class="absolute -right-3 -top-3 z-20 h-12 w-12">
           <svg class="h-full w-full -rotate-90" viewBox="0 0 36 36">
             <circle

@@ -51,6 +51,7 @@ import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { SessionContextUsage } from "@/components/session-context-usage"
+import { Statusline } from "@/components/statusline"
 import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
 import { useGlobalSync } from "@/context/global-sync"
@@ -2100,6 +2101,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Tooltip>
           </div>
         </div>
+        <Show when={params.id}>
+          <div class="border-t border-border-weak-base px-3 py-1.5">
+            <Statusline />
+          </div>
+        </Show>
       </form>
     </div>
   )

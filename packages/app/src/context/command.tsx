@@ -290,24 +290,28 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
 
       const sig = signatureFromEvent(event)
 
-      if (palette().has(sig)) {
+      // Capture phase + stopPropagation: a matched binding must be swallowed
+      // before the focused element sees it, so the keystroke fires the action
+      // and never reaches the prompt as text.
+      const fire = (run: () => void) => {
         event.preventDefault()
-        showPalette()
-        return
+        event.stopPropagation()
+        run()
       }
+
+      if (palette().has(sig)) return fire(showPalette)
 
       const option = keymap().get(sig)
       if (!option) return
-      event.preventDefault()
-      option.onSelect?.("keybind")
+      fire(() => option.onSelect?.("keybind"))
     }
 
     onMount(() => {
-      document.addEventListener("keydown", handleKeyDown)
+      document.addEventListener("keydown", handleKeyDown, true)
     })
 
     onCleanup(() => {
-      document.removeEventListener("keydown", handleKeyDown)
+      document.removeEventListener("keydown", handleKeyDown, true)
     })
 
     return {

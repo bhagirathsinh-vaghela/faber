@@ -96,7 +96,9 @@ export const dict = {
   "ui.patch.action.patched": "Patched",
 
   "ui.question.subtitle.answered": "{{count}} besvaret",
+  "ui.question.subtitle.deferred": "Udskudt",
   "ui.question.answer.none": "(intet svar)",
+  "ui.question.answer.deferred": "Udskudt",
   "ui.question.review.notAnswered": "(ikke besvaret)",
   "ui.question.multiHint": "(vælg alle der gælder)",
   "ui.question.custom.placeholder": "Skriv dit svar...",

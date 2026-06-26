@@ -90,6 +90,10 @@ export const dict = {
   "command.task.list.description": "Show running and completed subtasks",
   "command.task.pending": "Pending results",
   "command.task.pending.description": "Review and accept pending background task results",
+  "command.question.list": "Show pending questions",
+  "command.question.list.description": "Re-surface deferred questions to answer them",
+  "command.background.autoinject": "Toggle auto-inject",
+  "command.background.autoinject.description": "Toggle auto-inject of background task results for this session",
   "command.session.share": "Share session",
   "command.session.share.description": "Share this session and copy the URL to clipboard",
   "command.session.unshare": "Unshare session",
@@ -99,6 +103,11 @@ export const dict = {
   "palette.empty": "No results found",
   "palette.group.commands": "Commands",
   "palette.group.files": "Files",
+
+  "actionbar.pending.tooltip": "Tasks currently running in background",
+  "actionbar.available.tooltip": "Accept pending results",
+  "actionbar.autoinject.tooltip": "Toggle auto-inject",
+  "actionbar.questions.tooltip": "Show pending questions",
 
   "dialog.provider.search.placeholder": "Search providers",
   "dialog.provider.empty": "No providers found",
@@ -392,6 +401,9 @@ export const dict = {
   "toast.permissions.autoaccept.off.title": "Stopped auto-accepting edits",
   "toast.permissions.autoaccept.off.description": "Edit and write permissions will require approval",
 
+  "toast.background.autoinject.on.title": "Auto-inject enabled",
+  "toast.background.autoinject.off.title": "Auto-inject disabled",
+
   "toast.model.none.title": "No model selected",
   "toast.model.none.description": "Connect a provider to summarize this session",
 
@@ -475,6 +487,8 @@ export const dict = {
   "session.tab.context": "Context",
   "session.panel.reviewAndFiles": "Review and files",
   "session.review.filesChanged": "{{count}} Files Changed",
+  "session.revert.count": "{{count}} message reverted",
+  "session.revert.restore": "{{keybind}} or /redo to restore",
   "session.review.change.one": "Change",
   "session.review.change.other": "Changes",
   "session.review.loadingChanges": "Loading changes...",

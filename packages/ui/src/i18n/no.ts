@@ -99,7 +99,9 @@ export const dict: Record<Keys, string> = {
   "ui.patch.action.patched": "Oppdatert",
 
   "ui.question.subtitle.answered": "{{count}} besvart",
+  "ui.question.subtitle.deferred": "Utsatt",
   "ui.question.answer.none": "(ingen svar)",
+  "ui.question.answer.deferred": "Utsatt",
   "ui.question.review.notAnswered": "(ikke besvart)",
   "ui.question.multiHint": "(velg alle som gjelder)",
   "ui.question.custom.placeholder": "Skriv svaret ditt...",

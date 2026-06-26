@@ -96,7 +96,9 @@ export const dict = {
   "ui.patch.action.patched": "パッチ適用済み",
 
   "ui.question.subtitle.answered": "{{count}}件回答済み",
+  "ui.question.subtitle.deferred": "保留",
   "ui.question.answer.none": "(回答なし)",
+  "ui.question.answer.deferred": "保留",
   "ui.question.review.notAnswered": "(未回答)",
   "ui.question.multiHint": "(該当するものをすべて選択)",
   "ui.question.custom.placeholder": "回答を入力...",

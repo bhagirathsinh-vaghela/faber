@@ -18,7 +18,7 @@ import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 import { PromptInput } from "@/components/prompt-input"
-import { Statusline } from "@/components/statusline"
+import { PromptActionBar } from "@/components/prompt-actionbar"
 import { QuestionPanel } from "@/components/question-panel"
 import { MessageFooter } from "@/components/message-footer"
 import { SessionContextUsage } from "@/components/session-context-usage"
@@ -423,6 +423,11 @@ export default function Page() {
       equals: same,
     },
   )
+  const revertedCount = createMemo(() => {
+    const revert = revertMessageID()
+    if (!revert) return 0
+    return userMessages().filter((m) => m.id >= revert).length
+  })
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
 
   createEffect(
@@ -682,7 +687,7 @@ export default function Page() {
       id: "session.new",
       title: language.t("command.session.new"),
       category: language.t("command.category.session"),
-      keybind: "mod+shift+s",
+      keybind: "mod+shift+s,alt+n",
       slash: "new",
       onSelect: () => navigate(`/${params.dir}/session`),
     },
@@ -785,7 +790,7 @@ export default function Page() {
       title: language.t("command.message.previous"),
       description: language.t("command.message.previous.description"),
       category: language.t("command.category.session"),
-      keybind: "mod+arrowup",
+      keybind: "mod+arrowup,alt+9",
       disabled: !params.id,
       onSelect: () => navigateMessageByOffset(-1),
     },
@@ -794,7 +799,7 @@ export default function Page() {
       title: language.t("command.message.next"),
       description: language.t("command.message.next.description"),
       category: language.t("command.category.session"),
-      keybind: "mod+arrowdown",
+      keybind: "mod+arrowdown,alt+0",
       disabled: !params.id,
       onSelect: () => navigateMessageByOffset(1),
     },
@@ -803,7 +808,7 @@ export default function Page() {
       title: language.t("command.model.choose"),
       description: language.t("command.model.choose.description"),
       category: language.t("command.category.model"),
-      keybind: "mod+'",
+      keybind: "mod+',alt+m",
       slash: "model",
       onSelect: () => dialog.show(() => <DialogSelectModel />),
     },
@@ -871,6 +876,7 @@ export default function Page() {
       title: language.t("command.session.undo"),
       description: language.t("command.session.undo.description"),
       category: language.t("command.category.session"),
+      keybind: "alt+u",
       slash: "undo",
       disabled: !params.id || visibleUserMessages().length === 0,
       onSelect: async () => {
@@ -900,6 +906,7 @@ export default function Page() {
       title: language.t("command.session.redo"),
       description: language.t("command.session.redo.description"),
       category: language.t("command.category.session"),
+      keybind: "alt+r",
       slash: "redo",
       disabled: !params.id || !info()?.revert?.messageID,
       onSelect: async () => {
@@ -954,6 +961,7 @@ export default function Page() {
       title: language.t("command.session.fork"),
       description: language.t("command.session.fork.description"),
       category: language.t("command.category.session"),
+      keybind: "alt+o",
       slash: "fork",
       disabled: !params.id || visibleUserMessages().length === 0,
       onSelect: () => dialog.show(() => <DialogFork />),
@@ -2139,6 +2147,21 @@ export default function Page() {
                 "md:max-w-[90%] md:mx-auto": centered(),
               }}
             >
+              <Show when={revertMessageID()}>
+                <button
+                  type="button"
+                  class="mb-3 w-full rounded-md border border-border-weak-base bg-background-base/95 px-4 py-2 text-left hover:bg-background-element"
+                  onClick={() => command.trigger("session.redo")}
+                >
+                  <div class="text-13-regular text-text-base">
+                    {language.t("session.revert.count", { count: revertedCount() })}
+                  </div>
+                  <div class="text-11-regular text-text-weak">
+                    {language.t("session.revert.restore", { keybind: command.keybind("session.redo") })}
+                  </div>
+                </button>
+              </Show>
+
               <QuestionPanel />
 
               <Show when={request()} keyed>
@@ -2208,7 +2231,11 @@ export default function Page() {
                   onSubmit={resumeScroll}
                 />
               </Show>
-              <Statusline />
+              <Show when={params.id}>
+                <div class="flex justify-end px-1 pt-1">
+                  <PromptActionBar />
+                </div>
+              </Show>
             </div>
           </div>
 

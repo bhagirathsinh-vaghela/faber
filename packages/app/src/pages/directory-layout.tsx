@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
+import { QuestionProvider } from "@/context/question"
 
 import { DataProvider } from "@opencode-ai/ui/context"
 import { iife } from "@opencode-ai/util/iife"
@@ -73,7 +74,9 @@ export default function Layout(props: ParentProps) {
                 onNavigateToSession={navigateToSession}
                 onRevertMessage={revertMessage}
               >
-                <LocalProvider>{props.children}</LocalProvider>
+                <LocalProvider>
+                  <QuestionProvider>{props.children}</QuestionProvider>
+                </LocalProvider>
               </DataProvider>
             )
           })}

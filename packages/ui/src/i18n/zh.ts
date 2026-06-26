@@ -100,7 +100,9 @@ export const dict = {
   "ui.patch.action.patched": "已应用补丁",
 
   "ui.question.subtitle.answered": "{{count}} 已回答",
+  "ui.question.subtitle.deferred": "已推迟",
   "ui.question.answer.none": "(无答案)",
+  "ui.question.answer.deferred": "已推迟",
   "ui.question.review.notAnswered": "(未回答)",
   "ui.question.multiHint": "(可多选)",
   "ui.question.custom.placeholder": "输入你的答案...",

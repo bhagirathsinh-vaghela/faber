@@ -96,7 +96,9 @@ export const dict = {
   "ui.patch.action.patched": "패치됨",
 
   "ui.question.subtitle.answered": "{{count}}개 답변됨",
+  "ui.question.subtitle.deferred": "보류됨",
   "ui.question.answer.none": "(답변 없음)",
+  "ui.question.answer.deferred": "보류됨",
   "ui.question.review.notAnswered": "(답변되지 않음)",
   "ui.question.multiHint": "(해당하는 항목 모두 선택)",
   "ui.question.custom.placeholder": "답변 입력...",

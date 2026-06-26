@@ -96,7 +96,9 @@ export const dict = {
   "ui.patch.action.patched": "Parcheado",
 
   "ui.question.subtitle.answered": "{{count}} respondidas",
+  "ui.question.subtitle.deferred": "Aplazado",
   "ui.question.answer.none": "(sin respuesta)",
+  "ui.question.answer.deferred": "Aplazado",
   "ui.question.review.notAnswered": "(no respondida)",
   "ui.question.multiHint": "(selecciona todas las que correspondan)",
   "ui.question.custom.placeholder": "Escribe tu respuesta...",
