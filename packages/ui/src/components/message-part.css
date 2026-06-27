@@ -93,12 +93,19 @@
       position: absolute;
       top: 7px;
       right: 7px;
-      opacity: 0;
       transition: opacity 0.15s ease;
     }
 
-    &:hover [data-slot="user-message-copy-wrapper"] {
-      opacity: 1;
+    /* Hover-reveal only on devices with a real pointer. On touch (hover: none)
+       there's no hover, so keep it visible. */
+    @media (hover: hover) {
+      [data-slot="user-message-copy-wrapper"] {
+        opacity: 0;
+      }
+
+      &:hover [data-slot="user-message-copy-wrapper"] {
+        opacity: 1;
+      }
     }
   }
 
@@ -112,12 +119,17 @@
 }
 
 [data-slot="message-box-revert"] {
-  opacity: 0;
   transition: opacity 0.15s ease;
 }
 
-[data-component="message-box"]:hover [data-slot="message-box-revert"] {
-  opacity: 1;
+@media (hover: hover) {
+  [data-slot="message-box-revert"] {
+    opacity: 0;
+  }
+
+  [data-component="message-box"]:hover [data-slot="message-box-revert"] {
+    opacity: 1;
+  }
 }
 
 [data-component="text-part"] {
@@ -132,13 +144,18 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    opacity: 0;
     transition: opacity 0.15s ease;
     z-index: 1;
   }
 
-  [data-slot="text-part-body"]:hover [data-slot="text-part-copy-wrapper"] {
-    opacity: 1;
+  @media (hover: hover) {
+    [data-slot="text-part-copy-wrapper"] {
+      opacity: 0;
+    }
+
+    [data-slot="text-part-body"]:hover [data-slot="text-part-copy-wrapper"] {
+      opacity: 1;
+    }
   }
 
   [data-component="markdown"] {
