@@ -1,1 +1,18 @@
 @import "@opencode-ai/ui/styles/tailwind";
+
+/* Safe-area insets for the installed PWA only, scoped to touch devices in
+   portrait. In a normal browser tab Safari's own chrome handles the inset, so
+   we gate on (display-mode: standalone) to avoid double-padding there. In
+   landscape iOS moves the insets to the sides, so a top/bottom pad would be
+   wrong; desktop has no insets. (hover: none) excludes pointer devices. */
+@media (display-mode: standalone) and (hover: none) and (orientation: portrait) {
+  [data-slot="titlebar"] {
+    padding-top: env(safe-area-inset-top);
+    min-height: calc(2.5rem + env(safe-area-inset-top));
+    height: auto;
+  }
+
+  [data-slot="prompt-dock"] {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+}
