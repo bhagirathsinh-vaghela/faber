@@ -91,6 +91,13 @@ const icons = {
   // Context (window fullness label): CPU chip (Lucide `cpu`) — reads as
   // memory/processor far better than a brain at chip size. Scaled ×0.8333.
   "usage-context": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></g>`,
+  // Session input (cumulative tokens sent): arrow up (Lucide `arrow-up`). Scaled ×0.8333.
+  "usage-input": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></g>`,
+  // Session output (cumulative tokens received): arrow down (Lucide `arrow-down`). Scaled ×0.8333.
+  "usage-output": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></g>`,
+  // Per-turn cluster marker (this turn's activity): pulse (Lucide `activity`),
+  // the live/current counterpart to the Σ totals marker. Scaled ×0.8333.
+  "usage-per-turn": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></g>`,
 }
 
 export interface IconProps extends ComponentProps<"svg"> {

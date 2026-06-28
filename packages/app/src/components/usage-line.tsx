@@ -1,12 +1,9 @@
 import { Show, type JSX } from "solid-js"
+import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
+import { Icon } from "@opencode-ai/ui/icon"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 
 type ProviderLike = { id: string; models: Record<string, { limit?: { context?: number } }> }
-
-export const GREEN = "#22DD22"
-export const NEXT_TURN_ORANGE = "#DB6A2E"
-export const WARNING = "#DBA92E"
-export const MUTED = "var(--color-text-weak)"
 
 export function tokens(count: number): string {
   if (count >= 1_000_000) return Math.round(count / 1_000_000) + "M"
@@ -18,55 +15,6 @@ export function cost(dollars: number): string {
   return "$" + dollars.toFixed(2)
 }
 
-// Mirrors TUI utilizationColor: green under 75%, then hsv sweep green->red.
-export function utilizationColor(percent: number): string {
-  if (percent < 75) return GREEN
-  const t = Math.min((percent - 75) / 25, 1)
-  const hue = 120 * (1 - t)
-  const s = 0.85
-  const v = 0.9
-  const c = v * s
-  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
-  const m = v - c
-  const [r, g, b] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : [0, c, x]
-  const to = (n: number) =>
-    Math.round((n + m) * 255)
-      .toString(16)
-      .padStart(2, "0")
-  return `#${to(r)}${to(g)}${to(b)}`
-}
-
-// Web-native context bar: a real div track + fill, not the
-// old ▓░ monospace glyphs. Fill width = percentage. Fill color is a green→red
-// gradient by default; the theme can switch it to a flat color via the
-// --usage-bar-fill token ("gradient" | "flat"). Flat mode uses the single color
-// computed at the current % (utilizationColor), matching the gradient hue there.
-// Endpoints come from --usage-context-start / --usage-context-end.
-function barFillMode(): "gradient" | "flat" {
-  if (typeof window === "undefined") return "gradient"
-  const v = getComputedStyle(document.documentElement).getPropertyValue("--usage-bar-fill").trim()
-  return v === "flat" ? "flat" : "gradient"
-}
-
-export function ProgressBar(props: { percent: number }) {
-  const pct = () => Math.max(0, Math.min(100, props.percent))
-  const fill = () =>
-    barFillMode() === "flat"
-      ? utilizationColor(pct())
-      : "linear-gradient(to right, var(--usage-context-start), var(--usage-context-end))"
-  return (
-    <span
-      class="inline-block h-1.5 w-12 shrink-0 overflow-hidden rounded-full align-middle"
-      style={{ background: "var(--color-surface-inset-base)" }}
-    >
-      <span class="block h-full rounded-full" style={{ width: `${pct()}%`, background: fill() }} />
-    </span>
-  )
-}
-
-export function Pipe() {
-  return <span style={{ color: MUTED }}> │ </span>
-}
 
 export type UsageStats = {
   total: number
@@ -97,9 +45,12 @@ export function statsFromMessage(message: AssistantMessage, providers: ProviderL
   }
 }
 
-// The TUI per-message snapshot line 2 (StatuslineContent compact): context bar,
-// cache stats, and session totals + cost as of this message. The Σ totals and cost are session-cumulative (message.sessionTotal),
-// not this message's isolated tokens/cost.
+// The per-message / live-dock usage row: one Chip per metric,
+// flowing and wrapping, replacing the old pipe-separated text line. The data
+// derivation (statsFromMessage, sessionTotal) is unchanged; only the rendering
+// is chips. Context is a gauge chip (background fills to the fraction); the
+// rest are plain icon+value chips. `leading` (the dock's cache-countdown ring)
+// renders as its own chip when present.
 export function UsageLine(props: {
   stats: UsageStats
   totals: SessionTotals
@@ -107,65 +58,62 @@ export function UsageLine(props: {
   leading?: JSX.Element
   class?: string
 }) {
+  // Context fill color follows the same 75% threshold as utilizationColor:
+  // below 75% the start (green) token, at/above the end (red) token.
+  const contextFill = () => (props.stats.percentage >= 75 ? "usage-context-end" : "usage-context-start")
+  const icon = (name: Parameters<typeof Icon>[0]["name"]) => <Icon name={name} class="size-3.5" />
+
   return (
-    <div
-      class={
-        "flex flex-row flex-wrap items-center text-11-regular font-mono [font-variant-numeric:tabular-nums] leading-tight " +
-        (props.class ?? "pt-0.5")
-      }
-    >
+    <div class={"flex flex-row flex-wrap items-center gap-1.5 " + (props.class ?? "pt-0.5")}>
       <Show when={props.leading}>
-        {props.leading}
-        <Pipe />
+        <ChipGroup>
+          <Chip>{props.leading}</Chip>
+        </ChipGroup>
       </Show>
-      <span style={{ color: utilizationColor(props.stats.percentage) }}>{"\u25a3 "}</span>
-      <ProgressBar percent={props.stats.percentage} />
-      <span>
-        {" "}
-        <span class="font-semibold" style={{ color: utilizationColor(props.stats.percentage) }}>
-          {tokens(props.stats.total)}
-        </span>
-        <span style={{ color: MUTED }}>/</span>
-        <span style={{ color: MUTED }}>{tokens(props.stats.limit)}</span>
-      </span>
-      <Pipe />
 
-      <span>
-        <span style={{ color: GREEN }}>{"\u25c8 "}</span>
-        <span class="font-semibold" style={{ color: GREEN }}>
+      {/* Context: solo gauge chip (fill = how full the window is). */}
+      <ChipGroup>
+        <Chip
+          icon={icon("usage-context")}
+          accent="usage-context-start"
+          fill={props.stats.percentage / 100}
+          fillColor={contextFill()}
+          title={`Context ${tokens(props.stats.total)} / ${tokens(props.stats.limit)}`}
+        >
+          {tokens(props.stats.total)}/{tokens(props.stats.limit)}
+        </Chip>
+      </ChipGroup>
+
+      {/* Per-turn group (this turn's activity): pulse marker · cached · write · next. */}
+      <ChipGroup>
+        <Chip icon={icon("usage-per-turn")} accent="usage-totals" title="This turn" />
+        <Chip icon={icon("usage-cached")} accent="usage-cached" title="Cached (read from cache)">
           {tokens(props.stats.cached)}
-        </span>
-        <span style={{ color: MUTED }}> · </span>
-        <span style={{ color: WARNING }}>{"\u2605 "}</span>
-        <span class="font-semibold" style={{ color: WARNING }}>
+        </Chip>
+        <Chip icon={icon("usage-cache-write")} accent="usage-cache-write" title="Cache write">
           {tokens(props.stats.cacheWritten)}
-        </span>
-        <span style={{ color: MUTED }}> · </span>
-        <span style={{ color: NEXT_TURN_ORANGE }}>{"\u25b2 "}</span>
-        <span class="font-semibold" style={{ color: NEXT_TURN_ORANGE }}>
+        </Chip>
+        <Chip icon={icon("usage-next-turn")} accent="usage-next-turn" title="Next turn (output)">
           {tokens(props.stats.nextTurn)}
-        </span>
-      </span>
-      <Pipe />
+        </Chip>
+      </ChipGroup>
 
-      <span>
-        <span style={{ color: "var(--color-text-base)" }}>{"\u03a3 "}</span>
-        <span class="font-semibold" style={{ color: "var(--color-text-base)" }}>
-          ↑{tokens(props.totals.input)}
-        </span>
-        <span style={{ color: MUTED }}> · </span>
-        <span class="font-semibold" style={{ color: WARNING }}>
-          ↓{tokens(props.totals.output)}
-        </span>
-        <span style={{ color: MUTED }}> · </span>
-        <span class="font-semibold" style={{ color: NEXT_TURN_ORANGE }}>
-          {"\u2295 " + tokens(props.totals.cacheWrite)}
-        </span>
-        <span style={{ color: MUTED }}> · </span>
-        <span class="font-semibold" style={{ color: GREEN }}>
+      {/* Session group (Σ cluster): sigma marker · input · output · cache-write · cost. */}
+      <ChipGroup>
+        <Chip icon={icon("usage-totals")} accent="usage-totals" title="Session totals" />
+        <Chip icon={icon("usage-input")} accent="usage-totals" title="Session input tokens">
+          {tokens(props.totals.input)}
+        </Chip>
+        <Chip icon={icon("usage-output")} accent="usage-cache-write" title="Session output tokens">
+          {tokens(props.totals.output)}
+        </Chip>
+        <Chip icon={icon("usage-cache-write")} accent="usage-next-turn" title="Session cache write">
+          {tokens(props.totals.cacheWrite)}
+        </Chip>
+        <Chip icon={icon("usage-cost")} accent="usage-cost" title="Session cost">
           {cost(props.cost)}
-        </span>
-      </span>
+        </Chip>
+      </ChipGroup>
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useSync } from "@/context/sync"
 import { useParams } from "@solidjs/router"
-import { WARNING, UsageLine, statsFromMessage } from "@/components/usage-line"
+import { UsageLine, statsFromMessage } from "@/components/usage-line"
 
 // Cache TTL mirrors the server's session/ping CACHE_TTL (5 minutes).
 const CACHE_TTL = 5 * 60 * 1000
@@ -82,7 +82,7 @@ export function Statusline() {
               }
               placement="top"
             >
-              <span style={{ color: WARNING }}>
+              <span style={{ color: "var(--color-text-warning, #DBA92E)" }}>
                 {"\u25f7 "}
                 <Show
                   when={!(pingPending() && !cacheCountdown())}
