@@ -100,10 +100,15 @@ export namespace SessionCompaction {
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
     const session = await Session.get(input.sessionID)
-    const agent = await Agent.get("compaction")
-    const model = agent.model
-      ? await Provider.getModel(agent.model.providerID, agent.model.modelID)
-      : await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
+    // Use the session's real agent (build/plan) so the request prefix — provider
+    // prompt (S1), tools, system blocks — is byte-identical to a normal turn.
+    // Anthropic caches on a cumulative prefix hash; the compaction agent's own
+    // prompt would replace S1 and invalidate the whole cached prefix (0% hit on
+    // the largest request in the session). The "summarize, no tools" instruction
+    // instead rides in the trailing user message, and allowedTools: [] is the
+    // runtime guard that blocks any tool the model attempts.
+    const agent = await Agent.get(userMessage.agent)
+    const model = await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await Session.updateMessage({
       id: Identifier.ascending("message"),
       role: "assistant",
@@ -136,13 +141,15 @@ export namespace SessionCompaction {
       abort: input.abort,
     })
 
-    // Use same tools and system as main session for cache compatibility.
-    // Compaction agent has "*": "deny" permissions so tools won't execute,
-    // but identical schemas preserve Anthropic prompt cache prefix.
+    // Resolve the same tools as a normal turn so the tools[] block (front of the
+    // prefix hash) is byte-identical. allowedTools: [] disables every tool at
+    // execution time without removing it from the schema — a runtime guard that,
+    // unlike a permission deny, can never strip a tool from the wire. Scoped to
+    // this call only (shallow copy); the stored session keeps its allowedTools.
     const tools = await SessionPrompt.resolveTools({
       agent,
       model,
-      session,
+      session: { ...session, allowedTools: [] },
       processor,
       bypassAgentCheck: false,
       messages: input.messages,
@@ -160,8 +167,16 @@ export namespace SessionCompaction {
       { sessionID: input.sessionID },
       { context: [], prompt: undefined },
     )
-    const defaultPrompt =
-      "Provide a detailed summary for continuing our conversation. Do not use any tools - only output text. Focus on: what we did, what we're working on, which files are involved, and what to do next."
+    // The summarization instruction lives here, in the trailing user message —
+    // after the cached prefix — so it never disturbs the prefix hash. No tools are
+    // available for this task (allowedTools: [] enforces it at runtime); the nudge
+    // tells the model not to bother attempting one and to reply with text only.
+    const defaultPrompt = [
+      "Provide a detailed summary of our conversation so it can be continued in a fresh context.",
+      "You will see tool definitions in this request, but NO tools are available to you for this task — any tool call will be denied. Do not attempt to use tools. Respond with the summary as plain text only.",
+      "Focus on: what was done, what is currently being worked on, which files are being modified, what needs to happen next, key user requests/constraints/preferences that should persist, and important technical decisions and why they were made.",
+      "Be comprehensive enough to preserve context, but concise enough to scan quickly.",
+    ].join("\n\n")
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
     const result = await processor.process({
       user: userMessage,
