@@ -1,5 +1,5 @@
 import type { ColorValue, DesktopTheme, HexColor, ResolvedTheme, ThemeVariant } from "./types"
-import { generateNeutralScale, generateScale, hexToOklch, oklchToHex, withAlpha } from "./color"
+import { generateNeutralScale, generateScale, hexToOklch, mixColors, oklchToHex, withAlpha } from "./color"
 
 export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): ResolvedTheme {
   const { seeds, overrides = {} } = variant
@@ -289,6 +289,38 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["avatar-text-purple"] = isDark ? "#9d5bd2" : "#8445bc"
   tokens["avatar-text-cyan"] = isDark ? "#369eff" : "#0894b3"
   tokens["avatar-text-lime"] = isDark ? "#c4f042" : "#5d770d"
+
+  // Usage-dock / message-footer semantic colors. Derived from the
+  // theme's seeds — some as plain scale steps, some as OKLCH blends of two seeds
+  // so metrics that must be told apart at a glance get a DISTINCT hue without
+  // adding seeds for theme authors to fill in. Each is override-able below.
+  // Context bar fill endpoints (green=OK -> red=full); flat mode samples the
+  // gradient at the current %.
+  tokens["usage-context-start"] = success[8]
+  tokens["usage-context-end"] = error[8]
+  // Cache read = fast/cheap (green). Cost is also a "green-family" money
+  // signal, nudged off plain green so the two don't conflate.
+  tokens["usage-cached"] = success[7]
+  tokens["usage-cost"] = mixColors(success[8], info[8], 0.35)
+  // Cache write = the most cost-bearing op (amber/warning).
+  tokens["usage-cache-write"] = warning[8]
+  // Output tokens this turn — orange, between warning and error.
+  tokens["usage-next-turn"] = mixColors(warning[8], error[8], 0.6)
+  // Session totals: neutral, follows base text.
+  tokens["usage-totals"] = "var(--text-base)"
+  // Model accent — magenta-family. Derived from the theme's primary (so it
+  // harmonizes) but its hue is pulled toward magenta (~320°) and chroma lifted,
+  // rather than mixColors() which lerps hue linearly and can take the long way
+  // around the wheel (primary→error went through green = teal). Setting the hue
+  // directly avoids that. Theme-derived, not a fixed hex.
+  const primaryOklch = hexToOklch(primary[8])
+  tokens["model"] = oklchToHex({
+    l: primaryOklch.l,
+    c: Math.max(primaryOklch.c, 0.2),
+    h: 320,
+  })
+  // Bar fill mode switch: "gradient" | "flat". Themes override to "flat".
+  tokens["usage-bar-fill"] = "gradient" as ColorValue
 
   for (const [key, value] of Object.entries(overrides)) {
     tokens[key] = value

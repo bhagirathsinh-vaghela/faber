@@ -232,3 +232,12 @@
 --border-weaker-focus: var(--smoke-light-alpha-6);
 --button-ghost-hover: var(--smoke-light-alpha-2);
 --button-ghost-hover2: var(--smoke-light-alpha-3);
+--usage-context-start: #22DD22;
+--usage-context-end: #DD2222;
+--usage-cached: #22DD22;
+--usage-cost: #22DDAA;
+--usage-cache-write: #DBA92E;
+--usage-next-turn: #DB6A2E;
+--usage-totals: var(--text-base);
+--model: #E83CF5;
+--usage-bar-fill: gradient;
