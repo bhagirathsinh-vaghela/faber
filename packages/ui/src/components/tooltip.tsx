@@ -1,5 +1,5 @@
 import { Tooltip as KobalteTooltip } from "@kobalte/core/tooltip"
-import { children, createSignal, Match, onMount, splitProps, Switch, type JSX } from "solid-js"
+import { children, createSignal, Match, onCleanup, onMount, splitProps, Switch, type JSX } from "solid-js"
 import type { ComponentProps } from "solid-js"
 
 export interface TooltipProps extends ComponentProps<typeof KobalteTooltip> {
@@ -33,6 +33,11 @@ export function TooltipKeybind(props: TooltipKeybindProps) {
 
 export function Tooltip(props: TooltipProps) {
   const [open, setOpen] = createSignal(false)
+  // Long-press "pin": on touch we open the tooltip and keep it open after the
+  // finger lifts (Kobalte would otherwise close it on pointer-up). Pinned stays
+  // true until the next touch outside the trigger. Forced into the open state
+  // below so Kobalte's own release-close can't override it.
+  const [pinned, setPinned] = createSignal(false)
   const [local, others] = splitProps(props, [
     "children",
     "class",
@@ -44,27 +49,84 @@ export function Tooltip(props: TooltipProps) {
 
   const c = children(() => local.children)
 
+  // Touch long-press support: mobile browsers have no hover, so a tooltip would
+  // otherwise never appear. We open it after a ~500ms press and close it on the
+  // next touch anywhere. The timer is armed only on touchstart, so desktop hover
+  // is untouched. touchmove/touchend/touchcancel before the threshold cancel it
+  // (a scroll or quick tap is not a long-press).
+  let pressTimer: ReturnType<typeof setTimeout> | undefined
+  // True once a press crosses the long-press threshold, so the synthesized
+  // click that fires on touchend can be swallowed — a deliberate long-press
+  // shows the tooltip only, it must NOT activate the button underneath.
+  let longPressed = false
+  const cancelPress = () => {
+    if (pressTimer === undefined) return
+    clearTimeout(pressTimer)
+    pressTimer = undefined
+  }
+  const startPress = () => {
+    cancelPress()
+    longPressed = false
+    pressTimer = setTimeout(() => {
+      longPressed = true
+      setPinned(true)
+      setOpen(true)
+    }, 500)
+  }
+
   onMount(() => {
-    const childElements = c()
-    if (childElements instanceof HTMLElement) {
-      childElements.addEventListener("focusin", () => setOpen(true))
-      childElements.addEventListener("focusout", () => setOpen(false))
-    } else if (Array.isArray(childElements)) {
-      for (const child of childElements) {
-        if (child instanceof HTMLElement) {
-          child.addEventListener("focusin", () => setOpen(true))
-          child.addEventListener("focusout", () => setOpen(false))
-        }
+    // Close an open (long-pressed) tooltip on the next touch elsewhere.
+    const closeOnOutside = (e: TouchEvent) => {
+      const els = c()
+      const nodes = Array.isArray(els) ? els : [els]
+      const inside = nodes.some((n) => n instanceof HTMLElement && n.contains(e.target as Node))
+      if (!inside) {
+        setPinned(false)
+        setOpen(false)
       }
     }
+    document.addEventListener("touchstart", closeOnOutside, { passive: true })
+
+    const childElements = c()
+    const arm = (el: HTMLElement) => {
+      el.addEventListener("focusin", () => setOpen(true))
+      el.addEventListener("focusout", () => setOpen(false))
+      el.addEventListener("touchstart", startPress, { passive: true })
+      el.addEventListener("touchend", cancelPress, { passive: true })
+      el.addEventListener("touchmove", cancelPress, { passive: true })
+      el.addEventListener("touchcancel", cancelPress, { passive: true })
+      // Swallow the synthesized click after a long-press so the button under
+      // the trigger does not activate. Capture phase runs before the button's
+      // own handler. Reset the flag so the next normal tap clicks through.
+      el.addEventListener(
+        "click",
+        (e) => {
+          if (!longPressed) return
+          e.stopPropagation()
+          e.preventDefault()
+          longPressed = false
+        },
+        true,
+      )
+    }
+    if (childElements instanceof HTMLElement) arm(childElements)
+    else if (Array.isArray(childElements))
+      for (const child of childElements) if (child instanceof HTMLElement) arm(child)
+
+    onCleanup(() => document.removeEventListener("touchstart", closeOnOutside))
   })
 
   return (
     <Switch>
       <Match when={local.inactive}>{local.children}</Match>
       <Match when={true}>
-        <KobalteTooltip gutter={4} {...others} open={local.forceOpen || open()} onOpenChange={setOpen}>
-          <KobalteTooltip.Trigger as={"div"} data-component="tooltip-trigger" class={local.class}>
+        <KobalteTooltip openDelay={0} gutter={4} {...others} open={local.forceOpen || pinned() || open()} onOpenChange={setOpen}>
+          <KobalteTooltip.Trigger
+            as={"div"}
+            data-component="tooltip-trigger"
+            class={local.class}
+            style={{ "-webkit-touch-callout": "none", "-webkit-user-select": "none", "user-select": "none" }}
+          >
             {c()}
           </KobalteTooltip.Trigger>
           <KobalteTooltip.Portal>

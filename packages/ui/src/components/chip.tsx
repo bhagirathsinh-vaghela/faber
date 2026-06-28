@@ -1,4 +1,5 @@
 import { type JSX, Show, splitProps } from "solid-js"
+import { Tooltip } from "./tooltip"
 
 // Metric chips. A ChipGroup is the rounded-border container; each
 // Chip inside is a segment (icon + value) carrying its own per-metric color.
@@ -34,6 +35,11 @@ export type ChipProps = {
   fillColor?: string
   class?: string
   title?: string
+  // Rich tooltip content (styled popover with keybind hint). When set, the chip
+  // wraps itself in <Tooltip>. The trigger wrapper uses display:contents so it
+  // does not break the ChipGroup divider/border-collapse layout.
+  tooltip?: JSX.Element
+  tooltipPlacement?: "top" | "bottom" | "left" | "right"
 }
 
 const halo = "0 1px 3px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.7)"
@@ -54,6 +60,8 @@ export function Chip(props: ChipProps) {
     "fillColor",
     "class",
     "title",
+    "tooltip",
+    "tooltipPlacement",
   ])
 
   const tone = () => (local.accent ? `var(--${local.accent})` : "var(--color-text-strong)")
@@ -86,7 +94,7 @@ export function Chip(props: ChipProps) {
 
   const cls = `${seg} relative overflow-hidden ${local.class ?? ""}`
 
-  return (
+  const chip = (
     <Show
       when={local.onClick}
       fallback={
@@ -101,12 +109,20 @@ export function Chip(props: ChipProps) {
         data-interactive="true"
         title={local.title}
         onClick={local.onClick}
-        class={`${cls} cursor-pointer`}
+        class={`${cls} cursor-pointer hover:bg-surface-raised-base-hover`}
         style={{ "background-image": gaugeBg() }}
         {...rest}
       >
         {content}
       </button>
+    </Show>
+  )
+
+  return (
+    <Show when={local.tooltip} fallback={chip}>
+      <Tooltip value={local.tooltip} placement={local.tooltipPlacement ?? "top"} class="inline-flex items-stretch">
+        {chip}
+      </Tooltip>
     </Show>
   )
 }
@@ -120,8 +136,14 @@ export function ChipGroup(props: { children: JSX.Element; class?: string }) {
       data-component="chip-group"
       class={
         "inline-flex items-stretch rounded-md border border-border-weak-base bg-surface-inset-base " +
+        // Dividers between adjacent segments. Two adjacency cases: bare chips
+        // (direct [data-slot=chip] children) and tooltip-wrapped chips (the chip
+        // sits inside an inline-flex [data-component=tooltip-trigger], which is
+        // the flex segment and carries the divider border itself).
         "overflow-hidden [&>[data-slot=chip]+[data-slot=chip]]:border-l " +
         "[&>[data-slot=chip]+[data-slot=chip]]:border-border-weak-base " +
+        "[&>[data-component=tooltip-trigger]+[data-component=tooltip-trigger]]:border-l " +
+        "[&>[data-component=tooltip-trigger]+[data-component=tooltip-trigger]]:border-border-weak-base " +
         (props.class ?? "")
       }
     >
