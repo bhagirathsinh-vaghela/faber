@@ -12,6 +12,7 @@ import { Provider } from "../provider/provider"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, asSchema } from "ai"
 import { SessionCompaction } from "./compaction"
 import { Instance } from "../project/instance"
+import { Global } from "../global"
 import { Bus } from "../bus"
 import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
@@ -38,6 +39,7 @@ import { Command } from "../command"
 import { $, fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
+import { Wildcard } from "../util/wildcard"
 import { NamedError } from "@opencode-ai/util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
@@ -709,6 +711,48 @@ export namespace SessionPrompt {
     return Provider.defaultModel()
   }
 
+  // Tools that carry a file path we can scope against (the edit family).
+  const PATH_SCOPED_TOOLS = ["edit", "write", "multiedit"]
+
+  // Plan mode allowlist: every registered tool stays available (so the request
+  // schema is identical to a build turn and the prompt cache survives the
+  // plan<->build switch), but the edit-family tools are scoped to the plan files.
+  // This replaces the old plan-agent edit permission deny, which routed through
+  // PermissionNext.disabled and could strip edit tools from the wire.
+  function planAllowlist(toolIds: string[]): Session.AllowedTool[] {
+    const planPaths = [
+      path.join(".opencode", "plans", "*.md"),
+      path.relative(Instance.worktree, path.join(Global.Path.data, "plans", "*.md")),
+      path.join(Global.Path.data, "plans", "*.md"),
+    ]
+    return toolIds.map((id) => (PATH_SCOPED_TOOLS.includes(id) ? { id, paths: planPaths } : id))
+  }
+
+  // Runtime gate for the allowedTools allowlist. Returns a denial message when
+  // the tool call is not allowed, or undefined when it is. allowedTools never
+  // removes a tool from the request schema (that would change the prompt-cache
+  // prefix); the gate runs here at execution time instead.
+  //   - allowedTools undefined        -> all tools allowed (normal sessions)
+  //   - id absent from the list       -> denied
+  //   - id present as a bare string   -> allowed, any arguments
+  //   - id present as { id, paths }   -> allowed only when args.filePath
+  //                                      matches a glob in paths
+  function toolDenial(allowed: Session.AllowedTool[] | undefined, id: string, args: any): string | undefined {
+    if (!allowed) return undefined
+    const entry = allowed.find((t) => (typeof t === "string" ? t === id : t.id === id))
+    if (!entry) {
+      const names = allowed.map((t) => (typeof t === "string" ? t : t.id))
+      return `Tool "${id}" is not available for this task. Available tools: ${names.join(", ")}`
+    }
+    if (typeof entry === "string") return undefined
+    if (!PATH_SCOPED_TOOLS.includes(id)) return undefined
+    const filePath = args?.filePath
+    if (typeof filePath !== "string") return `Tool "${id}" requires a file path for this task.`
+    const target = path.isAbsolute(filePath) ? path.relative(Instance.worktree, filePath) : filePath
+    if (entry.paths.some((p) => Wildcard.match(target, p) || Wildcard.match(filePath, p))) return undefined
+    return `Tool "${id}" is restricted to ${entry.paths.join(", ")} for this task. "${filePath}" is not allowed.`
+  }
+
   export async function resolveTools(input: {
     agent: Agent.Info
     model: Provider.Model
@@ -760,6 +804,12 @@ export namespace SessionPrompt {
       { modelID: input.model.api.id, providerID: input.model.providerID },
       input.agent,
     )
+    // Effective allowlist: an explicit session allowlist (subtask/compaction)
+    // wins; otherwise plan mode derives one that keeps every tool on the wire and
+    // scopes edits to the plan files. Build agents get undefined (all allowed).
+    const allowedTools =
+      input.session.allowedTools ??
+      (input.agent.name === "plan" ? planAllowlist(registered.map((item) => item.id)) : undefined)
     const ruleset = PermissionNext.merge(input.agent.permission, input.session.permission ?? [])
     const denied = PermissionNext.disabled(
       registered.map((item) => item.id),
@@ -774,11 +824,12 @@ export namespace SessionPrompt {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const ctx = context(args, options)
-          if (input.session.allowedTools && !input.session.allowedTools.includes(item.id)) {
+          const denial = toolDenial(allowedTools, item.id, args)
+          if (denial) {
             return {
               title: item.id,
               metadata: {},
-              output: `Tool "${item.id}" is not available for this subtask type. Available tools: ${input.session.allowedTools.join(", ")}`,
+              output: denial,
             }
           }
           await Plugin.trigger(
@@ -816,6 +867,9 @@ export namespace SessionPrompt {
       // Wrap execute to add plugin hooks and format output
       item.execute = async (args, opts) => {
         const ctx = context(args, opts)
+
+        const denial = toolDenial(allowedTools, key, args)
+        if (denial) return { content: [{ type: "text" as const, text: denial }] }
 
         await Plugin.trigger(
           "tool.execute.before",

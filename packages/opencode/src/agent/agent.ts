@@ -93,6 +93,12 @@ export namespace Agent {
         name: "plan",
         description: "Plan mode. Disallows all edit tools.",
         options: {},
+        // Edit restriction is enforced via the plan allowlist in
+        // SessionPrompt.resolveTools (edit-family tools scoped to the plan files),
+        // not a permission deny. The deny routed through PermissionNext.disabled
+        // and could strip edit tools from the request schema, breaking the prompt
+        // cache on every plan<->build switch. The allowlist keeps the schema
+        // identical and gates at execution time instead.
         permission: PermissionNext.merge(
           defaults,
           PermissionNext.fromConfig({
@@ -100,11 +106,6 @@ export namespace Agent {
             plan_exit: "allow",
             external_directory: {
               [path.join(Global.Path.data, "plans", "*")]: "allow",
-            },
-            edit: {
-              "*": "deny",
-              [path.join(".opencode", "plans", "*.md")]: "allow",
-              [path.relative(Instance.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
             },
           }),
           user,

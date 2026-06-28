@@ -50,6 +50,21 @@ export namespace Session {
     return `${title} (fork #1)`
   }
 
+  // An allowed tool is either a bare tool id (allowed with any arguments) or a
+  // tool id scoped to file-path globs (allowed only when the call's file path
+  // matches one of `paths`, denied otherwise). Path scoping applies to the
+  // edit-family tools that take a `filePath` arg (edit, write, multiedit).
+  // Enforced at execution time in resolveTools; never strips a tool from the
+  // request schema, so the prompt-cache prefix stays stable across mode switches.
+  export const AllowedTool = z.union([
+    z.string(),
+    z.object({
+      id: z.string(),
+      paths: z.string().array(),
+    }),
+  ])
+  export type AllowedTool = z.output<typeof AllowedTool>
+
   export const Info = z
     .object({
       id: Identifier.schema("session"),
@@ -121,7 +136,7 @@ export namespace Session {
       systemBlockCount: z.number().optional(),
       cacheProbeIndex: z.number().optional(),
       cacheProbeMessageID: z.string().optional(),
-      allowedTools: z.string().array().optional(),
+      allowedTools: AllowedTool.array().optional(),
     })
     .meta({
       ref: "Session",
