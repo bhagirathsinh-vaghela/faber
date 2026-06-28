@@ -1,5 +1,5 @@
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
-import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { useCommand } from "@/context/command"
@@ -10,8 +10,8 @@ import { showToast } from "@opencode-ai/ui/toast"
 // The prompt action bar, ported from the TUI prompt footer
 // (packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx): pending
 // (subtasks running), available (results awaiting accept), auto-inject (whether
-// completed results inject automatically), questions (pending count), and the
-// command-palette hint. Counts stay live via the background.task.* events the
+// completed results inject automatically), and questions (pending count).
+// Counts stay live via the background.task.* events the
 // TUI also listens to; auto-inject toggles through background.toggleAutoInject.
 export function PromptActionBar() {
   const sdk = useSDK()
@@ -92,55 +92,44 @@ export function PromptActionBar() {
   const questionsTip = createMemo(() => `${language.t("actionbar.questions.tooltip")} (${command.keybind("question.list")})`)
 
   return (
-    <div class="flex flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5 text-11-regular text-text-weak">
-      <Tooltip value={language.t("actionbar.pending.tooltip")} placement="top">
-        <span class="flex items-center gap-1">
-          <span>pending</span>
-          <span classList={{ "text-info": running() > 0, "text-success": running() === 0 }}>{running()}</span>
-        </span>
-      </Tooltip>
-
-      <span>·</span>
-
-      <Tooltip value={availableTip()} placement="top">
-        <button class="flex items-center gap-1" onClick={() => command.trigger("task.pending", "keybind")}>
-          <span>available</span>
-          <span classList={{ "text-warning": available() > 0, "text-success": available() === 0 }}>
-            {available()}
-          </span>
-        </button>
-      </Tooltip>
-
-      <span>·</span>
-
-      <Tooltip value={autoinjectTip()} placement="top">
-        <button
-          class="flex items-center gap-1"
-          onClick={() => command.trigger("background.autoinject.toggle", "keybind")}
+    <div class="flex flex-row flex-wrap items-center gap-1.5">
+      <ChipGroup>
+        {/* pending: display-only (no onClick) and muted, to read as passive
+            next to the interactive siblings. */}
+        <Chip
+          accent={running() > 0 ? "icon-info-base" : "icon-success-base"}
+          class="opacity-70"
+          tooltip={language.t("actionbar.pending.tooltip")}
         >
-          <span>auto-inject</span>
-          <span classList={{ "text-success": autoInject(), "text-warning": !autoInject() }}>
-            {autoInject() ? "on" : "off"}
-          </span>
-        </button>
-      </Tooltip>
+          <span class="text-text-weak">pending</span> {running()}
+        </Chip>
 
-      <Show when={questions() > 0}>
-        <span>·</span>
-        <Tooltip value={questionsTip()} placement="top">
-          <button class="flex items-center gap-1" onClick={() => command.trigger("question.list", "keybind")}>
-            <span>questions</span>
-            <span class="text-warning">{questions()}</span>
-          </button>
-        </Tooltip>
-      </Show>
+        <Chip
+          accent={available() > 0 ? "icon-warning-base" : "icon-success-base"}
+          onClick={() => command.trigger("task.pending", "keybind")}
+          tooltip={availableTip()}
+        >
+          <span class="text-text-weak">available</span> {available()}
+        </Chip>
 
-      <span>·</span>
+        <Chip
+          accent={autoInject() ? "icon-success-base" : "icon-warning-base"}
+          onClick={() => command.trigger("background.autoinject.toggle", "keybind")}
+          tooltip={autoinjectTip()}
+        >
+          <span class="text-text-weak">auto-inject</span> {autoInject() ? "on" : "off"}
+        </Chip>
 
-      <button class="flex items-center gap-1" onClick={() => command.show()}>
-        <span class="text-text-base">{command.keybind("file.open")}</span>
-        <span>commands</span>
-      </button>
+        <Show when={questions() > 0}>
+          <Chip
+            accent="icon-warning-base"
+            onClick={() => command.trigger("question.list", "keybind")}
+            tooltip={questionsTip()}
+          >
+            <span class="text-text-weak">questions</span> {questions()}
+          </Chip>
+        </Show>
+      </ChipGroup>
     </div>
   )
 }
