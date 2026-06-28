@@ -1,17 +1,35 @@
 import { createMemo, For, Show } from "solid-js"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
+import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
+import type { IconName } from "@opencode-ai/ui/icons/provider"
 import { useSync } from "@/context/sync"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
 
-// Mirrors the TUI ModelHeader: agent · model · provider · variant [· duration]
-// [· interrupted] [· directory]. MODEL_COLOR matches the TUI (#E83CF5).
-const MUTED = "var(--color-text-weak)"
-const MODEL = "#E83CF5"
-const WARNING = "#DBA92E"
-const PRIMARY = "var(--color-text-base)"
+// Status line: agent · [provider-icon] model · variant [· duration]
+// [· interrupted] · cwd. Field order matches the dock picker row (icon precedes
+// model). This is a monospace line, so each segment is colored by its semantic
+// "token type" from the editor's own syntax palette (auto-tracks every theme):
+// agent=type, model=the model accent, variant=constant, duration=primitive
+// (number), cwd=string (path), interrupted=critical. Raw --<token> (not the
+// --color-* alias) because the aliases tree-shake out when only referenced inline.
+const AGENT = "var(--syntax-type)"
+const MODEL = "var(--model)"
+const VARIANT = "var(--syntax-constant)"
+const DURATION = "var(--syntax-primitive)"
+const CWD = "var(--syntax-string)"
+const INTERRUPTED = "var(--syntax-critical)"
+const SEPARATOR = "var(--text-weaker)"
 
 function titlecase(str: string): string {
   return str.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// Separator: a small CSS-drawn hollow ring (crisp + consistent across fonts,
+// unlike a · or ◦ glyph). Dim, baseline-centered, sits in the gap between fields.
+function Dot() {
+  return (
+    <span class="mx-2 inline-block size-[4px] rounded-full border align-middle" style={{ "border-color": SEPARATOR }} />
+  )
 }
 
 function duration(ms: number): string {
@@ -22,13 +40,10 @@ function duration(ms: number): string {
   return `${Math.floor((ms % 3600000) / 86400000)}d ${Math.floor(ms / 3600000)}h`
 }
 
-function Segment(props: { color: string; text: string }) {
+function Field(props: { color: string; text: string }) {
   return (
-    <span>
-      <span style={{ color: MUTED }}> · </span>
-      <span class="font-semibold" style={{ color: props.color }}>
-        {props.text}
-      </span>
+    <span class="font-medium" style={{ color: props.color }}>
+      {props.text}
     </span>
   )
 }
@@ -38,10 +53,7 @@ export function MessageFooter(props: { message: AssistantMessage }) {
 
   const model = createMemo(() => {
     const provider = sync.data.provider.all.find((p) => p.id === props.message.providerID)
-    return {
-      provider: provider?.name ?? props.message.providerID,
-      model: provider?.models[props.message.modelID]?.name ?? props.message.modelID,
-    }
+    return provider?.models[props.message.modelID]?.name ?? props.message.modelID
   })
 
   const elapsed = createMemo(() => {
@@ -66,26 +78,37 @@ export function MessageFooter(props: { message: AssistantMessage }) {
 
   const tail = createMemo(() => {
     const result: { color: string; text: string }[] = []
-    if (props.message.variant) result.push({ color: WARNING, text: props.message.variant })
-    if (elapsed()) result.push({ color: MUTED, text: elapsed()! })
-    if (interrupted()) result.push({ color: MUTED, text: "interrupted" })
-    if (dir()) result.push({ color: PRIMARY, text: dir() })
+    if (props.message.variant) result.push({ color: VARIANT, text: props.message.variant })
+    if (elapsed()) result.push({ color: DURATION, text: elapsed()! })
+    if (interrupted()) result.push({ color: INTERRUPTED, text: "interrupted" })
+    if (dir()) result.push({ color: CWD, text: dir() })
     return result
   })
 
   return (
     <>
       <div class="flex flex-row flex-wrap items-center pt-1 text-11-regular font-mono leading-tight">
-        <span class="font-semibold" style={{ color: "var(--color-text-base)" }}>
-          {titlecase(props.message.mode)}
-        </span>
-        <Show when={model().model}>
-          <Segment color={MODEL} text={model().model} />
+        <Field color={AGENT} text={titlecase(props.message.mode)} />
+        <Show when={model()}>
+          <Dot />
+          <span class="inline-flex items-center gap-1">
+            <Show when={props.message.providerID}>
+              <ProviderIcon
+                id={props.message.providerID as IconName}
+                class="size-3.5 shrink-0 text-text-weak"
+              />
+            </Show>
+            <Field color={MODEL} text={model()} />
+          </span>
         </Show>
-        <Show when={model().provider}>
-          <Segment color={MUTED} text={model().provider} />
-        </Show>
-        <For each={tail()}>{(p) => <Segment color={p.color} text={p.text} />}</For>
+        <For each={tail()}>
+          {(field) => (
+            <>
+              <Dot />
+              <Field color={field.color} text={field.text} />
+            </>
+          )}
+        </For>
       </div>
       <Show when={stats()}>
         {(s) => (

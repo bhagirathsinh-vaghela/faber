@@ -50,7 +50,6 @@ import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { Worktree as WorktreeState } from "@/utils/worktree"
-import { SessionContextUsage } from "@/components/session-context-usage"
 import { Statusline } from "@/components/statusline"
 import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
@@ -127,6 +126,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const files = useFile()
   const prompt = usePrompt()
   const commentCount = createMemo(() => prompt.context.items().filter((item) => !!item.comment?.trim()).length)
+  const dir = createMemo(() => {
+    const home = sync.data.path.home
+    return home && sdk.directory.startsWith(home) ? "~" + sdk.directory.slice(home.length) : sdk.directory
+  })
   const layout = useLayout()
   const comments = useComments()
   const params = useParams()
@@ -1921,7 +1924,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </Show>
         </div>
         <div class="relative p-3 flex items-center justify-between gap-2">
-          <div class="flex items-center gap-2 min-w-0 flex-1">
+          <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1">
             <Switch>
               <Match when={store.mode === "shell"}>
                 <div class="flex items-center gap-2 px-2 h-6">
@@ -1942,10 +1945,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     current={local.agent.current()?.name ?? ""}
                     onSelect={local.agent.set}
                     class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
-                    valueClass="truncate"
+                    valueClass="truncate text-syntax-type"
                     variant="ghost"
                   />
                 </TooltipKeybind>
+                <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
                 <Show
                   when={providers.paid().length > 0}
                   fallback={
@@ -1958,16 +1962,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <Button
                         as="div"
                         variant="ghost"
-                        class="px-2 min-w-0 max-w-[240px]"
+                        class="min-w-0 max-w-[240px]"
                         onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
                       >
                         <Show when={local.model.current()?.provider?.id}>
-                          <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
+                          <ProviderIcon
+                            id={local.model.current()!.provider.id as IconName}
+                            class="size-4 shrink-0 mr-1 text-text-weak"
+                          />
                         </Show>
-                        <span class="truncate">
+                        <span class="truncate" style={{ color: "var(--model)" }}>
                           {local.model.current()?.name ?? language.t("dialog.model.select.title")}
                         </span>
-                        <Icon name="chevron-down" size="small" class="shrink-0" />
                       </Button>
                     </TooltipKeybind>
                   }
@@ -1983,66 +1989,81 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
                     >
                       <Show when={local.model.current()?.provider?.id}>
-                        <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
+                        <ProviderIcon
+                          id={local.model.current()!.provider.id as IconName}
+                          class="size-4 shrink-0 mr-1 text-text-weak"
+                        />
                       </Show>
-                      <span class="truncate">
+                      <span class="truncate" style={{ color: "var(--model)" }}>
                         {local.model.current()?.name ?? language.t("dialog.model.select.title")}
                       </span>
-                      <Icon name="chevron-down" size="small" class="shrink-0" />
                     </ModelSelectorPopover>
                   </TooltipKeybind>
                 </Show>
                 <Show when={local.model.variant.list().length > 0}>
+                  <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
                   <TooltipKeybind
                     placement="top"
                     gutter={8}
                     title={language.t("command.model.variant.cycle")}
                     keybind={command.keybind("model.variant.cycle")}
                   >
-                    <Button
-                      data-action="model-variant-cycle"
+                    <Select
+                      options={["default", ...local.model.variant.list()]}
+                      current={local.model.variant.current() ?? "default"}
+                      label={(v) => (v === "default" ? language.t("common.default") : v)}
+                      onSelect={(v) => local.model.variant.set(v === "default" ? undefined : v)}
+                      class="capitalize max-w-[120px]"
+                      valueClass="truncate text-syntax-constant"
                       variant="ghost"
-                      class="text-text-base _hidden group-hover/prompt-input:inline-block capitalize text-12-regular"
-                      onClick={() => local.model.variant.cycle()}
-                    >
-                      {local.model.variant.current() ?? language.t("common.default")}
-                    </Button>
-                  </TooltipKeybind>
-                </Show>
-                <Show when={permission.permissionsEnabled() && params.id}>
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={8}
-                    title={language.t("command.permissions.autoaccept.enable")}
-                    keybind={command.keybind("permissions.autoaccept")}
-                  >
-                    <Button
-                      variant="ghost"
-                      onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                      classList={{
-                        "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
-                        "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
-                        "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
-                      }}
-                      aria-label={
-                        permission.isAutoAccepting(params.id!, sdk.directory)
-                          ? language.t("command.permissions.autoaccept.disable")
-                          : language.t("command.permissions.autoaccept.enable")
-                      }
-                      aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
-                    >
-                      <Icon
-                        name="chevron-double-right"
-                        size="small"
-                        classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
-                      />
-                    </Button>
+                    />
                   </TooltipKeybind>
                 </Show>
               </Match>
             </Switch>
+            <Show when={store.mode === "normal" && params.id}>
+              <span class="inline-flex min-w-0 items-center text-12-regular leading-tight">
+                <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
+                <span
+                  class="truncate-start [unicode-bidi:plaintext] min-w-0"
+                  style={{ color: "var(--syntax-string)" }}
+                >
+                  {dir()}
+                </span>
+              </span>
+            </Show>
           </div>
           <div class="flex items-center gap-1 shrink-0">
+            <Show when={permission.permissionsEnabled() && params.id}>
+              <TooltipKeybind
+                placement="top"
+                gutter={8}
+                title={language.t("command.permissions.autoaccept.enable")}
+                keybind={command.keybind("permissions.autoaccept")}
+              >
+                <Button
+                  variant="ghost"
+                  onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
+                  classList={{
+                    "flex size-6 items-center justify-center": true,
+                    "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
+                    "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                  }}
+                  aria-label={
+                    permission.isAutoAccepting(params.id!, sdk.directory)
+                      ? language.t("command.permissions.autoaccept.disable")
+                      : language.t("command.permissions.autoaccept.enable")
+                  }
+                  aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
+                >
+                  <Icon
+                    name="chevron-double-right"
+                    size="small"
+                    classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
+                  />
+                </Button>
+              </TooltipKeybind>
+            </Show>
             <input
               ref={fileInputRef}
               type="file"
@@ -2055,7 +2076,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
             />
             <div class="flex items-center gap-1 mr-1">
-              <SessionContextUsage />
               <Show when={store.mode === "normal"}>
                 <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
                   <Button

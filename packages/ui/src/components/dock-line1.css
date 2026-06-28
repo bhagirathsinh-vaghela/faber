@@ -1,0 +1,27 @@
+/* Dock line-1 status row. The pickers are Button/Select components whose
+ * padding lives on inner slots ([data-component=button], select-trigger), so
+ * Tailwind utilities on the wrapper can't reach it. Zero it here so each
+ * segment sits flush like the footer's plain text — the hollow-ring separators
+ * (mx-2) then provide the ONLY inter-segment spacing, matching the footer. */
+.dock-line1 {
+  /* Pickers sit flush; rings provide inter-segment spacing (matches the footer).
+   * Small inline padding gives the ghost-button hover background a tidy pill
+   * shape without throwing off the rhythm — the rings' margins absorb it. */
+  [data-component="button"] {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+    gap: 0 !important;
+  }
+
+  [data-component="select"] [data-slot="select-select-trigger"] {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+    gap: 0 !important;
+  }
+
+  /* No dropdown chevrons in line-1: every picker signals interactivity via its
+   * ghost-button hover background instead. Hide the Select's built-in chevron. */
+  [data-component="select"] [data-slot="select-select-trigger-icon"] {
+    display: none;
+  }
+}
