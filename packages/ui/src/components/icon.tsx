@@ -78,16 +78,16 @@ const icons = {
   models: `<path fill-rule="evenodd" clip-rule="evenodd" d="M17.5 10C12.2917 10 10 12.2917 10 17.5C10 12.2917 7.70833 10 2.5 10C7.70833 10 10 7.70833 10 2.5C10 7.70833 12.2917 10 17.5 10Z" stroke="currentColor"/>`,
   // --- Usage-metric icons (20x20, currentColor) ---
   // Cached (read from cache): lightning bolt = fast/cheap hit.
-  "usage-cached": `<path d="M11.25 2.08398L4.16667 11.2507H9.16667L8.75 17.9173L15.8333 8.75065H10.8333L11.25 2.08398Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
+  "usage-cached": `<path d="M11.25 2.08398L4.16667 11.2507H9.16667L8.75 17.9173L15.8333 8.75065H10.8333L11.25 2.08398Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="round"/>`,
   // Cache-write (written to cache): database cylinder (Lucide `database`). The
   // cost-bearing one. Scaled from Lucide's 24-grid to the 20 viewBox (×0.8333).
   "usage-cache-write": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></g>`,
   // Totals (session sum): sigma.
-  "usage-totals": `<path d="M14.5833 4.16732V2.91732H5.41667L10 10.0007L5.41667 17.084H14.5833V15.834" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
+  "usage-totals": `<path d="M14.5833 4.16732V2.91732H5.41667L10 10.0007L5.41667 17.084H14.5833V15.834" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="round"/>`,
   // Cost (accumulated $): stacked coins (Lucide `coins`). Scaled ×0.8333.
   "usage-cost": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.744 17.736a6 6 0 1 1-7.48-7.48"/><path d="M15 6h1v4"/><path d="m6.134 14.768.866-.5 2 3.464"/><circle cx="16" cy="8" r="6"/></g>`,
   // Next-turn (output this turn): arrow rising up off a baseline = output out.
-  "usage-next-turn": `<path d="M3.33333 16.6673H16.6667M10 13.7507V3.33398M10 3.33398L5.83333 7.50065M10 3.33398L14.1667 7.50065" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
+  "usage-next-turn": `<path d="M3.33333 16.6673H16.6667M10 13.7507V3.33398M10 3.33398L5.83333 7.50065M10 3.33398L14.1667 7.50065" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="round"/>`,
   // Context (window fullness label): CPU chip (Lucide `cpu`) — reads as
   // memory/processor far better than a brain at chip size. Scaled ×0.8333.
   "usage-context": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></g>`,

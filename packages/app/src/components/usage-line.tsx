@@ -36,15 +36,30 @@ export function utilizationColor(percent: number): string {
   return `#${to(r)}${to(g)}${to(b)}`
 }
 
-export function ProgressBar(props: { percent: number; width?: number }) {
-  const width = () => props.width ?? 10
-  const filled = () => Math.min(Math.round((props.percent / 100) * width()), width())
+// Web-native context bar: a real div track + fill, not the
+// old ▓░ monospace glyphs. Fill width = percentage. Fill color is a green→red
+// gradient by default; the theme can switch it to a flat color via the
+// --usage-bar-fill token ("gradient" | "flat"). Flat mode uses the single color
+// computed at the current % (utilizationColor), matching the gradient hue there.
+// Endpoints come from --usage-context-start / --usage-context-end.
+function barFillMode(): "gradient" | "flat" {
+  if (typeof window === "undefined") return "gradient"
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--usage-bar-fill").trim()
+  return v === "flat" ? "flat" : "gradient"
+}
+
+export function ProgressBar(props: { percent: number }) {
+  const pct = () => Math.max(0, Math.min(100, props.percent))
+  const fill = () =>
+    barFillMode() === "flat"
+      ? utilizationColor(pct())
+      : "linear-gradient(to right, var(--usage-context-start), var(--usage-context-end))"
   return (
-    <span>
-      <span style={{ color: MUTED }}>[</span>
-      <span style={{ color: utilizationColor(props.percent) }}>{"\u2593".repeat(filled())}</span>
-      <span style={{ color: MUTED }}>{"\u2591".repeat(width() - filled())}</span>
-      <span style={{ color: MUTED }}>]</span>
+    <span
+      class="inline-block h-1.5 w-12 shrink-0 overflow-hidden rounded-full align-middle"
+      style={{ background: "var(--color-surface-inset-base)" }}
+    >
+      <span class="block h-full rounded-full" style={{ width: `${pct()}%`, background: fill() }} />
     </span>
   )
 }
@@ -104,7 +119,7 @@ export function UsageLine(props: {
         <Pipe />
       </Show>
       <span style={{ color: utilizationColor(props.stats.percentage) }}>{"\u25a3 "}</span>
-      <ProgressBar percent={props.stats.percentage} width={10} />
+      <ProgressBar percent={props.stats.percentage} />
       <span>
         {" "}
         <span class="font-semibold" style={{ color: utilizationColor(props.stats.percentage) }}>
