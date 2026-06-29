@@ -117,6 +117,9 @@ export const ReadTool = Tool.define("read", {
         metadata: {
           preview: "(file unchanged since last read)",
           truncated: false,
+          // Persisted on the tool part so FileTime can be rebuilt from session
+          // history after a server restart (in-memory read map is process-local).
+          mtime: stat.mtime.getTime(),
         },
       }
     }
@@ -176,6 +179,9 @@ export const ReadTool = Tool.define("read", {
       metadata: {
         preview,
         truncated,
+        // Persisted so FileTime can be rebuilt from session history after a
+        // server restart (the in-memory read map is process-local).
+        mtime: stat.mtime.getTime(),
         ...(instructions.length > 0 && { loaded: instructions.map((i) => i.filepath) }),
       },
     }

@@ -11,7 +11,7 @@ export namespace FileTime {
   export const state = Instance.state(() => {
     const read: {
       [sessionID: string]: {
-        [path: string]: { readAt: Date; mtime: number } | undefined
+        [path: string]: { mtime: number } | undefined
       }
     } = {}
     const locks = new Map<string, Promise<void>>()
@@ -25,7 +25,22 @@ export namespace FileTime {
     log.info("read", { sessionID, file })
     const { read } = state()
     read[sessionID] = read[sessionID] || {}
-    read[sessionID][file] = { readAt: new Date(), mtime: mtime ?? Date.now() }
+    read[sessionID][file] = { mtime: mtime ?? Date.now() }
+  }
+
+  // Rebuild a session's read map from durable records (the mtimes persisted on
+  // Read tool parts). This replaces the in-memory map for the session, so it
+  // reflects exactly the reads still present in history: after a server restart
+  // the reads are restored, and after compaction the filtered-out reads are
+  // dropped (forcing a real re-read instead of an unchanged stub). The in-memory
+  // map is a cache of this durable truth, not the source of truth.
+  export function seed(sessionID: string, entries: { file: string; mtime: number }[]) {
+    const { read } = state()
+    const next: { [path: string]: { mtime: number } | undefined } = {}
+    for (const entry of entries) {
+      next[entry.file] = { mtime: entry.mtime }
+    }
+    read[sessionID] = next
   }
 
   export function get(sessionID: string, file: string) {
@@ -60,9 +75,14 @@ export namespace FileTime {
     const entry = get(sessionID, filepath)
     if (!entry) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
     const stats = await Bun.file(filepath).stat()
-    if (stats.mtime.getTime() > entry.readAt.getTime()) {
+    // Compare against the file's mtime when it was read, not the wall-clock read
+    // time. The read-mtime is durable (persisted on the Read tool part and
+    // restored via seed()), so this stays correct across a server restart: an
+    // outside edit during the gap bumps mtime past the stored value and forces a
+    // re-read, while an untouched file still matches.
+    if (stats.mtime.getTime() > entry.mtime) {
       throw new Error(
-        `File ${filepath} has been modified since it was last read.\nLast modification: ${stats.mtime.toISOString()}\nLast read: ${entry.readAt.toISOString()}\n\nPlease read the file again before modifying it.`,
+        `File ${filepath} has been modified since it was last read.\nLast modification: ${stats.mtime.toISOString()}\nLast read mtime: ${new Date(entry.mtime).toISOString()}\n\nPlease read the file again before modifying it.`,
       )
     }
   }

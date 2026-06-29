@@ -290,6 +290,26 @@ export namespace SessionPrompt {
       if (abort.aborted) break
       let msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
 
+      // Rebuild the read-time map from durable history (Read parts persist their
+      // mtime). Seeding from the compaction-filtered stream means a server
+      // restart restores prior reads (no false "read it first" on edit), while a
+      // compacted-away read is dropped so the next Read returns real content
+      // instead of an unchanged stub.
+      FileTime.seed(
+        sessionID,
+        msgs.flatMap((msg) =>
+          msg.parts.flatMap((part) =>
+            part.type === "tool" &&
+            part.tool === "read" &&
+            part.state.status === "completed" &&
+            typeof part.state.input?.filePath === "string" &&
+            typeof part.state.metadata?.mtime === "number"
+              ? [{ file: path.resolve(Instance.directory, part.state.input.filePath), mtime: part.state.metadata.mtime }]
+              : [],
+          ),
+        ),
+      )
+
       let lastUser: MessageV2.User | undefined
       let lastAssistant: MessageV2.Assistant | undefined
       let lastFinished: MessageV2.Assistant | undefined
