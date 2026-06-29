@@ -45,6 +45,7 @@ import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { ModelSelectorPopover } from "@/components/dialog-select-model"
 import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid"
 import { DialogSkill } from "@/components/dialog-skill"
+import { DialogDock } from "@/components/dialog-dock"
 import { useProviders } from "@/hooks/use-providers"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
@@ -1934,36 +1935,64 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
-                <TooltipKeybind
-                  placement="top"
-                  gutter={8}
-                  title={language.t("command.agent.cycle")}
-                  keybind={command.keybind("agent.cycle")}
-                >
-                  <Select
-                    options={local.agent.list().map((agent) => agent.name)}
-                    current={local.agent.current()?.name ?? ""}
-                    onSelect={local.agent.set}
-                    class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
-                    valueClass="truncate text-syntax-type"
-                    variant="ghost"
-                  />
-                </TooltipKeybind>
-                <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
-                <Show
-                  when={providers.paid().length > 0}
-                  fallback={
+                <Show when={local.dock.isVisible("agent")}>
+                  <TooltipKeybind
+                    placement="top"
+                    gutter={8}
+                    title={language.t("command.agent.cycle")}
+                    keybind={command.keybind("agent.cycle")}
+                  >
+                    <Select
+                      options={local.agent.list().map((agent) => agent.name)}
+                      current={local.agent.current()?.name ?? ""}
+                      onSelect={local.agent.set}
+                      class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
+                      valueClass="truncate text-syntax-type"
+                      variant="ghost"
+                    />
+                  </TooltipKeybind>
+                </Show>
+                <Show when={local.dock.isVisible("model")}>
+                  <Show when={local.dock.isVisible("agent")}>
+                    <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                  </Show>
+                  <Show
+                    when={providers.paid().length > 0}
+                    fallback={
+                      <TooltipKeybind
+                        placement="top"
+                        gutter={8}
+                        title={language.t("command.model.choose")}
+                        keybind={command.keybind("model.choose")}
+                      >
+                        <Button
+                          as="div"
+                          variant="ghost"
+                          class="min-w-0 max-w-[240px]"
+                          onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                        >
+                          <Show when={local.model.current()?.provider?.id}>
+                            <ProviderIcon
+                              id={local.model.current()!.provider.id as IconName}
+                              class="size-4 shrink-0 mr-1 text-text-weak"
+                            />
+                          </Show>
+                          <span class="truncate" style={{ color: "var(--model)" }}>
+                            {local.model.current()?.name ?? language.t("dialog.model.select.title")}
+                          </span>
+                        </Button>
+                      </TooltipKeybind>
+                    }
+                  >
                     <TooltipKeybind
                       placement="top"
                       gutter={8}
                       title={language.t("command.model.choose")}
                       keybind={command.keybind("model.choose")}
                     >
-                      <Button
-                        as="div"
-                        variant="ghost"
-                        class="min-w-0 max-w-[240px]"
-                        onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                      <ModelSelectorPopover
+                        triggerAs={Button}
+                        triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
                       >
                         <Show when={local.model.current()?.provider?.id}>
                           <ProviderIcon
@@ -1974,34 +2003,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <span class="truncate" style={{ color: "var(--model)" }}>
                           {local.model.current()?.name ?? language.t("dialog.model.select.title")}
                         </span>
-                      </Button>
+                      </ModelSelectorPopover>
                     </TooltipKeybind>
-                  }
-                >
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={8}
-                    title={language.t("command.model.choose")}
-                    keybind={command.keybind("model.choose")}
-                  >
-                    <ModelSelectorPopover
-                      triggerAs={Button}
-                      triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
-                    >
-                      <Show when={local.model.current()?.provider?.id}>
-                        <ProviderIcon
-                          id={local.model.current()!.provider.id as IconName}
-                          class="size-4 shrink-0 mr-1 text-text-weak"
-                        />
-                      </Show>
-                      <span class="truncate" style={{ color: "var(--model)" }}>
-                        {local.model.current()?.name ?? language.t("dialog.model.select.title")}
-                      </span>
-                    </ModelSelectorPopover>
-                  </TooltipKeybind>
+                  </Show>
                 </Show>
-                <Show when={local.model.variant.list().length > 0}>
-                  <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                <Show when={local.dock.isVisible("variant") && local.model.variant.list().length > 0}>
+                  <Show when={local.dock.isVisible("agent") || local.dock.isVisible("model")}>
+                    <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                  </Show>
                   <TooltipKeybind
                     placement="top"
                     gutter={8}
@@ -2021,9 +2030,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
               </Match>
             </Switch>
-            <Show when={store.mode === "normal" && params.id}>
+            <Show when={store.mode === "normal" && params.id && local.dock.isVisible("cwd")}>
               <span class="inline-flex min-w-0 items-center text-12-regular leading-tight">
-                <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
+                <Show
+                  when={
+                    local.dock.isVisible("agent") ||
+                    local.dock.isVisible("model") ||
+                    (local.dock.isVisible("variant") && local.model.variant.list().length > 0)
+                  }
+                >
+                  <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
+                </Show>
                 <span
                   class="truncate-start [unicode-bidi:plaintext] min-w-0"
                   style={{ color: "var(--syntax-string)" }}
@@ -2034,6 +2051,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Show>
           </div>
           <div class="flex items-center gap-1 shrink-0">
+            <Show when={store.mode === "normal" && params.id}>
+              <Tooltip placement="top" value="Customize fields">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  class="flex size-6 items-center justify-center"
+                  onClick={() => dialog.show(() => <DialogDock />)}
+                  aria-label="Customize fields"
+                >
+                  <Icon name="sliders" size="small" />
+                </Button>
+              </Tooltip>
+            </Show>
             <Show when={permission.permissionsEnabled() && params.id}>
               <TooltipKeybind
                 placement="top"

@@ -2,6 +2,7 @@ import { Show, type JSX } from "solid-js"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
 import { Icon } from "@opencode-ai/ui/icon"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
+import { useLocal } from "@/context/local"
 
 type ProviderLike = { id: string; models: Record<string, { limit?: { context?: number } }> }
 
@@ -63,6 +64,15 @@ export function UsageLine(props: {
   const contextFill = () => (props.stats.percentage >= 75 ? "usage-context-end" : "usage-context-start")
   const icon = (name: Parameters<typeof Icon>[0]["name"]) => <Icon name={name} class="size-3.5" />
 
+  // Render-only show/hide: each chip is gated by the active surface's
+  // visible set. Group markers (turn / Σ) are NOT in the registry —
+  // a marker shows only when at least one chip in its group is visible
+  // (no orphan markers). Order is canonical (source order here), never stored.
+  const local = useLocal()
+  const show = (id: string) => local.dock.isVisible(id)
+  const anyTurn = () => show("cached") || show("cache-write") || show("next-turn")
+  const anySession = () => show("input") || show("output") || show("session-cache-write") || show("cost")
+
   return (
     <div class={"flex flex-row flex-wrap items-center gap-1.5 " + (props.class ?? "pt-0.5")}>
       <Show when={props.leading}>
@@ -72,72 +82,97 @@ export function UsageLine(props: {
       </Show>
 
       {/* Context: solo gauge chip (fill = how full the window is). */}
-      <ChipGroup>
-        <Chip
-          icon={icon("usage-context")}
-          accent="usage-context-start"
-          fill={props.stats.percentage / 100}
-          fillColor={contextFill()}
-          tooltip={`Context window: ${tokens(props.stats.total)} of ${tokens(props.stats.limit)} used — how full the conversation is before older turns drop off.`}
-        >
-          {tokens(props.stats.total)}/{tokens(props.stats.limit)}
-        </Chip>
-      </ChipGroup>
+      <Show when={show("context")}>
+        <ChipGroup>
+          <Chip
+            icon={icon("usage-context")}
+            accent="usage-context-start"
+            fill={props.stats.percentage / 100}
+            fillColor={contextFill()}
+            tooltip={`Context window: ${tokens(props.stats.total)} of ${tokens(props.stats.limit)} used — how full the conversation is before older turns drop off.`}
+          >
+            {tokens(props.stats.total)}/{tokens(props.stats.limit)}
+          </Chip>
+        </ChipGroup>
+      </Show>
 
       {/* Per-turn group (this turn's activity): pulse marker · cached · write · next. */}
-      <ChipGroup>
-        <Chip icon={icon("usage-per-turn")} accent="usage-totals" tooltip="turn" />
-        <Chip
-          icon={icon("usage-cached")}
-          accent="usage-cached"
-          tooltip="Reused from cache this turn — far cheaper and faster than sending fresh input."
-        >
-          {tokens(props.stats.cached)}
-        </Chip>
-        <Chip
-          icon={icon("usage-cache-write")}
-          accent="usage-cache-write"
-          tooltip="Stored to cache this turn — costs a little extra now, makes future turns cheaper."
-        >
-          {tokens(props.stats.cacheWritten)}
-        </Chip>
-        <Chip
-          icon={icon("usage-next-turn")}
-          accent="usage-next-turn"
-          tooltip="The context you carry into the next turn before new input — your starting cost for the next message."
-        >
-          {tokens(props.stats.nextTurn)}
-        </Chip>
-      </ChipGroup>
+      <Show when={anyTurn()}>
+        <ChipGroup>
+          <Chip icon={icon("usage-per-turn")} accent="usage-totals" tooltip="turn" />
+          <Show when={show("cached")}>
+            <Chip
+              icon={icon("usage-cached")}
+              accent="usage-cached"
+              tooltip="Reused from cache this turn — far cheaper and faster than sending fresh input."
+            >
+              {tokens(props.stats.cached)}
+            </Chip>
+          </Show>
+          <Show when={show("cache-write")}>
+            <Chip
+              icon={icon("usage-cache-write")}
+              accent="usage-cache-write"
+              tooltip="Stored to cache this turn — costs a little extra now, makes future turns cheaper."
+            >
+              {tokens(props.stats.cacheWritten)}
+            </Chip>
+          </Show>
+          <Show when={show("next-turn")}>
+            <Chip
+              icon={icon("usage-next-turn")}
+              accent="usage-next-turn"
+              tooltip="The context you carry into the next turn before new input — your starting cost for the next message."
+            >
+              {tokens(props.stats.nextTurn)}
+            </Chip>
+          </Show>
+        </ChipGroup>
+      </Show>
 
       {/* Session group (Σ cluster): sigma marker · input · output · cache-write · cost. */}
-      <ChipGroup>
-        <Chip icon={icon("usage-totals")} accent="usage-totals" tooltip="Session totals" />
-        <Chip
-          icon={icon("usage-input")}
-          accent="usage-totals"
-          tooltip="All tokens you've sent this session — your prompts plus the context fed each turn."
-        >
-          {tokens(props.totals.input)}
-        </Chip>
-        <Chip
-          icon={icon("usage-output")}
-          accent="usage-cache-write"
-          tooltip="All tokens the model has generated for you this session."
-        >
-          {tokens(props.totals.output)}
-        </Chip>
-        <Chip
-          icon={icon("usage-cache-write")}
-          accent="usage-next-turn"
-          tooltip="Total stored to cache this session — the upfront cost that keeps later turns cheap."
-        >
-          {tokens(props.totals.cacheWrite)}
-        </Chip>
-        <Chip icon={icon("usage-cost")} accent="usage-cost" tooltip="Total spent this session so far, across every turn.">
-          {cost(props.cost)}
-        </Chip>
-      </ChipGroup>
+      <Show when={anySession()}>
+        <ChipGroup>
+          <Chip icon={icon("usage-totals")} accent="usage-totals" tooltip="Session totals" />
+          <Show when={show("input")}>
+            <Chip
+              icon={icon("usage-input")}
+              accent="usage-totals"
+              tooltip="All tokens you've sent this session — your prompts plus the context fed each turn."
+            >
+              {tokens(props.totals.input)}
+            </Chip>
+          </Show>
+          <Show when={show("output")}>
+            <Chip
+              icon={icon("usage-output")}
+              accent="usage-cache-write"
+              tooltip="All tokens the model has generated for you this session."
+            >
+              {tokens(props.totals.output)}
+            </Chip>
+          </Show>
+          <Show when={show("session-cache-write")}>
+            <Chip
+              icon={icon("usage-cache-write")}
+              accent="usage-next-turn"
+              tooltip="Total stored to cache this session — the upfront cost that keeps later turns cheap."
+            >
+              {tokens(props.totals.cacheWrite)}
+            </Chip>
+          </Show>
+          <Show when={show("cost")}>
+            <Chip
+              icon={icon("usage-cost")}
+              accent="usage-cost"
+              tooltip="Total spent this session so far, across every turn."
+            >
+              {cost(props.cost)}
+            </Chip>
+          </Show>
+        </ChipGroup>
+      </Show>
+
     </div>
   )
 }

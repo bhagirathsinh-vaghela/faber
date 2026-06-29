@@ -1,8 +1,9 @@
-import { createMemo, For, Show } from "solid-js"
+import { createMemo, For, Show, type JSX } from "solid-js"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
 import { useSync } from "@/context/sync"
+import { useLocal } from "@/context/local"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
 
 // Status line: agent · [provider-icon] model · variant [· duration]
@@ -76,36 +77,49 @@ export function MessageFooter(props: { message: AssistantMessage }) {
 
   const stats = createMemo(() => statsFromMessage(props.message, sync.data.provider.all))
 
-  const tail = createMemo(() => {
-    const result: { color: string; text: string }[] = []
-    if (props.message.variant) result.push({ color: VARIANT, text: props.message.variant })
-    if (elapsed()) result.push({ color: DURATION, text: elapsed()! })
-    if (interrupted()) result.push({ color: INTERRUPTED, text: "interrupted" })
-    if (dir()) result.push({ color: CWD, text: dir() })
+  // Render-only field show/hide: each line-1 field is gated by the
+  // active surface's visible set. The canonical-ordered list of visible fields
+  // drives the leading-separator logic so a hidden field never orphans a dot —
+  // the first visible field has no leading ring, every later one does.
+  // `interrupted` is a turn state flag, not a config field, so it stays
+  // unconditional (shown only when the turn was aborted).
+  const local = useLocal()
+  const show = (id: string) => local.dock.isVisible(id)
+
+  const fields = createMemo(() => {
+    const result: { id: string; node: () => JSX.Element }[] = []
+    if (show("agent")) result.push({ id: "agent", node: () => <Field color={AGENT} text={titlecase(props.message.mode)} /> })
+    if (show("model") && model())
+      result.push({
+        id: "model",
+        node: () => (
+          <span class="inline-flex items-center gap-1">
+            <Show when={props.message.providerID}>
+              <ProviderIcon id={props.message.providerID as IconName} class="size-3.5 shrink-0 text-text-weak" />
+            </Show>
+            <Field color={MODEL} text={model()} />
+          </span>
+        ),
+      })
+    if (show("variant") && props.message.variant)
+      result.push({ id: "variant", node: () => <Field color={VARIANT} text={props.message.variant!} /> })
+    if (show("duration") && elapsed())
+      result.push({ id: "duration", node: () => <Field color={DURATION} text={elapsed()!} /> })
+    if (interrupted()) result.push({ id: "interrupted", node: () => <Field color={INTERRUPTED} text="interrupted" /> })
+    if (show("cwd") && dir()) result.push({ id: "cwd", node: () => <Field color={CWD} text={dir()} /> })
     return result
   })
 
   return (
     <>
       <div class="flex flex-row flex-wrap items-center pt-1 text-11-regular font-mono leading-tight">
-        <Field color={AGENT} text={titlecase(props.message.mode)} />
-        <Show when={model()}>
-          <Dot />
-          <span class="inline-flex items-center gap-1">
-            <Show when={props.message.providerID}>
-              <ProviderIcon
-                id={props.message.providerID as IconName}
-                class="size-3.5 shrink-0 text-text-weak"
-              />
-            </Show>
-            <Field color={MODEL} text={model()} />
-          </span>
-        </Show>
-        <For each={tail()}>
-          {(field) => (
+        <For each={fields()}>
+          {(field, i) => (
             <>
-              <Dot />
-              <Field color={field.color} text={field.text} />
+              <Show when={i() > 0}>
+                <Dot />
+              </Show>
+              {field.node()}
             </>
           )}
         </For>

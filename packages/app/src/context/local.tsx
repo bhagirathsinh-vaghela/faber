@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store"
 import { batch, createMemo } from "solid-js"
+import { createMediaQuery } from "@solid-primitives/media"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"
@@ -242,11 +243,42 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })()
 
+    const dock = (() => {
+      // Per-surface VISIBLE field-id sets. Server seeds the
+      // defaults when no config exists, so an empty initial store is just
+      // the pre-load state. `isDesktop` mirrors the 768px breakpoint used in
+      // session.tsx; `surface()` picks which set the render sites read.
+      const [store, setStore] = createStore<{ desktop: string[]; mobile: string[] }>({ desktop: [], mobile: [] })
+      const desktop = createMediaQuery("(min-width: 768px)")
+
+      sdk.client.app.dockConfig().then((res) => {
+        if (res.data) setStore(res.data)
+      })
+
+      const surface = (): "desktop" | "mobile" => (desktop() ? "desktop" : "mobile")
+
+      return {
+        isDesktop: desktop,
+        // The active surface's visible set, as a memo for render gating.
+        visible: createMemo(() => store[surface()]),
+        list: (s: "desktop" | "mobile") => store[s],
+        isVisible(id: string) {
+          return store[surface()].includes(id)
+        },
+        toggle(s: "desktop" | "mobile", id: string) {
+          const has = store[s].includes(id)
+          setStore(s, has ? store[s].filter((x) => x !== id) : [...store[s], id])
+          sdk.client.app.setDockConfig({ desktop: store.desktop, mobile: store.mobile })
+        },
+      }
+    })()
+
     const result = {
       slug: createMemo(() => base64Encode(sdk.directory)),
       model,
       agent,
       skill,
+      dock,
     }
     return result
   },

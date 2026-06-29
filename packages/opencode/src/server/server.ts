@@ -16,6 +16,7 @@ import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill/skill"
+import { Dock } from "../dock/dock"
 import { Auth } from "../auth"
 import { Flag } from "../flag/flag"
 import { Command } from "../command"
@@ -477,6 +478,51 @@ export namespace Server {
           async (c) => {
             const favorites = await Skill.setFavorites(c.req.valid("json"))
             return c.json(favorites)
+          },
+        )
+        .get(
+          "/dock/config",
+          describeRoute({
+            summary: "Get dock config",
+            description: "Get the visible field IDs for the usage dock and footer, per surface.",
+            operationId: "app.dockConfig",
+            responses: {
+              200: {
+                description: "Dock config",
+                content: {
+                  "application/json": {
+                    schema: resolver(Dock.Config),
+                  },
+                },
+              },
+            },
+          }),
+          async (c) => {
+            const config = await Dock.get()
+            return c.json(config)
+          },
+        )
+        .put(
+          "/dock/config",
+          describeRoute({
+            summary: "Set dock config",
+            description: "Replace the visible field IDs for the usage dock and footer, per surface.",
+            operationId: "app.setDockConfig",
+            responses: {
+              200: {
+                description: "Updated dock config",
+                content: {
+                  "application/json": {
+                    schema: resolver(Dock.Config),
+                  },
+                },
+              },
+            },
+          }),
+          validator("json", Dock.Config),
+          async (c) => {
+            const config = await Dock.set(c.req.valid("json"))
+            return c.json(config)
           },
         )
         .get(

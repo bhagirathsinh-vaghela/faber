@@ -5,8 +5,10 @@ import { buildClientParams, type Client, type Options as Options2, type TDataSha
 import type {
   AgentPartInput,
   AppAgentsResponses,
+  AppDockConfigResponses,
   AppLogErrors,
   AppLogResponses,
+  AppSetDockConfigResponses,
   AppSetSkillFavoritesResponses,
   AppSkillFavoritesResponses,
   AppSkillsResponses,
@@ -3618,6 +3620,62 @@ export class App extends HeyApiClient {
     )
     return (options?.client ?? this.client).put<AppSetSkillFavoritesResponses, unknown, ThrowOnError>({
       url: "/skill/favorite",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get dock config
+   *
+   * Get the visible field IDs for the usage dock and footer, per surface.
+   */
+  public dockConfig<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AppDockConfigResponses, unknown, ThrowOnError>({
+      url: "/dock/config",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set dock config
+   *
+   * Replace the visible field IDs for the usage dock and footer, per surface.
+   */
+  public setDockConfig<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      desktop?: Array<string>
+      mobile?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "desktop" },
+            { in: "body", key: "mobile" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<AppSetDockConfigResponses, unknown, ThrowOnError>({
+      url: "/dock/config",
       ...options,
       ...params,
       headers: {

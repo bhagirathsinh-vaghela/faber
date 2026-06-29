@@ -940,7 +940,13 @@ export type Session = {
   systemBlockCount?: number
   cacheProbeIndex?: number
   cacheProbeMessageID?: string
-  allowedTools?: Array<string>
+  allowedTools?: Array<
+    | string
+    | {
+        id: string
+        paths: Array<string>
+      }
+  >
 }
 
 export type EventSessionCreated = {
@@ -5724,6 +5730,51 @@ export type AppSetSkillFavoritesResponses = {
 }
 
 export type AppSetSkillFavoritesResponse = AppSetSkillFavoritesResponses[keyof AppSetSkillFavoritesResponses]
+
+export type AppDockConfigData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/dock/config"
+}
+
+export type AppDockConfigResponses = {
+  /**
+   * Dock config
+   */
+  200: {
+    desktop: Array<string>
+    mobile: Array<string>
+  }
+}
+
+export type AppDockConfigResponse = AppDockConfigResponses[keyof AppDockConfigResponses]
+
+export type AppSetDockConfigData = {
+  body?: {
+    desktop: Array<string>
+    mobile: Array<string>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/dock/config"
+}
+
+export type AppSetDockConfigResponses = {
+  /**
+   * Updated dock config
+   */
+  200: {
+    desktop: Array<string>
+    mobile: Array<string>
+  }
+}
+
+export type AppSetDockConfigResponse = AppSetDockConfigResponses[keyof AppSetDockConfigResponses]
 
 export type LspStatusData = {
   body?: never
