@@ -2041,10 +2041,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 >
                   <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
                 </Show>
-                <span
-                  class="truncate-start [unicode-bidi:plaintext] min-w-0"
-                  style={{ color: "var(--syntax-string)" }}
-                >
+                <span class="truncate-start [unicode-bidi:plaintext] min-w-0" style={{ color: "var(--syntax-string)" }}>
                   {dir()}
                 </span>
               </span>

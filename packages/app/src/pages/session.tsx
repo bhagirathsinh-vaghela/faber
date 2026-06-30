@@ -2004,8 +2004,7 @@ export default function Page() {
                               "sticky top-0 z-30 bg-background-stronger": true,
                               "w-full": true,
                               "px-4 md:px-6": true,
-                              "md:max-w-[90%] md:mx-auto":
-                                centered(),
+                              "md:max-w-[90%] md:mx-auto": centered(),
                             }}
                           >
                             <div class="h-10 flex items-center gap-1">
@@ -2033,8 +2032,7 @@ export default function Page() {
                           class="flex flex-col gap-12 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
                           classList={{
                             "w-full": true,
-                            "md:max-w-[90%] md:mx-auto":
-                              centered(),
+                            "md:max-w-[90%] md:mx-auto": centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
                           }}

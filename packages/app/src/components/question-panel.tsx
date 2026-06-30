@@ -283,8 +283,7 @@ function Panel(props: {
     // the prompt to type, Enter and arrows belong to the prompt, not the panel.
     const active = document.activeElement as HTMLElement | null
     if (active && active !== panel) {
-      const editable =
-        active.isContentEditable || active.tagName === "TEXTAREA" || active.tagName === "INPUT"
+      const editable = active.isContentEditable || active.tagName === "TEXTAREA" || active.tagName === "INPUT"
       if (editable) return
     }
 
@@ -419,8 +418,10 @@ function Panel(props: {
                   class="px-2 py-0.5 rounded text-11-regular"
                   classList={{
                     "bg-primary text-background-base": index() === store.tab,
-                    "bg-background-element text-text-base": index() !== store.tab && (store.answers[index()]?.length ?? 0) > 0,
-                    "bg-background-element text-text-weak": index() !== store.tab && (store.answers[index()]?.length ?? 0) === 0,
+                    "bg-background-element text-text-base":
+                      index() !== store.tab && (store.answers[index()]?.length ?? 0) > 0,
+                    "bg-background-element text-text-weak":
+                      index() !== store.tab && (store.answers[index()]?.length ?? 0) === 0,
                   }}
                   onClick={() => selectTab(index())}
                 >
@@ -480,10 +481,7 @@ function Panel(props: {
               }}
             </For>
             <Show when={custom()}>
-              <div
-                class="flex flex-col items-start px-2 py-1 rounded"
-                classList={{ "bg-background-element": other() }}
-              >
+              <div class="flex flex-col items-start px-2 py-1 rounded" classList={{ "bg-background-element": other() }}>
                 <button
                   class="flex flex-row gap-1.5 text-13-regular text-left"
                   onMouseEnter={() => setStore("selected", options().length)}
@@ -573,7 +571,6 @@ function Panel(props: {
           </Button>
         </Show>
       </div>
-
     </div>
   )
 }

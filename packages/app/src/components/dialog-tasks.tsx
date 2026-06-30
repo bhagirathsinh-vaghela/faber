@@ -48,9 +48,7 @@ export const DialogTasks: Component = () => {
   onCleanup(() => clearInterval(interval))
 
   const running = createMemo(() =>
-    (tasks() ?? [])
-      .filter((t) => t.status === "running")
-      .toSorted((a, b) => b.time.created - a.time.created),
+    (tasks() ?? []).filter((t) => t.status === "running").toSorted((a, b) => b.time.created - a.time.created),
   )
 
   const completed = createMemo(() =>

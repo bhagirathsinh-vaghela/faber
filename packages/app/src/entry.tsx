@@ -108,4 +108,3 @@ render(
 // public/sw.js. DEV is skipped so it can't interfere with Vite HMR.
 if (!import.meta.env.DEV && "serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(() => undefined)
-

@@ -89,7 +89,9 @@ export function PromptActionBar() {
   const availableTip = createMemo(
     () => `${language.t("actionbar.available.tooltip")} (${command.keybind("task.pending")})`,
   )
-  const questionsTip = createMemo(() => `${language.t("actionbar.questions.tooltip")} (${command.keybind("question.list")})`)
+  const questionsTip = createMemo(
+    () => `${language.t("actionbar.questions.tooltip")} (${command.keybind("question.list")})`,
+  )
 
   return (
     <div class="flex flex-row flex-wrap items-center gap-1.5">

@@ -304,7 +304,12 @@ export namespace SessionPrompt {
             part.state.status === "completed" &&
             typeof part.state.input?.filePath === "string" &&
             typeof part.state.metadata?.mtime === "number"
-              ? [{ file: path.resolve(Instance.directory, part.state.input.filePath), mtime: part.state.metadata.mtime }]
+              ? [
+                  {
+                    file: path.resolve(Instance.directory, part.state.input.filePath),
+                    mtime: part.state.metadata.mtime,
+                  },
+                ]
               : [],
           ),
         ),

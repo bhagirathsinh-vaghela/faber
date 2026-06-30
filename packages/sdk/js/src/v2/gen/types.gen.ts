@@ -2545,6 +2545,7 @@ export type GlobalHealthResponses = {
   200: {
     healthy: true
     version: string
+    host: string
   }
 }
 

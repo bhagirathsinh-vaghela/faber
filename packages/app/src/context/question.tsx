@@ -50,9 +50,7 @@ export const { use: useQuestion, provider: QuestionProvider } = createSimpleCont
       if (pendingIDs().has(id)) return
       // The original request expired server-side, so reply() would no-op. Send
       // the answer as a fresh prompt instead, matching the TUI's deferred path.
-      const formatted = qs
-        .map((q, i) => `"${q.question}" = "${answers[i]?.join(", ") || "Unanswered"}"`)
-        .join("\n")
+      const formatted = qs.map((q, i) => `"${q.question}" = "${answers[i]?.join(", ") || "Unanswered"}"`).join("\n")
       const model = local.model.current()
       sdk.client.session
         .prompt({

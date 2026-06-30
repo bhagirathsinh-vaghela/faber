@@ -25,11 +25,15 @@
                     },
                     "version": {
                       "type": "string"
+                    },
+                    "host": {
+                      "type": "string"
                     }
                   },
                   "required": [
                     "healthy",
-                    "version"
+                    "version",
+                    "host"
                   ]
                 }
               }

@@ -88,7 +88,8 @@ export function MessageFooter(props: { message: AssistantMessage }) {
 
   const fields = createMemo(() => {
     const result: { id: string; node: () => JSX.Element }[] = []
-    if (show("agent")) result.push({ id: "agent", node: () => <Field color={AGENT} text={titlecase(props.message.mode)} /> })
+    if (show("agent"))
+      result.push({ id: "agent", node: () => <Field color={AGENT} text={titlecase(props.message.mode)} /> })
     if (show("model") && model())
       result.push({
         id: "model",

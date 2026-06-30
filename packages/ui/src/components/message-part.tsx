@@ -358,10 +358,7 @@ export function Message(props: MessageProps) {
     <Switch>
       <Match when={props.message.role === "user" && taskResultPart(props.parts)}>
         {(part) => (
-          <Show
-            when={props.boxed}
-            fallback={<TaskResultDisplay part={part()} />}
-          >
+          <Show when={props.boxed} fallback={<TaskResultDisplay part={part()} />}>
             <MessageBox
               message={props.message}
               label="TASK RESULT"
@@ -431,7 +428,9 @@ export function MessageBox(props: {
       onCleanup(() => document.removeEventListener("keydown", onKey))
       return (
         <Dialog title="Revert to this message?" fit>
-          <div style={{ display: "flex", "flex-direction": "column", gap: "1rem", padding: "0 0.625rem 0.75rem 1.5rem" }}>
+          <div
+            style={{ display: "flex", "flex-direction": "column", gap: "1rem", padding: "0 0.625rem 0.75rem 1.5rem" }}
+          >
             <span style={{ color: "var(--color-text-strong)" }}>
               Roll the session back to this message. Later messages are undone; the cache is preserved.
             </span>
@@ -450,8 +449,7 @@ export function MessageBox(props: {
   }
   const number = createMemo(() => data.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id))
   const accent =
-    props.accent ??
-    (isUser ? messageAgentColor((props.message as any).agent) : "var(--color-text-success, #22DD22)")
+    props.accent ?? (isUser ? messageAgentColor((props.message as any).agent) : "var(--color-text-success, #22DD22)")
   return (
     <div
       data-component="message-box"
@@ -505,14 +503,21 @@ function BlockNumber(props: { sessionID: string; id: string }) {
   const number = createMemo(() => data.blockNumber(props.sessionID, props.id))
   return (
     <Show when={number() !== undefined}>
-      <span data-slot="block-number" style={{ color: "var(--color-text-weak)", "font-size": "11px", "font-weight": "600" }}>
+      <span
+        data-slot="block-number"
+        style={{ color: "var(--color-text-weak)", "font-size": "11px", "font-weight": "600" }}
+      >
         {"#" + number()}
       </span>
     </Show>
   )
 }
 
-export function AssistantMessageDisplay(props: { message: AssistantMessage; parts: PartType[]; defaultOpen?: boolean }) {
+export function AssistantMessageDisplay(props: {
+  message: AssistantMessage
+  parts: PartType[]
+  defaultOpen?: boolean
+}) {
   const emptyParts: PartType[] = []
   const filteredParts = createMemo(
     () =>
