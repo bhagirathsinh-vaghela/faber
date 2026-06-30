@@ -549,6 +549,14 @@ export type EventPermissionReplied = {
   }
 }
 
+export type EventPermissionAutoaccept = {
+  type: "permission.autoaccept"
+  properties: {
+    sessionID: string
+    enabled: boolean
+  }
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -1070,6 +1078,7 @@ export type Event =
   | EventVcsBranchUpdated
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventPermissionAutoaccept
   | EventSessionStatus
   | EventSessionIdle
   | EventQuestionAsked
@@ -4337,6 +4346,54 @@ export type PermissionReplyResponses = {
 }
 
 export type PermissionReplyResponse = PermissionReplyResponses[keyof PermissionReplyResponses]
+
+export type PermissionAutoAcceptingData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/permission/autoaccept"
+}
+
+export type PermissionAutoAcceptingResponses = {
+  /**
+   * List of session IDs with auto-accept enabled
+   */
+  200: Array<string>
+}
+
+export type PermissionAutoAcceptingResponse = PermissionAutoAcceptingResponses[keyof PermissionAutoAcceptingResponses]
+
+export type PermissionSetAutoAcceptData = {
+  body?: {
+    sessionID: string
+    enabled: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/permission/autoaccept"
+}
+
+export type PermissionSetAutoAcceptErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PermissionSetAutoAcceptError = PermissionSetAutoAcceptErrors[keyof PermissionSetAutoAcceptErrors]
+
+export type PermissionSetAutoAcceptResponses = {
+  /**
+   * Auto-accept updated successfully
+   */
+  200: boolean
+}
+
+export type PermissionSetAutoAcceptResponse = PermissionSetAutoAcceptResponses[keyof PermissionSetAutoAcceptResponses]
 
 export type PermissionListData = {
   body?: never

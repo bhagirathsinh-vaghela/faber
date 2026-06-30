@@ -80,12 +80,15 @@ import type {
   PartUpdateErrors,
   PartUpdateResponses,
   PathGetResponses,
+  PermissionAutoAcceptingResponses,
   PermissionListResponses,
   PermissionReplyErrors,
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
   PermissionRuleset,
+  PermissionSetAutoAcceptErrors,
+  PermissionSetAutoAcceptResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -2059,6 +2062,66 @@ export class Permission extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<PermissionReplyResponses, PermissionReplyErrors, ThrowOnError>({
       url: "/permission/{requestID}/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List auto-accept sessions
+   *
+   * Get the session IDs that have auto-accept edits enabled.
+   */
+  public autoAccepting<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PermissionAutoAcceptingResponses, unknown, ThrowOnError>({
+      url: "/permission/autoaccept",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set auto-accept edits
+   *
+   * Enable or disable server-side auto-accept of edit permissions for a session.
+   */
+  public setAutoAccept<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      sessionID?: string
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      PermissionSetAutoAcceptResponses,
+      PermissionSetAutoAcceptErrors,
+      ThrowOnError
+    >({
+      url: "/permission/autoaccept",
       ...options,
       ...params,
       headers: {

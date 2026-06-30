@@ -103,6 +103,13 @@ export namespace PermissionNext {
         reply: Reply,
       }),
     ),
+    AutoAccept: BusEvent.define(
+      "permission.autoaccept",
+      z.object({
+        sessionID: z.string(),
+        enabled: z.boolean(),
+      }),
+    ),
   }
 
   const state = Instance.state(async () => {
@@ -118,9 +125,12 @@ export namespace PermissionNext {
       }
     > = {}
 
+    const autoAccept: Record<string, boolean> = {}
+
     return {
       pending,
       approved: stored,
+      autoAccept,
     }
   })
 
@@ -137,6 +147,7 @@ export namespace PermissionNext {
         if (rule.action === "deny")
           throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
         if (rule.action === "ask") {
+          if (request.permission === "edit" && s.autoAccept[request.sessionID]) continue
           const id = input.id ?? Identifier.ascending("permission")
           return new Promise<void>((resolve, reject) => {
             const info: Request = {
@@ -277,4 +288,37 @@ export namespace PermissionNext {
   export async function list() {
     return state().then((x) => Object.values(x.pending).map((x) => x.info))
   }
+
+  export async function autoAccepting() {
+    return state().then((x) =>
+      Object.entries(x.autoAccept)
+        .filter(([, enabled]) => enabled)
+        .map(([sessionID]) => sessionID),
+    )
+  }
+
+  export const setAutoAccept = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      enabled: z.boolean(),
+    }),
+    async (input) => {
+      const s = await state()
+      if (input.enabled) s.autoAccept[input.sessionID] = true
+      else delete s.autoAccept[input.sessionID]
+      Bus.publish(Event.AutoAccept, { sessionID: input.sessionID, enabled: input.enabled })
+      if (!input.enabled) return
+      for (const [id, pending] of Object.entries(s.pending)) {
+        if (pending.info.sessionID !== input.sessionID) continue
+        if (pending.info.permission !== "edit") continue
+        delete s.pending[id]
+        Bus.publish(Event.Replied, {
+          sessionID: pending.info.sessionID,
+          requestID: pending.info.id,
+          reply: "once",
+        })
+        pending.resolve()
+      }
+    },
+  )
 }

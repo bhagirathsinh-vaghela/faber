@@ -44,6 +44,53 @@ export const PermissionRoutes = lazy(() =>
       },
     )
     .get(
+      "/autoaccept",
+      describeRoute({
+        summary: "List auto-accept sessions",
+        description: "Get the session IDs that have auto-accept edits enabled.",
+        operationId: "permission.autoAccepting",
+        responses: {
+          200: {
+            description: "List of session IDs with auto-accept enabled",
+            content: {
+              "application/json": {
+                schema: resolver(z.string().array()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const sessions = await PermissionNext.autoAccepting()
+        return c.json(sessions)
+      },
+    )
+    .post(
+      "/autoaccept",
+      describeRoute({
+        summary: "Set auto-accept edits",
+        description: "Enable or disable server-side auto-accept of edit permissions for a session.",
+        operationId: "permission.setAutoAccept",
+        responses: {
+          200: {
+            description: "Auto-accept updated successfully",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", z.object({ sessionID: z.string(), enabled: z.boolean() })),
+      async (c) => {
+        const json = c.req.valid("json")
+        await PermissionNext.setAutoAccept({ sessionID: json.sessionID, enabled: json.enabled })
+        return c.json(true)
+      },
+    )
+    .get(
       "/",
       describeRoute({
         summary: "List pending permissions",

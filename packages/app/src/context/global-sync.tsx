@@ -77,6 +77,12 @@ type State = {
   ping_armed: {
     [sessionID: string]: boolean
   }
+  // Session IDs with auto-accept edits enabled on this server instance. The
+  // server resolves edit asks itself when set, so this streams to every client
+  // instead of living in one browser's local storage.
+  auto_accept: {
+    [sessionID: string]: boolean
+  }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
@@ -400,6 +406,7 @@ function createGlobalSync() {
           sessionTotal: 0,
           session_status: {},
           ping_armed: {},
+          auto_accept: {},
           session_diff: {},
           todo: {},
           permission: {},
@@ -543,6 +550,11 @@ function createGlobalSync() {
           for (const id of x.data ?? []) armed[id] = true
           setStore("ping_armed", reconcile(armed))
         }),
+        sdk.permission.autoAccepting().then((x) => {
+          const accepting: Record<string, boolean> = {}
+          for (const id of x.data ?? []) accepting[id] = true
+          setStore("auto_accept", reconcile(accepting))
+        }),
         loadSessions(directory),
         sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
         sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
@@ -645,6 +657,7 @@ function createGlobalSync() {
         delete draft.question[sessionID]
         delete draft.session_status[sessionID]
         delete draft.ping_armed[sessionID]
+        delete draft.auto_accept[sessionID]
 
         for (const messageID of messageIDs) {
           delete draft.part[messageID]
@@ -724,6 +737,7 @@ function createGlobalSync() {
           delete draft.question[sessionID]
           delete draft.session_status[sessionID]
           delete draft.ping_armed[sessionID]
+          delete draft.auto_accept[sessionID]
         }),
       )
     }
@@ -804,6 +818,10 @@ function createGlobalSync() {
       }
       case "session.ping.armed": {
         setStore("ping_armed", event.properties.sessionID, event.properties.armed)
+        break
+      }
+      case "permission.autoaccept": {
+        setStore("auto_accept", event.properties.sessionID, event.properties.enabled)
         break
       }
       case "message.updated": {
