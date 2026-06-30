@@ -67,30 +67,44 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       timer = setTimeout(flush, Math.max(0, 16 - elapsed))
     }
 
+    // Thin-client streaming model (like tmux reattach): the stream must run
+    // forever. When it drops (server restart, sleep, network blip) reconnect
+    // with backoff. The server emits server.connected on every (re)attach, so
+    // global-sync re-bootstraps the world on that event — the "redraw" step.
     void (async () => {
-      const events = await eventSdk.global.event()
-      let yielded = Date.now()
-      for await (const event of events.stream) {
-        const directory = event.directory ?? "global"
-        const payload = event.payload
-        const k = key(directory, payload)
-        if (k) {
-          const i = coalesced.get(k)
-          if (i !== undefined) {
-            queue[i] = undefined
-          }
-          coalesced.set(k, queue.length)
-        }
-        queue.push({ directory, payload })
-        schedule()
+      let backoff = 250
+      while (!abort.signal.aborted) {
+        try {
+          const events = await eventSdk.global.event()
+          backoff = 250
+          let yielded = Date.now()
+          for await (const event of events.stream) {
+            const directory = event.directory ?? "global"
+            const payload = event.payload
+            const k = key(directory, payload)
+            if (k) {
+              const i = coalesced.get(k)
+              if (i !== undefined) {
+                queue[i] = undefined
+              }
+              coalesced.set(k, queue.length)
+            }
+            queue.push({ directory, payload })
+            schedule()
 
-        if (Date.now() - yielded < 8) continue
-        yielded = Date.now()
-        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+            if (Date.now() - yielded < 8) continue
+            yielded = Date.now()
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
+          }
+        } catch {
+          // stream errored; fall through to backoff + reconnect
+        }
+        flush()
+        if (abort.signal.aborted) break
+        await new Promise<void>((resolve) => setTimeout(resolve, backoff))
+        backoff = Math.min(backoff * 2, 5000)
       }
     })()
-      .finally(flush)
-      .catch(() => undefined)
 
     onCleanup(() => {
       abort.abort()
