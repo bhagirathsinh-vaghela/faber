@@ -1438,6 +1438,53 @@
         ]
       }
     },
+    "/session/ping/armed": {
+      "get": {
+        "operationId": "session.pingArmed",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get armed ping daemons",
+        "description": "Session IDs whose cache ping daemon is armed on this server instance.",
+        "responses": {
+          "200": {
+            "description": "Armed session IDs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.pingArmed({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}": {
       "get": {
         "operationId": "session.get",
@@ -3357,6 +3404,142 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.ping({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/ping/stop": {
+      "post": {
+        "operationId": "session.pingStop",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Stop cache ping",
+        "description": "Stop the cache ping daemon for this session. Reopening the session re-arms it.",
+        "responses": {
+          "200": {
+            "description": "Ping daemon stopped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.pingStop({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/seen": {
+      "post": {
+        "operationId": "session.seen",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Mark session seen",
+        "description": "Clear the unseen-result flag for this session.",
+        "responses": {
+          "200": {
+            "description": "Session marked seen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.seen({\n  ...\n})"
           }
         ]
       }
@@ -10036,6 +10219,28 @@
           "properties"
         ]
       },
+      "Event.session.ping.armed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.ping.armed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "armed": {
+                "type": "boolean"
+              }
+            },
+            "required": ["sessionID", "armed"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "PermissionAction": {
         "type": "string",
         "enum": [
@@ -10206,6 +10411,18 @@
             "required": [
               "lastRequestAt"
             ]
+          },
+          "unseen": {
+            "type": "boolean"
+          },
+          "seen": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "type": "number"
+              }
+            },
+            "required": ["at"]
           },
           "tokens": {
             "default": {
@@ -10775,6 +10992,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.ping.armed"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"

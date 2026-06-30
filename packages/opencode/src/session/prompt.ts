@@ -717,7 +717,10 @@ export namespace SessionPrompt {
       continue
     }
     SessionCompaction.prune({ sessionID })
-    if (!session.parentID) SessionPing.start(sessionID)
+    if (!session.parentID) {
+      SessionPing.start(sessionID)
+      Session.markUnseen(sessionID)
+    }
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
       const queued = state()[sessionID]?.callbacks ?? []

@@ -1,4 +1,7 @@
 import { Log } from "@/util/log"
+import { Bus } from "@/bus"
+import { BusEvent } from "@/bus/bus-event"
+import z from "zod"
 import { Session } from "."
 import { MessageV2 } from "./message-v2"
 import { Agent } from "@/agent/agent"
@@ -42,11 +45,41 @@ export async function beforeExpiry() {
 export namespace SessionPing {
   const log = Log.create({ service: "session.ping" })
 
+  // Fired when a session's ping daemon arms or disarms on THIS server instance.
+  // The hub keys "will-ping" off this live state, never off the persisted cache
+  // anchor (which can outlive the daemon across a restart).
+  export const Event = {
+    Armed: BusEvent.define(
+      "session.ping.armed",
+      z.object({
+        sessionID: z.string(),
+        armed: z.boolean(),
+      }),
+    ),
+  }
+
   const active = new Map<string, { abort: AbortController; id: number }>()
   // Consecutive misses per session (in-memory: a process restart re-arms fresh,
   // which is itself a clean retry, consistent with "anything new resets").
   const misses = new Map<string, number>()
   let loopId = 0
+
+  // Session IDs whose daemon is armed on this instance — the hub's truth source.
+  export function list() {
+    return [...active.keys()]
+  }
+
+  // All three active mutations funnel through arm/disarm so the event fires
+  // exactly when membership changes.
+  function arm(sessionID: string, entry: { abort: AbortController; id: number }) {
+    active.set(sessionID, entry)
+    Bus.publish(Event.Armed, { sessionID, armed: true })
+  }
+
+  function disarm(sessionID: string) {
+    if (!active.delete(sessionID)) return
+    Bus.publish(Event.Armed, { sessionID, armed: false })
+  }
 
   export function start(sessionID: string) {
     // Re-arm: every call (including from an organic turn via prompt.ts) clears
@@ -65,7 +98,7 @@ export namespace SessionPing {
       if (active.has(sessionID)) return
       const abort = new AbortController()
       const id = ++loopId
-      active.set(sessionID, { abort, id })
+      arm(sessionID, { abort, id })
       run(sessionID, abort.signal, id)
     })
   }
@@ -74,7 +107,7 @@ export namespace SessionPing {
     const entry = active.get(sessionID)
     if (!entry) return
     entry.abort.abort()
-    active.delete(sessionID)
+    disarm(sessionID)
   }
 
   export async function probe(sessionID: string, cacheProbeMessageID: string) {
@@ -105,9 +138,9 @@ export namespace SessionPing {
         await sleep(IDLE_TICK, signal).catch(() => {})
       }
     }
-    // Only delete if we're still the active loop (not replaced by a newer one)
+    // Only disarm if we're still the active loop (not replaced by a newer one)
     const entry = active.get(sessionID)
-    if (entry?.id === id) active.delete(sessionID)
+    if (entry?.id === id) disarm(sessionID)
   }
 
   type Next = { type: "ping"; delay: number } | { type: "idle" } | { type: "stop" }

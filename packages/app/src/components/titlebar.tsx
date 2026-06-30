@@ -23,7 +23,6 @@ export function Titlebar() {
 
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-  const web = createMemo(() => platform.platform === "web")
   const zoom = () => platform.webviewZoom?.() ?? 1
   const minHeight = () => (mac() ? `${40 / zoom()}px` : undefined)
 
@@ -148,30 +147,45 @@ export function Titlebar() {
       >
         <Show when={mac()}>
           <div class="h-full shrink-0" style={{ width: `${72 / zoom()}px` }} />
-          <div class="xl:hidden w-10 shrink-0 flex items-center justify-center">
-            <IconButton
-              icon="menu"
-              variant="ghost"
-              class="size-8 rounded-md"
-              onClick={layout.mobileSidebar.toggle}
-              aria-label={language.t("sidebar.menu.toggle")}
-            />
-          </div>
         </Show>
-        <Show when={!mac()}>
-          <div class="xl:hidden w-[48px] shrink-0 flex items-center justify-center">
-            <IconButton
-              icon="menu"
-              variant="ghost"
-              class="size-8 rounded-md"
-              onClick={layout.mobileSidebar.toggle}
-              aria-label={language.t("sidebar.menu.toggle")}
-            />
-          </div>
-        </Show>
+        <div class="xl:hidden shrink-0 flex items-center justify-center">
+          <IconButton
+            icon="house"
+            variant="ghost"
+            class="size-8 rounded-md"
+            onClick={() => navigate("/")}
+            aria-label={language.t("common.home")}
+          />
+        </div>
+        <div
+          class="xl:hidden shrink-0 flex items-center justify-center"
+          classList={{ "w-10": mac(), "w-[48px]": !mac() }}
+        >
+          <IconButton
+            icon="menu"
+            variant="ghost"
+            class="size-8 rounded-md"
+            onClick={layout.mobileSidebar.toggle}
+            aria-label={language.t("sidebar.menu.toggle")}
+          />
+        </div>
         <div class="flex items-center gap-3 shrink-0">
+          <Tooltip
+            class="hidden xl:flex shrink-0 ml-2"
+            placement="bottom"
+            value={language.t("common.home")}
+            openDelay={2000}
+          >
+            <Button
+              variant="ghost"
+              icon="house"
+              class="size-6 p-0"
+              onClick={() => navigate("/")}
+              aria-label={language.t("common.home")}
+            />
+          </Tooltip>
           <TooltipKeybind
-            class={web() ? "hidden xl:flex shrink-0 ml-14" : "hidden xl:flex shrink-0 ml-2"}
+            class="hidden xl:flex shrink-0"
             placement="bottom"
             title={language.t("command.sidebar.toggle")}
             keybind={command.keybind("sidebar.toggle")}

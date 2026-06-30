@@ -1,7 +1,7 @@
 import { createEffect, createMemo, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Portal } from "solid-js/web"
-import { useParams } from "@solidjs/router"
+import { useParams, useNavigate } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
@@ -24,6 +24,7 @@ export function SessionHeader() {
   const globalSDK = useGlobalSDK()
   const layout = useLayout()
   const params = useParams()
+  const navigate = useNavigate()
   const command = useCommand()
   const sync = useSync()
   const platform = usePlatform()
@@ -93,6 +94,15 @@ export function SessionHeader() {
       .finally(() => {
         setState("unshare", false)
       })
+  }
+
+  function stopSession() {
+    const id = params.id
+    if (!id) return
+    const directory = projectDirectory()
+    void globalSDK.client.session.abort({ sessionID: id, directory }).catch(() => {})
+    void globalSDK.client.session.pingStop({ sessionID: id, directory }).catch(() => {})
+    navigate("/")
   }
 
   function copyLink() {
@@ -244,6 +254,18 @@ export function SessionHeader() {
                       />
                     </Tooltip>
                   </Show>
+                </div>
+              </Show>
+              <Show when={currentSession()}>
+                <div class="hidden md:flex items-center ml-2 shrink-0">
+                  <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
+                    <IconButton
+                      icon="circle-ban-sign"
+                      variant="ghost"
+                      onClick={stopSession}
+                      aria-label={language.t("session.stop")}
+                    />
+                  </Tooltip>
                 </div>
               </Show>
               <div class="hidden md:flex items-center gap-3 ml-2 shrink-0">

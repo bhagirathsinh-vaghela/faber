@@ -115,6 +115,12 @@ export namespace Session {
           lastRequestAt: z.number(),
         })
         .optional(),
+      unseen: z.boolean().optional(),
+      seen: z
+        .object({
+          at: z.number(),
+        })
+        .optional(),
       tokens: z
         .object({
           input: z.number(),
@@ -362,6 +368,21 @@ export namespace Session {
       info: result,
     })
     return result
+  }
+
+  export function markUnseen(id: string) {
+    return update(id, (session) => (session.unseen = true), { touch: false })
+  }
+
+  export function markSeen(id: string) {
+    return update(
+      id,
+      (session) => {
+        session.unseen = false
+        session.seen = { at: Date.now() }
+      },
+      { touch: false },
+    )
   }
 
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {

@@ -3,9 +3,7 @@ import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useSync } from "@/context/sync"
 import { useParams } from "@solidjs/router"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
-
-// Cache TTL mirrors the server's session/ping CACHE_TTL (5 minutes).
-const CACHE_TTL = 5 * 60 * 1000
+import { CACHE_TTL, beforeExpiryMs, cacheCountdown as computeCountdown } from "@/utils/cache-countdown"
 
 function clock(ms: number): string {
   const d = new Date(ms)
@@ -22,18 +20,7 @@ export function Statusline() {
   const timer = setInterval(() => setNow(Date.now()), 1000)
   onCleanup(() => clearInterval(timer))
 
-  const beforeExpiry = createMemo(() => ((sync.data.config as any)?.ping?.before_expiry ?? 10) * 1000)
-
-  const cacheCountdown = createMemo(() => {
-    const base = session()?.cache?.lastRequestAt
-    if (!base) return null
-    if (base + CACHE_TTL <= now()) return null
-    const remaining = base + CACHE_TTL - beforeExpiry() - now()
-    if (remaining <= 0) return null
-    const mins = Math.floor(remaining / 60000)
-    const secs = Math.floor((remaining % 60000) / 1000)
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
-  })
+  const cacheCountdown = createMemo(() => computeCountdown(session(), beforeExpiryMs(sync.data.config), now()))
 
   const cacheExpiryAbsolute = createMemo(() => {
     const base = session()?.cache?.lastRequestAt

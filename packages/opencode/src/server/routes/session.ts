@@ -91,6 +91,28 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .get(
+      "/ping/armed",
+      describeRoute({
+        summary: "Get armed ping daemons",
+        description: "Session IDs whose cache ping daemon is armed on this server instance.",
+        operationId: "session.pingArmed",
+        responses: {
+          200: {
+            description: "Armed session IDs",
+            content: {
+              "application/json": {
+                schema: resolver(z.array(z.string())),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      async (c) => {
+        return c.json(SessionPing.list())
+      },
+    )
+    .get(
       "/:sessionID",
       describeRoute({
         summary: "Get session",
@@ -948,6 +970,64 @@ export const SessionRoutes = lazy(() =>
         } else {
           await SessionPing.probe(sessionID, "")
         }
+        return c.json({ ok: true })
+      },
+    )
+    .post(
+      "/:sessionID/ping/stop",
+      describeRoute({
+        summary: "Stop cache ping",
+        description: "Stop the cache ping daemon for this session. Reopening the session re-arms it.",
+        operationId: "session.pingStop",
+        responses: {
+          200: {
+            description: "Ping daemon stopped",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ ok: z.boolean() })),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      async (c) => {
+        SessionPing.stop(c.req.valid("param").sessionID)
+        return c.json({ ok: true })
+      },
+    )
+    .post(
+      "/:sessionID/seen",
+      describeRoute({
+        summary: "Mark session seen",
+        description: "Clear the unseen-result flag for this session.",
+        operationId: "session.seen",
+        responses: {
+          200: {
+            description: "Session marked seen",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ ok: z.boolean() })),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      async (c) => {
+        await Session.markSeen(c.req.valid("param").sessionID)
         return c.json({ ok: true })
       },
     )

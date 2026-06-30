@@ -874,6 +874,14 @@ export type EventCommandExecuted = {
   }
 }
 
+export type EventSessionPingArmed = {
+  type: "session.ping.armed"
+  properties: {
+    sessionID: string
+    armed: boolean
+  }
+}
+
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -922,6 +930,10 @@ export type Session = {
   }
   cache?: {
     lastRequestAt: number
+  }
+  unseen?: boolean
+  seen?: {
+    at: number
   }
   tokens?: {
     input: number
@@ -1078,6 +1090,7 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
+  | EventSessionPingArmed
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -3276,6 +3289,33 @@ export type SessionStatusResponses = {
 
 export type SessionStatusResponse = SessionStatusResponses[keyof SessionStatusResponses]
 
+export type SessionPingArmedData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/session/ping/armed"
+}
+
+export type SessionPingArmedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionPingArmedError = SessionPingArmedErrors[keyof SessionPingArmedErrors]
+
+export type SessionPingArmedResponses = {
+  /**
+   * Armed session IDs
+   */
+  200: Array<string>
+}
+
+export type SessionPingArmedResponse = SessionPingArmedResponses[keyof SessionPingArmedResponses]
+
 export type SessionDeleteData = {
   body?: never
   path: {
@@ -4155,6 +4195,76 @@ export type SessionPingResponses = {
 }
 
 export type SessionPingResponse = SessionPingResponses[keyof SessionPingResponses]
+
+export type SessionPingStopData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/ping/stop"
+}
+
+export type SessionPingStopErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionPingStopError = SessionPingStopErrors[keyof SessionPingStopErrors]
+
+export type SessionPingStopResponses = {
+  /**
+   * Ping daemon stopped
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type SessionPingStopResponse = SessionPingStopResponses[keyof SessionPingStopResponses]
+
+export type SessionSeenData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/seen"
+}
+
+export type SessionSeenErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionSeenError = SessionSeenErrors[keyof SessionSeenErrors]
+
+export type SessionSeenResponses = {
+  /**
+   * Session marked seen
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type SessionSeenResponse = SessionSeenResponses[keyof SessionSeenResponses]
 
 export type PermissionRespondData = {
   body?: {

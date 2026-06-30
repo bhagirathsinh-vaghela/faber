@@ -71,6 +71,12 @@ type State = {
   session_status: {
     [sessionID: string]: SessionStatus
   }
+  // Session IDs whose ping daemon is armed on this server instance. The hub's
+  // will-ping countdown is gated on this, never on the persisted cache anchor
+  // (which outlives the daemon across a restart).
+  ping_armed: {
+    [sessionID: string]: boolean
+  }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
@@ -393,6 +399,7 @@ function createGlobalSync() {
           session: [],
           sessionTotal: 0,
           session_status: {},
+          ping_armed: {},
           session_diff: {},
           todo: {},
           permission: {},
@@ -531,6 +538,11 @@ function createGlobalSync() {
         sdk.path.get().then((x) => setStore("path", x.data!)),
         sdk.command.list().then((x) => setStore("command", x.data ?? [])),
         sdk.session.status().then((x) => setStore("session_status", x.data!)),
+        sdk.session.pingArmed().then((x) => {
+          const armed: Record<string, boolean> = {}
+          for (const id of x.data ?? []) armed[id] = true
+          setStore("ping_armed", reconcile(armed))
+        }),
         loadSessions(directory),
         sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
         sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
@@ -632,6 +644,7 @@ function createGlobalSync() {
         delete draft.permission[sessionID]
         delete draft.question[sessionID]
         delete draft.session_status[sessionID]
+        delete draft.ping_armed[sessionID]
 
         for (const messageID of messageIDs) {
           delete draft.part[messageID]
@@ -646,6 +659,13 @@ function createGlobalSync() {
 
     if (directory === "global") {
       switch (event?.type) {
+        case "server.connected": {
+          // Every (re)attach of the event stream: re-bootstrap the world so a
+          // reconnected client redraws current state instead of showing the
+          // stale snapshot it had when the stream dropped (tmux reattach).
+          refresh()
+          return
+        }
         case "global.disposed": {
           refresh()
           return
@@ -703,6 +723,7 @@ function createGlobalSync() {
           delete draft.permission[sessionID]
           delete draft.question[sessionID]
           delete draft.session_status[sessionID]
+          delete draft.ping_armed[sessionID]
         }),
       )
     }
@@ -779,6 +800,10 @@ function createGlobalSync() {
         break
       case "session.status": {
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
+        break
+      }
+      case "session.ping.armed": {
+        setStore("ping_armed", event.properties.sessionID, event.properties.armed)
         break
       }
       case "message.updated": {

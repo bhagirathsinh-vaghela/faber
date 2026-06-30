@@ -136,14 +136,20 @@ import type {
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
+  SessionPingArmedErrors,
+  SessionPingArmedResponses,
   SessionPingErrors,
   SessionPingResponses,
+  SessionPingStopErrors,
+  SessionPingStopResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
   SessionRevertErrors,
   SessionRevertResponses,
+  SessionSeenErrors,
+  SessionSeenResponses,
   SessionShareErrors,
   SessionShareResponses,
   SessionShellErrors,
@@ -1042,6 +1048,25 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Get armed ping daemons
+   *
+   * Session IDs whose cache ping daemon is armed on this server instance.
+   */
+  public pingArmed<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<SessionPingArmedResponses, SessionPingArmedErrors, ThrowOnError>({
+      url: "/session/ping/armed",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Delete session
    *
    * Delete a session and permanently remove all associated data, including messages and history.
@@ -1826,6 +1851,66 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Stop cache ping
+   *
+   * Stop the cache ping daemon for this session. Reopening the session re-arms it.
+   */
+  public pingStop<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionPingStopResponses, SessionPingStopErrors, ThrowOnError>({
+      url: "/session/{sessionID}/ping/stop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Mark session seen
+   *
+   * Clear the unseen-result flag for this session.
+   */
+  public seen<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionSeenResponses, SessionSeenErrors, ThrowOnError>({
+      url: "/session/{sessionID}/seen",
+      ...options,
+      ...params,
     })
   }
 }

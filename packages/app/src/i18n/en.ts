@@ -189,6 +189,7 @@ export const dict = {
   "model.tooltip.context": "Context limit {{limit}}",
 
   "common.search.placeholder": "Search",
+  "common.home": "Home",
   "common.goBack": "Back",
   "common.goForward": "Forward",
   "common.loading": "Loading",
@@ -481,10 +482,15 @@ export const dict = {
   "home.recentProjects": "Recent projects",
   "home.empty.title": "No recent projects",
   "home.empty.description": "Get started by opening a local project",
+  "home.attention": "Needs attention",
+  "home.attention.busy": "Working",
+  "home.attention.unseen": "New",
+  "home.attention.stopPing": "Stop pinging",
 
   "session.tab.session": "Session",
   "session.tab.review": "Review",
   "session.tab.context": "Context",
+  "session.stop": "Stop session (abort turn and ping)",
   "session.panel.reviewAndFiles": "Review and files",
   "session.review.filesChanged": "{{count}} Files Changed",
   "session.revert.count": "{{count}} message reverted",

@@ -109,7 +109,6 @@ export default function Layout(props: ParentProps) {
   const command = useCommand()
   const theme = useTheme()
   const language = useLanguage()
-  const initialDirectory = decode64(params.dir)
   const availableThemeEntries = createMemo(() => Object.entries(theme.themes()))
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
   const colorSchemeKey: Record<ColorScheme, "theme.scheme.system" | "theme.scheme.light" | "theme.scheme.dark"> = {
@@ -120,7 +119,11 @@ export default function Layout(props: ParentProps) {
   const colorSchemeLabel = (scheme: ColorScheme) => language.t(colorSchemeKey[scheme])
 
   const [state, setState] = createStore({
-    autoselect: !initialDirectory,
+    // The hub is the home page: landing on "/" must stay on the hub, never
+    // auto-jump into the last/first project's session. Explicit project-open
+    // paths (sidebar click, deep link, navigateToProject) set params.dir
+    // directly and are unaffected.
+    autoselect: false,
     busyWorkspaces: new Set<string>(),
     hoverSession: undefined as string | undefined,
     hoverProject: undefined as string | undefined,
@@ -932,7 +935,7 @@ export default function Layout(props: ParentProps) {
     const sessions = currentSessions()
     if (sessions.length === 0) return
 
-    const hasUnseen = sessions.some((session) => notification.session.unseen(session.id).length > 0)
+    const hasUnseen = sessions.some((session) => session.unseen === true)
     if (!hasUnseen) return
 
     const activeIndex = params.id ? sessions.findIndex((s) => s.id === params.id) : -1
@@ -942,7 +945,7 @@ export default function Layout(props: ParentProps) {
       const index = offset > 0 ? (start + i) % sessions.length : (start - i + sessions.length) % sessions.length
       const session = sessions[index]
       if (!session) continue
-      if (notification.session.unseen(session.id).length === 0) continue
+      if (session.unseen !== true) continue
 
       prefetchSession(session, "high")
 
@@ -1644,6 +1647,7 @@ export default function Layout(props: ParentProps) {
         if (!directory) return
         setStore("lastSession", directory, id)
         notification.session.markViewed(id)
+        void globalSDK.client.session.seen({ directory, sessionID: id })
         const expanded = untrack(() => store.workspaceExpanded[directory])
         if (expanded === false) {
           setStore("workspaceExpanded", directory, true)
@@ -1653,6 +1657,21 @@ export default function Layout(props: ParentProps) {
       { defer: true },
     ),
   )
+
+  // A turn finishing in the session you are VIEWING marks it unseen server-side.
+  // Re-clear it so the active session never lights its own dot; other clients
+  // keep the unseen mark until they open it.
+  createEffect(() => {
+    const id = params.id
+    const dir = params.dir
+    if (!id || !dir) return
+    const directory = decode64(dir)
+    if (!directory) return
+    const [activeStore] = globalSync.child(directory)
+    const status = activeStore.session_status[id]
+    if (status && status.type !== "idle") return
+    void globalSDK.client.session.seen({ directory, sessionID: id })
+  })
 
   createEffect(() => {
     const sidebarWidth = layout.sidebar.opened() ? layout.sidebar.width() : 48
@@ -1912,7 +1931,7 @@ export default function Layout(props: ParentProps) {
               <Match when={hasError()}>
                 <div class="size-1.5 rounded-full bg-text-diff-delete-base" />
               </Match>
-              <Match when={notifications().length > 0}>
+              <Match when={props.session.unseen === true}>
                 <div class="size-1.5 rounded-full bg-text-interactive-base" />
               </Match>
             </Switch>
