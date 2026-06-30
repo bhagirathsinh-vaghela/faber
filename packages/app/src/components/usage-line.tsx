@@ -6,14 +6,18 @@ import { useLocal } from "@/context/local"
 
 type ProviderLike = { id: string; models: Record<string, { limit?: { context?: number } }> }
 
-export function tokens(count: number): string {
-  if (count >= 1_000_000) return Math.round(count / 1_000_000) + "M"
-  if (count >= 1_000) return Math.round(count / 1_000) + "k"
-  return count.toString()
+// Tolerate a missing count: old sessions/messages predate some token fields, so
+// a persisted record can omit a leaf the renderer reads. Treat absent as zero,
+// never crash.
+export function tokens(count: number | undefined): string {
+  const n = count ?? 0
+  if (n >= 1_000_000) return Math.round(n / 1_000_000) + "M"
+  if (n >= 1_000) return Math.round(n / 1_000) + "k"
+  return n.toString()
 }
 
-export function cost(dollars: number): string {
-  return "$" + dollars.toFixed(2)
+export function cost(dollars: number | undefined): string {
+  return "$" + (dollars ?? 0).toFixed(2)
 }
 
 
