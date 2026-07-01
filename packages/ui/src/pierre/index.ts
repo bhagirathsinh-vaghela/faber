@@ -136,6 +136,40 @@ const unsafeCSS = `
   [data-code] {
     overflow-x: auto !important;
   }
+}
+
+/* GitHub diff palette, hardcoded so diffs render identically in every app
+   theme. This overrides pierre's theme-derived diff colors via its documented
+   -override hooks plus the *-base seeds, keeping the library otherwise
+   untouched. Dark/light is keyed off pierre's own [data-color-scheme] host
+   attribute (set from the app theme), NOT light-dark() — light-dark() follows
+   the OS color-scheme, which is why context rows previously washed out. Solid
+   row backgrounds at rest (no faint color-mix blend). */
+[data-diffs] {
+  --diffs-addition-base: #1a7f37;
+  --diffs-deletion-base: #cf222e;
+  --diffs-bg-context-override: #f6f8fa;
+  --diffs-bg-buffer-override: #f6f8fa;
+  --diffs-bg-hover-override: #eef1f4;
+  --diffs-bg-addition-override: #dafbe1;
+  --diffs-bg-addition-number-override: #aceebb;
+  --diffs-bg-addition-hover-override: #aceebb;
+  --diffs-bg-deletion-override: #ffebe9;
+  --diffs-bg-deletion-number-override: #ffd7d5;
+  --diffs-bg-deletion-hover-override: #ffd7d5;
+}
+:host([data-color-scheme='dark']) [data-diffs] {
+  --diffs-addition-base: #3fb950;
+  --diffs-deletion-base: #f85149;
+  --diffs-bg-context-override: #010409;
+  --diffs-bg-buffer-override: #010409;
+  --diffs-bg-hover-override: #0d1117;
+  --diffs-bg-addition-override: #033a16;
+  --diffs-bg-addition-number-override: #05471c;
+  --diffs-bg-addition-hover-override: #04521f;
+  --diffs-bg-deletion-override: #67060c;
+  --diffs-bg-deletion-number-override: #8b1116;
+  --diffs-bg-deletion-hover-override: #7a0d12;
 }`
 
 export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"]) {
