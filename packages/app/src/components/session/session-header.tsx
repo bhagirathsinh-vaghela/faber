@@ -264,6 +264,7 @@ export function SessionHeader() {
                       variant="ghost"
                       onClick={stopSession}
                       aria-label={language.t("session.stop")}
+                      class="[&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
                     />
                   </Tooltip>
                 </div>
