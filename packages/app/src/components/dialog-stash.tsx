@@ -41,12 +41,15 @@ export const DialogStash: Component = () => {
   const items = createMemo((): StashItem[] =>
     stash
       .list()
-      .map((entry, index) => ({
-        index,
-        text: preview(entry.prompt) || language.t("dialog.stash.empty.item"),
-        time: formatTime(entry.timestamp),
-        prompt: entry.prompt,
-      }))
+      .map((entry, index) => {
+        const prompt = entry.prompt as Prompt
+        return {
+          index,
+          text: preview(prompt) || language.t("dialog.stash.empty.item"),
+          time: formatTime(entry.timestamp),
+          prompt,
+        }
+      })
       .reverse(),
   )
 

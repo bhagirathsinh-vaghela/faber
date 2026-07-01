@@ -1,34 +1,42 @@
 import { createMemo } from "solid-js"
-import { createStore } from "solid-js/store"
 import { DateTime } from "luxon"
 import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } from "remeda"
 import { createSimpleContext } from "@opencode-ai/ui/context"
+import { useParams } from "@solidjs/router"
 import { useProviders } from "@/hooks/use-providers"
-import { Persist, persisted } from "@/utils/persist"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
+import { decode64 } from "@/utils/base64"
 
 export type ModelKey = { providerID: string; modelID: string }
 
 type Visibility = "show" | "hide"
-type User = ModelKey & { visibility: Visibility; favorite?: boolean }
-type Store = {
-  user: User[]
-  recent: ModelKey[]
-  variant?: Record<string, string | undefined>
-}
 
 export const { use: useModels, provider: ModelsProvider } = createSimpleContext({
   name: "Models",
   init: () => {
     const providers = useProviders()
+    const params = useParams()
+    const globalSDK = useGlobalSDK()
+    const globalSync = useGlobalSync()
 
-    const [store, setStore, _, ready] = persisted(
-      Persist.global("model", ["model.v1"]),
-      createStore<Store>({
-        user: [],
-        recent: [],
-        variant: {},
-      }),
-    )
+    // Model preferences are global and server-owned. Read from the current
+    // directory's child store when a project is open, else the top-level store
+    // (both carry the same value; the hub at "/" has no directory).
+    const pref = createMemo(() => {
+      const directory = decode64(params.dir)
+      if (directory) return globalSync.child(directory)[0].model_preference
+      return globalSync.data.model_preference
+    })
+
+    const save = (next: Partial<ReturnType<typeof pref>>) => {
+      const current = pref()
+      globalSDK.client.preference.model
+        .set({
+          modelPreference: { user: current.user, recent: current.recent, variant: current.variant, ...next },
+        })
+        .catch(() => undefined)
+    }
 
     const available = createMemo(() =>
       providers.connected().flatMap((p) =>
@@ -65,7 +73,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const visibility = createMemo(() => {
       const map = new Map<string, Visibility>()
-      for (const item of store.user) map.set(`${item.providerID}:${item.modelID}`, item.visibility)
+      for (const item of pref().user) map.set(`${item.providerID}:${item.modelID}`, item.visibility)
       return map
     })
 
@@ -80,12 +88,11 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     const find = (key: ModelKey) => list().find((m) => m.id === key.modelID && m.provider.id === key.providerID)
 
     function update(model: ModelKey, state: Visibility) {
-      const index = store.user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
-      if (index >= 0) {
-        setStore("user", index, { visibility: state })
-        return
-      }
-      setStore("user", store.user.length, { ...model, visibility: state })
+      const user = pref().user.slice()
+      const index = user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+      if (index >= 0) user[index] = { ...user[index], visibility: state }
+      else user.push({ ...model, visibility: state })
+      save({ user })
     }
 
     const visible = (model: ModelKey) => {
@@ -104,31 +111,29 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     }
 
     const push = (model: ModelKey) => {
-      const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
+      const uniq = uniqueBy([model, ...pref().recent], (x) => x.providerID + x.modelID)
       if (uniq.length > 5) uniq.pop()
-      setStore("recent", uniq)
+      save({ recent: uniq })
     }
 
     const variantKey = (model: ModelKey) => `${model.providerID}/${model.modelID}`
-    const getVariant = (model: ModelKey) => store.variant?.[variantKey(model)]
+    const getVariant = (model: ModelKey) => pref().variant?.[variantKey(model)]
 
     const setVariant = (model: ModelKey, value: string | undefined) => {
-      const key = variantKey(model)
-      if (!store.variant) {
-        setStore("variant", { [key]: value })
-        return
-      }
-      setStore("variant", key, value)
+      const variant = { ...pref().variant }
+      if (value === undefined) delete variant[variantKey(model)]
+      else variant[variantKey(model)] = value
+      save({ variant })
     }
 
     return {
-      ready,
+      ready: () => globalSync.ready,
       list,
       find,
       visible,
       setVisibility,
       recent: {
-        list: createMemo(() => store.recent),
+        list: createMemo(() => pref().recent),
         push,
       },
       variant: {

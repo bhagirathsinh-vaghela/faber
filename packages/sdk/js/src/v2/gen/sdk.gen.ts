@@ -74,6 +74,7 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  ModelPreference,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -89,6 +90,14 @@ import type {
   PermissionRuleset,
   PermissionSetAutoAcceptErrors,
   PermissionSetAutoAcceptResponses,
+  PreferenceModelGetResponses,
+  PreferenceModelSetErrors,
+  PreferenceModelSetResponses,
+  PreferenceStashListResponses,
+  PreferenceStashPushErrors,
+  PreferenceStashPushResponses,
+  PreferenceStashRemoveErrors,
+  PreferenceStashRemoveResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -169,6 +178,7 @@ import type {
   SessionUnshareResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  StashEntry,
   SubtaskPartInput,
   TextPartInput,
   ToolIdsErrors,
@@ -2152,6 +2162,166 @@ export class Permission extends HeyApiClient {
   }
 }
 
+export class Model extends HeyApiClient {
+  /**
+   * Get model preferences
+   *
+   * Get the server-owned model preferences (visibility, recents, variants).
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PreferenceModelGetResponses, unknown, ThrowOnError>({
+      url: "/preference/model",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set model preferences
+   *
+   * Replace the server-owned model preferences.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      modelPreference?: ModelPreference
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "modelPreference", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<PreferenceModelSetResponses, PreferenceModelSetErrors, ThrowOnError>({
+      url: "/preference/model",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Stash extends HeyApiClient {
+  /**
+   * List stash entries
+   *
+   * Get the server-owned prompt stash entries.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PreferenceStashListResponses, unknown, ThrowOnError>({
+      url: "/preference/stash",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Push a stash entry
+   *
+   * Push a prompt onto the server-owned stash.
+   */
+  public push<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      stashEntry?: StashEntry
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "stashEntry", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PreferenceStashPushResponses, PreferenceStashPushErrors, ThrowOnError>(
+      {
+        url: "/preference/stash",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Remove a stash entry
+   *
+   * Remove a prompt from the server-owned stash by index.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      index: number
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "index" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      PreferenceStashRemoveResponses,
+      PreferenceStashRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/preference/stash/{index}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Preference extends HeyApiClient {
+  private _model?: Model
+  get model(): Model {
+    return (this._model ??= new Model({ client: this.client }))
+  }
+
+  private _stash?: Stash
+  get stash(): Stash {
+    return (this._stash ??= new Stash({ client: this.client }))
+  }
+}
+
 export class Question extends HeyApiClient {
   /**
    * List pending questions
@@ -3959,6 +4129,11 @@ export class OpencodeClient extends HeyApiClient {
   private _permission?: Permission
   get permission(): Permission {
     return (this._permission ??= new Permission({ client: this.client }))
+  }
+
+  private _preference?: Preference
+  get preference(): Preference {
+    return (this._preference ??= new Preference({ client: this.client }))
   }
 
   private _question?: Question

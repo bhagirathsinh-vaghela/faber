@@ -3858,6 +3858,231 @@
         ]
       }
     },
+    "/preference/model": {
+      "get": {
+        "operationId": "preference.model.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get model preferences",
+        "description": "Get the server-owned model preferences (visibility, recents, variants).",
+        "responses": {
+          "200": {
+            "description": "Model preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPreference"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.model.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "preference.model.set",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Set model preferences",
+        "description": "Replace the server-owned model preferences.",
+        "responses": {
+          "200": {
+            "description": "Model preferences updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelPreference"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.model.set({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/preference/stash": {
+      "get": {
+        "operationId": "preference.stash.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List stash entries",
+        "description": "Get the server-owned prompt stash entries.",
+        "responses": {
+          "200": {
+            "description": "Stash entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StashEntry"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.stash.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "preference.stash.push",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Push a stash entry",
+        "description": "Push a prompt onto the server-owned stash.",
+        "responses": {
+          "200": {
+            "description": "Stash entry pushed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StashEntry"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.stash.push({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/preference/stash/{index}": {
+      "delete": {
+        "operationId": "preference.stash.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "schema": {
+              "type": "number"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove a stash entry",
+        "description": "Remove a prompt from the server-owned stash by index.",
+        "responses": {
+          "200": {
+            "description": "Stash entry removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.stash.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/question": {
       "get": {
         "operationId": "question.list",
@@ -10999,6 +11224,106 @@
           "properties"
         ]
       },
+      "ModelPreference": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "providerID": {
+                  "type": "string"
+                },
+                "modelID": {
+                  "type": "string"
+                },
+                "visibility": {
+                  "type": "string",
+                  "enum": ["show", "hide"]
+                },
+                "favorite": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["providerID", "modelID", "visibility"]
+            }
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "providerID": {
+                  "type": "string"
+                },
+                "modelID": {
+                  "type": "string"
+                }
+              },
+              "required": ["providerID", "modelID"]
+            }
+          },
+          "variant": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["user", "recent", "variant"]
+      },
+      "Event.model.preference.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "model.preference.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/ModelPreference"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "StashEntry": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "array",
+            "items": {}
+          },
+          "timestamp": {
+            "type": "number"
+          }
+        },
+        "required": ["prompt", "timestamp"]
+      },
+      "Event.stash.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "stash.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StashEntry"
+                }
+              }
+            },
+            "required": ["entries"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event": {
         "anyOf": [
           {
@@ -11150,6 +11475,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.worktree.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.model.preference.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.stash.updated"
           }
         ]
       },

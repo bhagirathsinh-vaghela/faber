@@ -1060,6 +1060,39 @@ export type EventWorktreeFailed = {
   }
 }
 
+export type ModelPreference = {
+  user: Array<{
+    providerID: string
+    modelID: string
+    visibility: "show" | "hide"
+    favorite?: boolean
+  }>
+  recent: Array<{
+    providerID: string
+    modelID: string
+  }>
+  variant: {
+    [key: string]: string
+  }
+}
+
+export type EventModelPreferenceUpdated = {
+  type: "model.preference.updated"
+  properties: ModelPreference
+}
+
+export type StashEntry = {
+  prompt: Array<unknown>
+  timestamp: number
+}
+
+export type EventStashUpdated = {
+  type: "stash.updated"
+  properties: {
+    entries: Array<StashEntry>
+  }
+}
+
 export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
@@ -1111,6 +1144,8 @@ export type Event =
   | EventPtyDeleted
   | EventWorktreeReady
   | EventWorktreeFailed
+  | EventModelPreferenceUpdated
+  | EventStashUpdated
 
 export type GlobalEvent = {
   directory: string
@@ -4412,6 +4447,125 @@ export type PermissionListResponses = {
 }
 
 export type PermissionListResponse = PermissionListResponses[keyof PermissionListResponses]
+
+export type PreferenceModelGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/model"
+}
+
+export type PreferenceModelGetResponses = {
+  /**
+   * Model preferences
+   */
+  200: ModelPreference
+}
+
+export type PreferenceModelGetResponse = PreferenceModelGetResponses[keyof PreferenceModelGetResponses]
+
+export type PreferenceModelSetData = {
+  body?: ModelPreference
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/model"
+}
+
+export type PreferenceModelSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceModelSetError = PreferenceModelSetErrors[keyof PreferenceModelSetErrors]
+
+export type PreferenceModelSetResponses = {
+  /**
+   * Model preferences updated
+   */
+  200: boolean
+}
+
+export type PreferenceModelSetResponse = PreferenceModelSetResponses[keyof PreferenceModelSetResponses]
+
+export type PreferenceStashListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/stash"
+}
+
+export type PreferenceStashListResponses = {
+  /**
+   * Stash entries
+   */
+  200: Array<StashEntry>
+}
+
+export type PreferenceStashListResponse = PreferenceStashListResponses[keyof PreferenceStashListResponses]
+
+export type PreferenceStashPushData = {
+  body?: StashEntry
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/stash"
+}
+
+export type PreferenceStashPushErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceStashPushError = PreferenceStashPushErrors[keyof PreferenceStashPushErrors]
+
+export type PreferenceStashPushResponses = {
+  /**
+   * Stash entry pushed
+   */
+  200: boolean
+}
+
+export type PreferenceStashPushResponse = PreferenceStashPushResponses[keyof PreferenceStashPushResponses]
+
+export type PreferenceStashRemoveData = {
+  body?: never
+  path: {
+    index: number
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/preference/stash/{index}"
+}
+
+export type PreferenceStashRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceStashRemoveError = PreferenceStashRemoveErrors[keyof PreferenceStashRemoveErrors]
+
+export type PreferenceStashRemoveResponses = {
+  /**
+   * Stash entry removed
+   */
+  200: boolean
+}
+
+export type PreferenceStashRemoveResponse = PreferenceStashRemoveResponses[keyof PreferenceStashRemoveResponses]
 
 export type QuestionListData = {
   body?: never

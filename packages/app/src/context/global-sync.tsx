@@ -9,6 +9,8 @@ import {
   type FileDiff,
   type Todo,
   type SessionStatus,
+  type ModelPreference,
+  type StashEntry,
   type ProviderListResponse,
   type ProviderAuthResponse,
   type Command,
@@ -66,6 +68,10 @@ type State = {
   provider: ProviderListResponse
   config: Config
   path: Path
+  // Global server-owned UI preferences, persisted on the server and streamed to
+  // every client so all tabs stay in sync.
+  model_preference: ModelPreference
+  stash: StashEntry[]
   session: Session[]
   sessionTotal: number
   session_status: {
@@ -192,6 +198,8 @@ function createGlobalSync() {
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
     config: Config
+    model_preference: ModelPreference
+    stash: StashEntry[]
     reload: undefined | "pending" | "complete"
   }>({
     ready: false,
@@ -200,6 +208,8 @@ function createGlobalSync() {
     provider: { all: [], connected: [], default: {} },
     provider_auth: {},
     config: {},
+    model_preference: { user: [], recent: [], variant: {} },
+    stash: [],
     reload: undefined,
   })
 
@@ -399,6 +409,8 @@ function createGlobalSync() {
           provider: { all: [], connected: [], default: {} },
           config: {},
           path: { state: "", config: "", worktree: "", directory: "", home: "" },
+          model_preference: { user: [], recent: [], variant: {} },
+          stash: [],
           status: "loading" as const,
           agent: [],
           command: [],
@@ -555,6 +567,12 @@ function createGlobalSync() {
           for (const id of x.data ?? []) accepting[id] = true
           setStore("auto_accept", reconcile(accepting))
         }),
+        sdk.preference.model.get().then((x) => {
+          if (x.data) setStore("model_preference", reconcile(x.data))
+        }),
+        sdk.preference.stash.list().then((x) => {
+          setStore("stash", reconcile(x.data ?? [], { key: "timestamp" }))
+        }),
         loadSessions(directory),
         sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
         sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
@@ -696,6 +714,17 @@ function createGlobalSync() {
             }),
           )
           break
+        }
+        case "model.preference.updated": {
+          setGlobalStore("model_preference", reconcile(event.properties))
+          for (const [, set] of Object.values(children)) set("model_preference", reconcile(event.properties))
+          return
+        }
+        case "stash.updated": {
+          setGlobalStore("stash", reconcile(event.properties.entries, { key: "timestamp" }))
+          for (const [, set] of Object.values(children))
+            set("stash", reconcile(event.properties.entries, { key: "timestamp" }))
+          return
         }
       }
       return
@@ -1044,6 +1073,16 @@ function createGlobalSync() {
       retry(() =>
         globalSDK.client.provider.auth().then((x) => {
           setGlobalStore("provider_auth", x.data ?? {})
+        }),
+      ),
+      retry(() =>
+        globalSDK.client.preference.model.get().then((x) => {
+          if (x.data) setGlobalStore("model_preference", x.data)
+        }),
+      ),
+      retry(() =>
+        globalSDK.client.preference.stash.list().then((x) => {
+          setGlobalStore("stash", x.data ?? [])
         }),
       ),
     ]
