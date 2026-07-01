@@ -290,17 +290,21 @@ export namespace SessionPrompt {
       if (abort.aborted) break
       let msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
 
-      // Rebuild the read-time map from durable history (Read parts persist their
-      // mtime). Seeding from the compaction-filtered stream means a server
-      // restart restores prior reads (no false "read it first" on edit), while a
-      // compacted-away read is dropped so the next Read returns real content
-      // instead of an unchanged stub.
+      // Rebuild the read-time map from durable history. read, edit, and write
+      // parts all persist their post-op mtime+hash, and seeding walks them in
+      // stream order (last write per file wins), so a file's entry reflects the
+      // most recent access. That means a server restart restores prior reads (no
+      // false "read it first" on edit), a compacted-away read is dropped so the
+      // next Read returns real content instead of an unchanged stub, AND an edit
+      // in a prior turn carries its post-write mtime+hash forward instead of the
+      // stale pre-edit read state (which would make the guard fire on the file
+      // this session just edited).
       FileTime.seed(
         sessionID,
         msgs.flatMap((msg) =>
           msg.parts.flatMap((part) =>
             part.type === "tool" &&
-            part.tool === "read" &&
+            (part.tool === "read" || part.tool === "edit" || part.tool === "write") &&
             part.state.status === "completed" &&
             typeof part.state.input?.filePath === "string" &&
             typeof part.state.metadata?.mtime === "number"
@@ -308,6 +312,7 @@ export namespace SessionPrompt {
                   {
                     file: path.resolve(Instance.directory, part.state.input.filePath),
                     mtime: part.state.metadata.mtime,
+                    hash: typeof part.state.metadata.hash === "string" ? part.state.metadata.hash : undefined,
                   },
                 ]
               : [],
@@ -1270,7 +1275,10 @@ export namespace SessionPrompt {
               }
 
               const file = Bun.file(filepath)
-              FileTime.read(input.sessionID, filepath)
+              // Full read of the attached file, so stamp the real mtime + hash
+              // (not a bare Date.now()) to keep a later edit from a spurious
+              // re-read.
+              await FileTime.restamp(input.sessionID, filepath)
               return [
                 {
                   id: Identifier.ascending("part"),

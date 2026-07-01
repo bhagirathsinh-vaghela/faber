@@ -110,7 +110,7 @@ export const ReadTool = Tool.define("read", {
     const stat = await file.stat()
     const lastRead = FileTime.get(ctx.sessionID, filepath)
     if (lastRead && stat.mtime.getTime() <= lastRead.mtime) {
-      FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime())
+      FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime(), lastRead.hash)
       return {
         title,
         output: `<file_unchanged>${filepath}</file_unchanged>`,
@@ -120,6 +120,7 @@ export const ReadTool = Tool.define("read", {
           // Persisted on the tool part so FileTime can be rebuilt from session
           // history after a server restart (in-memory read map is process-local).
           mtime: stat.mtime.getTime(),
+          hash: lastRead.hash,
         },
       }
     }
@@ -167,7 +168,12 @@ export const ReadTool = Tool.define("read", {
 
     // just warms the lsp client
     LSP.touchFile(filepath, false)
-    FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime())
+    // Record a content hash alongside the mtime so a later edit/write can tell
+    // an mtime bump with unchanged bytes from a real modification and skip the
+    // spurious re-read. Hash the raw file bytes (same as FileTime.assert) so the
+    // two sides compare identically, regardless of read truncation.
+    const contentHash = await FileTime.hash(filepath)
+    FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime(), contentHash)
 
     if (instructions.length > 0) {
       output += `\n\n<system-reminder>\n${instructions.map((i) => i.content).join("\n\n")}\n</system-reminder>`
@@ -180,8 +186,10 @@ export const ReadTool = Tool.define("read", {
         preview,
         truncated,
         // Persisted so FileTime can be rebuilt from session history after a
-        // server restart (the in-memory read map is process-local).
+        // server restart (the in-memory read map is process-local). The hash
+        // lets the restored entry keep its content fallback across a restart.
         mtime: stat.mtime.getTime(),
+        hash: contentHash,
         ...(instructions.length > 0 && { loaded: instructions.map((i) => i.filepath) }),
       },
     }

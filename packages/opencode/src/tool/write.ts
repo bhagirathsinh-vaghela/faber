@@ -69,7 +69,10 @@ export const WriteTool = Tool.define("write", {
       file: filepath,
       event: exists ? "change" : "add",
     })
-    FileTime.read(ctx.sessionID, filepath)
+    // Re-stamp with the true post-write mtime + content hash so the next edit in
+    // this session does not trip a spurious "modified since last read" on our own
+    // write (see FileTime.restamp).
+    const stamp = await FileTime.restamp(ctx.sessionID, filepath)
 
     let output = exists
       ? `The file ${filepath} has been updated successfully.`
@@ -120,6 +123,10 @@ export const WriteTool = Tool.define("write", {
         diagnostics,
         filepath,
         exists: exists,
+        // Persisted so seed() can carry this write's post-write mtime+hash
+        // across turns, instead of restoring stale pre-write state.
+        mtime: stamp.mtime,
+        hash: stamp.hash,
       },
       output,
     }

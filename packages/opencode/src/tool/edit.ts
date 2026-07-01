@@ -57,6 +57,7 @@ export const EditTool = Tool.define("edit", {
     let diff = ""
     let contentOld = ""
     let contentNew = ""
+    let stamp: { mtime: number; hash?: string } | undefined
     await FileTime.withLock(filePath, async () => {
       if (params.oldString === "") {
         const existed = await Bun.file(filePath).exists()
@@ -94,7 +95,12 @@ export const EditTool = Tool.define("edit", {
           file: filePath,
           event: existed ? "change" : "add",
         })
-        FileTime.read(ctx.sessionID, filePath)
+        // Re-stamp with the file's actual post-write mtime and content hash, not
+        // Date.now(). The real mtime lands after the wall clock we would capture,
+        // so a bare Date.now() re-stamp makes the very next edit see mtime > stored
+        // and throw a spurious "modified since last read". Stamping the true mtime
+        // plus the hash we just wrote keeps the guard quiet for our own writes.
+        stamp = await FileTime.restamp(ctx.sessionID, filePath)
         return
       }
 
@@ -142,7 +148,7 @@ export const EditTool = Tool.define("edit", {
       diff = trimDiff(
         createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
       )
-      FileTime.read(ctx.sessionID, filePath)
+      stamp = await FileTime.restamp(ctx.sessionID, filePath)
     })
 
     const filediff: Snapshot.FileDiff = {
@@ -205,6 +211,10 @@ export const EditTool = Tool.define("edit", {
         diff,
         filediff,
         hunks,
+        // Persisted so seed() can carry this edit's post-write mtime+hash across
+        // turns, instead of restoring the stale pre-edit read state.
+        mtime: stamp?.mtime,
+        hash: stamp?.hash,
       },
       title: `${path.relative(Instance.worktree, filePath)}`,
       output,
