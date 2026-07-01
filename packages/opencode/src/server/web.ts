@@ -1,23 +1,39 @@
-import assets from "./web-assets.json" with { type: "json" }
+import embedded from "./web-assets.json" with { type: "json" }
+import path from "path"
 
-// Decode the embedded web bundle once at startup into an in-memory map. The
-// bundle is produced by script/pack-web.ts from packages/app/dist.
+type Encoded = Record<string, { type: string; body: string }>
+
+// The embedded bundle (produced by script/pack-web.ts from packages/app/dist)
+// is what makes the binary self-contained. reload() overlays a fresh read of
+// web-assets.json from disk onto the same Map, so a rebuilt UI goes live
+// without restarting the process. Same serving path in both cases.
 const decoded = new Map<string, { type: string; body: Uint8Array }>()
-for (const [path, asset] of Object.entries(assets as Record<string, { type: string; body: string }>)) {
-  decoded.set(path, { type: asset.type, body: Buffer.from(asset.body, "base64") })
+
+function fill(assets: Encoded) {
+  decoded.clear()
+  for (const [file, asset] of Object.entries(assets))
+    decoded.set(file, { type: asset.type, body: Buffer.from(asset.body, "base64") })
 }
 
-const index = decoded.get("/index.html")
+fill(embedded as Encoded)
 
 export namespace Web {
-  export const available = decoded.size > 0 && !!index
+  export function available() {
+    return decoded.size > 0 && decoded.has("/index.html")
+  }
+
+  export async function reload() {
+    const assets = (await Bun.file(path.resolve(import.meta.dir, "web-assets.json")).json()) as Encoded
+    fill(assets)
+    return decoded.size
+  }
 
   // Serves the embedded SPA: exact asset by path, else index.html fallback so
   // client-side routes resolve. Returns null if no bundle is embedded.
-  export function serve(path: string): Response | null {
+  export function serve(file: string): Response | null {
+    const index = decoded.get("/index.html")
     if (!index) return null
-    const hit = decoded.get(path === "/" ? "/index.html" : path)
-    const asset = hit ?? index
+    const asset = decoded.get(file === "/" ? "/index.html" : file) ?? index
     return new Response(asset.body, {
       headers: {
         "Content-Type": asset.type,

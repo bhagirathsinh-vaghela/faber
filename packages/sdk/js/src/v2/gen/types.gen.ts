@@ -2681,6 +2681,24 @@ export type GlobalDisposeResponses = {
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
 
+export type GlobalWebReloadData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/web/reload"
+}
+
+export type GlobalWebReloadResponses = {
+  /**
+   * Web assets reloaded
+   */
+  200: {
+    assets: number
+  }
+}
+
+export type GlobalWebReloadResponse = GlobalWebReloadResponses[keyof GlobalWebReloadResponses]
+
 export type AuthRemoveData = {
   body?: never
   path: {

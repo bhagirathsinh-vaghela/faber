@@ -492,7 +492,10 @@ export function MessageBox(props: {
         </span>
         {/* Title-bar actions, pinned right: revert (user, hover-reveal) then
             copy. Copy sits in the box's top-right corner for every box. */}
-        <div data-slot="message-box-actions" style={{ "margin-left": "auto", display: "flex", "align-items": "center", gap: "0.25rem" }}>
+        <div
+          data-slot="message-box-actions"
+          style={{ "margin-left": "auto", display: "flex", "align-items": "center", gap: "0.25rem" }}
+        >
           <Show when={isUser && data.revertMessage}>
             <div data-slot="message-box-revert">
               <Tooltip value="Cache-safe revert" placement="top" gutter={8}>

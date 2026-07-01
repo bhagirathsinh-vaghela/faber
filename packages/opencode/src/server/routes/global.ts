@@ -11,6 +11,7 @@ import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
 import { errors } from "../error"
+import { Web } from "../web"
 
 const log = Log.create({ service: "server" })
 
@@ -181,6 +182,29 @@ export const GlobalRoutes = lazy(() =>
           },
         })
         return c.json(true)
+      },
+    )
+    .post(
+      "/web/reload",
+      describeRoute({
+        summary: "Reload web assets",
+        description:
+          "Re-read the packed web bundle from disk into memory so a rebuilt UI goes live without restarting the server.",
+        operationId: "global.web.reload",
+        responses: {
+          200: {
+            description: "Web assets reloaded",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ assets: z.number() })),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const assets = await Web.reload()
+        return c.json({ assets })
       },
     ),
 )

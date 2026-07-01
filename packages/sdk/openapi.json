@@ -165,6 +165,37 @@
         ]
       }
     },
+    "/global/web/reload": {
+      "post": {
+        "operationId": "global.web.reload",
+        "summary": "Reload web assets",
+        "description": "Re-read the packed web bundle from disk into memory so a rebuilt UI goes live without restarting the server.",
+        "responses": {
+          "200": {
+            "description": "Web assets reloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "assets": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["assets"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.web.reload({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/auth/{providerID}": {
       "put": {
         "operationId": "auth.set",

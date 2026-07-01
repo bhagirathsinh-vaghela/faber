@@ -46,10 +46,7 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
 
         // The old behavior threw here. With the content fallback it proceeds.
         const edit = await EditTool.init()
-        const result = await edit.execute(
-          { filePath: file, oldString: "hello world", newString: "goodbye world" },
-          ctx,
-        )
+        const result = await edit.execute({ filePath: file, oldString: "hello world", newString: "goodbye world" }, ctx)
         expect(result.output).toContain("updated successfully")
         expect(await Bun.file(file).text()).toBe("goodbye world\n")
       },

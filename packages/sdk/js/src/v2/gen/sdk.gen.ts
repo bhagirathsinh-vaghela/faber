@@ -57,6 +57,7 @@ import type {
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
+  GlobalWebReloadResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
   McpAddErrors,
@@ -296,6 +297,20 @@ export class Config extends HeyApiClient {
   }
 }
 
+export class Web extends HeyApiClient {
+  /**
+   * Reload web assets
+   *
+   * Re-read the packed web bundle from disk into memory so a rebuilt UI goes live without restarting the server.
+   */
+  public reload<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<GlobalWebReloadResponses, unknown, ThrowOnError>({
+      url: "/global/web/reload",
+      ...options,
+    })
+  }
+}
+
 export class Global extends HeyApiClient {
   /**
    * Get health
@@ -336,6 +351,11 @@ export class Global extends HeyApiClient {
   private _config?: Config
   get config(): Config {
     return (this._config ??= new Config({ client: this.client }))
+  }
+
+  private _web?: Web
+  get web(): Web {
+    return (this._web ??= new Web({ client: this.client }))
   }
 }
 
