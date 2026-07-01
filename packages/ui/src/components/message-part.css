@@ -76,10 +76,10 @@
     white-space: pre-wrap;
     word-break: break-word;
     overflow: hidden;
-    background: var(--surface-weak);
-    border: 1px solid var(--border-weak-base);
-    padding: 8px 12px;
-    border-radius: 4px;
+    /* No inner box: the text sits bare inside the outer MessageBox (one block,
+       one box). No background/border/radius here; padding only for the copy
+       button's absolute position. */
+    padding: 0 28px 0 0;
 
     [data-highlight="file"] {
       color: var(--syntax-property);
@@ -89,24 +89,6 @@
       color: var(--syntax-type);
     }
 
-    [data-slot="user-message-copy-wrapper"] {
-      position: absolute;
-      top: 7px;
-      right: 7px;
-      transition: opacity 0.15s ease;
-    }
-
-    /* Hover-reveal only on devices with a real pointer. On touch (hover: none)
-       there's no hover, so keep it visible. */
-    @media (hover: hover) {
-      [data-slot="user-message-copy-wrapper"] {
-        opacity: 0;
-      }
-
-      &:hover [data-slot="user-message-copy-wrapper"] {
-        opacity: 1;
-      }
-    }
   }
 
   .text-text-strong {
@@ -118,16 +100,32 @@
   }
 }
 
-[data-slot="message-box-revert"] {
+/* Box title-bar actions live in the header flow (right-aligned cluster):
+   revert (user) then copy. Both reveal only on hover over the box's title bar
+   (pointer devices); on touch (hover: none) they stay visible. */
+[data-slot="message-box-revert"],
+[data-slot="box-copy"] {
   transition: opacity 0.15s ease;
 }
 
 @media (hover: hover) {
-  [data-slot="message-box-revert"] {
+  [data-slot="message-box-revert"],
+  [data-component="message-box"] [data-slot="box-copy"] {
     opacity: 0;
   }
 
-  [data-component="message-box"]:hover [data-slot="message-box-revert"] {
+  [data-component="message-box"]:hover [data-slot="message-box-revert"],
+  [data-component="message-box"]:hover [data-slot="box-copy"] {
+    opacity: 1;
+  }
+
+  /* Tool box: copy hidden until the tool's title bar (the collapsible trigger)
+     is hovered. */
+  [data-component="tool-part-wrapper"] [data-slot="box-copy"] {
+    opacity: 0;
+  }
+
+  [data-component="tool-part-wrapper"] [data-slot="collapsible-trigger"]:hover [data-slot="box-copy"] {
     opacity: 1;
   }
 }
@@ -478,6 +476,14 @@
 
 [data-component="tool-part-wrapper"] {
   width: 100%;
+
+  /* One block, one box: a tool call is its own block, so give its box a
+     distinct muted-purple border + faint fill (theme-driven, tunable). Scoped
+     to the tool wrapper so other collapsibles keep the neutral shell. */
+  & > [data-component="collapsible"] {
+    border-color: var(--box-tool-border);
+    background-color: var(--box-tool-bg);
+  }
 
   &[data-permission="true"],
   &[data-question="true"] {

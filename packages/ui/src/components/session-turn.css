@@ -101,7 +101,11 @@
   }
 
   [data-component="user-message"] [data-slot="user-message-text"] {
-    max-height: var(--user-message-collapsed-height, 64px);
+    /* Always show the full prompt. With no clamp, scrollHeight never exceeds
+       clientHeight, so canExpand stays false and the fade, chevron, and reserved
+       padding (all gated on data-can-expand) never appear. Set a height on
+       --user-message-collapsed-height to bring the collapse behavior back. */
+    max-height: var(--user-message-collapsed-height, none);
   }
 
   [data-component="user-message"][data-expanded="true"] [data-slot="user-message-text"] {

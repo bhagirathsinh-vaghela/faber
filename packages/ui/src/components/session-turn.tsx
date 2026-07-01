@@ -36,17 +36,14 @@ import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
-import { IconButton } from "./icon-button"
 import { Card } from "./card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
 import { Spinner } from "./spinner"
-import { Tooltip } from "./tooltip"
 import { createStore } from "solid-js/store"
 import { DateTime, DurationUnit, Interval } from "luxon"
 import { createAutoScroll } from "../hooks"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
-import { copyText } from "../util/clipboard"
 
 type Translator = (key: UiI18nKey, params?: UiI18nParams) => string
 
@@ -425,17 +422,11 @@ export function SessionTurn(
   const responsePartId = createMemo(() => lastTextPart()?.id)
   const messageDiffs = createMemo(() => message()?.summary?.diffs ?? emptyDiffs)
   const hasDiffs = createMemo(() => messageDiffs().length > 0)
-  const hideResponsePart = createMemo(() => !working() && !!responsePartId())
-
-  const [copied, setCopied] = createSignal(false)
-
-  const handleCopy = async () => {
-    const content = response() ?? ""
-    if (!content) return
-    await copyText(content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  // Hide the response text from the steps path whenever it has a part id, so it
+  // renders ONLY in the assistant box below — during streaming too, not just
+  // after completion. This is what lets the box be present from the start
+  // (no pop-in) without the response showing twice.
+  const hideResponsePart = createMemo(() => !!responsePartId())
 
   const [rootRef, setRootRef] = createSignal<HTMLDivElement | undefined>()
   const [stickyRef, setStickyRef] = createSignal<HTMLDivElement | undefined>()
@@ -741,7 +732,7 @@ export function SessionTurn(
                     <div class="sr-only" aria-live="polite">
                       {!working() && response() ? response() : ""}
                     </div>
-                    <Show when={!working() && (response() || hasDiffs())}>
+                    <Show when={response() || hasDiffs()}>
                       <div data-slot="session-turn-summary-section">
                         <div data-slot="session-turn-summary-header">
                           <h2 data-slot="session-turn-summary-title">{i18n.t("ui.sessionTurn.summary.response")}</h2>
@@ -758,36 +749,24 @@ export function SessionTurn(
                               }
                             >
                               {(assistant) => (
-                                <MessageBox message={assistant()} numberKey={responsePartId()}>
+                                <MessageBox
+                                  message={assistant()}
+                                  numberKey={responsePartId()}
+                                  copy={() => response() ?? ""}
+                                >
                                   <Markdown
                                     data-slot="session-turn-markdown"
                                     data-diffs={hasDiffs()}
                                     text={response() ?? ""}
                                     cacheKey={responsePartId()}
                                   />
-                                  <Show when={props.footer}>{props.footer!(assistant())}</Show>
+                                  {/* Footer/snapshot line is a completed-turn
+                                      artifact: append only once the turn is done,
+                                      so the box streams first and the snapshot
+                                      lands at the end (TUI behavior). */}
+                                  <Show when={!working() && props.footer}>{props.footer!(assistant())}</Show>
                                 </MessageBox>
                               )}
-                            </Show>
-                            <Show when={response()}>
-                              <div data-slot="session-turn-response-copy-wrapper">
-                                <Tooltip
-                                  value={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")}
-                                  placement="top"
-                                  gutter={8}
-                                >
-                                  <IconButton
-                                    icon={copied() ? "check" : "copy"}
-                                    variant="secondary"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      handleCopy()
-                                    }}
-                                    aria-label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")}
-                                  />
-                                </Tooltip>
-                              </div>
                             </Show>
                           </div>
                         </div>

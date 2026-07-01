@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { Collapsible } from "./collapsible"
 import { Icon, IconProps } from "./icon"
+import { CopyButton } from "./copy-button"
 
 export type TriggerTitle = {
   title: string
@@ -27,6 +28,11 @@ export interface BasicToolProps {
   forceOpen?: boolean
   locked?: boolean
   onSubtitleClick?: () => void
+  // When set, a copy button appears in the tool's title bar (left of the
+  // collapse arrow) and copies this text. Wired only for tools whose body is
+  // text worth copying (bash output, read, search results); omitted for tools
+  // whose body is a diff/confirmation (edit, write, todos).
+  copy?: () => string
 }
 
 export function BasicTool(props: BasicToolProps) {
@@ -101,6 +107,9 @@ export function BasicTool(props: BasicToolProps) {
               </Switch>
             </div>
           </div>
+          <Show when={props.copy}>
+            <CopyButton content={props.copy!} class="basic-tool-copy" />
+          </Show>
           <Show when={props.children && !props.hideDetails && !props.locked}>
             <Collapsible.Arrow />
           </Show>

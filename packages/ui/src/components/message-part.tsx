@@ -47,7 +47,7 @@ import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/pa
 import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { IconButton } from "./icon-button"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { CopyButton } from "./copy-button"
 
 interface Diagnostic {
   range: {
@@ -375,7 +375,13 @@ export function Message(props: MessageProps) {
             when={props.boxed}
             fallback={<UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
           >
-            <MessageBox message={userMessage() as UserMessage}>
+            <MessageBox
+              message={userMessage() as UserMessage}
+              copy={() =>
+                (props.parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined)
+                  ?.text ?? ""
+              }
+            >
               <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />
             </MessageBox>
           </Show>
@@ -402,6 +408,7 @@ export function MessageBox(props: {
   numberKey?: string
   label?: string
   accent?: string
+  copy?: () => string
   children: JSX.Element
 }) {
   const data = useData()
@@ -483,15 +490,22 @@ export function MessageBox(props: {
         <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
           {messageTime(props.message.time.created)}
         </span>
-        <Show when={isUser && data.revertMessage}>
-          <div data-slot="message-box-revert" style={{ "margin-left": "auto" }}>
-            <Tooltip value="Cache-safe revert" placement="top" gutter={8}>
-              <Button variant="secondary" size="small" onClick={confirmRevert}>
-                Revert here
-              </Button>
-            </Tooltip>
-          </div>
-        </Show>
+        {/* Title-bar actions, pinned right: revert (user, hover-reveal) then
+            copy. Copy sits in the box's top-right corner for every box. */}
+        <div data-slot="message-box-actions" style={{ "margin-left": "auto", display: "flex", "align-items": "center", gap: "0.25rem" }}>
+          <Show when={isUser && data.revertMessage}>
+            <div data-slot="message-box-revert">
+              <Tooltip value="Cache-safe revert" placement="top" gutter={8}>
+                <Button variant="secondary" size="small" onClick={confirmRevert}>
+                  Revert here
+                </Button>
+              </Tooltip>
+            </div>
+          </Show>
+          <Show when={props.copy}>
+            <CopyButton content={props.copy!} />
+          </Show>
+        </div>
       </div>
       {props.children}
     </div>
@@ -537,35 +551,19 @@ export function AssistantMessageDisplay(props: {
 export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
   const dialog = useDialog()
   const i18n = useI18n()
-  const [copied, setCopied] = createSignal(false)
   const [expanded, setExpanded] = createSignal(false)
-  const [canExpand, setCanExpand] = createSignal(false)
-  let textRef: HTMLDivElement | undefined
-
-  const updateCanExpand = () => {
-    const el = textRef
-    if (!el) return
-    if (expanded()) return
-    setCanExpand(el.scrollHeight > el.clientHeight + 2)
-  }
-
-  createResizeObserver(
-    () => textRef,
-    () => {
-      updateCanExpand()
-    },
-  )
+  // The user prompt always renders in full — no clamp, no collapse. canExpand is
+  // a constant false so the chevron/fade/reserved-padding never appear. It used
+  // to measure scrollHeight vs clientHeight in a ResizeObserver, but the reserved
+  // padding it toggled changed clientHeight, which re-flipped canExpand at the
+  // refresh rate (a visible flicker). Measurement removed entirely.
+  const canExpand = () => false
 
   const textPart = createMemo(
     () => props.parts?.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined,
   )
 
   const text = createMemo(() => textPart()?.text || "")
-
-  createEffect(() => {
-    text()
-    updateCanExpand()
-  })
 
   const files = createMemo(() => (props.parts?.filter((p) => p.type === "file") as FilePart[]) ?? [])
 
@@ -587,14 +585,6 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 
   const openImagePreview = (url: string, alt?: string) => {
     dialog.show(() => <ImagePreview src={url} alt={alt} />)
-  }
-
-  const handleCopy = async () => {
-    const content = text()
-    if (!content) return
-    await copyText(content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   const toggleExpanded = () => {
@@ -637,7 +627,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
         </div>
       </Show>
       <Show when={text()}>
-        <div data-slot="user-message-text" ref={(el) => (textRef = el)} onClick={toggleExpanded}>
+        <div data-slot="user-message-text" onClick={toggleExpanded}>
           <HighlightedText text={text()} references={inlineFiles()} agents={agents()} />
           <button
             data-slot="user-message-expand"
@@ -650,24 +640,6 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           >
             <Icon name="chevron-down" size="small" />
           </button>
-          <div data-slot="user-message-copy-wrapper">
-            <Tooltip
-              value={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")}
-              placement="top"
-              gutter={8}
-            >
-              <IconButton
-                icon={copied() ? "check" : "copy"}
-                variant="secondary"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  handleCopy()
-                }}
-                aria-label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")}
-              />
-            </Tooltip>
-          </div>
         </div>
       </Show>
     </div>
@@ -985,6 +957,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="bullet-list"
+        copy={() => props.output ?? ""}
         trigger={{ title: i18n.t("ui.tool.list"), subtitle: getDirectory(props.input.path || "/") }}
       >
         <Show when={props.output}>
@@ -1007,6 +980,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="magnifying-glass-menu"
+        copy={() => props.output ?? ""}
         trigger={{
           title: i18n.t("ui.tool.glob"),
           subtitle: getDirectory(props.input.path || "/"),
@@ -1036,6 +1010,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="magnifying-glass-menu"
+        copy={() => props.output ?? ""}
         trigger={{
           title: i18n.t("ui.tool.grep"),
           subtitle: getDirectory(props.input.path || "/"),
@@ -1062,6 +1037,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="window-cursor"
+        copy={() => props.output ?? ""}
         trigger={{
           title: i18n.t("ui.tool.webfetch"),
           subtitle: props.input.url || "",
@@ -1250,14 +1226,14 @@ ToolRegistry.register({
   name: "skill",
   render(props) {
     const i18n = useI18n()
+    // A skill call is its own block, so it gets its own box (header-only, no
+    // body) like other content-less tools, instead of a bare inline line.
     return (
-      <div data-component="skill-inline" class="text-text-weak flex items-center gap-1 py-1">
-        <span>{"\u2192"}</span>
-        <span>{i18n.t("ui.tool.skill")}</span>
-        <Show when={props.input.name}>
-          <span>{'"' + props.input.name + '"'}</span>
-        </Show>
-      </div>
+      <BasicTool
+        {...props}
+        icon="code-lines"
+        trigger={{ title: i18n.t("ui.tool.skill"), subtitle: props.input.name ?? "" }}
+      />
     )
   },
 })
@@ -1270,6 +1246,11 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="console"
+        copy={() => {
+          const cmd = props.input.command ?? props.metadata.command ?? ""
+          const out = props.output || props.metadata.output
+          return out ? `$ ${cmd}\n\n${stripAnsi(out)}` : `$ ${cmd}`
+        }}
         trigger={{
           title: i18n.t("ui.tool.shell"),
           subtitle: props.input.description,
@@ -1499,6 +1480,11 @@ ToolRegistry.register({
         {...props}
         defaultOpen
         icon="checklist"
+        copy={() =>
+          todos()
+            .map((t: Todo) => `- [${t.status === "completed" ? "x" : " "}] ${t.content}`)
+            .join("\n")
+        }
         trigger={{
           title: i18n.t("ui.tool.todos"),
           subtitle: subtitle(),
