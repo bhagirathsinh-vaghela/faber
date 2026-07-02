@@ -57,9 +57,7 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           }
           const ids = Object.keys(draft.entries)
           if (ids.length > LIMIT) {
-            const drop = ids
-              .sort((a, b) => draft.entries[b].updated - draft.entries[a].updated)
-              .slice(LIMIT)
+            const drop = ids.sort((a, b) => draft.entries[b].updated - draft.entries[a].updated).slice(LIMIT)
             for (const id of drop) delete draft.entries[id]
           }
         }),
@@ -67,7 +65,10 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     }
 
     function remove(sessionID: string) {
-      setStore("entries", produce((entries) => delete entries[sessionID]))
+      setStore(
+        "entries",
+        produce((entries) => delete entries[sessionID]),
+      )
     }
 
     // Read live signals for a session WITHOUT triggering a bootstrap — a busy /

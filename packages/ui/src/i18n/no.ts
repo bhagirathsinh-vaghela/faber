@@ -10,6 +10,7 @@ export const dict: Record<Keys, string> = {
 
   "ui.sessionReview.change.added": "Lagt til",
   "ui.sessionReview.change.removed": "Fjernet",
+  "ui.sessionReview.change.renamed": "Omdøpt",
   "ui.lineComment.label.prefix": "Kommenter på ",
   "ui.lineComment.label.suffix": "",
   "ui.lineComment.editorLabel.prefix": "Kommenterer på ",

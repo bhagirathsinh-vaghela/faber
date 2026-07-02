@@ -182,7 +182,9 @@
                       "type": "number"
                     }
                   },
-                  "required": ["assets"]
+                  "required": [
+                    "assets"
+                  ]
                 }
               }
             }
@@ -2225,6 +2227,20 @@
               "type": "string",
               "pattern": "^msg.*"
             }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "summary",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "summary": "Get message diff",
@@ -2365,6 +2381,13 @@
             "name": "limit",
             "schema": {
               "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "compacted",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -3473,7 +3496,9 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["ok"]
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -3541,7 +3566,9 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["ok"]
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -3839,7 +3866,10 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["sessionID", "enabled"]
+                "required": [
+                  "sessionID",
+                  "enabled"
+                ]
               }
             }
           }
@@ -7901,6 +7931,9 @@
           "file": {
             "type": "string"
           },
+          "old": {
+            "type": "string"
+          },
           "before": {
             "type": "string"
           },
@@ -7918,14 +7951,13 @@
             "enum": [
               "added",
               "deleted",
-              "modified"
+              "modified",
+              "renamed"
             ]
           }
         },
         "required": [
           "file",
-          "before",
-          "after",
           "additions",
           "deletions"
         ]
@@ -9575,10 +9607,16 @@
                 "type": "boolean"
               }
             },
-            "required": ["sessionID", "enabled"]
+            "required": [
+              "sessionID",
+              "enabled"
+            ]
           }
         },
-        "required": ["type", "properties"]
+        "required": [
+          "type",
+          "properties"
+        ]
       },
       "SessionStatus": {
         "anyOf": [
@@ -10611,10 +10649,16 @@
                 "type": "boolean"
               }
             },
-            "required": ["sessionID", "armed"]
+            "required": [
+              "sessionID",
+              "armed"
+            ]
           }
         },
-        "required": ["type", "properties"]
+        "required": [
+          "type",
+          "properties"
+        ]
       },
       "PermissionAction": {
         "type": "string",
@@ -10797,7 +10841,9 @@
                 "type": "number"
               }
             },
-            "required": ["at"]
+            "required": [
+              "at"
+            ]
           },
           "tokens": {
             "default": {
@@ -11271,13 +11317,20 @@
                 },
                 "visibility": {
                   "type": "string",
-                  "enum": ["show", "hide"]
+                  "enum": [
+                    "show",
+                    "hide"
+                  ]
                 },
                 "favorite": {
                   "type": "boolean"
                 }
               },
-              "required": ["providerID", "modelID", "visibility"]
+              "required": [
+                "providerID",
+                "modelID",
+                "visibility"
+              ]
             }
           },
           "recent": {
@@ -11292,7 +11345,10 @@
                   "type": "string"
                 }
               },
-              "required": ["providerID", "modelID"]
+              "required": [
+                "providerID",
+                "modelID"
+              ]
             }
           },
           "variant": {
@@ -11305,7 +11361,11 @@
             }
           }
         },
-        "required": ["user", "recent", "variant"]
+        "required": [
+          "user",
+          "recent",
+          "variant"
+        ]
       },
       "Event.model.preference.updated": {
         "type": "object",
@@ -11318,7 +11378,10 @@
             "$ref": "#/components/schemas/ModelPreference"
           }
         },
-        "required": ["type", "properties"]
+        "required": [
+          "type",
+          "properties"
+        ]
       },
       "StashEntry": {
         "type": "object",
@@ -11331,7 +11394,10 @@
             "type": "number"
           }
         },
-        "required": ["prompt", "timestamp"]
+        "required": [
+          "prompt",
+          "timestamp"
+        ]
       },
       "Event.stash.updated": {
         "type": "object",
@@ -11350,10 +11416,15 @@
                 }
               }
             },
-            "required": ["entries"]
+            "required": [
+              "entries"
+            ]
           }
         },
-        "required": ["type", "properties"]
+        "required": [
+          "type",
+          "properties"
+        ]
       },
       "Event": {
         "anyOf": [

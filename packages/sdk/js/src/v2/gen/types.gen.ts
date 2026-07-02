@@ -92,11 +92,12 @@ export type EventFileEdited = {
 
 export type FileDiff = {
   file: string
-  before: string
-  after: string
+  old?: string
+  before?: string
+  after?: string
   additions: number
   deletions: number
-  status?: "added" | "deleted" | "modified"
+  status?: "added" | "deleted" | "modified" | "renamed"
 }
 
 export type UserMessage = {
@@ -3722,6 +3723,8 @@ export type SessionDiffData = {
   query?: {
     directory?: string
     messageID?: string
+    file?: string
+    summary?: boolean
   }
   url: "/session/{sessionID}/diff"
 }
@@ -3786,6 +3789,7 @@ export type SessionMessagesData = {
   query?: {
     directory?: string
     limit?: number
+    compacted?: string
   }
   url: "/session/{sessionID}/message"
 }

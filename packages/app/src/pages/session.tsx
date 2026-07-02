@@ -91,6 +91,7 @@ interface SessionReviewTabProps {
   diffStyle: DiffStyle
   onDiffStyleChange?: (style: DiffStyle) => void
   onViewFile?: (file: string) => void
+  onOpenFile?: (file: string) => void
   onLineComment?: (comment: { file: string; selection: SelectedLineRange; comment: string; preview?: string }) => void
   comments?: LineComment[]
   focusedComment?: { file: string; id: string } | null
@@ -220,6 +221,7 @@ function SessionReviewTab(props: SessionReviewTabProps) {
       diffStyle={props.diffStyle}
       onDiffStyleChange={props.onDiffStyleChange}
       onViewFile={props.onViewFile}
+      onOpenFile={props.onOpenFile}
       focusedFile={props.focusedFile}
       readFile={readFile}
       onLineComment={props.onLineComment}
@@ -1206,6 +1208,7 @@ export default function Page() {
                 onDiffStyleChange={layout.review.setDiffStyle}
                 onScrollRef={setReviewScroll}
                 focusedFile={activeDiff()}
+                onOpenFile={(path) => params.id && sync.session.diffFile(params.id, path)}
                 onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
                 comments={comments.all()}
                 focusedComment={comments.focus()}
@@ -1855,6 +1858,7 @@ export default function Page() {
                                 view={view}
                                 diffStyle="unified"
                                 focusedFile={activeDiff()}
+                                onOpenFile={(path) => params.id && sync.session.diffFile(params.id, path)}
                                 onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
                                 comments={comments.all()}
                                 focusedComment={comments.focus()}

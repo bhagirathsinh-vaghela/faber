@@ -170,6 +170,10 @@ export namespace SessionSummary {
     z.object({
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message").optional(),
+      // when set, only the diff for this one file is returned (with bodies)
+      file: z.string().optional(),
+      // when true, file bodies (before/after) are stripped from the response
+      summary: z.boolean().optional(),
     }),
     async (input) => {
       const diffs = await Storage.read<Snapshot.FileDiff[]>(["session_diff", input.sessionID]).catch(() => [])
@@ -183,6 +187,8 @@ export namespace SessionSummary {
       })
       const changed = next.some((item, i) => item.file !== diffs[i]?.file)
       if (changed) Storage.write(["session_diff", input.sessionID], next).catch(() => {})
+      if (input.file) return next.filter((item) => item.file === input.file)
+      if (input.summary) return next.map(({ before, after, ...rest }) => rest)
       return next
     },
   )

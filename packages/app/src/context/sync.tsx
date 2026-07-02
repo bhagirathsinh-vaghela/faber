@@ -23,6 +23,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const current = createMemo(() => globalSync.child(sdk.directory))
     const absolute = (path: string) => (current()[0].path.directory + "/" + path).replace("//", "/")
     const chunk = 400
+    // tail-first bootstrap: paint the newest N messages immediately so the
+    // session is interactive, then backfill the rest to the compaction
+    // boundary in the background
+    const tail = 40
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
@@ -50,18 +54,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       setStore: Setter
       sessionID: string
       limit: number
+      compacted?: boolean
     }) => {
       const key = keyFor(input.directory, input.sessionID)
       if (meta.loading[key]) return
 
+      // default fetch stops at the compaction boundary; load-more passes
+      // compacted:false to page into pre-compaction history
+      const compacted = input.compacted ?? true
+
       setMeta("loading", key, true)
-      await retry(() => input.client.session.messages({ sessionID: input.sessionID, limit: input.limit }))
+      await retry(() =>
+        input.client.session.messages({
+          sessionID: input.sessionID,
+          limit: input.limit,
+          ...(compacted ? {} : { compacted: "false" }),
+        }),
+      )
         .then((messages) => {
           const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
           const next = items
             .map((x) => x.info)
             .filter((m) => !!m?.id)
             .sort((a, b) => cmp(a.id, b.id))
+
+          // a completed compaction boundary means older history exists behind it
+          const bounded =
+            compacted &&
+            items.some((m) => m.info.role === "user" && m.parts.some((p) => p.type === "compaction"))
 
           batch(() => {
             input.setStore("message", input.sessionID, reconcile(next, { key: "id" }))
@@ -78,7 +98,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }
 
             setMeta("limit", key, input.limit)
-            setMeta("complete", key, next.length < input.limit)
+            // keep load-more available when we stopped at a boundary
+            setMeta("complete", key, !bounded && next.length < input.limit)
           })
         })
         .finally(() => {
@@ -152,7 +173,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (pending) return pending
 
           const count = store.message[sessionID]?.length ?? 0
-          const limit = hydrated ? (meta.limit[key] ?? chunk) : limitFor(count)
+          const full = hydrated ? (meta.limit[key] ?? chunk) : limitFor(count)
+          // fresh bootstrap paints the tail first; a hydrated/resume load keeps
+          // whatever was already loaded
+          const initial = hydrated ? full : Math.min(tail, full)
 
           const sessionReq = hasSession
             ? Promise.resolve()
@@ -180,7 +204,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   client,
                   setStore,
                   sessionID,
-                  limit,
+                  limit: initial,
                 })
 
           const promise = Promise.all([sessionReq, messagesReq])
@@ -188,6 +212,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             .finally(() => {
               inflight.delete(key)
             })
+
+          // background backfill: once the tail has painted, load the rest up to
+          // the compaction boundary without blocking interaction
+          if (!hydrated && initial < full) {
+            promise.then(() => {
+              if (meta.complete[key]) return
+              void loadMessages({ directory, client, setStore, sessionID, limit: full })
+            })
+          }
 
           inflight.set(key, promise)
           return promise
@@ -202,7 +235,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const pending = inflightDiff.get(key)
           if (pending) return pending
 
-          const promise = retry(() => client.session.diff({ sessionID }))
+          const promise = retry(() => client.session.diff({ sessionID, summary: true }))
             .then((diff) => {
               setStore("session_diff", sessionID, reconcile(diff.data ?? [], { key: "file" }))
             })
@@ -212,6 +245,19 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           inflightDiff.set(key, promise)
           return promise
+        },
+        async diffFile(sessionID: string, file: string) {
+          const client = sdk.client
+          const [store, setStore] = globalSync.child(sdk.directory)
+          const current = store.session_diff[sessionID]?.find((d) => d.file === file)
+          if (current && typeof current.before === "string" && typeof current.after === "string") return
+
+          const diff = await retry(() => client.session.diff({ sessionID, file }))
+          const body = diff.data?.[0]
+          if (!body) return
+          setStore("session_diff", sessionID, (list) =>
+            (list ?? []).map((d) => (d.file === file ? { ...d, before: body.before, after: body.after } : d)),
+          )
         },
         async todo(sessionID: string) {
           const directory = sdk.directory
@@ -262,6 +308,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               setStore,
               sessionID,
               limit: currentLimit + count,
+              compacted: false,
             })
           },
         },

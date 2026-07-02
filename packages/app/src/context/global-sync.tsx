@@ -836,7 +836,15 @@ function createGlobalSync() {
         break
       }
       case "session.diff":
-        setStore("session_diff", event.properties.sessionID, reconcile(event.properties.diff, { key: "file" }))
+        // keep the store bodyless (summary tier); bodies are lazy-fetched per file
+        setStore(
+          "session_diff",
+          event.properties.sessionID,
+          reconcile(
+            event.properties.diff.map(({ before, after, ...rest }) => rest),
+            { key: "file" },
+          ),
+        )
         break
       case "todo.updated":
         setStore("todo", event.properties.sessionID, reconcile(event.properties.todos, { key: "id" }))

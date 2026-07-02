@@ -394,12 +394,27 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       limit: z.number().optional(),
+      // when true (default), stop at the most recent completed compaction
+      // boundary — pre-compaction messages are the model's dropped context and
+      // are never serialized. Pass false to page into pre-compaction history.
+      compacted: z.boolean().optional(),
     }),
     async (input) => {
+      const compacted = input.compacted ?? true
       const result = [] as MessageV2.WithParts[]
+      const completed = new Set<string>()
+      // MessageV2.stream yields newest-first; mirror MessageV2.filterCompacted
       for await (const msg of MessageV2.stream(input.sessionID)) {
         if (input.limit && result.length >= input.limit) break
         result.push(msg)
+        if (
+          compacted &&
+          msg.info.role === "user" &&
+          completed.has(msg.info.id) &&
+          msg.parts.some((part) => part.type === "compaction")
+        )
+          break
+        if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) completed.add(msg.info.parentID)
       }
       result.reverse()
       return result

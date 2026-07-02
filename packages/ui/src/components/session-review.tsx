@@ -55,6 +55,7 @@ export interface SessionReviewProps {
   actions?: JSX.Element
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
   onViewFile?: (file: string) => void
+  onOpenFile?: (file: string) => void
   readFile?: (path: string) => Promise<FileContent | undefined>
 }
 
@@ -196,6 +197,18 @@ export const SessionReview = (props: SessionReviewProps) => {
     handleChange(next)
   }
 
+  // lazy-load each file's diff bodies the first time its accordion item opens
+  const requested = new Set<string>()
+  createEffect(() => {
+    const handler = props.onOpenFile
+    if (!handler) return
+    for (const file of open()) {
+      if (requested.has(file)) continue
+      requested.add(file)
+      handler(file)
+    }
+  })
+
   const selectionLabel = (range: SelectedLineRange) => {
     const start = Math.min(range.start, range.end)
     const end = Math.max(range.start, range.end)
@@ -326,8 +339,13 @@ export const SessionReview = (props: SessionReviewProps) => {
               const beforeText = () => (typeof diff.before === "string" ? diff.before : "")
               const afterText = () => (typeof diff.after === "string" ? diff.after : "")
 
-              const isAdded = () => beforeText().length === 0 && afterText().length > 0
-              const isDeleted = () => afterText().length === 0 && beforeText().length > 0
+              const isAdded = () =>
+                diff.status === "added" ||
+                (diff.status === undefined && beforeText().length === 0 && afterText().length > 0)
+              const isDeleted = () =>
+                diff.status === "deleted" ||
+                (diff.status === undefined && afterText().length === 0 && beforeText().length > 0)
+              const isRenamed = () => diff.status === "renamed"
               const isImage = () => isImageFile(diff.file)
               const isAudio = () => isAudioFile(diff.file)
 
@@ -513,6 +531,11 @@ export const SessionReview = (props: SessionReviewProps) => {
                             <Show when={diff.file.includes("/")}>
                               <span data-slot="session-review-directory">{`\u202A${getDirectory(diff.file)}\u202C`}</span>
                             </Show>
+                            <Show when={isRenamed() && diff.old}>
+                              <span data-slot="session-review-rename-from" title={diff.old}>
+                                {`\u202A${diff.old}\u202C \u2192 `}
+                              </span>
+                            </Show>
                             <span data-slot="session-review-filename">{getFilename(diff.file)}</span>
                             <Show when={props.onViewFile}>
                               <button
@@ -529,7 +552,13 @@ export const SessionReview = (props: SessionReviewProps) => {
                           </div>
                         </div>
                         <div data-slot="session-review-trigger-actions">
-                          <Switch>
+                          <Switch fallback={<DiffChanges changes={diff} />}>
+                            <Match when={isRenamed()}>
+                              <span data-slot="session-review-change" data-type="renamed">
+                                {i18n.t("ui.sessionReview.change.renamed")}
+                              </span>
+                              <DiffChanges changes={diff} />
+                            </Match>
                             <Match when={isAdded()}>
                               <span data-slot="session-review-change" data-type="added">
                                 {i18n.t("ui.sessionReview.change.added")}
@@ -539,9 +568,6 @@ export const SessionReview = (props: SessionReviewProps) => {
                               <span data-slot="session-review-change" data-type="removed">
                                 {i18n.t("ui.sessionReview.change.removed")}
                               </span>
-                            </Match>
-                            <Match when={true}>
-                              <DiffChanges changes={diff} />
                             </Match>
                           </Switch>
                           <Icon name="chevron-grabber-vertical" size="small" />

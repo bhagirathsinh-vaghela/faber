@@ -164,6 +164,19 @@
     color: var(--icon-diff-delete-base);
   }
 
+  [data-slot="session-review-change"][data-type="renamed"] {
+    color: var(--text-base);
+  }
+
+  [data-slot="session-review-rename-from"] {
+    color: var(--text-weak);
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    direction: rtl;
+    text-align: left;
+  }
+
   [data-slot="session-review-file-container"] {
     padding: 0;
   }

@@ -184,23 +184,44 @@ export namespace Snapshot {
   export const FileDiff = z
     .object({
       file: z.string(),
-      before: z.string(),
-      after: z.string(),
+      old: z.string().optional(),
+      before: z.string().optional(),
+      after: z.string().optional(),
       additions: z.number(),
       deletions: z.number(),
-      status: z.enum(["added", "deleted", "modified"]).optional(),
+      status: z.enum(["added", "deleted", "modified", "renamed"]).optional(),
     })
     .meta({
       ref: "FileDiff",
     })
   export type FileDiff = z.infer<typeof FileDiff>
+
+  // git renders a renamed path in numstat/name-status as either "old => new"
+  // or with a common prefix/suffix collapsed into braces: "src/{a => b}/x.ts".
+  // Expand it to the new path.
+  function renameTarget(raw: string): string {
+    const brace = raw.match(/^(.*)\{(.*) => (.*)\}(.*)$/)
+    if (brace) return `${brace[1]}${brace[3]}${brace[4]}`.replaceAll("//", "/")
+    const arrow = raw.split(" => ")
+    if (arrow.length === 2) return arrow[1]!
+    return raw
+  }
+
+  async function show(git: string, ref: string, file: string) {
+    return $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${Instance.worktree} show ${ref + ":" + file}`
+      .quiet()
+      .nothrow()
+      .text()
+  }
+
   export async function diffFull(from: string, to: string): Promise<FileDiff[]> {
     const git = gitdir()
     const result: FileDiff[] = []
-    const status = new Map<string, "added" | "deleted" | "modified">()
+    const status = new Map<string, "added" | "deleted" | "modified" | "renamed">()
+    const renamed = new Map<string, string>()
 
     const statuses =
-      await $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${git} --work-tree ${Instance.worktree} diff --no-ext-diff --name-status --no-renames ${from} ${to} -- .`
+      await $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${git} --work-tree ${Instance.worktree} diff --no-ext-diff --name-status -M ${from} ${to} -- .`
         .quiet()
         .cwd(Instance.directory)
         .nothrow()
@@ -208,36 +229,38 @@ export namespace Snapshot {
 
     for (const line of statuses.trim().split("\n")) {
       if (!line) continue
-      const [code, file] = line.split("\t")
-      if (!code || !file) continue
-      const kind = code.startsWith("A") ? "added" : code.startsWith("D") ? "deleted" : "modified"
-      status.set(file, kind)
+      const [code, ...rest] = line.split("\t")
+      if (!code || rest.length === 0) continue
+      if (code.startsWith("R")) {
+        const [old, file] = rest
+        if (!old || !file) continue
+        status.set(file, "renamed")
+        renamed.set(file, old)
+        continue
+      }
+      const file = rest[0]
+      if (!file) continue
+      status.set(file, code.startsWith("A") ? "added" : code.startsWith("D") ? "deleted" : "modified")
     }
 
-    for await (const line of $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${git} --work-tree ${Instance.worktree} diff --no-ext-diff --no-renames --numstat ${from} ${to} -- .`
+    for await (const line of $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${git} --work-tree ${Instance.worktree} diff --no-ext-diff -M --numstat ${from} ${to} -- .`
       .quiet()
       .cwd(Instance.directory)
       .nothrow()
       .lines()) {
       if (!line) continue
-      const [additions, deletions, file] = line.split("\t")
+      const [additions, deletions, raw] = line.split("\t")
+      if (!raw) continue
+      const file = renameTarget(raw)
+      const from2 = renamed.get(file) ?? file
       const isBinaryFile = additions === "-" && deletions === "-"
-      const before = isBinaryFile
-        ? ""
-        : await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${Instance.worktree} show ${from}:${file}`
-            .quiet()
-            .nothrow()
-            .text()
-      const after = isBinaryFile
-        ? ""
-        : await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${Instance.worktree} show ${to}:${file}`
-            .quiet()
-            .nothrow()
-            .text()
+      const before = isBinaryFile ? "" : await show(git, from, from2)
+      const after = isBinaryFile ? "" : await show(git, to, file)
       const added = isBinaryFile ? 0 : parseInt(additions)
       const deleted = isBinaryFile ? 0 : parseInt(deletions)
       result.push({
         file,
+        old: renamed.get(file),
         before,
         after,
         additions: Number.isFinite(added) ? added : 0,

@@ -473,6 +473,8 @@ export const SessionRoutes = lazy(() =>
         "query",
         z.object({
           messageID: SessionSummary.diff.schema.shape.messageID,
+          file: SessionSummary.diff.schema.shape.file,
+          summary: z.coerce.boolean().optional(),
         }),
       ),
       async (c) => {
@@ -481,6 +483,8 @@ export const SessionRoutes = lazy(() =>
         const result = await SessionSummary.diff({
           sessionID: params.sessionID,
           messageID: query.messageID,
+          file: query.file,
+          summary: query.summary,
         })
         return c.json(result)
       },
@@ -603,6 +607,10 @@ export const SessionRoutes = lazy(() =>
         "query",
         z.object({
           limit: z.coerce.number().optional(),
+          // "false" pages into pre-compaction history; anything else keeps the
+          // default boundary stop. Raw string compare — z.coerce.boolean treats
+          // the string "false" as true.
+          compacted: z.string().optional(),
         }),
       ),
       async (c) => {
@@ -610,6 +618,7 @@ export const SessionRoutes = lazy(() =>
         const messages = await Session.messages({
           sessionID: c.req.valid("param").sessionID,
           limit: query.limit,
+          compacted: query.compacted === undefined ? undefined : query.compacted !== "false",
         })
         return c.json(messages)
       },

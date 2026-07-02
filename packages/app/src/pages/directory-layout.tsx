@@ -1,5 +1,5 @@
 import { createEffect, createMemo, Show, type ParentProps } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
@@ -37,6 +37,15 @@ export default function Layout(props: ParentProps) {
           {iife(() => {
             const sync = useSync()
             const sdk = useSDK()
+            const location = useLocation()
+
+            // fire the transcript tail fetch as early as the URL carries a
+            // session id — before the session-scoped providers and the heavy
+            // Session component mount, so the tail is in flight during boot
+            createEffect(() => {
+              const id = location.pathname.match(/\/session\/([^/?#]+)/)?.[1]
+              if (id) sync.session.sync(id)
+            })
             const respond = (input: {
               sessionID: string
               permissionID: string

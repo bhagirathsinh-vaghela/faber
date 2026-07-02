@@ -1,7 +1,11 @@
 :root {
-  --font-family-sans: "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
+  --font-family-sans:
+    "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace,
+    monospace;
   --font-family-sans--font-feature-settings: "ss01" 1;
-  --font-family-mono: "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
+  --font-family-mono:
+    "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace,
+    monospace;
   --font-family-mono--font-feature-settings: "ss01" 1;
 
   --font-size-small: 13px;

@@ -34,8 +34,13 @@ import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
 import { Suspense } from "solid-js"
 
+// eagerly start fetching the route chunks at boot so they download in parallel
+// with the main bundle instead of after the route matches — the session
+// transcript can't paint until this chunk is loaded
+const sessionChunk = () => import("@/pages/session")
 const Home = lazy(() => import("@/pages/home"))
-const Session = lazy(() => import("@/pages/session"))
+const Session = lazy(sessionChunk)
+sessionChunk()
 const Loading = () => <div class="size-full" />
 
 function UiI18nBridge(props: ParentProps) {

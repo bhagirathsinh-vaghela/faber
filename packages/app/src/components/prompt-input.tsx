@@ -1944,7 +1944,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         <div class="relative px-3 py-1.5 flex items-center justify-between gap-2">
           <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1">
             <Show when={working()}>
-              <Spinner class="size-[15px] mr-2 shrink-0" style={{ color: workingTint() ?? "var(--icon-interactive-base)" }} />
+              <Spinner
+                class="size-[15px] mr-2 shrink-0"
+                style={{ color: workingTint() ?? "var(--icon-interactive-base)" }}
+              />
             </Show>
             <Switch>
               <Match when={store.mode === "shell"}>
