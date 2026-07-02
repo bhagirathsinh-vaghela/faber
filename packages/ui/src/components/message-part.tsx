@@ -93,6 +93,9 @@ export interface MessageProps {
   // box with a "◈ ROLE" header.
   boxed?: boolean
   defaultOpen?: boolean
+  // Completed-turn snapshot line, threaded from the page down to each
+  // assistant text box. Absent while the turn is streaming.
+  footer?: (message: AssistantMessage) => JSX.Element
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -117,6 +120,9 @@ export interface MessagePartProps {
   message: MessageType
   hideDetails?: boolean
   defaultOpen?: boolean
+  // Completed-turn snapshot line; only TextPartDisplay renders it (under its
+  // own box). Every other part ignores it.
+  footer?: (message: AssistantMessage) => JSX.Element
 }
 
 export type PartComponent = Component<MessagePartProps>
@@ -391,6 +397,7 @@ export function Message(props: MessageProps) {
             message={assistantMessage() as AssistantMessage}
             parts={props.parts}
             defaultOpen={props.defaultOpen}
+            footer={props.footer}
           />
         )}
       </Match>
@@ -462,10 +469,10 @@ export function MessageBox(props: {
       class="accent-box"
       style={{
         // Scheme (accent border, no fill) comes from .accent-box; this box only
-        // supplies its accent + its own spacing.
+        // supplies its accent + its own padding. Inter-box spacing comes from
+        // the turn list's `gap`, same as tool boxes — no own bottom margin.
         "--box-accent": accent,
         padding: "0.5rem 0.75rem",
-        "margin-bottom": "0.75rem",
       }}
     >
       <div
@@ -533,6 +540,7 @@ export function AssistantMessageDisplay(props: {
   message: AssistantMessage
   parts: PartType[]
   defaultOpen?: boolean
+  footer?: (message: AssistantMessage) => JSX.Element
 }) {
   const emptyParts: PartType[] = []
   const filteredParts = createMemo(
@@ -545,7 +553,7 @@ export function AssistantMessageDisplay(props: {
   )
   return (
     <For each={filteredParts()}>
-      {(part) => <Part part={part} message={props.message} defaultOpen={props.defaultOpen} />}
+      {(part) => <Part part={part} message={props.message} defaultOpen={props.defaultOpen} footer={props.footer} />}
     </For>
   )
 }
@@ -697,6 +705,7 @@ export function Part(props: MessagePartProps) {
         message={props.message}
         hideDetails={props.hideDetails}
         defaultOpen={props.defaultOpen}
+        footer={props.footer}
       />
     </Show>
   )
@@ -868,6 +877,10 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     <Show when={throttledText()}>
       <MessageBox message={props.message} numberKey={part.id} copy={displayText}>
         <Markdown text={throttledText()} cacheKey={part.id} />
+        {/* Snapshot line under every assistant text box, matching the Response
+            box. Only present once the turn is done (the page withholds footer
+            while streaming), so nothing flickers mid-stream. */}
+        <Show when={props.footer}>{props.footer!(props.message as AssistantMessage)}</Show>
       </MessageBox>
     </Show>
   )

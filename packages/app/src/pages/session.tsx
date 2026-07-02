@@ -2032,7 +2032,7 @@ export default function Page() {
                         <div
                           ref={autoScroll.contentRef}
                           role="log"
-                          class="flex flex-col gap-4 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
+                          class="flex flex-col gap-4 items-start justify-start pb-[calc(var(--prompt-height,8rem)+32px)] md:pb-[calc(var(--prompt-height,10rem)+32px)] transition-[margin]"
                           classList={{
                             "w-full": true,
                             "md:max-w-[90%] md:mx-auto": centered(),

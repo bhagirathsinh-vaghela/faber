@@ -16,6 +16,7 @@ export const dict = {
   "ui.sessionTurn.steps.show": "ステップを表示",
   "ui.sessionTurn.steps.hide": "ステップを隠す",
   "ui.sessionTurn.summary.response": "応答",
+  "ui.sessionTurn.summary.changedFiles": "変更されたファイル",
   "ui.sessionTurn.diff.showMore": "さらに変更を表示 ({{count}})",
 
   "ui.sessionTurn.retry.retrying": "再試行中",

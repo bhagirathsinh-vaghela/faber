@@ -20,6 +20,7 @@ export const dict = {
   "ui.sessionTurn.steps.show": "显示步骤",
   "ui.sessionTurn.steps.hide": "隐藏步骤",
   "ui.sessionTurn.summary.response": "回复",
+  "ui.sessionTurn.summary.changedFiles": "已更改的文件",
   "ui.sessionTurn.diff.showMore": "显示更多更改（{{count}}）",
 
   "ui.sessionTurn.retry.retrying": "重试中",

@@ -16,6 +16,7 @@ export const dict = {
   "ui.sessionTurn.steps.show": "단계 표시",
   "ui.sessionTurn.steps.hide": "단계 숨기기",
   "ui.sessionTurn.summary.response": "응답",
+  "ui.sessionTurn.summary.changedFiles": "변경된 파일",
   "ui.sessionTurn.diff.showMore": "변경 사항 더 보기 ({{count}})",
 
   "ui.sessionTurn.retry.retrying": "재시도 중",

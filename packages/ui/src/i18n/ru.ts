@@ -16,6 +16,7 @@ export const dict = {
   "ui.sessionTurn.steps.show": "Показать шаги",
   "ui.sessionTurn.steps.hide": "Скрыть шаги",
   "ui.sessionTurn.summary.response": "Ответ",
+  "ui.sessionTurn.summary.changedFiles": "Изменённые файлы",
   "ui.sessionTurn.diff.showMore": "Показать ещё изменений ({{count}})",
 
   "ui.sessionTurn.retry.retrying": "повтор",

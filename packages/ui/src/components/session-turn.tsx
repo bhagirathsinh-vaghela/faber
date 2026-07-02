@@ -30,7 +30,7 @@ import {
   Switch,
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
-import { Message, MessageBox, Part } from "./message-part"
+import { Message, Part } from "./message-part"
 import { Markdown } from "./markdown"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
@@ -100,35 +100,22 @@ function isAttachment(part: PartType | undefined) {
 
 function AssistantMessageItem(props: {
   message: AssistantMessage
-  responsePartId: string | undefined
-  hideResponsePart: boolean
   hideReasoning: boolean
+  footer?: (message: AssistantMessage) => JSX.Element
 }) {
   const data = useData()
   const emptyParts: PartType[] = []
   const msgParts = createMemo(() => data.store.part[props.message.id] ?? emptyParts)
 
+  // Every part renders inline in arrival order — text and tool blocks flow one
+  // after the next, numbered top-to-bottom. Nothing is promoted to a separate
+  // box, so no block teleports out of sequence.
   const filteredParts = createMemo(() => {
-    let parts = msgParts()
-
-    if (props.hideReasoning) {
-      parts = parts.filter((part) => part?.type !== "reasoning")
-    }
-
-    if (!props.hideResponsePart) return parts
-
-    // The turn's response part renders in the Response box below, so hide it
-    // wherever it lives in the steps to avoid showing it twice. Match on id
-    // alone: the previous per-message "is this the message's last text part"
-    // guard made a text block flip back into the steps once a LATER text part
-    // took over as the response.
-    const responsePartId = props.responsePartId
-    if (!responsePartId) return parts
-
-    return parts.filter((part) => part?.id !== responsePartId)
+    if (!props.hideReasoning) return msgParts()
+    return msgParts().filter((part) => part?.type !== "reasoning")
   })
 
-  return <Message message={props.message} parts={filteredParts()} defaultOpen />
+  return <Message message={props.message} parts={filteredParts()} defaultOpen footer={props.footer} />
 }
 
 export function SessionTurn(
@@ -415,14 +402,8 @@ export function SessionTurn(
   })
 
   const response = createMemo(() => lastTextPart()?.text)
-  const responsePartId = createMemo(() => lastTextPart()?.id)
   const messageDiffs = createMemo(() => message()?.summary?.diffs ?? emptyDiffs)
   const hasDiffs = createMemo(() => messageDiffs().length > 0)
-  // Hide the response text from the steps path whenever it has a part id, so it
-  // renders ONLY in the assistant box below — during streaming too, not just
-  // after completion. This is what lets the box be present from the start
-  // (no pop-in) without the response showing twice.
-  const hideResponsePart = createMemo(() => !!responsePartId())
 
   const [rootRef, setRootRef] = createSignal<HTMLDivElement | undefined>()
   const [stickyRef, setStickyRef] = createSignal<HTMLDivElement | undefined>()
@@ -565,6 +546,9 @@ export function SessionTurn(
 
   const [store, setStore] = createStore({
     retrySeconds: 0,
+    // The changed-files section is collapsed to a single header line by default;
+    // the chevron expands it to reveal the file list.
+    diffsSectionOpen: false,
     diffsOpen: [] as string[],
     diffLimit: diffInit,
     status: rawStatus(),
@@ -575,6 +559,7 @@ export function SessionTurn(
     on(
       () => message()?.id,
       () => {
+        setStore("diffsSectionOpen", false)
         setStore("diffsOpen", [])
         setStore("diffLimit", diffInit)
       },
@@ -803,9 +788,8 @@ export function SessionTurn(
                           {(assistantMessage) => (
                             <AssistantMessageItem
                               message={assistantMessage}
-                              responsePartId={responsePartId()}
-                              hideResponsePart={hideResponsePart()}
                               hideReasoning={!working()}
+                              footer={!working() ? props.footer : undefined}
                             />
                           )}
                         </For>
@@ -837,48 +821,33 @@ export function SessionTurn(
                         </For>
                       </div>
                     </Show>
-                    {/* Response */}
+                    {/* Response text renders inline in the steps above, in
+                        arrival order. This bottom section is now the changed-files
+                        summary only, and exists in the DOM only when there ARE
+                        diffs — no reserved space when the turn changed nothing. */}
                     <div class="sr-only" aria-live="polite">
                       {!working() && response() ? response() : ""}
                     </div>
-                    <Show when={response() || hasDiffs()}>
+                    <Show when={hasDiffs()}>
                       <div data-slot="session-turn-summary-section">
-                        <div data-slot="session-turn-summary-header">
-                          <h2 data-slot="session-turn-summary-title">{i18n.t("ui.sessionTurn.summary.response")}</h2>
-                          <div data-slot="session-turn-response">
-                            <Show
-                              when={lastAssistantMessage()}
-                              fallback={
-                                <Markdown
-                                  data-slot="session-turn-markdown"
-                                  data-diffs={hasDiffs()}
-                                  text={response() ?? ""}
-                                  cacheKey={responsePartId()}
-                                />
-                              }
-                            >
-                              {(assistant) => (
-                                <MessageBox
-                                  message={assistant()}
-                                  numberKey={responsePartId()}
-                                  copy={() => response() ?? ""}
-                                >
-                                  <Markdown
-                                    data-slot="session-turn-markdown"
-                                    data-diffs={hasDiffs()}
-                                    text={response() ?? ""}
-                                    cacheKey={responsePartId()}
-                                  />
-                                  {/* Footer/snapshot line is a completed-turn
-                                      artifact: append only once the turn is done,
-                                      so the box streams first and the snapshot
-                                      lands at the end (TUI behavior). */}
-                                  <Show when={!working() && props.footer}>{props.footer!(assistant())}</Show>
-                                </MessageBox>
-                              )}
-                            </Show>
-                          </div>
-                        </div>
+                        <button
+                          type="button"
+                          data-slot="session-turn-summary-header"
+                          data-open={store.diffsSectionOpen}
+                          aria-expanded={store.diffsSectionOpen}
+                          onClick={() => setStore("diffsSectionOpen", (open) => !open)}
+                        >
+                          <Icon
+                            name="chevron-down"
+                            size="small"
+                            data-slot="session-turn-summary-chevron"
+                          />
+                          <h2 data-slot="session-turn-summary-title">
+                            {i18n.t("ui.sessionTurn.summary.changedFiles")}
+                          </h2>
+                          <span data-slot="session-turn-summary-count">{messageDiffs().length}</span>
+                        </button>
+                        <Show when={store.diffsSectionOpen}>
                         <Accordion
                           data-slot="session-turn-accordion"
                           multiple
@@ -952,6 +921,7 @@ export function SessionTurn(
                               count: messageDiffs().length - store.diffLimit,
                             })}
                           </Button>
+                        </Show>
                         </Show>
                       </div>
                     </Show>
