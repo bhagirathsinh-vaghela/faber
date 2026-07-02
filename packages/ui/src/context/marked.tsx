@@ -376,6 +376,19 @@ registerCustomTheme("OpenCode", () => {
   } as unknown as ThemeRegistrationResolved)
 })
 
+// Shared code highlighter used by both the marked path and the smd-based
+// Markdown renderer. Registration of the "OpenCode" theme happens at module
+// load (above), so importing this function is enough to get themed output.
+export async function highlightCode(code: string, lang: string): Promise<string> {
+  const highlighter = await getSharedHighlighter({ themes: ["OpenCode"], langs: [] })
+  let language = lang || "text"
+  if (!(language in bundledLanguages)) language = "text"
+  if (language !== "text" && !highlighter.getLoadedLanguages().includes(language)) {
+    await highlighter.loadLanguage(language as BundledLanguage)
+  }
+  return highlighter.codeToHtml(code, { lang: language, theme: "OpenCode", tabindex: false })
+}
+
 function renderMathInText(text: string): string {
   let result = text
 

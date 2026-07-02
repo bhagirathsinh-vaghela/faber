@@ -1,47 +1,13 @@
-import { useMarked } from "../context/marked"
 import { useI18n } from "../context/i18n"
-import DOMPurify from "dompurify"
-import morphdom from "morphdom"
-import { checksum } from "@opencode-ai/util/encode"
-import { ComponentProps, createEffect, createResource, createSignal, onCleanup, splitProps } from "solid-js"
+import { highlightCode } from "../context/marked"
+import * as smd from "streaming-markdown"
+import katex from "katex"
+import { ComponentProps, createEffect, createSignal, onCleanup, splitProps } from "solid-js"
 import { isServer } from "solid-js/web"
-
-type Entry = {
-  hash: string
-  html: string
-}
-
-const max = 200
-const cache = new Map<string, Entry>()
-
-if (typeof window !== "undefined" && DOMPurify.isSupported) {
-  DOMPurify.addHook("afterSanitizeAttributes", (node: Element) => {
-    if (!(node instanceof HTMLAnchorElement)) return
-    if (node.target !== "_blank") return
-
-    const rel = node.getAttribute("rel") ?? ""
-    const set = new Set(rel.split(/\s+/).filter(Boolean))
-    set.add("noopener")
-    set.add("noreferrer")
-    node.setAttribute("rel", Array.from(set).join(" "))
-  })
-}
-
-const config = {
-  USE_PROFILES: { html: true, mathMl: true },
-  SANITIZE_NAMED_PROPS: true,
-  FORBID_TAGS: ["style"],
-  FORBID_CONTENTS: ["style", "script"],
-}
 
 const iconPaths = {
   copy: '<path d="M6.2513 6.24935V2.91602H17.0846V13.7493H13.7513M13.7513 6.24935V17.0827H2.91797V6.24935H13.7513Z" stroke="currentColor" stroke-linecap="round"/>',
   check: '<path d="M5 11.9657L8.37838 14.7529L15 5.83398" stroke="currentColor" stroke-linecap="square"/>',
-}
-
-function sanitize(html: string) {
-  if (!DOMPurify.isSupported) return ""
-  return DOMPurify.sanitize(html, config)
 }
 
 type CopyLabels = {
@@ -78,85 +44,110 @@ function createCopyButton(labels: CopyLabels) {
   return button
 }
 
-function setCopyState(button: HTMLButtonElement, labels: CopyLabels, copied: boolean) {
-  if (copied) {
-    button.setAttribute("data-copied", "true")
-    button.setAttribute("aria-label", labels.copied)
-    button.setAttribute("title", labels.copied)
-    return
-  }
-  button.removeAttribute("data-copied")
-  button.setAttribute("aria-label", labels.copy)
-  button.setAttribute("title", labels.copy)
+// A code fence tracked while it streams: the <pre> box, its <code>, the raw
+// source accumulated so far, and the detected language. On end we swap the
+// plain streamed text for Shiki-highlighted HTML — highlight only fires once,
+// on the settled block, so streaming stays cheap and never re-touches the DOM.
+type Fence = {
+  pre: HTMLPreElement
+  code: HTMLElement
+  raw: string
+  lang: string
+  done: boolean
 }
 
-function setupCodeCopy(root: HTMLDivElement, labels: CopyLabels) {
-  const timeouts = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>()
+// Wrap smd's default renderer: reuse its DOM building, but intercept code
+// fences (box + copy button + highlight-on-close), equations (KaTeX), and
+// links (target=_blank). Append-only, so settled content is never mutated.
+function createRenderer(root: HTMLElement, labels: CopyLabels) {
+  const base = smd.default_renderer(root)
+  const fences: Fence[] = []
+  // Stack of the tokens we care about, parallel to smd's node stack depth.
+  const stack: (Fence | HTMLElement | null)[] = []
 
-  const updateLabel = (button: HTMLButtonElement) => {
-    const copied = button.getAttribute("data-copied") === "true"
-    setCopyState(button, labels, copied)
+  function highlight(fence: Fence) {
+    if (fence.done) return
+    fence.done = true
+    const raw = fence.raw.replace(/\n$/, "")
+    highlightCode(raw, fence.lang)
+      .then((html) => {
+        // html is <pre class="shiki ..."><code>...</code></pre>; take its inner
+        // <code> so we keep our own <pre> (and the surrounding box/button).
+        const tmp = document.createElement("div")
+        tmp.innerHTML = html
+        const shikiCode = tmp.querySelector("code")
+        if (!shikiCode) return
+        fence.code.replaceChildren(...Array.from(shikiCode.childNodes))
+        const shikiPre = tmp.querySelector("pre")
+        if (shikiPre) {
+          const cls = shikiPre.getAttribute("class")
+          if (cls) fence.pre.setAttribute("class", cls)
+          const style = shikiPre.getAttribute("style")
+          if (style) fence.pre.setAttribute("style", style)
+        }
+      })
+      .catch(() => {})
   }
 
-  const ensureWrapper = (block: HTMLPreElement) => {
-    const parent = block.parentElement
-    if (!parent) return
-    const wrapped = parent.getAttribute("data-component") === "markdown-code"
-    if (wrapped) return
-    const wrapper = document.createElement("div")
-    wrapper.setAttribute("data-component", "markdown-code")
-    parent.replaceChild(wrapper, block)
-    wrapper.appendChild(block)
-    wrapper.appendChild(createCopyButton(labels))
+  return {
+    data: base.data,
+    add_token(data: unknown, type: number) {
+      base.add_token(data as never, type as never)
+      const node = base.data.nodes[base.data.index] as HTMLElement
+      if (type === smd.CODE_FENCE || type === smd.CODE_BLOCK) {
+        // base created <pre><code>; node is the <code>.
+        const pre = node.parentElement as HTMLPreElement
+        const wrapper = document.createElement("div")
+        wrapper.setAttribute("data-component", "markdown-code")
+        pre.parentElement?.replaceChild(wrapper, pre)
+        wrapper.appendChild(pre)
+        wrapper.appendChild(createCopyButton(labels))
+        const fence: Fence = { pre, code: node, raw: "", lang: "text", done: false }
+        fences.push(fence)
+        stack.push(fence)
+        return
+      }
+      if (type === smd.LINK || type === smd.RAW_URL) {
+        node.setAttribute("target", "_blank")
+        node.setAttribute("rel", "noopener noreferrer")
+        node.setAttribute("class", "external-link")
+      }
+      stack.push(node)
+    },
+    end_token(data: unknown) {
+      const top = stack.pop()
+      if (top && "raw" in (top as Fence)) {
+        highlight(top as Fence)
+      } else if (top instanceof HTMLElement) {
+        if (top.tagName === "EQUATION-BLOCK" || top.tagName === "EQUATION-INLINE") {
+          const display = top.tagName === "EQUATION-BLOCK"
+          try {
+            const rendered = katex.renderToString(top.textContent ?? "", {
+              displayMode: display,
+              throwOnError: false,
+            })
+            top.innerHTML = rendered
+          } catch {}
+        }
+      }
+      base.end_token(data as never)
+    },
+    add_text(data: unknown, text: string) {
+      const top = stack[stack.length - 1]
+      if (top && typeof top === "object" && "raw" in top) {
+        ;(top as Fence).raw += text
+      }
+      base.add_text(data as never, text)
+    },
+    set_attr(data: unknown, type: number, value: string) {
+      const top = stack[stack.length - 1]
+      if (type === smd.LANG && top && typeof top === "object" && "raw" in top) {
+        ;(top as Fence).lang = value
+        return // don't emit the class="lang" attr; Shiki sets its own classes
+      }
+      base.set_attr(data as never, type as never, value)
+    },
   }
-
-  const handleClick = async (event: MouseEvent) => {
-    const target = event.target
-    if (!(target instanceof Element)) return
-    const button = target.closest('[data-slot="markdown-copy-button"]')
-    if (!(button instanceof HTMLButtonElement)) return
-    const code = button.closest('[data-component="markdown-code"]')?.querySelector("code")
-    const content = code?.textContent ?? ""
-    if (!content) return
-    const clipboard = navigator?.clipboard
-    if (!clipboard) return
-    await clipboard.writeText(content)
-    setCopyState(button, labels, true)
-    const existing = timeouts.get(button)
-    if (existing) clearTimeout(existing)
-    const timeout = setTimeout(() => setCopyState(button, labels, false), 2000)
-    timeouts.set(button, timeout)
-  }
-
-  const blocks = Array.from(root.querySelectorAll("pre"))
-  for (const block of blocks) {
-    ensureWrapper(block)
-  }
-
-  const buttons = Array.from(root.querySelectorAll('[data-slot="markdown-copy-button"]'))
-  for (const button of buttons) {
-    if (button instanceof HTMLButtonElement) updateLabel(button)
-  }
-
-  root.addEventListener("click", handleClick)
-
-  return () => {
-    root.removeEventListener("click", handleClick)
-    for (const timeout of timeouts.values()) {
-      clearTimeout(timeout)
-    }
-  }
-}
-
-function touch(key: string, value: Entry) {
-  cache.delete(key)
-  cache.set(key, value)
-
-  if (cache.size <= max) return
-
-  const first = cache.keys().next().value
-  if (!first) return
-  cache.delete(first)
 }
 
 export function Markdown(
@@ -168,85 +159,54 @@ export function Markdown(
   },
 ) {
   const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList"])
-  const marked = useMarked()
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
-  const [html] = createResource(
-    () => local.text,
-    async (markdown) => {
-      if (isServer) return ""
 
-      const hash = checksum(markdown)
-      const key = local.cacheKey ?? hash
-
-      if (key && hash) {
-        const cached = cache.get(key)
-        if (cached && cached.hash === hash) {
-          touch(key, cached)
-          return cached.html
-        }
-      }
-
-      const next = await marked.parse(markdown)
-      const safe = sanitize(next)
-      if (key && hash) touch(key, { hash, html: safe })
-      return safe
-    },
-    { initialValue: "" },
-  )
-
-  let copySetupTimer: ReturnType<typeof setTimeout> | undefined
+  let parser: ReturnType<typeof smd.parser> | undefined
+  let fed = ""
+  let key: string | undefined
   let copyCleanup: (() => void) | undefined
+
+  function reset(container: HTMLElement) {
+    container.replaceChildren()
+    parser = smd.parser(
+      createRenderer(container, {
+        copy: i18n.t("ui.message.copy"),
+        copied: i18n.t("ui.message.copied"),
+      }),
+    )
+    fed = ""
+  }
 
   createEffect(() => {
     const container = root()
-    const content = html()
-    if (!container) return
-    if (isServer) return
+    const text = local.text
+    if (!container || isServer) return
 
-    if (!content) {
-      container.innerHTML = ""
-      return
+    // A different message (cacheKey) or a non-append edit means the old tree is
+    // stale — start over. Otherwise feed only the newly appended suffix so the
+    // already-rendered DOM is never touched (this is what keeps code blocks
+    // from fragmenting mid-stream).
+    if (!parser || key !== local.cacheKey || !text.startsWith(fed)) {
+      key = local.cacheKey
+      reset(container)
     }
 
-    const temp = document.createElement("div")
-    temp.innerHTML = content
+    const chunk = text.slice(fed.length)
+    if (chunk.length > 0 && parser) {
+      smd.parser_write(parser, chunk)
+      fed = text
+    }
+  })
 
-    morphdom(container, temp, {
-      childrenOnly: true,
-      onBeforeElUpdated: (fromEl, toEl) => {
-        if (fromEl.isEqualNode(toEl)) return false
-        if (fromEl.getAttribute("data-component") === "markdown-code") {
-          const fromPre = fromEl.querySelector("pre")
-          const toPre = toEl.querySelector("pre")
-          if (fromPre && toPre && !fromPre.isEqualNode(toPre)) {
-            morphdom(fromPre, toPre)
-          }
-          return false
-        }
-        return true
-      },
-      onBeforeNodeDiscarded: (node) => {
-        if (node instanceof Element) {
-          if (node.getAttribute("data-slot") === "markdown-copy-button") return false
-          if (node.getAttribute("data-component") === "markdown-code") return false
-        }
-        return true
-      },
-    })
-
-    if (copySetupTimer) clearTimeout(copySetupTimer)
-    copySetupTimer = setTimeout(() => {
-      if (copyCleanup) copyCleanup()
-      copyCleanup = setupCodeCopy(container, {
-        copy: i18n.t("ui.message.copy"),
-        copied: i18n.t("ui.message.copied"),
-      })
-    }, 150)
+  createEffect(() => {
+    const container = root()
+    if (!container || isServer) return
+    if (copyCleanup) copyCleanup()
+    copyCleanup = setupCopy(container)
   })
 
   onCleanup(() => {
-    if (copySetupTimer) clearTimeout(copySetupTimer)
     if (copyCleanup) copyCleanup()
   })
 
@@ -261,4 +221,32 @@ export function Markdown(
       {...others}
     />
   )
+}
+
+function setupCopy(root: HTMLElement) {
+  const timeouts = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>()
+
+  const handleClick = async (event: MouseEvent) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const button = target.closest('[data-slot="markdown-copy-button"]')
+    if (!(button instanceof HTMLButtonElement)) return
+    const code = button.closest('[data-component="markdown-code"]')?.querySelector("code")
+    const content = code?.textContent ?? ""
+    if (!content) return
+    const clipboard = navigator?.clipboard
+    if (!clipboard) return
+    await clipboard.writeText(content)
+    button.setAttribute("data-copied", "true")
+    const existing = timeouts.get(button)
+    if (existing) clearTimeout(existing)
+    const timeout = setTimeout(() => button.removeAttribute("data-copied"), 2000)
+    timeouts.set(button, timeout)
+  }
+
+  root.addEventListener("click", handleClick)
+  return () => {
+    root.removeEventListener("click", handleClick)
+    for (const timeout of timeouts.values()) clearTimeout(timeout)
+  }
 }

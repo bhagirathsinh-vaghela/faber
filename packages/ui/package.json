@@ -61,6 +61,7 @@
     "shiki": "catalog:",
     "solid-js": "catalog:",
     "solid-list": "catalog:",
+    "streaming-markdown": "0.2.15",
     "strip-ansi": "7.1.2",
     "virtua": "catalog:"
   }
