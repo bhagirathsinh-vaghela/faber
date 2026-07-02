@@ -16,3 +16,67 @@
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Working indicator in the dock chip row: the spinner animation sits ON TOP of a
+   soft, diffuse agent-tinted glow that pulses behind it. Inline marker sized like
+   the spinner it wraps; the glow overflows it visibly. --dock-glow-tint = agent color. */
+.dock-working-indicator {
+  position: relative;
+  flex-shrink: 0;
+  width: 23px;
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The spinner sits on top, with a subtle tinted drop-shadow so it pops against
+   the glow. */
+.dock-working-indicator .dock-working-spinner {
+  position: relative;
+  z-index: 1;
+  width: 23px;
+  height: 23px;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--dock-glow-tint, var(--icon-interactive-base)) 60%, transparent));
+}
+
+/* Soft DIFFUSE glow behind the spinner — no disc, no rim, no box-shadow: a radial
+   gradient fading from a faint center straight to transparent, plus a blur, so
+   there is no visible edge. Only opacity animates (smooth; also dodges the
+   Lightning CSS bug that empties @keyframes whose declarations depend on custom
+   properties). */
+.dock-working-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(7px);
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--dock-glow-tint, var(--icon-interactive-base)) 55%, transparent) 0%,
+    color-mix(in srgb, var(--dock-glow-tint, var(--icon-interactive-base)) 24%, transparent) 34%,
+    transparent 66%
+  );
+  animation: dock-glow-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes dock-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-working-glow {
+    animation: none;
+    opacity: 0.8;
+  }
+}
