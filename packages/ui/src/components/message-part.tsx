@@ -954,7 +954,7 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} />
+              <Markdown text={output()} complete />
             </div>
           )}
         </Show>
@@ -981,7 +981,7 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} />
+              <Markdown text={output()} complete />
             </div>
           )}
         </Show>
@@ -1011,7 +1011,7 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} />
+              <Markdown text={output()} complete />
             </div>
           )}
         </Show>
@@ -1043,7 +1043,7 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} />
+              <Markdown text={output()} complete />
             </div>
           )}
         </Show>
@@ -1200,7 +1200,7 @@ ToolRegistry.register({
               <Show when={props.output && stripTaskOutput(props.output)}>
                 {(body) => (
                   <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
-                    <Markdown text={body()} />
+                    <Markdown text={body()} complete />
                   </div>
                 )}
               </Show>
@@ -1249,6 +1249,7 @@ ToolRegistry.register({
         <div data-component="tool-output" data-scrollable>
           <Markdown
             text={`\`\`\`command\n$ ${props.input.command ?? props.metadata.command ?? ""}${props.output || props.metadata.output ? "\n\n" + stripAnsi(props.output || props.metadata.output) : ""}\n\`\`\``}
+            complete
           />
         </div>
       </BasicTool>

@@ -156,15 +156,17 @@ export function Markdown(
     cacheKey?: string
     class?: string
     classList?: Record<string, boolean>
+    complete?: boolean
   },
 ) {
-  const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList"])
+  const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList", "complete"])
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
 
   let parser: ReturnType<typeof smd.parser> | undefined
   let fed = ""
   let key: string | undefined
+  let ended = false
   let copyCleanup: (() => void) | undefined
 
   function reset(container: HTMLElement) {
@@ -176,6 +178,7 @@ export function Markdown(
       }),
     )
     fed = ""
+    ended = false
   }
 
   createEffect(() => {
@@ -183,11 +186,11 @@ export function Markdown(
     const text = local.text
     if (!container || isServer) return
 
-    // A different message (cacheKey) or a non-append edit means the old tree is
-    // stale — start over. Otherwise feed only the newly appended suffix so the
-    // already-rendered DOM is never touched (this is what keeps code blocks
-    // from fragmenting mid-stream).
-    if (!parser || key !== local.cacheKey || !text.startsWith(fed)) {
+    // A different message (cacheKey), a non-append edit, or a write after the
+    // stream was ended means the old tree is stale — start over. Otherwise feed
+    // only the newly appended suffix so the already-rendered DOM is never
+    // touched (this is what keeps code blocks from fragmenting mid-stream).
+    if (!parser || key !== local.cacheKey || !text.startsWith(fed) || ended) {
       key = local.cacheKey
       reset(container)
     }
@@ -196,6 +199,15 @@ export function Markdown(
     if (chunk.length > 0 && parser) {
       smd.parser_write(parser, chunk)
       fed = text
+    }
+
+    // streaming-markdown buffers the trailing token until end-of-stream. For
+    // static (non-streaming) text the write above never gets a follow-up, so
+    // the last character stays buffered and unrendered. `complete` signals the
+    // text is final: flush the buffer so the whole string renders.
+    if (local.complete && parser && !ended) {
+      smd.parser_end(parser)
+      ended = true
     }
   })
 
