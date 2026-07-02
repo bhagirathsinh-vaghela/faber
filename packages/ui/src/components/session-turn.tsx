@@ -430,6 +430,12 @@ export function SessionTurn(
 
   const [rootRef, setRootRef] = createSignal<HTMLDivElement | undefined>()
   const [stickyRef, setStickyRef] = createSignal<HTMLDivElement | undefined>()
+  // "stuck" = the sticky user message is pinned to the top because the transcript
+  // has been scrolled past it. While stuck we collapse it to a one-line bar (see
+  // session-turn.css); a chevron re-expands it as an absolute overlay that does
+  // not shift the surrounding layout or scroll position.
+  const [stuck, setStuck] = createSignal(false)
+  const [stuckExpanded, setStuckExpanded] = createSignal(false)
 
   const updateStickyHeight = (height: number) => {
     const root = rootRef()
@@ -479,6 +485,79 @@ export function SessionTurn(
       return
     }
     updateStickyHeight(sticky.getBoundingClientRect().height)
+  })
+
+  // Detect the "stuck" state with the canonical sticky-observer technique
+  // (tobyzerner/sticky-observer, jakeisonline): observe the sticky element
+  // itself with threshold [1] and a negative rootMargin equal to its sticky
+  // offset. When it pins, IntersectionObserver reports it as no longer fully
+  // intersecting -> stuck. Non-sticky sides get 100% so their edges never trip
+  // the threshold. Observing the element directly (not a separate sentinel) is
+  // what makes this fire reliably in BOTH scroll directions.
+  // Nearest scrollable ancestor — the sticky element sticks relative to THIS,
+  // not the viewport, so the IntersectionObserver must use it as root or the
+  // rootMargin offset won't line up with where the element actually pins.
+  const scrollRoot = (el: HTMLElement): Element | null => {
+    let node = el.parentElement
+    while (node) {
+      const oy = getComputedStyle(node).overflowY
+      if ((oy === "auto" || oy === "scroll") && node.scrollHeight > node.clientHeight) return node
+      node = node.parentElement
+    }
+    return null
+  }
+
+  createEffect(() => {
+    const el = stickyRef()
+    if (!el) return
+
+    const titleHeight = () => {
+      const raw = getComputedStyle(el).getPropertyValue("--session-title-height").trim()
+      return raw.endsWith("px") ? parseFloat(raw) || 0 : 0
+    }
+
+    const observe = () => {
+      // Top sticks at titleHeight; +1px absorbs sub-pixel rounding. Other sides
+      // use 100% so only the top edge crossing flips stuck. root is the scroll
+      // container so the offset is measured where the element actually pins.
+      const observer = new IntersectionObserver(
+        (entries) => setStuck(!entries[entries.length - 1].isIntersecting),
+        { threshold: [1], rootMargin: `-${titleHeight() + 1}px 100% 100% 100%`, root: scrollRoot(el) },
+      )
+      observer.observe(el)
+      return observer
+    }
+
+    let observer = observe()
+    // Rebuild when the title bar height changes so the top offset stays correct.
+    const resize = new ResizeObserver(() => {
+      observer.disconnect()
+      observer = observe()
+    })
+    resize.observe(el)
+
+    onCleanup(() => {
+      observer.disconnect()
+      resize.disconnect()
+    })
+  })
+
+  // Collapsing the pinned bar is a scroll-driven artifact; reset the manual
+  // overlay-expand whenever it unsticks so it never lingers open in flow.
+  createEffect(() => {
+    if (!stuck()) setStuckExpanded(false)
+  })
+
+  // The expanded overlay is a transient peek: close it the moment the transcript
+  // scrolls, so it can never linger open (and always re-collapses when the bar is
+  // scrolled past again). Scroll events don't bubble but do fire in the capture
+  // phase, so a document-level capturing listener catches whichever ancestor
+  // scrolls without coupling this reusable component to the app's scroller class.
+  createEffect(() => {
+    if (!stuckExpanded()) return
+    const close = () => setStuckExpanded(false)
+    document.addEventListener("scroll", close, { capture: true, passive: true })
+    onCleanup(() => document.removeEventListener("scroll", close, { capture: true }))
   })
 
   const diffInit = 20
@@ -596,10 +675,40 @@ export function SessionTurn(
                         <Message message={msg()} parts={attachmentParts()} />
                       </div>
                     </Show>
-                    <div data-slot="session-turn-sticky" ref={setStickyRef}>
+                    <div
+                      data-slot="session-turn-sticky"
+                      data-stuck={stuck() ? "true" : undefined}
+                      data-stuck-expanded={stuck() && stuckExpanded() ? "true" : undefined}
+                      ref={setStickyRef}
+                    >
                       {/* User Message */}
-                      <div data-slot="session-turn-message-content" aria-live="off">
+                      <div
+                        data-slot="session-turn-message-content"
+                        aria-live="off"
+                        onClick={(event) => {
+                          // While pinned, the whole one-liner toggles the overlay.
+                          // Ignore clicks on interactive children (revert/copy/etc)
+                          // and when the user is selecting text.
+                          if (!stuck()) return
+                          if ((event.target as HTMLElement).closest("button,a,[role='button']")) return
+                          if (window.getSelection()?.toString()) return
+                          setStuckExpanded((v) => !v)
+                        }}
+                      >
                         <Message message={msg()} parts={stickyParts()} boxed />
+                        {/* Collapse/expand affordance shown only while pinned. */}
+                        <button
+                          data-slot="session-turn-sticky-expand"
+                          type="button"
+                          aria-label={stuckExpanded() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")}
+                          aria-expanded={stuckExpanded()}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setStuckExpanded((v) => !v)
+                          }}
+                        >
+                          <Icon name="chevron-grabber-vertical" size="small" />
+                        </button>
                       </div>
 
                       {/* Trigger (sticky) */}

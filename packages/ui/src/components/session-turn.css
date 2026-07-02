@@ -88,6 +88,191 @@
     }
   }
 
+  [data-slot="session-turn-message-content"] {
+    position: relative;
+  }
+
+  /* Collapse/expand affordance: hidden by default, revealed only while the block
+     is pinned (stuck). Sits on the right edge of the collapsed bar. */
+  [data-slot="session-turn-sticky-expand"] {
+    display: none;
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 2;
+    align-items: center;
+    justify-content: center;
+    height: 22px;
+    width: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-weak);
+
+    &:hover {
+      background: var(--surface-raised-base);
+      color: var(--text-base);
+    }
+  }
+
+  /* --- Pinned (stuck) state: collapse the message to a fixed one-line bar,
+     regardless of what it contains (long prompt, task result, image-only, etc).
+     The clamp is enforced at the box level so every message type is uniform. --- */
+  [data-slot="session-turn-sticky"][data-stuck="true"] {
+    /* The whole collapsed one-liner is the click target for expansion. */
+    [data-slot="session-turn-message-content"] {
+      cursor: pointer;
+    }
+
+    [data-slot="session-turn-sticky-expand"] {
+      display: inline-flex;
+    }
+
+    /* The message box becomes a fixed single-line pill: no header, tight padding,
+       everything past the first line clipped. MessageBox sets padding/margin/
+       background inline, so these need !important. */
+    [data-component="message-box"] {
+      margin-bottom: 0 !important;
+      padding-top: 0.375rem !important;
+      padding-bottom: 0.375rem !important;
+      /* line-height (1.5em) + top/bottom padding (0.375rem each). */
+      max-height: calc(1.5em + 0.75rem) !important;
+      overflow: hidden !important;
+    }
+
+    /* MessageBox sets the header display inline, so hiding it needs !important. */
+    [data-slot="message-box-header"] {
+      display: none !important;
+    }
+
+    /* Attachment thumbnails shrink to a single inline row so an image-only
+       prompt (no text) still shows something on the one-liner. The box-level
+       max-height clip keeps it to exactly one line; they return to full size on
+       expand. */
+    [data-slot="user-message-attachments"] {
+      display: flex !important;
+      gap: 4px;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    [data-slot="user-message-attachment"] {
+      height: 1.25em !important;
+      width: auto !important;
+      flex-shrink: 0;
+    }
+
+    [data-slot="user-message-attachment-image"] {
+      height: 1.25em !important;
+      width: auto !important;
+      object-fit: cover;
+    }
+
+    /* Lay the message content out as a single horizontal line so an image chip
+       and text sit side by side, clipped by the box max-height. */
+    [data-component="user-message"] {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+      padding-right: 28px;
+    }
+
+    /* Text clamps to a single line. Covers user prompts and task-result bodies. */
+    [data-slot="user-message-text"] {
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.5;
+      min-width: 0;
+      padding-right: 0;
+    }
+  }
+
+  /* --- Pinned + expanded: drop the full message as an absolute overlay so it
+     covers the content below without pushing layout or moving the scroll. --- */
+  [data-slot="session-turn-sticky"][data-stuck-expanded="true"] {
+    /* Sibling sticky blocks are z-index:20 and each is its own stacking context,
+       so the inner overlay's z-index alone can't rise above the NEXT turn's bar.
+       Raise this whole block's stacking context while expanded so its overlay
+       paints above later sticky headers. */
+    z-index: 40;
+
+    /* The collapsed one-liner (message-content) STAYS in flow at its clamped
+       height, so the block never resizes and nothing below shifts. Only the inner
+       message-box floats out as an absolute panel overlaying the content below. */
+    [data-slot="session-turn-message-content"] {
+      position: relative;
+      /* Hold the collapsed one-liner's height in flow while the box floats out,
+         so the block keeps its size (box line-height 1.5em + 0.375rem*2 pad). */
+      height: calc(1.5em + 0.75rem);
+    }
+
+    [data-component="message-box"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      z-index: 30;
+    }
+
+    /* Undo the collapse clamp so the full message shows. These override the
+       [data-stuck="true"] rules above (which also match), so each clamp that was
+       set with !important must be un-set with !important here. The box grows to
+       fit its content but caps at the space below the pinned bar and scrolls
+       internally when the message is longer than that. --session-title-height is
+       the sticky title bar; 96px leaves breathing room above the dock. */
+    [data-component="message-box"] {
+      margin-bottom: 0 !important;
+      padding-top: 0.5rem !important;
+      padding-bottom: 0.5rem !important;
+      max-height: calc(100vh - var(--session-title-height, 0px) - 96px) !important;
+      overflow-y: auto !important;
+      overscroll-behavior: contain;
+      /* Opaque + shadow so it reads as a panel floating over the transcript. */
+      background: var(--background-stronger) !important;
+      box-shadow: 0 8px 24px color-mix(in srgb, var(--color-shadow, #000) 35%, transparent);
+    }
+
+    [data-slot="message-box-header"] {
+      display: flex !important;
+    }
+
+    /* Back to the natural stacked layout (attachments above text). */
+    [data-component="user-message"] {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-start;
+      gap: 0;
+      overflow: visible;
+      padding-right: 0;
+    }
+
+    [data-slot="user-message-text"] {
+      display: block;
+      -webkit-line-clamp: none;
+      overflow: visible;
+      min-width: 0;
+      padding-right: 28px;
+    }
+
+    /* Restore full-size attachment thumbnails. */
+    [data-slot="user-message-attachments"] {
+      display: block !important;
+      overflow: visible;
+    }
+
+    [data-slot="user-message-attachment"],
+    [data-slot="user-message-attachment-image"] {
+      height: auto !important;
+      width: auto !important;
+    }
+  }
+
   [data-slot="session-turn-message-header"] {
     display: flex;
     align-items: center;
