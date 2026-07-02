@@ -15,6 +15,7 @@ import { clone } from "remeda"
 import { SessionPrompt } from "./prompt"
 import { computeStepCost } from "./processor"
 import { Config } from "@/config/config"
+import { Instance } from "@/project/instance"
 
 export const CACHE_TTL = 5 * 60 * 1000
 const DEFAULT_BEFORE_EXPIRY = 10
@@ -58,7 +59,7 @@ export namespace SessionPing {
     ),
   }
 
-  const active = new Map<string, { abort: AbortController; id: number }>()
+  const active = new Map<string, { abort: AbortController; id: number; directory: string }>()
   // Consecutive misses per session (in-memory: a process restart re-arms fresh,
   // which is itself a clean retry, consistent with "anything new resets").
   const misses = new Map<string, number>()
@@ -70,15 +71,26 @@ export namespace SessionPing {
   }
 
   // All three active mutations funnel through arm/disarm so the event fires
-  // exactly when membership changes.
-  function arm(sessionID: string, entry: { abort: AbortController; id: number }) {
+  // exactly when membership changes. The armed event MUST be stamped with the
+  // session's own directory: the client routes it into a per-directory store
+  // keyed by sessionID, and the ambient Instance.directory is unreliable here
+  // (arm runs after an await, run's tail disarm runs fully detached, and a
+  // route-driven stop only has the right context if the caller sent it). We
+  // captured the directory at arm time, so re-provide it around the publish.
+  function armed(sessionID: string, directory: string, value: boolean) {
+    void Instance.provide({ directory, fn: () => Bus.publish(Event.Armed, { sessionID, armed: value }) })
+  }
+
+  function arm(sessionID: string, entry: { abort: AbortController; id: number; directory: string }) {
     active.set(sessionID, entry)
-    Bus.publish(Event.Armed, { sessionID, armed: true })
+    armed(sessionID, entry.directory, true)
   }
 
   function disarm(sessionID: string) {
-    if (!active.delete(sessionID)) return
-    Bus.publish(Event.Armed, { sessionID, armed: false })
+    const entry = active.get(sessionID)
+    if (!entry) return
+    active.delete(sessionID)
+    armed(sessionID, entry.directory, false)
   }
 
   export function start(sessionID: string) {
@@ -87,6 +99,11 @@ export namespace SessionPing {
     // came back" reset, so it must run before the idempotency check below.
     misses.delete(sessionID)
     if (active.has(sessionID)) return
+    // Capture the session's directory here, on the synchronous call path where
+    // the instance context is still live (the route/prompt caller ran under it).
+    // It is stored in the active entry so arm/disarm can stamp the armed event
+    // with it later, when the ambient context is gone.
+    const directory = Instance.directory
     // The daemon is opt-in. Read config off the synchronous call path so the two
     // sync callers (prompt.ts, session.ts) stay unchanged. When disabled, no loop
     // is armed: organic turns still re-anchor the cache TTL and the statusline
@@ -98,7 +115,7 @@ export namespace SessionPing {
       if (active.has(sessionID)) return
       const abort = new AbortController()
       const id = ++loopId
-      arm(sessionID, { abort, id })
+      arm(sessionID, { abort, id, directory })
       run(sessionID, abort.signal, id)
     })
   }
