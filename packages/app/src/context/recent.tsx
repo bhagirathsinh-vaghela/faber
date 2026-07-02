@@ -4,7 +4,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import type { Session } from "@opencode-ai/sdk/v2/client"
 import { persisted } from "@/utils/persist"
 import { useGlobalSync } from "./global-sync"
-import { cacheCountdown, beforeExpiryMs } from "@/utils/cache-countdown"
+import { cacheCountdownFrom } from "@/utils/cache-countdown"
 import { createSignal, onCleanup } from "solid-js"
 
 // Sessions the user has touched in THIS web UI. Persisted (survives reload and
@@ -71,18 +71,20 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
       )
     }
 
-    // Read live signals for a session WITHOUT triggering a bootstrap — a busy /
-    // armed / unseen session is one this process already runs, so its directory
-    // child store already exists.
+    // Read live signals for a session WITHOUT bootstrapping its directory. The
+    // armed state + countdown come from the global armed hub (session-keyed,
+    // fetched once), so the overview stays correct after a reload. busy/unseen
+    // and the live timestamp come from the directory child store only when it is
+    // already open (bootstrap:false); for a not-open session they simply read
+    // false, which is fine — the overview cares about armed/countdown.
     function signals(directory: string, sessionID: string) {
       const [child] = globalSync.child(directory, { bootstrap: false })
       const status = child.session_status[sessionID]
       const session = child.session.find((s) => s.id === sessionID)
       const busy = status?.type === "busy" || status?.type === "retry"
       const unseen = session?.unseen === true
-      const armed = child.ping_armed[sessionID] === true
-      const expiry = beforeExpiryMs(child.config)
-      const countdown = armed && session ? cacheCountdown(session, expiry, now()) : null
+      const armed = globalSync.data.armed_hub[sessionID]
+      const countdown = armed ? cacheCountdownFrom(armed.lastRequestAt, armed.beforeExpiry, now()) : null
       // Prefer the live transcript timestamp when the session is loaded.
       const updated = session?.time?.updated ?? session?.time?.created
       return { busy, unseen, countdown, updated }

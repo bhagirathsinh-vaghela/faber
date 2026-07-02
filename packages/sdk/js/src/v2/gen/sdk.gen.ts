@@ -57,6 +57,8 @@ import type {
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
+  GlobalPingArmedErrors,
+  GlobalPingArmedResponses,
   GlobalWebReloadResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
@@ -320,6 +322,18 @@ export class Global extends HeyApiClient {
   public health<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalHealthResponses, unknown, ThrowOnError>({
       url: "/global/health",
+      ...options,
+    })
+  }
+
+  /**
+   * Get armed ping daemons
+   *
+   * Every armed cache-ping daemon across all directories on this instance, enriched with the countdown inputs so the home overview can render active sessions without bootstrapping each directory.
+   */
+  public pingArmed<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalPingArmedResponses, GlobalPingArmedErrors, ThrowOnError>({
+      url: "/global/ping/armed",
       ...options,
     })
   }

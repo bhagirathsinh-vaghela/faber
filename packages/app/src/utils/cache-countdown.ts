@@ -12,7 +12,12 @@ export function beforeExpiryMs(config: unknown): number {
 // mm:ss until the next ping, or null when no ping will fire (no cache anchor,
 // window expired, or ping disabled so the anchor never refreshes).
 export function cacheCountdown(session: Session | undefined, beforeExpiry: number, now: number): string | null {
-  const base = session?.cache?.lastRequestAt
+  return cacheCountdownFrom(session?.cache?.lastRequestAt, beforeExpiry, now)
+}
+
+// Same countdown from the raw cache anchor, for callers (the home overview) that
+// hold lastRequestAt directly instead of a full session object.
+export function cacheCountdownFrom(base: number | undefined, beforeExpiry: number, now: number): string | null {
   if (!base) return null
   if (base + CACHE_TTL <= now) return null
   const remaining = base + CACHE_TTL - beforeExpiry - now

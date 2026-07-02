@@ -70,6 +70,41 @@ export namespace SessionPing {
     return [...active.keys()]
   }
 
+  export const Armed = z.object({
+    sessionID: z.string(),
+    directory: z.string(),
+    // Cache anchor (ms) the countdown ticks from; absent until the first request
+    // dispatched this session. beforeExpiry (ms) is how early a ping fires.
+    lastRequestAt: z.number().optional(),
+    beforeExpiry: z.number(),
+  })
+  export type Armed = z.infer<typeof Armed>
+
+  // Every armed session across every directory on this instance, enriched with
+  // the countdown inputs (cache anchor + before-expiry). The home overview reads
+  // this ONCE, globally, and scans its recent session IDs against it — no
+  // per-directory bootstrap needed. Each session is read under its own directory
+  // context (captured at arm time).
+  export async function listArmed(): Promise<Armed[]> {
+    const entries = [...active.entries()]
+    return Promise.all(
+      entries.map(([sessionID, entry]) =>
+        Instance.provide({
+          directory: entry.directory,
+          fn: async () => {
+            const session = await Session.get(sessionID).catch(() => undefined)
+            return {
+              sessionID,
+              directory: entry.directory,
+              lastRequestAt: session?.cache?.lastRequestAt,
+              beforeExpiry: await beforeExpiry(),
+            }
+          },
+        }),
+      ),
+    )
+  }
+
   // All three active mutations funnel through arm/disarm so the event fires
   // exactly when membership changes. The armed event MUST be stamped with the
   // session's own directory: the client routes it into a per-directory store

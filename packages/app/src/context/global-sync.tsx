@@ -201,6 +201,10 @@ function createGlobalSync() {
     model_preference: ModelPreference
     stash: StashEntry[]
     reload: undefined | "pending" | "complete"
+    // Every armed cache-ping daemon on this instance, keyed by sessionID, with
+    // the countdown inputs. Fetched globally so the overview reads active state
+    // for its recent sessions without bootstrapping each directory.
+    armed_hub: Record<string, { lastRequestAt?: number; beforeExpiry: number }>
   }>({
     ready: false,
     path: { state: "", config: "", worktree: "", directory: "", home: "" },
@@ -211,6 +215,7 @@ function createGlobalSync() {
     model_preference: { user: [], recent: [], variant: {} },
     stash: [],
     reload: undefined,
+    armed_hub: {},
   })
 
   const queued = new Set<string>()
@@ -855,6 +860,8 @@ function createGlobalSync() {
       }
       case "session.ping.armed": {
         setStore("ping_armed", event.properties.sessionID, event.properties.armed)
+        // Membership changed — refresh the global armed hub the overview reads.
+        void refreshArmedHub()
         break
       }
       case "permission.autoaccept": {
@@ -1037,6 +1044,19 @@ function createGlobalSync() {
     clearTimeout(timer)
   })
 
+  // Pull the instance-wide armed set into a flat session-keyed map. The overview
+  // reads this for its recent sessions; refreshed on every arm/disarm event.
+  async function refreshArmedHub() {
+    const armed = await globalSDK.client.global
+      .pingArmed()
+      .then((x) => x.data)
+      .catch(() => undefined)
+    if (!armed) return
+    const hub: Record<string, { lastRequestAt?: number; beforeExpiry: number }> = {}
+    for (const entry of armed) hub[entry.sessionID] = { lastRequestAt: entry.lastRequestAt, beforeExpiry: entry.beforeExpiry }
+    setGlobalStore("armed_hub", reconcile(hub))
+  }
+
   async function bootstrap() {
     const health = await globalSDK.client.global
       .health()
@@ -1083,6 +1103,7 @@ function createGlobalSync() {
           setGlobalStore("provider_auth", x.data ?? {})
         }),
       ),
+      retry(() => refreshArmedHub()),
       retry(() =>
         globalSDK.client.preference.model.get().then((x) => {
           if (x.data) setGlobalStore("model_preference", x.data)

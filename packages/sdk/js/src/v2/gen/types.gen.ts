@@ -4,6 +4,14 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
+export type BadRequestError = {
+  data: unknown
+  errors: Array<{
+    [key: string]: unknown
+  }>
+  success: false
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -2230,14 +2238,6 @@ export type Config = {
   }
 }
 
-export type BadRequestError = {
-  data: unknown
-  errors: Array<{
-    [key: string]: unknown
-  }>
-  success: false
-}
-
 export type OAuth = {
   type: "oauth"
   refresh: string
@@ -2608,6 +2608,36 @@ export type GlobalHealthResponses = {
 }
 
 export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
+
+export type GlobalPingArmedData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/ping/armed"
+}
+
+export type GlobalPingArmedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalPingArmedError = GlobalPingArmedErrors[keyof GlobalPingArmedErrors]
+
+export type GlobalPingArmedResponses = {
+  /**
+   * Armed sessions
+   */
+  200: Array<{
+    sessionID: string
+    directory: string
+    lastRequestAt?: number
+    beforeExpiry: number
+  }>
+}
+
+export type GlobalPingArmedResponse = GlobalPingArmedResponses[keyof GlobalPingArmedResponses]
 
 export type GlobalEventData = {
   body?: never

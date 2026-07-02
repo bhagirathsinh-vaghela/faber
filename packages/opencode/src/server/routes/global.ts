@@ -10,6 +10,7 @@ import { Installation } from "@/installation"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
+import { SessionPing } from "../../session/ping"
 import { errors } from "../error"
 import { Web } from "../web"
 
@@ -40,6 +41,29 @@ export const GlobalRoutes = lazy(() =>
       }),
       async (c) => {
         return c.json({ healthy: true, version: Installation.VERSION, host })
+      },
+    )
+    .get(
+      "/ping/armed",
+      describeRoute({
+        summary: "Get armed ping daemons",
+        description:
+          "Every armed cache-ping daemon across all directories on this instance, enriched with the countdown inputs so the home overview can render active sessions without bootstrapping each directory.",
+        operationId: "global.pingArmed",
+        responses: {
+          200: {
+            description: "Armed sessions",
+            content: {
+              "application/json": {
+                schema: resolver(z.array(SessionPing.Armed)),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      async (c) => {
+        return c.json(await SessionPing.listArmed())
       },
     )
     .get(

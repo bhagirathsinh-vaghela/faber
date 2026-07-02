@@ -48,6 +48,63 @@
         ]
       }
     },
+    "/global/ping/armed": {
+      "get": {
+        "operationId": "global.pingArmed",
+        "summary": "Get armed ping daemons",
+        "description": "Every armed cache-ping daemon across all directories on this instance, enriched with the countdown inputs so the home overview can render active sessions without bootstrapping each directory.",
+        "responses": {
+          "200": {
+            "description": "Armed sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string"
+                      },
+                      "directory": {
+                        "type": "string"
+                      },
+                      "lastRequestAt": {
+                        "type": "number"
+                      },
+                      "beforeExpiry": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "sessionID",
+                      "directory",
+                      "beforeExpiry"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.pingArmed({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/event": {
       "get": {
         "operationId": "global.event",
@@ -7663,6 +7720,31 @@
   },
   "components": {
     "schemas": {
+      "BadRequestError": {
+        "type": "object",
+        "properties": {
+          "data": {},
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "success": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": [
+          "data",
+          "errors",
+          "success"
+        ]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -13440,31 +13522,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "BadRequestError": {
-        "type": "object",
-        "properties": {
-          "data": {},
-          "errors": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {}
-            }
-          },
-          "success": {
-            "type": "boolean",
-            "const": false
-          }
-        },
-        "required": [
-          "data",
-          "errors",
-          "success"
-        ]
       },
       "OAuth": {
         "type": "object",

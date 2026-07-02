@@ -80,8 +80,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           // a completed compaction boundary means older history exists behind it
           const bounded =
-            compacted &&
-            items.some((m) => m.info.role === "user" && m.parts.some((p) => p.type === "compaction"))
+            compacted && items.some((m) => m.info.role === "user" && m.parts.some((p) => p.type === "compaction"))
 
           batch(() => {
             input.setStore("message", input.sessionID, reconcile(next, { key: "id" }))

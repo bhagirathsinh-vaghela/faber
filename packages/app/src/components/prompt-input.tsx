@@ -1967,9 +1967,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Show when={working()}>
               {/* Working indicator: the spinner sits ON TOP of a soft, diffuse
                   agent-tinted glow that pulses behind it. */}
-              <span class="dock-working-indicator mr-2" style={{ "--dock-glow-tint": workingTint() ?? "var(--icon-interactive-base)" }}>
+              <span
+                class="dock-working-indicator mr-2"
+                style={{ "--dock-glow-tint": workingTint() ?? "var(--icon-interactive-base)" }}
+              >
                 <span data-slot="dock-working-glow" class="dock-working-glow" />
-                <Spinner class="dock-working-spinner" style={{ color: workingTint() ?? "var(--icon-interactive-base)" }} />
+                <Spinner
+                  class="dock-working-spinner"
+                  style={{ color: workingTint() ?? "var(--icon-interactive-base)" }}
+                />
               </span>
             </Show>
             <Switch>
