@@ -1,5 +1,62 @@
 @import "@opencode-ai/ui/styles/tailwind";
 
+/* Question panel renders the question text and option descriptions through the
+   shared Markdown component so they inherit the same strong/em/code/heading
+   theme tokens the chat uses (and any appearance customization the user sets).
+   The panel is compact, so collapse block margins and let the wrapper's own
+   font-size/weight/color (text-13/text-11 tiers) win over the markdown base —
+   markdown only supplies inline emphasis/code hues, not a full prose block. */
+.question-markdown[data-component="markdown"] {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  line-height: var(--line-height-large);
+
+  p {
+    margin-bottom: 0;
+  }
+
+  > * + * {
+    margin-top: 0.375rem;
+  }
+}
+
+/* Question line: rendered as a heading so the prompt stands out above the
+   options. Inherits the shared --markdown-heading-* tokens (size/weight/color)
+   so appearance customization flows through. Single class because the Markdown
+   component treats its `class` prop as one classList key. */
+.question-markdown-heading[data-component="markdown"] {
+  color: var(--markdown-heading);
+  font-size: var(--markdown-heading-1-size);
+  font-weight: var(--markdown-heading-1-weight);
+  line-height: var(--line-height-large);
+
+  p {
+    margin: 0;
+  }
+
+  > * + * {
+    margin-top: 0.375rem;
+  }
+}
+
+/* Label usage: single short line that must sit on the same baseline as the
+   option number / checkbox, so render the markdown root and its paragraph
+   inline instead of as a block. Self-contained (single class) because the
+   Markdown component treats its `class` prop as one classList key. */
+.question-markdown-inline[data-component="markdown"] {
+  display: inline;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  line-height: var(--line-height-large);
+
+  p {
+    display: inline;
+    margin: 0;
+  }
+}
+
 /* Safe-area insets for the installed PWA only, scoped to touch devices in
    portrait. In a normal browser tab Safari's own chrome handles the inset, so
    we gate on (display-mode: standalone) to avoid double-padding there. In
