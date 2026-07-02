@@ -31,7 +31,6 @@ import {
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { Message, Part } from "./message-part"
-import { Markdown } from "./markdown"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
@@ -100,6 +99,7 @@ function isAttachment(part: PartType | undefined) {
 
 function AssistantMessageItem(props: {
   message: AssistantMessage
+  responsePartId: string | undefined
   hideReasoning: boolean
   footer?: (message: AssistantMessage) => JSX.Element
 }) {
@@ -107,12 +107,15 @@ function AssistantMessageItem(props: {
   const emptyParts: PartType[] = []
   const msgParts = createMemo(() => data.store.part[props.message.id] ?? emptyParts)
 
-  // Every part renders inline in arrival order — text and tool blocks flow one
-  // after the next, numbered top-to-bottom. Nothing is promoted to a separate
-  // box, so no block teleports out of sequence.
+  // Parts render inline in arrival order. The turn's current last text part is
+  // pulled out and rendered as its own block below the steps box, so hide it
+  // here (by id) to avoid rendering it twice. When a newer step arrives this
+  // part is no longer the response, so it un-hides and takes its inline slot.
   const filteredParts = createMemo(() => {
-    if (!props.hideReasoning) return msgParts()
-    return msgParts().filter((part) => part?.type !== "reasoning")
+    let parts = msgParts()
+    if (props.hideReasoning) parts = parts.filter((part) => part?.type !== "reasoning")
+    if (props.responsePartId) parts = parts.filter((part) => part?.id !== props.responsePartId)
+    return parts
   })
 
   return <Message message={props.message} parts={filteredParts()} defaultOpen footer={props.footer} />
@@ -234,17 +237,23 @@ export function SessionTurn(
 
   const error = createMemo(() => assistantMessages().find((m) => m.error)?.error)
 
-  const lastTextPart = createMemo(() => {
+  // Promote only when the turn's VERY LAST visible block is an assistant text
+  // block (its answer). If it ended on a tool — interrupted or otherwise — the
+  // last block is not text, so nothing promotes and everything stays inline.
+  const lastBlock = createMemo(() => {
     const msgs = assistantMessages()
     for (let mi = msgs.length - 1; mi >= 0; mi--) {
       const msgParts = data.store.part[msgs[mi].id] ?? emptyParts
       for (let pi = msgParts.length - 1; pi >= 0; pi--) {
         const part = msgParts[pi]
-        if (part?.type === "text") return part as TextPart
+        if (part?.type === "text" || part?.type === "tool")
+          return part.type === "text" ? { part: part as TextPart, message: msgs[mi] } : undefined
       }
     }
     return undefined
   })
+  const lastTextPart = createMemo(() => lastBlock()?.part)
+  const responsePartId = createMemo(() => lastBlock()?.part.id)
 
   const hasSteps = createMemo(() => {
     for (const m of assistantMessages()) {
@@ -788,6 +797,7 @@ export function SessionTurn(
                           {(assistantMessage) => (
                             <AssistantMessageItem
                               message={assistantMessage}
+                              responsePartId={working() ? undefined : responsePartId()}
                               hideReasoning={!working()}
                               footer={!working() ? props.footer : undefined}
                             />
@@ -799,6 +809,18 @@ export function SessionTurn(
                           </Card>
                         </Show>
                       </div>
+                    </Show>
+                    {/* Once the turn is idle, promote its final block to its own
+                        box below the steps — but only when that block is assistant
+                        text (the answer). If the turn ended on a tool, lastBlock is
+                        undefined and nothing promotes. While streaming everything
+                        stays inline as a step, so nothing teleports mid-turn. */}
+                    <Show when={!working() && lastBlock()}>
+                      {(last) => (
+                        <div data-slot="session-turn-promoted" style={{ width: "100%" }}>
+                          <Part part={last().part} message={last().message} footer={props.footer} defaultOpen />
+                        </div>
+                      )}
                     </Show>
                     <Show when={!props.stepsExpanded && permissionParts().length > 0}>
                       <div data-slot="session-turn-permission-parts">
