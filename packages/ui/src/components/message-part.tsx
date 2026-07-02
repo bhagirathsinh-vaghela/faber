@@ -340,7 +340,7 @@ function TaskResultDisplay(props: { part: TextPart }) {
   const meta = () => props.part.backgroundTaskResult!
   const content = createMemo(() => stripTaskResult(props.part.text))
   return (
-    <div data-component="task-result">
+    <div data-component="task-result" data-scrollable>
       <div data-slot="task-result-meta" class="text-text-weak text-sm mb-2 flex flex-wrap gap-x-2">
         <span>{meta().agent ?? meta().type}</span>
         <span>·</span>
@@ -1212,7 +1212,7 @@ ToolRegistry.register({
               </div>
               <Show when={props.output && stripTaskOutput(props.output)}>
                 {(body) => (
-                  <div data-slot="task-output-body" data-component="tool-output">
+                  <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
                     <Markdown text={body()} />
                   </div>
                 )}

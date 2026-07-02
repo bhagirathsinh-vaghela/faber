@@ -261,6 +261,17 @@
   }
 }
 
+[data-component="task-result"][data-scrollable] {
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 [data-component="edit-trigger"],
 [data-component="write-trigger"] {
   display: flex;
