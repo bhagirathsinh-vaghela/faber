@@ -1,5 +1,6 @@
 import { createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { Icon } from "@opencode-ai/ui/icon"
 import { useSync } from "@/context/sync"
 import { useParams } from "@solidjs/router"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
@@ -69,8 +70,11 @@ export function Statusline() {
               }
               placement="top"
             >
-              <span style={{ color: "var(--color-text-warning, #DBA92E)" }}>
-                {"\u25f7 "}
+              <span
+                class="inline-flex items-center gap-1 [&_[data-component=icon]]:!text-current"
+                style={{ color: "var(--color-text-warning, #DBA92E)" }}
+              >
+                <Icon name="clock" class="size-4 [stroke-width:2.2]" />
                 <Show
                   when={!(pingPending() && !cacheCountdown())}
                   fallback={<span class="animate-pulse font-semibold">{"\u00b7\u2009\u00b7\u2009\u00b7"}</span>}

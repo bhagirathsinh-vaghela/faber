@@ -66,7 +66,7 @@ export function UsageLine(props: {
   // Context fill color follows the same 75% threshold as utilizationColor:
   // below 75% the start (green) token, at/above the end (red) token.
   const contextFill = () => (props.stats.percentage >= 75 ? "usage-context-end" : "usage-context-start")
-  const icon = (name: Parameters<typeof Icon>[0]["name"]) => <Icon name={name} class="size-3.5" />
+  const icon = (name: Parameters<typeof Icon>[0]["name"]) => <Icon name={name} class="size-4" />
 
   // Render-only show/hide: each chip is gated by the active surface's
   // visible set. Group markers (turn / Σ) are NOT in the registry —

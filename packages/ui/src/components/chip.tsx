@@ -77,7 +77,7 @@ export function Chip(props: ChipProps) {
     <span class="inline-flex items-center gap-1" style={{ color: tone() }}>
       <Show when={local.icon}>
         <span
-          class="inline-flex shrink-0 items-center [&_[data-component=icon]]:!text-current"
+          class="inline-flex shrink-0 items-center [&_[data-component=icon]]:!text-current [&_svg]:[stroke-width:2.2]"
           data-slot="chip-icon"
           style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.85))" }}
         >

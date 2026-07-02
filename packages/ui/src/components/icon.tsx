@@ -100,6 +100,9 @@ const icons = {
   "usage-per-turn": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></g>`,
   // Home / hub (Lucide `house`). Scaled ×0.8333 into the 20px grid.
   house: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g>`,
+  // Clock (cache-expiry countdown; Lucide `clock`). Scaled ×0.8333. No
+  // stroke-width attr so the chip's CSS stroke-width wins (matches sibling icons).
+  clock: `<g transform="scale(0.8333)" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></g>`,
 }
 
 export interface IconProps extends ComponentProps<"svg"> {
