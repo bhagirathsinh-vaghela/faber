@@ -1,7 +1,7 @@
 :root {
-  --font-family-sans: "Inter", "Inter Fallback";
-  --font-family-sans--font-feature-settings: "ss03" 1;
-  --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback";
+  --font-family-sans: "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
+  --font-family-sans--font-feature-settings: "ss01" 1;
+  --font-family-mono: "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
   --font-family-mono--font-feature-settings: "ss01" 1;
 
   --font-size-small: 13px;
@@ -10,6 +10,16 @@
   --font-size-x-large: 20px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
+  --font-weight-bold: 700;
+
+  /* Markdown heading scale + weight (themable) */
+  --markdown-heading-weight: var(--font-weight-bold);
+  --markdown-heading-1-size: 17px;
+  --markdown-heading-2-size: 16px;
+  --markdown-heading-3-size: 15px;
+  --markdown-heading-4-size: 14px;
+  --markdown-heading-5-size: 14px;
+  --markdown-heading-6-size: 14px;
   --line-height-large: 150%;
   --line-height-x-large: 180%;
   --line-height-2x-large: 200%;

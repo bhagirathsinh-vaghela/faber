@@ -16,26 +16,50 @@
     margin-bottom: 0;
   }
 
-  /* Headings: Same size, distinguished by color and spacing */
+  /* Headings: colored, bold, sized by level (all themable) */
   h1,
   h2,
   h3,
   h4,
   h5,
   h6 {
-    font-size: var(--font-size-base);
-    color: var(--text-strong);
-    font-weight: var(--font-weight-medium);
+    color: var(--markdown-heading);
+    font-weight: var(--markdown-heading-weight);
     margin-top: 2rem;
     margin-bottom: 0.75rem;
     line-height: var(--line-height-large);
   }
 
-  /* Emphasis & Strong: Neutral strong color */
+  h1 {
+    font-size: var(--markdown-heading-1-size);
+  }
+  h2 {
+    font-size: var(--markdown-heading-2-size);
+  }
+  h3 {
+    font-size: var(--markdown-heading-3-size);
+  }
+  h4 {
+    font-size: var(--markdown-heading-4-size);
+  }
+  h5 {
+    font-size: var(--markdown-heading-5-size);
+  }
+  h6 {
+    font-size: var(--markdown-heading-6-size);
+  }
+
+  /* Strong: TUI-style colored bold (brightness = the punch) */
   strong,
   b {
-    color: var(--text-strong);
-    font-weight: var(--font-weight-medium);
+    color: var(--markdown-strong);
+    font-weight: var(--font-weight-bold);
+  }
+
+  /* Emphasis: TUI-style colored italic */
+  em,
+  i {
+    color: var(--markdown-emph);
   }
 
   /* Paragraphs */
@@ -45,14 +69,10 @@
 
   /* Links */
   a {
-    color: var(--text-interactive-base);
-    text-decoration: none;
-    font-weight: inherit;
-  }
-
-  a:hover {
+    color: var(--markdown-link);
     text-decoration: underline;
     text-underline-offset: 2px;
+    font-weight: inherit;
   }
 
   /* Lists */
@@ -86,8 +106,12 @@
     margin-top: 0.5rem;
   }
 
-  li::marker {
-    color: var(--text-weak);
+  ul li::marker {
+    color: var(--markdown-list-item);
+  }
+
+  ol li::marker {
+    color: var(--markdown-list-enumeration);
   }
 
   /* Nested lists spacing */
@@ -164,7 +188,7 @@
   :not(pre) > code {
     font-family: var(--font-family-mono);
     font-feature-settings: var(--font-family-mono--font-feature-settings);
-    color: var(--syntax-string);
+    color: var(--markdown-code);
     font-weight: var(--font-weight-medium);
     /* font-size: 13px; */
 
@@ -175,27 +199,37 @@
     /* box-shadow: 0 0 0 0.5px var(--border-weak-base); */
   }
 
-  /* Tables */
+  /* Tables: GitHub GFM table styling (github-markdown-css) */
   table {
-    width: 100%;
+    border-spacing: 0;
     border-collapse: collapse;
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow: auto;
     margin: 1.5rem 0;
     font-size: var(--font-size-base);
   }
 
-  th,
-  td {
-    /* Minimal borders for structure, matching TUI "lines" roughly but keeping it web-clean */
-    border-bottom: 1px solid var(--border-weaker-base);
-    padding: 0.75rem 0.5rem;
+  table th,
+  table td {
+    padding: 6px 13px;
+    border: 1px solid var(--border-base);
     text-align: left;
-    vertical-align: top;
   }
 
-  th {
-    color: var(--text-strong);
-    font-weight: var(--font-weight-medium);
-    border-bottom: 1px solid var(--border-weak-base);
+  table th {
+    color: var(--markdown-heading);
+    font-weight: var(--font-weight-bold);
+  }
+
+  table tr {
+    background-color: var(--background-base);
+    border-top: 1px solid var(--border-weak-base);
+  }
+
+  table tr:nth-child(2n) {
+    background-color: var(--background-weak);
   }
 
   /* Images */
