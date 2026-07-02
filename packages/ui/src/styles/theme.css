@@ -8,13 +8,20 @@
     monospace;
   --font-family-mono--font-feature-settings: "ss01" 1;
 
+  --font-size-x-small: 12px;
   --font-size-small: 13px;
   --font-size-base: 14px;
   --font-size-large: 16px;
   --font-size-x-large: 20px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
+  --font-weight-semibold: 600;
   --font-weight-bold: 700;
+
+  /* Dock (prompt footer) type: both lines read these so the whole dock's size
+     and weight can be rethemed from one place. */
+  --dock-font-size: var(--font-size-small);
+  --dock-font-weight: var(--font-weight-semibold);
 
   /* Markdown heading scale + weight (themable) */
   --markdown-heading-weight: var(--font-weight-bold);

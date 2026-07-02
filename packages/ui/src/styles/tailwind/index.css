@@ -40,6 +40,7 @@
   --font-mono: var(--font-family-mono);
   --font-mono--font-feature-settings: var(--font-family-mono--font-feature-settings);
 
+  --text-xs: var(--font-size-x-small);
   --text-sm: var(--font-size-small);
   --text-base: var(--font-size-base);
   --text-lg: var(--font-size-large);
@@ -47,6 +48,7 @@
 
   --font-weight-regular: var(--font-weight-regular);
   --font-weight-medium: var(--font-weight-medium);
+  --font-weight-semibold: var(--font-weight-semibold);
   --font-weight-bold: var(--font-weight-bold);
 
   --leading-lg: var(--line-height-large);

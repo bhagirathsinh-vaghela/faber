@@ -1923,7 +1923,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
-              "w-full p-3 pr-12 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              "w-full p-3 pr-12 text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
               "[&_[data-type=file]]:text-syntax-property": true,
               "[&_[data-type=agent]]:text-syntax-type": true,
               "font-mono!": store.mode === "shell",
@@ -1942,7 +1942,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </Show>
         </div>
         <div class="relative px-3 py-1.5 flex items-center justify-between gap-2">
-          <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1">
+          <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!">
             <Show when={working()}>
               {/* Working indicator: the spinner sits ON TOP of a soft, diffuse
                   agent-tinted glow that pulses behind it. */}

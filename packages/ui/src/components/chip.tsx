@@ -44,8 +44,8 @@ export type ChipProps = {
 
 const halo = "0 1px 3px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.7)"
 const seg =
-  "inline-flex items-center gap-1 px-1.5 py-0.5 text-[12px] leading-tight " +
-  "[font-variant-numeric:tabular-nums] whitespace-nowrap"
+  "inline-flex items-center gap-1 px-1.5 py-0.5 text-[length:var(--dock-font-size)] leading-tight " +
+  "[font-weight:var(--dock-font-weight)] [font-variant-numeric:tabular-nums] whitespace-nowrap"
 
 // A single metric segment. Lives inside a ChipGroup. Carries its own accent
 // color (icon + value) and optional gauge fill. No border/radius of its own —
@@ -85,7 +85,7 @@ export function Chip(props: ChipProps) {
         </span>
       </Show>
       <Show when={local.children !== undefined}>
-        <span class="font-extrabold" data-slot="chip-content" style={{ "text-shadow": halo }}>
+        <span data-slot="chip-content" style={{ "text-shadow": halo }}>
           {local.children}
         </span>
       </Show>

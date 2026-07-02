@@ -76,6 +76,7 @@
     white-space: pre-wrap;
     word-break: break-word;
     overflow: hidden;
+    font-weight: var(--font-weight-semibold);
     /* No inner box: the text sits bare inside the outer MessageBox (one block,
        one box). No background/border/radius here; padding only for the copy
        button's absolute position. */
