@@ -31,7 +31,6 @@ import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
 import { Dialog } from "./dialog"
-import { copyText } from "../util/clipboard"
 import { useI18n } from "../context/i18n"
 import { BasicTool } from "./basic-tool"
 import { GenericTool } from "./basic-tool"
@@ -46,7 +45,6 @@ import { findLast } from "@opencode-ai/util/array"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/path"
 import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
-import { IconButton } from "./icon-button"
 import { CopyButton } from "./copy-button"
 
 interface Diagnostic {
@@ -461,10 +459,11 @@ export function MessageBox(props: {
     <div
       data-component="message-box"
       data-role={props.message.role}
+      class="accent-box"
       style={{
-        border: `1px solid color-mix(in srgb, ${accent} 55%, transparent)`,
-        "border-radius": "8px",
-        background: `color-mix(in srgb, ${accent} 7%, var(--color-background-panel, transparent))`,
+        // Scheme (accent border, no fill) comes from .accent-box; this box only
+        // supplies its accent + its own spacing.
+        "--box-accent": accent,
         padding: "0.5rem 0.75rem",
         "margin-bottom": "0.75rem",
       }}
@@ -857,43 +856,19 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
-  const i18n = useI18n()
   const part = props.part as TextPart
   const displayText = () => relativizeProjectPaths((part.text ?? "").trim(), data.directory)
   const throttledText = createThrottledValue(displayText)
-  const [copied, setCopied] = createSignal(false)
 
-  const handleCopy = async () => {
-    const content = displayText()
-    if (!content) return
-    await copyText(content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
+  // Render an assistant text step in the same MessageBox as the turn's Response
+  // box (◈ ASSISTANT header, #N, copy button). A text block that is the current
+  // response and one that has demoted into the steps then look identical — only
+  // the position changes — so the block keeps its identity across the transition.
   return (
     <Show when={throttledText()}>
-      <div data-component="text-part">
-        <BlockNumber sessionID={props.message.sessionID} id={part.id} />
-        <div data-slot="text-part-body">
-          <Markdown text={throttledText()} cacheKey={part.id} />
-          <div data-slot="text-part-copy-wrapper">
-            <Tooltip
-              value={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")}
-              placement="top"
-              gutter={8}
-            >
-              <IconButton
-                icon={copied() ? "check" : "copy"}
-                variant="secondary"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={handleCopy}
-                aria-label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copy")}
-              />
-            </Tooltip>
-          </div>
-        </div>
-      </div>
+      <MessageBox message={props.message} numberKey={part.id} copy={displayText}>
+        <Markdown text={throttledText()} cacheKey={part.id} />
+      </MessageBox>
     </Show>
   )
 }
@@ -1176,10 +1151,9 @@ ToolRegistry.register({
           <Match when={true}>
             <div
               data-component="task-output"
+              class="accent-box"
               style={{
-                border: `1px solid color-mix(in srgb, ${TASK_ACCENT} 55%, transparent)`,
-                "border-radius": "8px",
-                background: `color-mix(in srgb, ${TASK_ACCENT} 7%, var(--color-background-panel, transparent))`,
+                "--box-accent": TASK_ACCENT,
                 padding: "0.5rem 0.75rem",
               }}
             >

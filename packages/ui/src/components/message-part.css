@@ -1,3 +1,31 @@
+/* The single accent-box scheme. Every transcript box (message, task, tool
+   cards) uses this: set ONE variable, --box-accent, to the box's main color and
+   the border + background are derived from it here. Change the formula once and
+   all boxes follow.
+
+   The fill is the accent mixed into the SOLID page background (opaque), never a
+   translucent color over `transparent`: a translucent partial fill re-composites
+   against the scrolling transcript every frame and flickers hard under GPU
+   compositing once many boxes stack. Tunable via --box-fill-strength and
+   --box-border-strength. */
+.accent-box {
+  --box-accent: var(--color-text-weak, #8b949e);
+  --box-border-strength: 55%;
+  /* Reproduce the original look (accent at 7% painted over the transcript
+     backdrop) but OPAQUELY: mix the accent into the SOLID backdrop color rather
+     than over `transparent`. The backdrop the box actually sits on is
+     --color-background-strong (the near-black panel), NOT background-base — so
+     mixing into strong gives the original dark/dim tint. A translucent partial
+     fill re-composites against the scrolling transcript every frame and flickers
+     under GPU compositing; mixing into the solid backdrop composites once. */
+  --box-fill-strength: 7%;
+  --box-backdrop: var(--color-background-strong, #010409);
+  --box-fill: color-mix(in srgb, var(--box-accent) var(--box-fill-strength), var(--box-backdrop));
+  border: 1px solid color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop));
+  border-radius: 8px;
+  background: var(--box-fill);
+}
+
 [data-component="assistant-message"] {
   content-visibility: auto;
   width: 100%;
@@ -127,38 +155,6 @@
 
   [data-component="tool-part-wrapper"] [data-slot="collapsible-trigger"]:hover [data-slot="box-copy"] {
     opacity: 1;
-  }
-}
-
-[data-component="text-part"] {
-  width: 100%;
-
-  [data-slot="text-part-body"] {
-    position: relative;
-    margin-top: 32px;
-  }
-
-  [data-slot="text-part-copy-wrapper"] {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    transition: opacity 0.15s ease;
-    z-index: 1;
-  }
-
-  @media (hover: hover) {
-    [data-slot="text-part-copy-wrapper"] {
-      opacity: 0;
-    }
-
-    [data-slot="text-part-body"]:hover [data-slot="text-part-copy-wrapper"] {
-      opacity: 1;
-    }
-  }
-
-  [data-component="markdown"] {
-    margin-top: 0;
-    font-size: var(--font-size-base);
   }
 }
 
@@ -472,7 +468,7 @@
 }
 
 [data-component="user-message"] [data-slot="user-message-text"],
-[data-component="text-part"],
+[data-component="message-box"],
 [data-component="reasoning-part"],
 [data-component="tool-error"],
 [data-component="tool-output"],
@@ -488,12 +484,23 @@
 [data-component="tool-part-wrapper"] {
   width: 100%;
 
-  /* One block, one box: a tool call is its own block, so give its box a
-     distinct muted-purple border + faint fill (theme-driven, tunable). Scoped
-     to the tool wrapper so other collapsibles keep the neutral shell. */
+  /* One block, one box: a tool call is its own block, so give its box the same
+     accent-box scheme as message/task boxes — a muted-purple accent drives both
+     the border and the faint opaque fill. Same formula as .accent-box, applied
+     here via border-color/background-color so the collapsible keeps its own
+     border-radius/behavior. Scoped to the tool wrapper so other collapsibles
+     keep the neutral shell. */
   & > [data-component="collapsible"] {
-    border-color: var(--box-tool-border);
-    background-color: var(--box-tool-bg);
+    /* Neutral grey, distinct from every message-box accent (user=cobalt,
+       assistant=green, task=amber, plan-agent=purple) — tools are secondary
+       "steps" content, so grey lets them recede. Solid grey (not an alpha
+       token) keeps the color-mix result opaque. */
+    --box-accent: var(--ink-dark-11, #b1b7b7);
+    --box-border-strength: 55%;
+    --box-fill-strength: 7%;
+    --box-backdrop: var(--color-background-strong, #010409);
+    border-color: color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop));
+    background-color: color-mix(in srgb, var(--box-accent) var(--box-fill-strength), var(--box-backdrop));
   }
 
   &[data-permission="true"],

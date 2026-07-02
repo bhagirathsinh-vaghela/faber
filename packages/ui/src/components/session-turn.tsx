@@ -107,14 +107,6 @@ function AssistantMessageItem(props: {
   const data = useData()
   const emptyParts: PartType[] = []
   const msgParts = createMemo(() => data.store.part[props.message.id] ?? emptyParts)
-  const lastTextPart = createMemo(() => {
-    const parts = msgParts()
-    for (let i = parts.length - 1; i >= 0; i--) {
-      const part = parts[i]
-      if (part?.type === "text") return part as TextPart
-    }
-    return undefined
-  })
 
   const filteredParts = createMemo(() => {
     let parts = msgParts()
@@ -125,9 +117,13 @@ function AssistantMessageItem(props: {
 
     if (!props.hideResponsePart) return parts
 
+    // The turn's response part renders in the Response box below, so hide it
+    // wherever it lives in the steps to avoid showing it twice. Match on id
+    // alone: the previous per-message "is this the message's last text part"
+    // guard made a text block flip back into the steps once a LATER text part
+    // took over as the response.
     const responsePartId = props.responsePartId
     if (!responsePartId) return parts
-    if (responsePartId !== lastTextPart()?.id) return parts
 
     return parts.filter((part) => part?.id !== responsePartId)
   })
@@ -436,6 +432,10 @@ export function SessionTurn(
   // not shift the surrounding layout or scroll position.
   const [stuck, setStuck] = createSignal(false)
   const [stuckExpanded, setStuckExpanded] = createSignal(false)
+  // Suppress the collapse while the turn is streaming: auto-scroll churns the
+  // layout, so the sticky observer flips stuck on/off and the bar flickers
+  // between one-line and full. Only collapse once the turn is idle.
+  const collapsed = createMemo(() => stuck() && !working())
 
   const updateStickyHeight = (height: number) => {
     const root = rootRef()
@@ -545,7 +545,7 @@ export function SessionTurn(
   // Collapsing the pinned bar is a scroll-driven artifact; reset the manual
   // overlay-expand whenever it unsticks so it never lingers open in flow.
   createEffect(() => {
-    if (!stuck()) setStuckExpanded(false)
+    if (!collapsed()) setStuckExpanded(false)
   })
 
   // The expanded overlay is a transient peek: close it the moment the transcript
@@ -677,8 +677,8 @@ export function SessionTurn(
                     </Show>
                     <div
                       data-slot="session-turn-sticky"
-                      data-stuck={stuck() ? "true" : undefined}
-                      data-stuck-expanded={stuck() && stuckExpanded() ? "true" : undefined}
+                      data-stuck={collapsed() ? "true" : undefined}
+                      data-stuck-expanded={collapsed() && stuckExpanded() ? "true" : undefined}
                       ref={setStickyRef}
                     >
                       {/* User Message */}
@@ -689,7 +689,7 @@ export function SessionTurn(
                           // While pinned, the whole one-liner toggles the overlay.
                           // Ignore clicks on interactive children (revert/copy/etc)
                           // and when the user is selecting text.
-                          if (!stuck()) return
+                          if (!collapsed()) return
                           if ((event.target as HTMLElement).closest("button,a,[role='button']")) return
                           if (window.getSelection()?.toString()) return
                           setStuckExpanded((v) => !v)
