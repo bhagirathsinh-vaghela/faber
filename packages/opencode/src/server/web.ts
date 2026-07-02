@@ -34,9 +34,14 @@ export namespace Web {
     const index = decoded.get("/index.html")
     if (!index) return null
     const asset = decoded.get(file === "/" ? "/index.html" : file) ?? index
+    // Vite content-hashes /assets/* filenames, so their bytes never change for a
+    // given URL — cache them forever. Everything else (index.html fallback) must
+    // revalidate so a rebuilt UI is picked up.
+    const hashed = asset !== index && file.startsWith("/assets/")
     return new Response(asset.body, {
       headers: {
         "Content-Type": asset.type,
+        "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
         "Content-Security-Policy":
           "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:",
       },
