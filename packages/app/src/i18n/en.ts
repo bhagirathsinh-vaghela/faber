@@ -88,6 +88,8 @@ export const dict = {
   "command.prompt.stash.list.description": "Browse stashed prompts and restore one",
   "command.prompt.skill": "Insert skill",
   "command.prompt.skill.description": "Browse skills and insert one into the prompt",
+  "command.prompt.focus": "Focus prompt",
+  "command.prompt.focus.description": "Move the cursor into the message input",
   "command.task.list": "Subtasks",
   "command.task.list.description": "Show running and completed subtasks",
   "command.task.pending": "Pending results",

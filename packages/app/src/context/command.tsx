@@ -29,16 +29,18 @@ function signature(key: string, ctrl: boolean, meta: boolean, shift: boolean, al
   return `${key}:${mask}`
 }
 
-// On macOS, Option+<letter> composes a glyph (Option+S → "ß"), so event.key no
-// longer equals the bound letter and the keybind can't match. event.code is the
-// physical key regardless of composition, so recover the letter/digit from it
-// whenever Alt is held.
+// On macOS, Option+<key> composes a glyph (Option+S → "ß", Option+. → "≥"), so
+// event.key no longer equals the bound key and the keybind can't match.
+// event.code is the physical key regardless of composition, so recover the key
+// from it whenever Alt is held. "." matches the `mod+.` literal the parser
+// stores (parseKeybind keeps punctuation verbatim, unlike normalizeKey).
 function eventKey(event: KeyboardEvent) {
   if (event.altKey) {
     const letter = event.code.match(/^Key([A-Z])$/)
     if (letter) return letter[1].toLowerCase()
     const digit = event.code.match(/^Digit([0-9])$/)
     if (digit) return digit[1]
+    if (event.code === "Period") return "."
   }
   return normalizeKey(event.key)
 }

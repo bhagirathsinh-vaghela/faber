@@ -961,6 +961,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       keybind: "alt+s",
       onSelect: () => dialog.show(() => <DialogSkill onSelect={insertSkill} />),
     },
+    {
+      id: "prompt.focus",
+      title: language.t("command.prompt.focus"),
+      description: language.t("command.prompt.focus.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+.",
+      onSelect: () => editorRef.focus(),
+    },
   ])
 
   const abort = async () => {
