@@ -96,39 +96,38 @@ export function PromptActionBar() {
   return (
     <div class="flex flex-row flex-wrap items-center gap-1.5">
       <ChipGroup>
-        {/* pending: display-only (no onClick) and muted, to read as passive
-            next to the interactive siblings. */}
+        {/* pending: display-only (no onClick), but same weight/color as its
+            interactive siblings. */}
         <Chip
-          accent={running() > 0 ? "icon-info-base" : "icon-success-base"}
-          class="opacity-70"
+          accent={running() > 0 ? "usage-cache-write" : "usage-context-start"}
           tooltip={language.t("actionbar.pending.tooltip")}
         >
-          <span class="text-text-weak">pending</span> {running()}
+          <span class="text-text-base">pending</span> {running()}
         </Chip>
 
         <Chip
-          accent={available() > 0 ? "icon-warning-base" : "icon-success-base"}
+          accent={available() > 0 ? "usage-cache-write" : "usage-context-start"}
           onClick={() => command.trigger("task.pending", "keybind")}
           tooltip={availableTip()}
         >
-          <span class="text-text-weak">available</span> {available()}
+          <span class="text-text-base">available</span> {available()}
         </Chip>
 
         <Chip
-          accent={autoInject() ? "icon-success-base" : "icon-warning-base"}
+          accent={autoInject() ? "usage-context-start" : "usage-cache-write"}
           onClick={() => command.trigger("background.autoinject.toggle", "keybind")}
           tooltip={autoinjectTip()}
         >
-          <span class="text-text-weak">auto-inject</span> {autoInject() ? "on" : "off"}
+          <span class="text-text-base">auto-inject</span> {autoInject() ? "on" : "off"}
         </Chip>
 
         <Show when={questions() > 0}>
           <Chip
-            accent="icon-warning-base"
+            accent="usage-cache-write"
             onClick={() => command.trigger("question.list", "keybind")}
             tooltip={questionsTip()}
           >
-            <span class="text-text-weak">questions</span> {questions()}
+            <span class="text-text-base">questions</span> {questions()}
           </Chip>
         </Show>
       </ChipGroup>

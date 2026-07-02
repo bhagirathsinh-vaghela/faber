@@ -107,7 +107,7 @@ export function UsageLine(props: {
           <Show when={show("cached")}>
             <Chip
               icon={icon("usage-cached")}
-              accent="usage-cached"
+              accent="usage-context-start"
               tooltip="Reused from cache this turn — far cheaper and faster than sending fresh input."
             >
               {tokens(props.stats.cached)}
