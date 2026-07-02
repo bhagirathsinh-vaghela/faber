@@ -31,6 +31,9 @@ export interface Settings {
   permissions: {
     autoApprove: boolean
   }
+  attachments: {
+    compress: boolean
+  }
   notifications: NotificationSettings
   sounds: SoundSettings
 }
@@ -45,11 +48,14 @@ const defaultSettings: Settings = {
   },
   appearance: {
     fontSize: 14,
-    font: "ibm-plex-mono",
+    font: "jetbrains-mono",
   },
   keybinds: {},
   permissions: {
     autoApprove: false,
+  },
+  attachments: {
+    compress: true,
   },
   notifications: {
     agent: true,
@@ -142,6 +148,12 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         autoApprove: createMemo(() => store.permissions?.autoApprove ?? defaultSettings.permissions.autoApprove),
         setAutoApprove(value: boolean) {
           setStore("permissions", "autoApprove", value)
+        },
+      },
+      attachments: {
+        compress: createMemo(() => store.attachments?.compress ?? defaultSettings.attachments.compress),
+        setCompress(value: boolean) {
+          setStore("attachments", "compress", value)
         },
       },
       notifications: {
