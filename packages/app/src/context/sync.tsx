@@ -167,6 +167,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
+
+          // Re-arm the cache-ping daemon on every open. GET /session/:id is the
+          // server's arm-on-attach hook (idempotent, self-stops if the cache
+          // window is dead). It fires here UNCONDITIONALLY — before the cached
+          // early-return below and independent of the data-load path, which
+          // skips the fetch when the session is already in the store. Without
+          // this, reopening an already-loaded recent session never re-armed.
+          void client.session.get({ sessionID }).catch(() => {})
+
           if (hasSession && hasMessages && hydrated) return
           const pending = inflight.get(key)
           if (pending) return pending
