@@ -34,6 +34,8 @@ import { useComments } from "@/context/comments"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
+import { Spinner } from "@opencode-ai/ui/spinner"
+import { agentColor } from "@/utils/agent"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -48,10 +50,14 @@ import { DialogSkill } from "@/components/dialog-skill"
 import { DialogDock } from "@/components/dialog-dock"
 import { useProviders } from "@/hooks/use-providers"
 import { useCommand } from "@/context/command"
+import { useSettings } from "@/context/settings"
+import { useRecent } from "@/context/recent"
+import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
+import { PromptActionBar } from "@/components/prompt-actionbar"
 import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
 import { useGlobalSync } from "@/context/global-sync"
@@ -139,6 +145,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const command = useCommand()
   const permission = usePermission()
   const language = useLanguage()
+  const settings = useSettings()
+  const recentSessions = useRecent()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -235,6 +243,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
   )
   const working = createMemo(() => status()?.type !== "idle")
+  const workingTint = createMemo(() => {
+    const agent = local.agent.current()
+    return agent ? agentColor(agent.name, agent.color) : undefined
+  })
   const imageAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "image") as ImageAttachmentPart[],
   )
@@ -334,6 +346,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const addImageAttachment = async (file: File) => {
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) return
+
+    if (settings.attachments.compress() && ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      file = await compress(file).catch(() => file)
+    }
 
     const reader = new FileReader()
     reader.onload = () => {
@@ -1611,6 +1627,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const send = async () => {
       const ok = await waitForWorktree()
       if (!ok) return
+      recentSessions.upsert(session)
       await client.session.prompt({
         sessionID: session.id,
         agent,
@@ -1924,8 +1941,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
-        <div class="relative p-3 flex items-center justify-between gap-2">
+        <div class="relative px-3 py-1.5 flex items-center justify-between gap-2">
           <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1">
+            <Show when={working()}>
+              <Spinner class="size-[15px] mr-2 shrink-0" style={{ color: workingTint() ?? "var(--icon-interactive-base)" }} />
+            </Show>
             <Switch>
               <Match when={store.mode === "shell"}>
                 <div class="flex items-center gap-2 px-2 h-6">
@@ -2149,8 +2169,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </div>
         </div>
         <Show when={params.id}>
-          <div class="border-t border-border-weak-base px-3 py-1.5">
+          <div class="border-t border-border-weak-base px-3 py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
             <Statusline />
+            <PromptActionBar />
           </div>
         </Show>
       </form>

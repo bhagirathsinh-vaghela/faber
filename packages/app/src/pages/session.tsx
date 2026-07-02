@@ -18,7 +18,6 @@ import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 import { PromptInput } from "@/components/prompt-input"
-import { PromptActionBar } from "@/components/prompt-actionbar"
 import { QuestionPanel } from "@/components/question-panel"
 import { MessageFooter } from "@/components/message-footer"
 import { SessionContextUsage } from "@/components/session-context-usage"
@@ -2029,7 +2028,7 @@ export default function Page() {
                         <div
                           ref={autoScroll.contentRef}
                           role="log"
-                          class="flex flex-col gap-12 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
+                          class="flex flex-col gap-4 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
                           classList={{
                             "w-full": true,
                             "md:max-w-[90%] md:mx-auto": centered(),
@@ -2229,11 +2228,6 @@ export default function Page() {
                   onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
                   onSubmit={resumeScroll}
                 />
-              </Show>
-              <Show when={params.id}>
-                <div class="flex justify-end px-1 pt-1">
-                  <PromptActionBar />
-                </div>
               </Show>
             </div>
           </div>

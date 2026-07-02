@@ -40,6 +40,7 @@ import { getFilename } from "@opencode-ai/util/path"
 import { Session, type Message, type TextPart } from "@opencode-ai/sdk/v2/client"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
+import { useRecent } from "@/context/recent"
 import { createStore, produce, reconcile } from "solid-js/store"
 import {
   DragDropProvider,
@@ -96,6 +97,7 @@ export default function Layout(props: ParentProps) {
   const params = useParams()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const recent = useRecent()
   const layout = useLayout()
   const layoutReady = createMemo(() => layout.ready())
   const platform = usePlatform()
@@ -1170,6 +1172,25 @@ export default function Layout(props: ParentProps) {
         keybind: "mod+shift+t",
         onSelect: () => cycleTheme(1),
       },
+      {
+        id: "attachments.compress.toggle",
+        title: settings.attachments.compress()
+          ? language.t("command.attachments.compress.off")
+          : language.t("command.attachments.compress.on"),
+        category: language.t("command.category.settings"),
+        onSelect: () => {
+          const next = !settings.attachments.compress()
+          settings.attachments.setCompress(next)
+          showToast({
+            title: next
+              ? language.t("toast.attachments.compress.enabled.title")
+              : language.t("toast.attachments.compress.disabled.title"),
+            description: next
+              ? language.t("toast.attachments.compress.enabled.description")
+              : language.t("toast.attachments.compress.disabled.description"),
+          })
+        },
+      },
     ]
 
     for (const [id, definition] of availableThemeEntries()) {
@@ -1648,6 +1669,9 @@ export default function Layout(props: ParentProps) {
         setStore("lastSession", directory, id)
         notification.session.markViewed(id)
         void globalSDK.client.session.seen({ directory, sessionID: id })
+        const [viewed] = globalSync.child(directory, { bootstrap: false })
+        const session = viewed.session.find((s) => s.id === id)
+        if (session) recent.upsert(session)
         const expanded = untrack(() => store.workspaceExpanded[directory])
         if (expanded === false) {
           setStore("workspaceExpanded", directory, true)

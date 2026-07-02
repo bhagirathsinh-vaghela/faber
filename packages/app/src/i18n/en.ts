@@ -34,6 +34,8 @@ export const dict = {
 
   "command.palette": "Command palette",
 
+  "command.attachments.compress.on": "Attachments: use original images",
+  "command.attachments.compress.off": "Attachments: compress images",
   "command.theme.cycle": "Cycle theme",
   "command.theme.set": "Use theme: {{theme}}",
   "command.theme.scheme.cycle": "Cycle color scheme",
@@ -392,6 +394,10 @@ export const dict = {
   "toast.theme.title": "Theme switched",
   "toast.scheme.title": "Color scheme",
 
+  "toast.attachments.compress.enabled.title": "Image compression on",
+  "toast.attachments.compress.enabled.description": "Attached images are downscaled and re-encoded before sending",
+  "toast.attachments.compress.disabled.title": "Image compression off",
+  "toast.attachments.compress.disabled.description": "Attached images are sent at their original size",
   "toast.workspace.enabled.title": "Workspaces enabled",
   "toast.workspace.enabled.description": "Multiple worktrees are now shown in the sidebar",
   "toast.workspace.disabled.title": "Workspaces disabled",
@@ -480,6 +486,7 @@ export const dict = {
   "notification.session.error.fallbackDescription": "An error occurred",
 
   "home.recentProjects": "Recent projects",
+  "home.recentSessions": "Recent sessions",
   "home.empty.title": "No recent projects",
   "home.empty.description": "Get started by opening a local project",
   "home.attention": "Needs attention",
