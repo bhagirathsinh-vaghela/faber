@@ -147,7 +147,8 @@
     user-select: none;
 
     &[data-highlighted] {
-      background: var(--surface-raised-base-hover);
+      background: var(--surface-interactive-base);
+      box-shadow: inset 2px 0 0 0 var(--border-interactive-selected);
     }
     &[data-disabled] {
       background-color: var(--surface-raised-base);
