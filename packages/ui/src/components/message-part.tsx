@@ -307,7 +307,7 @@ function taskResultPart(parts: PartType[]): TextPart | undefined {
   return parts.find((p) => p.type === "text" && (p as TextPart).backgroundTaskResult) as TextPart | undefined
 }
 
-const TASK_ACCENT = "var(--color-icon-warning-base)"
+const TASK_ACCENT = "var(--box-accent-task)"
 
 function taskAccent(status: string): string {
   return status === "failed" ? "var(--color-text-error)" : TASK_ACCENT
@@ -461,7 +461,7 @@ export function MessageBox(props: {
   }
   const number = createMemo(() => data.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id))
   const accent =
-    props.accent ?? (isUser ? messageAgentColor((props.message as any).agent) : "var(--color-text-success, #22DD22)")
+    props.accent ?? (isUser ? messageAgentColor((props.message as any).agent) : "var(--box-accent-assistant)")
   return (
     <div
       data-component="message-box"

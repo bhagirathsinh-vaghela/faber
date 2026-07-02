@@ -1090,6 +1090,29 @@ export type EventModelPreferenceUpdated = {
   properties: ModelPreference
 }
 
+export type AppearancePreference = {
+  fontSize: number
+  font: string
+  codeFont: string
+  fontWeight: number
+  headingWeight: {
+    [key: string]: number
+  }
+  overrides: {
+    light: {
+      [key: string]: string
+    }
+    dark: {
+      [key: string]: string
+    }
+  }
+}
+
+export type EventAppearancePreferenceUpdated = {
+  type: "appearance.preference.updated"
+  properties: AppearancePreference
+}
+
 export type StashEntry = {
   prompt: Array<unknown>
   timestamp: number
@@ -1154,6 +1177,7 @@ export type Event =
   | EventWorktreeReady
   | EventWorktreeFailed
   | EventModelPreferenceUpdated
+  | EventAppearancePreferenceUpdated
   | EventStashUpdated
 
 export type GlobalEvent = {
@@ -4544,6 +4568,51 @@ export type PreferenceModelSetResponses = {
 }
 
 export type PreferenceModelSetResponse = PreferenceModelSetResponses[keyof PreferenceModelSetResponses]
+
+export type PreferenceAppearanceGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/appearance"
+}
+
+export type PreferenceAppearanceGetResponses = {
+  /**
+   * Appearance preferences
+   */
+  200: AppearancePreference
+}
+
+export type PreferenceAppearanceGetResponse = PreferenceAppearanceGetResponses[keyof PreferenceAppearanceGetResponses]
+
+export type PreferenceAppearanceSetData = {
+  body?: AppearancePreference
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/appearance"
+}
+
+export type PreferenceAppearanceSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceAppearanceSetError = PreferenceAppearanceSetErrors[keyof PreferenceAppearanceSetErrors]
+
+export type PreferenceAppearanceSetResponses = {
+  /**
+   * Appearance preferences updated
+   */
+  200: boolean
+}
+
+export type PreferenceAppearanceSetResponse = PreferenceAppearanceSetResponses[keyof PreferenceAppearanceSetResponses]
 
 export type PreferenceStashListData = {
   body?: never

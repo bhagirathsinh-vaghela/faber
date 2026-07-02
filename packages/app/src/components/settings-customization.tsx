@@ -1,0 +1,403 @@
+import { Component, For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { Select } from "@opencode-ai/ui/select"
+import { Button } from "@opencode-ai/ui/button"
+import { useTheme } from "@opencode-ai/ui/theme"
+import { useLanguage } from "@/context/language"
+import { useSettings, monoFontFamily } from "@/context/settings"
+import { THEME_CATALOG, FONT_OPTIONS, type TokenEntry } from "@/utils/theme-catalog"
+import { SettingsRow } from "./settings-row"
+
+// Read a token's current effective value off the document (override or theme).
+function computed(token: string): string {
+  if (typeof document === "undefined") return ""
+  return getComputedStyle(document.documentElement).getPropertyValue(token).trim()
+}
+
+// Normalize any CSS color the browser understands to #rrggbb for the native
+// picker, plus a 0-100 alpha. Uses canvas so it works for hex, rgb(), named,
+// and var()-resolved values alike.
+function parseColor(value: string): { hex: string; alpha: number } {
+  const fallback = { hex: "#000000", alpha: 100 }
+  if (typeof document === "undefined" || !value) return fallback
+  const ctx = document.createElement("canvas").getContext("2d")
+  if (!ctx) return fallback
+  ctx.fillStyle = "#000"
+  ctx.fillStyle = value
+  const resolved = ctx.fillStyle // browser normalizes to #rrggbb or rgba(...)
+  if (resolved.startsWith("#")) return { hex: resolved, alpha: 100 }
+  const m = resolved.match(/rgba?\(([^)]+)\)/)
+  if (!m) return fallback
+  const parts = m[1].split(",").map((s) => s.trim())
+  const [r, g, b] = parts
+  const a = parts[3] !== undefined ? Math.round(parseFloat(parts[3]) * 100) : 100
+  const hex = "#" + [r, g, b].map((c) => Number(c).toString(16).padStart(2, "0")).join("")
+  return { hex, alpha: a }
+}
+
+// Compose #rrggbb + 0-100 alpha into a hex string (#rrggbb or #rrggbbaa).
+function toHex(hex: string, alpha: number): string {
+  if (alpha >= 100) return hex
+  const a = Math.round((alpha / 100) * 255)
+    .toString(16)
+    .padStart(2, "0")
+  return `${hex}${a}`
+}
+
+const ColorEditor: Component<{ entry: TokenEntry; value: string | undefined; onChange: (v: string) => void }> = (
+  props,
+) => {
+  // Local live value drives the inputs during a drag so we never re-parse via
+  // canvas or touch the store on every pointer tick. hex/alpha are cached and
+  // updated locally; the CSS var is applied directly for instant feedback; the
+  // store commit (persist + effect cascade) is debounced.
+  const initial = parseColor(props.value || computed(props.entry.token))
+  const [hex, setHex] = createSignal(initial.hex)
+  const [alpha, setAlpha] = createSignal(initial.alpha)
+  const [raw, setRaw] = createSignal(props.value ?? "")
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const commit = (value: string) => {
+    // Instant visual feedback without a store write / effect cascade.
+    if (typeof document !== "undefined") document.documentElement.style.setProperty(props.entry.token, value)
+    setRaw(value)
+    clearTimeout(timer)
+    timer = setTimeout(() => props.onChange(value), 120)
+  }
+  onCleanup(() => clearTimeout(timer))
+
+  // Resync local inputs when the override is cleared externally (Reset), so the
+  // swatch/fields snap back to the theme's value. The direct setProperty from a
+  // live drag is removed by the store effect on reset, revealing the theme value.
+  createEffect(() => {
+    if (props.value === undefined) {
+      // Drop any lingering inline prop from a live drag so computed() reads the
+      // real theme value, then resync the fields to it.
+      if (typeof document !== "undefined") document.documentElement.style.removeProperty(props.entry.token)
+      const next = parseColor(computed(props.entry.token))
+      setHex(next.hex)
+      setAlpha(next.alpha)
+      setRaw("")
+    }
+  })
+
+  return (
+    <div class="flex items-center gap-2">
+      <input
+        type="color"
+        class="w-7 h-7 rounded cursor-pointer bg-transparent border border-border-weak-base"
+        value={hex()}
+        onInput={(e) => {
+          setHex(e.currentTarget.value)
+          commit(toHex(e.currentTarget.value, alpha()))
+        }}
+      />
+      <input
+        type="number"
+        min={0}
+        max={100}
+        class="w-14 px-2 py-1 text-12-regular rounded bg-surface-base border border-border-weak-base text-text-strong"
+        value={alpha()}
+        title="Opacity %"
+        onInput={(e) => {
+          setAlpha(Number(e.currentTarget.value))
+          commit(toHex(hex(), Number(e.currentTarget.value)))
+        }}
+      />
+      <input
+        type="text"
+        placeholder="#rrggbb / rgb()"
+        class="w-32 px-2 py-1 text-12-regular font-mono rounded bg-surface-base border border-border-weak-base text-text-strong"
+        value={raw()}
+        onChange={(e) => {
+          const next = parseColor(e.currentTarget.value)
+          setHex(next.hex)
+          setAlpha(next.alpha)
+          commit(e.currentTarget.value)
+        }}
+      />
+    </div>
+  )
+}
+
+export const SettingsCustomization: Component = () => {
+  const settings = useSettings()
+  const theme = useTheme()
+  const language = useLanguage()
+  const [query, setQuery] = createSignal("")
+
+  const mode = () => theme.mode()
+
+  const fontOptions = [...FONT_OPTIONS]
+
+  // Family override stores the resolved CSS family stack. Match the current
+  // picker selection by comparing each option's resolved stack to the override.
+  const currentFont = (token: string) => {
+    const value = settings.overrides.get(mode(), token)
+    return fontOptions.find((o) => monoFontFamily(o.value) === value)
+  }
+
+  const groups = createMemo(() => {
+    const q = query().toLowerCase().trim()
+    if (!q) return THEME_CATALOG
+    return THEME_CATALOG.map((g) => ({
+      group: g.group,
+      entries: g.entries.filter(
+        (e) => e.label.toLowerCase().includes(q) || g.group.toLowerCase().includes(q) || e.token.includes(q),
+      ),
+    })).filter((g) => g.entries.length > 0)
+  })
+
+  const setNum = (entry: TokenEntry, num: number) => {
+    const suffix = entry.type === "size" ? "px" : ""
+    settings.overrides.set(mode(), entry.token, `${num}${suffix}`)
+  }
+
+  const currentNum = (entry: TokenEntry): number => {
+    const raw = settings.overrides.get(mode(), entry.token) ?? computed(entry.token)
+    return parseFloat(raw) || (entry.type === "size" ? 14 : 400)
+  }
+
+  return (
+    <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
+      <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-raised-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
+        <div class="flex flex-col gap-3 pt-6 pb-4">
+          <div class="flex items-center justify-between gap-4">
+            <h2 class="text-16-medium text-text-strong">{language.t("settings.tab.customization")}</h2>
+            <div class="flex items-center gap-2">
+              <Button variant="ghost" size="small" onClick={() => settings.overrides.resetAll(mode())}>
+                {language.t("settings.customization.resetAll")}
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                disabled={!settings.appearance.dirty()}
+                onClick={() => settings.appearance.discard()}
+              >
+                {language.t("settings.customization.discard")}
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                disabled={!settings.appearance.dirty()}
+                onClick={() => settings.appearance.save()}
+              >
+                {language.t("settings.customization.save")}
+              </Button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-12-regular text-text-weak">
+              {language.t("settings.customization.modeNote")} <b class="text-text-strong">{mode()}</b>
+            </span>
+            <input
+              type="text"
+              placeholder={language.t("settings.customization.search")}
+              class="w-56 px-3 py-1.5 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+              value={query()}
+              onInput={(e) => setQuery(e.currentTarget.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-8 w-full">
+        <Show when={!query().trim()}>
+          <div class="flex flex-col gap-1">
+            <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.fonts.title")}</h3>
+            <div class="bg-surface-raised-base px-4 rounded-lg">
+              <SettingsRow
+                title={language.t("settings.general.row.font.title")}
+                description={language.t("settings.general.row.font.description")}
+              >
+                <Select
+                  options={fontOptions}
+                  current={fontOptions.find((o) => o.value === settings.appearance.font())}
+                  value={(o) => o.value}
+                  label={(o) => language.t(o.label)}
+                  onSelect={(o) => o && settings.appearance.setFont(o.value)}
+                  variant="secondary"
+                  size="small"
+                  triggerVariant="settings"
+                  triggerStyle={{ "font-family": monoFontFamily(settings.appearance.font()), "min-width": "180px" }}
+                >
+                  {(o) => (
+                    <span style={{ "font-family": monoFontFamily(o?.value) }}>{o ? language.t(o.label) : ""}</span>
+                  )}
+                </Select>
+              </SettingsRow>
+
+              <SettingsRow
+                title={language.t("settings.fonts.codeFont.title")}
+                description={language.t("settings.fonts.codeFont.description")}
+              >
+                <Select
+                  options={fontOptions}
+                  current={fontOptions.find((o) => o.value === settings.appearance.codeFont())}
+                  value={(o) => o.value}
+                  label={(o) => language.t(o.label)}
+                  onSelect={(o) => o && settings.appearance.setCodeFont(o.value)}
+                  variant="secondary"
+                  size="small"
+                  triggerVariant="settings"
+                  triggerStyle={{ "font-family": monoFontFamily(settings.appearance.codeFont()), "min-width": "180px" }}
+                >
+                  {(o) => (
+                    <span style={{ "font-family": monoFontFamily(o?.value) }}>{o ? language.t(o.label) : ""}</span>
+                  )}
+                </Select>
+              </SettingsRow>
+
+              <SettingsRow
+                title={language.t("settings.general.row.fontSize.title")}
+                description={language.t("settings.general.row.fontSize.description")}
+              >
+                <div class="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={8}
+                    max={32}
+                    step={0.5}
+                    class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+                    value={settings.appearance.fontSize()}
+                    onInput={(e) =>
+                      e.currentTarget.value && settings.appearance.setFontSize(Number(e.currentTarget.value))
+                    }
+                  />
+                  <span class="text-12-regular text-text-weak">px</span>
+                </div>
+              </SettingsRow>
+
+              <SettingsRow
+                title={language.t("settings.fonts.bodyWeight.title")}
+                description={language.t("settings.fonts.bodyWeight.description")}
+              >
+                <input
+                  type="number"
+                  min={100}
+                  max={900}
+                  step={10}
+                  class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+                  value={settings.appearance.fontWeight()}
+                  onInput={(e) =>
+                    e.currentTarget.value && settings.appearance.setFontWeight(Number(e.currentTarget.value))
+                  }
+                />
+              </SettingsRow>
+
+              <For each={[1, 2, 3, 4, 5, 6]}>
+                {(level) => (
+                  <SettingsRow title={`H${level} weight`} description={`Thickness of level ${level} headings`}>
+                    <input
+                      type="number"
+                      min={100}
+                      max={900}
+                      step={10}
+                      class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+                      value={settings.appearance.headingWeight(level)}
+                      onInput={(e) =>
+                        e.currentTarget.value &&
+                        settings.appearance.setHeadingWeight(level, Number(e.currentTarget.value))
+                      }
+                    />
+                  </SettingsRow>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
+        <For each={groups()}>
+          {(group) => (
+            <div class="flex flex-col gap-1">
+              <h3 class="text-14-medium text-text-strong pb-2">{group.group}</h3>
+              <div class="bg-surface-raised-base px-4 rounded-lg">
+                <For each={group.entries}>
+                  {(entry) => {
+                    const override = () => settings.overrides.get(mode(), entry.token)
+                    return (
+                      <div class="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none">
+                        <div class="flex flex-col gap-0.5 min-w-0">
+                          <span class="text-14-medium text-text-strong">{entry.label}</span>
+                          <span class="text-11-regular font-mono text-text-weak">{entry.token}</span>
+                          <Show when={entry.shared}>
+                            <span class="text-11-regular text-text-warning-base">
+                              {language.t("settings.customization.shared")} {entry.shared}
+                            </span>
+                          </Show>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                          <Show when={entry.type === "color"}>
+                            <ColorEditor
+                              entry={entry}
+                              value={override()}
+                              onChange={(v) => settings.overrides.set(mode(), entry.token, v)}
+                            />
+                          </Show>
+                          <Show when={entry.type === "weight"}>
+                            <input
+                              type="number"
+                              min={100}
+                              max={900}
+                              step={10}
+                              class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+                              value={currentNum(entry)}
+                              onInput={(e) => e.currentTarget.value && setNum(entry, Number(e.currentTarget.value))}
+                            />
+                          </Show>
+                          <Show when={entry.type === "size"}>
+                            <div class="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={8}
+                                max={32}
+                                step={0.5}
+                                class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+                                value={currentNum(entry)}
+                                onInput={(e) => e.currentTarget.value && setNum(entry, Number(e.currentTarget.value))}
+                              />
+                              <span class="text-12-regular text-text-weak">px</span>
+                            </div>
+                          </Show>
+                          <Show when={entry.type === "family"}>
+                            <Select
+                              options={fontOptions}
+                              current={currentFont(entry.token)}
+                              value={(o) => o.value}
+                              label={(o) => language.t(o.label)}
+                              onSelect={(o) =>
+                                o && settings.overrides.set(mode(), entry.token, monoFontFamily(o.value))
+                              }
+                              variant="secondary"
+                              size="small"
+                              triggerVariant="settings"
+                              triggerStyle={{ "min-width": "160px" }}
+                            >
+                              {(o) => (
+                                <span style={{ "font-family": monoFontFamily(o?.value) }}>
+                                  {o ? language.t(o.label) : ""}
+                                </span>
+                              )}
+                            </Select>
+                          </Show>
+                          <Show when={override() !== undefined}>
+                            <Button
+                              variant="ghost"
+                              size="small"
+                              onClick={() => settings.overrides.reset(mode(), entry.token)}
+                            >
+                              {language.t("settings.customization.reset")}
+                            </Button>
+                          </Show>
+                        </div>
+                      </div>
+                    )
+                  }}
+                </For>
+              </div>
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
+  )
+}

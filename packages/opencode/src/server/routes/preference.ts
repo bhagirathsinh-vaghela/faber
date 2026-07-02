@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { ModelPreference } from "@/preference/model"
+import { AppearancePreference } from "@/preference/appearance"
 import { Stash } from "@/preference/stash"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
@@ -50,6 +51,51 @@ export const PreferenceRoutes = lazy(() =>
       validator("json", ModelPreference.Info),
       async (c) => {
         await ModelPreference.set(c.req.valid("json"))
+        return c.json(true)
+      },
+    )
+    .get(
+      "/appearance",
+      describeRoute({
+        summary: "Get appearance preferences",
+        description: "Get the server-owned appearance preferences (fonts, weights, per-mode theme overrides).",
+        operationId: "preference.appearance.get",
+        responses: {
+          200: {
+            description: "Appearance preferences",
+            content: {
+              "application/json": {
+                schema: resolver(AppearancePreference.Info),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await AppearancePreference.get())
+      },
+    )
+    .put(
+      "/appearance",
+      describeRoute({
+        summary: "Set appearance preferences",
+        description: "Replace the server-owned appearance preferences.",
+        operationId: "preference.appearance.set",
+        responses: {
+          200: {
+            description: "Appearance preferences updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", AppearancePreference.Info),
+      async (c) => {
+        await AppearancePreference.set(c.req.valid("json"))
         return c.json(true)
       },
     )

@@ -34,6 +34,10 @@
   --smoke-dark-alpha-9: #faf5f467;
   --smoke-dark-alpha-10: #fbf5f576;
   --smoke-dark-alpha-11: #fcf9f9b2;
+  /* Body-text color: pure opaque white (no alpha dimming, no warm tint) so
+     primary prose reads at full brightness. Only --text-base consumes this;
+     step 11 stays for the text-on-colored-surface tokens. */
+  --smoke-dark-alpha-11-body: #ffffff;
   --smoke-dark-alpha-12: #fdfbfbf0;
   --smoke-light-alpha-1: #55000003;
   --smoke-light-alpha-2: #25000007;

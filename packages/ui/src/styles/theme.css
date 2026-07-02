@@ -1,16 +1,16 @@
 :root {
   --font-family-sans:
-    "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace,
+    "JetBrainsMono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace,
     monospace;
-  --font-family-sans--font-feature-settings: "ss01" 1;
+  --font-family-sans--font-feature-settings: normal;
   --font-family-mono:
-    "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace,
+    "JetBrainsMono Nerd Font", "JetBrainsMonoNL Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace,
     monospace;
-  --font-family-mono--font-feature-settings: "ss01" 1;
+  --font-family-mono--font-feature-settings: normal;
 
   --font-size-x-small: 12px;
   --font-size-small: 13px;
-  --font-size-base: 14px;
+  --font-size-base: 13px;
   --font-size-large: 16px;
   --font-size-x-large: 20px;
   --font-weight-regular: 400;
@@ -23,7 +23,29 @@
   --dock-font-size: var(--font-size-small);
   --dock-font-weight: var(--font-weight-semibold);
 
-  /* Markdown heading scale + weight (themable) */
+  /* Body prose weight (themable; consumed by the markdown container). */
+  --text-base-weight: var(--font-weight-regular);
+
+  /* Inline code type (themable independently of body/code-block). Default to
+     the shared mono family/medium weight so nothing changes until customized. */
+  --markdown-code-family: var(--font-family-mono);
+  --markdown-code-weight: var(--font-weight-medium);
+  --markdown-code-size: var(--font-size-base);
+
+  /* Code block (fenced/Shiki) font, independent of body + inline code. Default
+     to the shared mono family so nothing changes until a code font is picked. */
+  --markdown-code-block-family: var(--font-family-mono);
+
+  /* Chat card accent colors (the box border/fill around each transcript
+     block). Default to the per-type colors the components used inline, so
+     nothing changes until customized. */
+  --box-accent-assistant: var(--color-text-success, #22dd22);
+  --box-accent-task: var(--color-icon-warning-base);
+  --box-accent-tool: var(--ink-dark-11, #b1b7b7);
+
+  /* Markdown heading scale + weight (themable). Weight is per-level so each
+     heading's thickness is independently customizable; --markdown-heading-weight
+     stays as the shared default the per-level tokens fall back to. */
   --markdown-heading-weight: var(--font-weight-bold);
   --markdown-heading-1-size: 17px;
   --markdown-heading-2-size: 16px;
@@ -31,6 +53,12 @@
   --markdown-heading-4-size: 14px;
   --markdown-heading-5-size: 14px;
   --markdown-heading-6-size: 14px;
+  --markdown-heading-1-weight: var(--markdown-heading-weight);
+  --markdown-heading-2-weight: var(--markdown-heading-weight);
+  --markdown-heading-3-weight: var(--markdown-heading-weight);
+  --markdown-heading-4-weight: var(--markdown-heading-weight);
+  --markdown-heading-5-weight: var(--markdown-heading-weight);
+  --markdown-heading-6-weight: var(--markdown-heading-weight);
   --line-height-large: 150%;
   --line-height-x-large: 180%;
   --line-height-2x-large: 200%;
@@ -437,10 +465,12 @@
     --input-selected: var(--cobalt-dark-2);
     --input-focus: var(--cobalt-dark-1);
     --input-disabled: var(--smoke-dark-4);
-    --text-base: var(--smoke-dark-alpha-11);
-    --text-weak: var(--smoke-dark-alpha-9);
-    --text-weaker: var(--smoke-dark-alpha-8);
-    --text-strong: var(--smoke-dark-alpha-12);
+    /* All neutral text tiers flattened to pure white in dark mode — no dimming.
+       Syntax/diff/error/accent colors are separate tokens and keep their hues. */
+    --text-base: var(--smoke-dark-alpha-11-body);
+    --text-weak: var(--smoke-dark-alpha-11-body);
+    --text-weaker: var(--smoke-dark-alpha-11-body);
+    --text-strong: var(--smoke-dark-alpha-11-body);
     --text-invert-base: var(--smoke-dark-alpha-11);
     --text-invert-weak: var(--smoke-dark-alpha-9);
     --text-invert-weaker: var(--smoke-dark-alpha-8);

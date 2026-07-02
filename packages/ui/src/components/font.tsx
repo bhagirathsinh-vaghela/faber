@@ -26,6 +26,14 @@ import ubuntuMono from "../assets/fonts/ubuntu-mono-nerd-font.woff2"
 import ubuntuMonoBold from "../assets/fonts/ubuntu-mono-nerd-font-bold.woff2"
 import iosevka from "../assets/fonts/iosevka-nerd-font.woff2"
 import iosevkaBold from "../assets/fonts/iosevka-nerd-font-bold.woff2"
+import geistMono from "../assets/fonts/geist-mono.woff2"
+import geistMonoBold from "../assets/fonts/geist-mono-bold.woff2"
+import monaspaceNeon from "../assets/fonts/monaspace-neon.woff2"
+import monaspaceNeonBold from "../assets/fonts/monaspace-neon-bold.woff2"
+import commitMono from "../assets/fonts/commit-mono.woff2"
+import commitMonoBold from "../assets/fonts/commit-mono-bold.woff2"
+import mapleMono from "../assets/fonts/maple-mono.woff2"
+import mapleMonoBold from "../assets/fonts/maple-mono-bold.woff2"
 
 type MonoFont = {
   family: string
@@ -34,6 +42,15 @@ type MonoFont = {
 }
 
 export const MONO_NERD_FONTS = [
+  {
+    // Match the system-installed family name (iTerm2 uses "JetBrainsMono Nerd
+    // Font", no space in "JetBrainsMono"). Registering the bundled woff2 under
+    // this exact name means the web UI renders identically to the terminal
+    // whether or not the font is installed locally.
+    family: "JetBrainsMono Nerd Font",
+    regular: jetbrainsMono,
+    bold: jetbrainsMonoBold,
+  },
   {
     family: "JetBrains Mono Nerd Font",
     regular: jetbrainsMono,
@@ -88,6 +105,26 @@ export const MONO_NERD_FONTS = [
     family: "Iosevka Nerd Font",
     regular: iosevka,
     bold: iosevkaBold,
+  },
+  {
+    family: "Geist Mono",
+    regular: geistMono,
+    bold: geistMonoBold,
+  },
+  {
+    family: "Monaspace Neon",
+    regular: monaspaceNeon,
+    bold: monaspaceNeonBold,
+  },
+  {
+    family: "Commit Mono",
+    regular: commitMono,
+    bold: commitMonoBold,
+  },
+  {
+    family: "Maple Mono",
+    regular: mapleMono,
+    bold: mapleMonoBold,
   },
 ] satisfies MonoFont[]
 

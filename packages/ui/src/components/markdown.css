@@ -6,6 +6,7 @@
   color: var(--text-base);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base); /* 14px */
+  font-weight: var(--text-base-weight);
   line-height: var(--line-height-x-large);
 
   /* Spacing for flow */
@@ -24,7 +25,6 @@
   h5,
   h6 {
     color: var(--markdown-heading);
-    font-weight: var(--markdown-heading-weight);
     margin-top: 2rem;
     margin-bottom: 0.75rem;
     line-height: var(--line-height-large);
@@ -32,21 +32,27 @@
 
   h1 {
     font-size: var(--markdown-heading-1-size);
+    font-weight: var(--markdown-heading-1-weight);
   }
   h2 {
     font-size: var(--markdown-heading-2-size);
+    font-weight: var(--markdown-heading-2-weight);
   }
   h3 {
     font-size: var(--markdown-heading-3-size);
+    font-weight: var(--markdown-heading-3-weight);
   }
   h4 {
     font-size: var(--markdown-heading-4-size);
+    font-weight: var(--markdown-heading-4-weight);
   }
   h5 {
     font-size: var(--markdown-heading-5-size);
+    font-weight: var(--markdown-heading-5-weight);
   }
   h6 {
     font-size: var(--markdown-heading-6-size);
+    font-weight: var(--markdown-heading-6-weight);
   }
 
   /* Strong: TUI-style colored bold (brightness = the punch) */
@@ -139,6 +145,7 @@
   }
 
   .shiki {
+    font-family: var(--markdown-code-block-family);
     font-size: 13px;
     padding: 8px 12px;
     border-radius: 4px;
@@ -186,11 +193,11 @@
   }
 
   :not(pre) > code {
-    font-family: var(--font-family-mono);
+    font-family: var(--markdown-code-family);
     font-feature-settings: var(--font-family-mono--font-feature-settings);
     color: var(--markdown-code);
-    font-weight: var(--font-weight-medium);
-    /* font-size: 13px; */
+    font-weight: var(--markdown-code-weight);
+    font-size: var(--markdown-code-size);
 
     /* padding: 2px 2px; */
     /* margin: 0 1.5px; */

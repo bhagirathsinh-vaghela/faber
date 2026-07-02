@@ -4061,6 +4061,91 @@
         ]
       }
     },
+    "/preference/appearance": {
+      "get": {
+        "operationId": "preference.appearance.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get appearance preferences",
+        "description": "Get the server-owned appearance preferences (fonts, weights, per-mode theme overrides).",
+        "responses": {
+          "200": {
+            "description": "Appearance preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppearancePreference"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.appearance.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "preference.appearance.set",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Set appearance preferences",
+        "description": "Replace the server-owned appearance preferences.",
+        "responses": {
+          "200": {
+            "description": "Appearance preferences updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppearancePreference"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.appearance.set({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/preference/stash": {
       "get": {
         "operationId": "preference.stash.list",
@@ -11465,6 +11550,70 @@
           "properties"
         ]
       },
+      "AppearancePreference": {
+        "type": "object",
+        "properties": {
+          "fontSize": {
+            "type": "number"
+          },
+          "font": {
+            "type": "string"
+          },
+          "codeFont": {
+            "type": "string"
+          },
+          "fontWeight": {
+            "type": "number"
+          },
+          "headingWeight": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "overrides": {
+            "type": "object",
+            "properties": {
+              "light": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "dark": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["light", "dark"]
+          }
+        },
+        "required": ["fontSize", "font", "codeFont", "fontWeight", "headingWeight", "overrides"]
+      },
+      "Event.appearance.preference.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "appearance.preference.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/AppearancePreference"
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "StashEntry": {
         "type": "object",
         "properties": {
@@ -11662,6 +11811,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.model.preference.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.appearance.preference.updated"
           },
           {
             "$ref": "#/components/schemas/Event.stash.updated"

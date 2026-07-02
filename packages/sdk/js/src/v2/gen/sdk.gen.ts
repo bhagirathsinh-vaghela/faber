@@ -6,6 +6,7 @@ import type {
   AgentPartInput,
   AppAgentsResponses,
   AppDockConfigResponses,
+  AppearancePreference,
   AppLogErrors,
   AppLogResponses,
   AppSetDockConfigResponses,
@@ -93,6 +94,9 @@ import type {
   PermissionRuleset,
   PermissionSetAutoAcceptErrors,
   PermissionSetAutoAcceptResponses,
+  PreferenceAppearanceGetResponses,
+  PreferenceAppearanceSetErrors,
+  PreferenceAppearanceSetResponses,
   PreferenceModelGetResponses,
   PreferenceModelSetErrors,
   PreferenceModelSetResponses,
@@ -2258,6 +2262,66 @@ export class Model extends HeyApiClient {
   }
 }
 
+export class Appearance extends HeyApiClient {
+  /**
+   * Get appearance preferences
+   *
+   * Get the server-owned appearance preferences (fonts, weights, per-mode theme overrides).
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PreferenceAppearanceGetResponses, unknown, ThrowOnError>({
+      url: "/preference/appearance",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set appearance preferences
+   *
+   * Replace the server-owned appearance preferences.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      appearancePreference?: AppearancePreference
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "appearancePreference", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      PreferenceAppearanceSetResponses,
+      PreferenceAppearanceSetErrors,
+      ThrowOnError
+    >({
+      url: "/preference/appearance",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Stash extends HeyApiClient {
   /**
    * List stash entries
@@ -2354,6 +2418,11 @@ export class Preference extends HeyApiClient {
   private _model?: Model
   get model(): Model {
     return (this._model ??= new Model({ client: this.client }))
+  }
+
+  private _appearance?: Appearance
+  get appearance(): Appearance {
+    return (this._appearance ??= new Appearance({ client: this.client }))
   }
 
   private _stash?: Stash

@@ -1053,7 +1053,8 @@ function createGlobalSync() {
       .catch(() => undefined)
     if (!armed) return
     const hub: Record<string, { lastRequestAt?: number; beforeExpiry: number }> = {}
-    for (const entry of armed) hub[entry.sessionID] = { lastRequestAt: entry.lastRequestAt, beforeExpiry: entry.beforeExpiry }
+    for (const entry of armed)
+      hub[entry.sessionID] = { lastRequestAt: entry.lastRequestAt, beforeExpiry: entry.beforeExpiry }
     setGlobalStore("armed_hub", reconcile(hub))
   }
 
