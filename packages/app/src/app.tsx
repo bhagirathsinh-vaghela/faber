@@ -7,6 +7,8 @@ import { MarkedProvider } from "@opencode-ai/ui/context/marked"
 import { DiffComponentProvider } from "@opencode-ai/ui/context/diff"
 import { CodeComponentProvider } from "@opencode-ai/ui/context/code"
 import { I18nProvider } from "@opencode-ai/ui/context"
+import { CodeThemeProvider } from "@opencode-ai/ui/context/code-theme"
+import { DiffThemeProvider } from "@opencode-ai/ui/context/diff-theme"
 import { Diff } from "@opencode-ai/ui/diff"
 import { Code } from "@opencode-ai/ui/code"
 import { ThemeProvider } from "@opencode-ai/ui/theme"
@@ -15,7 +17,7 @@ import { PermissionProvider } from "@/context/permission"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
 import { normalizeServerUrl, ServerProvider, useServer } from "@/context/server"
-import { SettingsProvider } from "@/context/settings"
+import { SettingsProvider, useSettings } from "@/context/settings"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { StashProvider } from "@/context/stash"
@@ -46,6 +48,20 @@ const Loading = () => <div class="size-full" />
 function UiI18nBridge(props: ParentProps) {
   const language = useLanguage()
   return <I18nProvider value={{ locale: language.locale, t: language.t }}>{props.children}</I18nProvider>
+}
+
+// Feeds the user's chosen code-block theme (appearance setting) into the ui
+// package's CodeTheme context, so Markdown code fences highlight with it.
+function CodeThemeBridge(props: ParentProps) {
+  const settings = useSettings()
+  return <CodeThemeProvider value={settings.appearance.codeTheme}>{props.children}</CodeThemeProvider>
+}
+
+// Feeds the user's chosen diff theme (appearance setting) into the ui package's
+// DiffTheme context, so edit/apply_patch diff previews highlight with it.
+function DiffThemeBridge(props: ParentProps) {
+  const settings = useSettings()
+  return <DiffThemeProvider value={settings.appearance.diffTheme}>{props.children}</DiffThemeProvider>
 }
 
 declare global {
@@ -120,21 +136,25 @@ export function AppInterface(props: { defaultUrl?: string }) {
             <Router
               root={(props) => (
                 <SettingsProvider>
-                  <PermissionProvider>
-                    <LayoutProvider>
-                      <NotificationProvider>
-                        <ModelsProvider>
-                          <CommandProvider>
-                            <HighlightsProvider>
-                              <RecentProvider>
-                                <Layout>{props.children}</Layout>
-                              </RecentProvider>
-                            </HighlightsProvider>
-                          </CommandProvider>
-                        </ModelsProvider>
-                      </NotificationProvider>
-                    </LayoutProvider>
-                  </PermissionProvider>
+                  <CodeThemeBridge>
+                    <DiffThemeBridge>
+                      <PermissionProvider>
+                        <LayoutProvider>
+                          <NotificationProvider>
+                            <ModelsProvider>
+                              <CommandProvider>
+                                <HighlightsProvider>
+                                  <RecentProvider>
+                                    <Layout>{props.children}</Layout>
+                                  </RecentProvider>
+                                </HighlightsProvider>
+                              </CommandProvider>
+                            </ModelsProvider>
+                          </NotificationProvider>
+                        </LayoutProvider>
+                      </PermissionProvider>
+                    </DiffThemeBridge>
+                  </CodeThemeBridge>
                 </SettingsProvider>
               )}
             >

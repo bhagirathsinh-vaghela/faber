@@ -10191,6 +10191,34 @@
           "properties"
         ]
       },
+      "Event.session.ping.armed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.ping.armed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "armed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sessionID",
+              "armed"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -10890,34 +10918,6 @@
               "sessionID",
               "arguments",
               "messageID"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.session.ping.armed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.ping.armed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "armed": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "sessionID",
-              "armed"
             ]
           }
         },
@@ -11664,6 +11664,12 @@
           "codeFont": {
             "type": "string"
           },
+          "codeTheme": {
+            "type": "string"
+          },
+          "diffTheme": {
+            "type": "string"
+          },
           "fontWeight": {
             "type": "number"
           },
@@ -11708,6 +11714,8 @@
           "fontSize",
           "font",
           "codeFont",
+          "codeTheme",
+          "diffTheme",
           "fontWeight",
           "headingWeight",
           "overrides"
@@ -11850,6 +11858,9 @@
             "$ref": "#/components/schemas/Event.question.deferred"
           },
           {
+            "$ref": "#/components/schemas/Event.session.ping.armed"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
@@ -11890,9 +11901,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.session.ping.armed"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"

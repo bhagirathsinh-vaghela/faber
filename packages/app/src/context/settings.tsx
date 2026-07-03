@@ -96,6 +96,8 @@ export interface Appearance {
   fontSize: number
   font: string
   codeFont: string
+  codeTheme: string
+  diffTheme: string
   fontWeight: number
   headingWeight: Record<number, number>
   overrides: { light: Record<string, string>; dark: Record<string, string> }
@@ -105,6 +107,8 @@ const defaultAppearance: Appearance = {
   fontSize: 13,
   font: "jetbrains-mono",
   codeFont: "jetbrains-mono",
+  codeTheme: "github-dark",
+  diffTheme: "github-dark",
   fontWeight: 400,
   headingWeight: { 1: 700, 2: 700, 3: 700, 4: 700, 5: 700, 6: 700 },
   overrides: { light: {}, dark: {} },
@@ -214,6 +218,14 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         codeFont: () => work.codeFont,
         setCodeFont(value: string) {
           setWork("codeFont", value)
+        },
+        codeTheme: () => work.codeTheme ?? defaultAppearance.codeTheme,
+        setCodeTheme(value: string) {
+          setWork("codeTheme", value)
+        },
+        diffTheme: () => work.diffTheme ?? defaultAppearance.diffTheme,
+        setDiffTheme(value: string) {
+          setWork("diffTheme", value)
         },
         fontWeight: () => work.fontWeight,
         setFontWeight(value: number) {

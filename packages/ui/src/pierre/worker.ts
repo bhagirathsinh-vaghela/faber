@@ -7,6 +7,11 @@ export function workerFactory(): Worker {
   return new Worker(ShikiWorkerUrl, { type: "module" })
 }
 
+// Theme the diff worker pools boot with and re-theme to. Defaults to the same
+// stock theme as the fallback context; the app pushes the user's chosen
+// diffTheme in via setDiffTheme once settings load.
+let theme = "github-dark"
+
 function createPool(lineDiffType: "none" | "word-alt") {
   const pool = new WorkerPoolManager(
     {
@@ -19,7 +24,7 @@ function createPool(lineDiffType: "none" | "word-alt") {
       poolSize: 2,
     },
     {
-      theme: "OpenCode",
+      theme,
       lineDiffType,
     },
   )
@@ -48,4 +53,14 @@ export function getWorkerPools() {
     unified: getWorkerPool("unified"),
     split: getWorkerPool("split"),
   }
+}
+
+// Re-theme the live worker pools. setRenderOptions pushes the theme to every
+// worker and notifies theme subscribers (mounted diffs) to re-render, so a
+// theme switch restyles diffs already on screen. New pools boot with `theme`.
+export function setDiffTheme(next: string) {
+  if (next === theme) return
+  theme = next
+  unified?.setRenderOptions({ theme })
+  split?.setRenderOptions({ theme })
 }

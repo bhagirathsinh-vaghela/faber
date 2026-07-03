@@ -135,3 +135,22 @@ export const FONT_OPTIONS = [
   { value: "ubuntu-mono", label: "font.option.ubuntuMono" },
   { value: "ibm-plex-mono", label: "font.option.ibmPlexMono" },
 ] as const
+
+// Code-block syntax-highlight themes. Each `value` is a stock Shiki bundled
+// theme name (resolved by @pierre/diffs' bundled-theme fallback in
+// highlightCode); label is a plain display name. Curated set of well-known,
+// proven themes — github-dark is the default.
+export const CODE_THEME_OPTIONS = [
+  { value: "github-dark", label: "GitHub Dark" },
+  { value: "github-dark-dimmed", label: "GitHub Dark Dimmed" },
+  { value: "github-light", label: "GitHub Light" },
+  { value: "dracula", label: "Dracula" },
+  { value: "nord", label: "Nord" },
+  { value: "one-dark-pro", label: "One Dark Pro" },
+  { value: "monokai", label: "Monokai" },
+  { value: "vitesse-dark", label: "Vitesse Dark" },
+  { value: "vitesse-light", label: "Vitesse Light" },
+  { value: "catppuccin-mocha", label: "Catppuccin Mocha" },
+  { value: "tokyo-night", label: "Tokyo Night" },
+  { value: "solarized-dark", label: "Solarized Dark" },
+] as const

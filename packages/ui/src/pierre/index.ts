@@ -172,9 +172,9 @@ const unsafeCSS = `
   --diffs-bg-deletion-hover-override: #7a0d12;
 }`
 
-export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"]) {
+export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"], theme = "github-dark") {
   return {
-    theme: "OpenCode",
+    theme,
     themeType: "system",
     disableLineNumbers: false,
     overflow: "wrap",

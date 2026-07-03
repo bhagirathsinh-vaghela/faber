@@ -908,8 +908,9 @@ ToolRegistry.register({
     const data = useData()
     const i18n = useI18n()
     const args: string[] = []
-    if (props.input.offset) args.push("offset=" + props.input.offset)
-    if (props.input.limit) args.push("limit=" + props.input.limit)
+    const offset = props.input.offset ?? 0
+    if (props.input.limit) args.push(`lines ${offset + 1}\u2013${offset + props.input.limit}`)
+    else if (props.input.offset) args.push(`from line ${offset + 1}`)
     const loaded = createMemo(() => {
       if (props.status !== "completed") return []
       const value = props.metadata.loaded
@@ -923,7 +924,7 @@ ToolRegistry.register({
           icon="glasses"
           trigger={{
             title: i18n.t("ui.tool.read"),
-            subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
+            subtitle: props.input.filePath ? relativizeProjectPaths(props.input.filePath, data.directory) : "",
             args,
           }}
         />
@@ -956,7 +957,7 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} complete />
+              <Markdown text={`\`\`\`\n${output()}\n\`\`\``} complete />
             </div>
           )}
         </Show>
@@ -983,7 +984,7 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} complete />
+              <Markdown text={`\`\`\`\n${output()}\n\`\`\``} complete />
             </div>
           )}
         </Show>
@@ -1013,7 +1014,7 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} complete />
+              <Markdown text={`\`\`\`\n${output()}\n\`\`\``} complete />
             </div>
           )}
         </Show>

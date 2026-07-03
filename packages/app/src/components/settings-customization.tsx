@@ -4,7 +4,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { useTheme } from "@opencode-ai/ui/theme"
 import { useLanguage } from "@/context/language"
 import { useSettings, monoFontFamily } from "@/context/settings"
-import { THEME_CATALOG, FONT_OPTIONS, type TokenEntry } from "@/utils/theme-catalog"
+import { THEME_CATALOG, FONT_OPTIONS, CODE_THEME_OPTIONS, type TokenEntry } from "@/utils/theme-catalog"
 import { SettingsRow } from "./settings-row"
 
 // Read a token's current effective value off the document (override or theme).
@@ -244,6 +244,44 @@ export const SettingsCustomization: Component = () => {
                   {(o) => (
                     <span style={{ "font-family": monoFontFamily(o?.value) }}>{o ? language.t(o.label) : ""}</span>
                   )}
+                </Select>
+              </SettingsRow>
+
+              <SettingsRow
+                title={language.t("settings.fonts.codeTheme.title")}
+                description={language.t("settings.fonts.codeTheme.description")}
+              >
+                <Select
+                  options={[...CODE_THEME_OPTIONS]}
+                  current={CODE_THEME_OPTIONS.find((o) => o.value === settings.appearance.codeTheme())}
+                  value={(o) => o.value}
+                  label={(o) => o.label}
+                  onSelect={(o) => o && settings.appearance.setCodeTheme(o.value)}
+                  variant="secondary"
+                  size="small"
+                  triggerVariant="settings"
+                  triggerStyle={{ "min-width": "180px" }}
+                >
+                  {(o) => <span>{o?.label ?? ""}</span>}
+                </Select>
+              </SettingsRow>
+
+              <SettingsRow
+                title={language.t("settings.fonts.diffTheme.title")}
+                description={language.t("settings.fonts.diffTheme.description")}
+              >
+                <Select
+                  options={[...CODE_THEME_OPTIONS]}
+                  current={CODE_THEME_OPTIONS.find((o) => o.value === settings.appearance.diffTheme())}
+                  value={(o) => o.value}
+                  label={(o) => o.label}
+                  onSelect={(o) => o && settings.appearance.setDiffTheme(o.value)}
+                  variant="secondary"
+                  size="small"
+                  triggerVariant="settings"
+                  triggerStyle={{ "min-width": "180px" }}
+                >
+                  {(o) => <span>{o?.label ?? ""}</span>}
                 </Select>
               </SettingsRow>
 

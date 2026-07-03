@@ -1,8 +1,12 @@
 import { useI18n } from "../context/i18n"
-import { highlightCode } from "../context/marked"
-import * as smd from "streaming-markdown"
-import katex from "katex"
-import { ComponentProps, createEffect, createSignal, onCleanup, splitProps } from "solid-js"
+import { useCodeTheme } from "../context/code-theme"
+import { highlightCode, themeColors } from "../context/marked"
+import { copyText } from "../util/clipboard"
+import { SolidMarkdown, type SolidMarkdownComponents } from "solid-markdown"
+import remarkGfm from "remark-gfm"
+import remarkMath from "remark-math"
+import rehypeKatex from "rehype-katex"
+import { ComponentProps, createEffect, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
 import { isServer } from "solid-js/web"
 
 const iconPaths = {
@@ -30,122 +34,121 @@ function createIcon(path: string, slot: string) {
   return icon
 }
 
-function createCopyButton(labels: CopyLabels) {
-  const button = document.createElement("button")
-  button.type = "button"
-  button.setAttribute("data-component", "icon-button")
-  button.setAttribute("data-variant", "secondary")
-  button.setAttribute("data-size", "normal")
-  button.setAttribute("data-slot", "markdown-copy-button")
-  button.setAttribute("aria-label", labels.copy)
-  button.setAttribute("title", labels.copy)
-  button.appendChild(createIcon(iconPaths.copy, "copy-icon"))
-  button.appendChild(createIcon(iconPaths.check, "check-icon"))
-  return button
+// Read the raw source and language from a HAST `pre` node. remark produces
+// `pre > code.language-xxx > text`, so the fence body is the code element's
+// text child and the language is its className. Reading the node (not the
+// rendered children, which are Solid components) is what gives us the literal
+// source to hand to Shiki.
+type Hast = { type: string; value?: string; tagName?: string; properties?: Record<string, unknown>; children?: Hast[] }
+function fenceSource(node: Hast) {
+  const code = node.children?.find((c) => c.tagName === "code")
+  const text = (code?.children ?? []).map((c) => c.value ?? "").join("")
+  const cls = code?.properties?.className
+  const list = Array.isArray(cls) ? cls.map(String) : []
+  const lang = list.map((c) => /^language-(\w+)/.exec(c)?.[1]).find(Boolean)
+  return { text, lang: lang ?? "text" }
 }
 
-// A code fence tracked while it streams: the <pre> box, its <code>, the raw
-// source accumulated so far, and the detected language. On end we swap the
-// plain streamed text for Shiki-highlighted HTML — highlight only fires once,
-// on the settled block, so streaming stays cheap and never re-touches the DOM.
-type Fence = {
-  pre: HTMLPreElement
-  code: HTMLElement
-  raw: string
-  lang: string
-  done: boolean
-}
+// A fenced code block: <div box><pre><code/></pre> + copy button. The body is
+// streamed plain first, then Shiki-highlighted once the block settles. Because
+// reconcile only re-runs this component's owner when the node's text changes,
+// re-highlight fires on append; a per-render guard skips redundant work.
+function CodeBlock(props: { lang: string; source: string; labels: CopyLabels; theme: string }) {
+  const [code, setCode] = createSignal<HTMLElement>()
 
-// Wrap smd's default renderer: reuse its DOM building, but intercept code
-// fences (box + copy button + highlight-on-close), equations (KaTeX), and
-// links (target=_blank). Append-only, so settled content is never mutated.
-function createRenderer(root: HTMLElement, labels: CopyLabels) {
-  const base = smd.default_renderer(root)
-  const fences: Fence[] = []
-  // Stack of the tokens we care about, parallel to smd's node stack depth.
-  const stack: (Fence | HTMLElement | null)[] = []
-
-  function highlight(fence: Fence) {
-    if (fence.done) return
-    fence.done = true
-    const raw = fence.raw.replace(/\n$/, "")
-    highlightCode(raw, fence.lang)
+  createEffect(() => {
+    const el = code()
+    const raw = props.source.replace(/\n$/, "")
+    if (!el || isServer || !raw) return
+    highlightCode(raw, props.lang, props.theme)
       .then((html) => {
-        // html is <pre class="shiki ..."><code>...</code></pre>; take its inner
-        // <code> so we keep our own <pre> (and the surrounding box/button).
         const tmp = document.createElement("div")
         tmp.innerHTML = html
-        const shikiCode = tmp.querySelector("code")
-        if (!shikiCode) return
-        fence.code.replaceChildren(...Array.from(shikiCode.childNodes))
+        const shiki = tmp.querySelector("code")
+        if (!shiki) return
+        el.replaceChildren(...Array.from(shiki.childNodes))
+        const pre = el.parentElement
         const shikiPre = tmp.querySelector("pre")
-        if (shikiPre) {
+        if (pre && shikiPre) {
           const cls = shikiPre.getAttribute("class")
-          if (cls) fence.pre.setAttribute("class", cls)
+          if (cls) pre.setAttribute("class", cls)
           const style = shikiPre.getAttribute("style")
-          if (style) fence.pre.setAttribute("style", style)
+          if (style) pre.setAttribute("style", style)
         }
       })
       .catch(() => {})
-  }
+  })
 
+  return (
+    <div data-component="markdown-code">
+      <pre>
+        <code ref={setCode}>{props.source}</code>
+      </pre>
+      <CopyButton labels={props.labels} />
+    </div>
+  )
+}
+
+function CopyButton(props: { labels: CopyLabels }) {
+  return (
+    <button
+      type="button"
+      data-component="icon-button"
+      data-variant="secondary"
+      data-size="normal"
+      data-slot="markdown-copy-button"
+      aria-label={props.labels.copy}
+      title={props.labels.copy}
+      ref={(el) => {
+        el.appendChild(createIcon(iconPaths.copy, "copy-icon"))
+        el.appendChild(createIcon(iconPaths.check, "check-icon"))
+      }}
+    />
+  )
+}
+
+// An inline <code> pill with click-to-copy. NO wrapper element — the pill is a
+// bare inline <code>, so it keeps the exact GitHub-style pill layout and takes
+// the click directly. The hover hint is a CSS-only bubble driven by the
+// `data-tooltip` attribute (see markdown.css); on click the pill copies and the
+// hint flips to "Copied" briefly. The pill's own text NEVER changes.
+function InlineCode(props: { children: JSX.Element; text: string; labels: CopyLabels }) {
+  const [done, setDone] = createSignal(false)
+  const onClick = async () => {
+    if (!props.text) return
+    await copyText(props.text)
+    setDone(true)
+    setTimeout(() => setDone(false), 1500)
+  }
+  return (
+    <code data-slot="inline-code" data-tooltip={done() ? props.labels.copied : props.labels.copy} onClick={onClick}>
+      {props.children}
+    </code>
+  )
+}
+
+function components(labels: CopyLabels, theme: () => string): SolidMarkdownComponents {
   return {
-    data: base.data,
-    add_token(data: unknown, type: number) {
-      base.add_token(data as never, type as never)
-      const node = base.data.nodes[base.data.index] as HTMLElement
-      if (type === smd.CODE_FENCE || type === smd.CODE_BLOCK) {
-        // base created <pre><code>; node is the <code>.
-        const pre = node.parentElement as HTMLPreElement
-        const wrapper = document.createElement("div")
-        wrapper.setAttribute("data-component", "markdown-code")
-        pre.parentElement?.replaceChild(wrapper, pre)
-        wrapper.appendChild(pre)
-        wrapper.appendChild(createCopyButton(labels))
-        const fence: Fence = { pre, code: node, raw: "", lang: "text", done: false }
-        fences.push(fence)
-        stack.push(fence)
-        return
-      }
-      if (type === smd.LINK || type === smd.RAW_URL) {
-        node.setAttribute("target", "_blank")
-        node.setAttribute("rel", "noopener noreferrer")
-        node.setAttribute("class", "external-link")
-      }
-      stack.push(node)
+    // Block code is handled by the `pre` override below (remark emits
+    // `pre > code`). This `code` override fires for BOTH, so it must only wrap
+    // INLINE code (remark sets `inline` when the parent isn't <pre>); block
+    // `code` is passed straight through so CodeBlock owns the fence.
+    code(props) {
+      if (!props.inline) return <code>{props.children}</code>
+      const node = props.node as unknown as Hast
+      const text = node?.children?.map((c) => c.value ?? "").join("") ?? ""
+      return <InlineCode text={text} labels={labels} children={props.children} />
     },
-    end_token(data: unknown) {
-      const top = stack.pop()
-      if (top && "raw" in (top as Fence)) {
-        highlight(top as Fence)
-      } else if (top instanceof HTMLElement) {
-        if (top.tagName === "EQUATION-BLOCK" || top.tagName === "EQUATION-INLINE") {
-          const display = top.tagName === "EQUATION-BLOCK"
-          try {
-            const rendered = katex.renderToString(top.textContent ?? "", {
-              displayMode: display,
-              throwOnError: false,
-            })
-            top.innerHTML = rendered
-          } catch {}
-        }
-      }
-      base.end_token(data as never)
+    pre(props) {
+      const fence = fenceSource(props.node as unknown as Hast)
+      return <CodeBlock lang={fence.lang} source={fence.text} labels={labels} theme={theme()} />
     },
-    add_text(data: unknown, text: string) {
-      const top = stack[stack.length - 1]
-      if (top && typeof top === "object" && "raw" in top) {
-        ;(top as Fence).raw += text
-      }
-      base.add_text(data as never, text)
-    },
-    set_attr(data: unknown, type: number, value: string) {
-      const top = stack[stack.length - 1]
-      if (type === smd.LANG && top && typeof top === "object" && "raw" in top) {
-        ;(top as Fence).lang = value
-        return // don't emit the class="lang" attr; Shiki sets its own classes
-      }
-      base.set_attr(data as never, type as never, value)
+    a(props) {
+      return (
+        <a href={props.href} target="_blank" rel="noopener noreferrer" class="external-link">
+          {props.children}
+        </a>
+      )
     },
   }
 }
@@ -161,65 +164,37 @@ export function Markdown(
 ) {
   const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList", "complete"])
   const i18n = useI18n()
+  const theme = useCodeTheme()
   const [root, setRoot] = createSignal<HTMLDivElement>()
 
-  let parser: ReturnType<typeof smd.parser> | undefined
-  let fed = ""
-  let key: string | undefined
-  let ended = false
+  const labels = { copy: i18n.t("ui.message.copy"), copied: i18n.t("ui.message.copied") }
+
   let copyCleanup: (() => void) | undefined
-
-  function reset(container: HTMLElement) {
-    container.replaceChildren()
-    parser = smd.parser(
-      createRenderer(container, {
-        copy: i18n.t("ui.message.copy"),
-        copied: i18n.t("ui.message.copied"),
-      }),
-    )
-    fed = ""
-    ended = false
-  }
-
-  createEffect(() => {
-    const container = root()
-    const text = local.text
-    if (!container || isServer) return
-
-    // A different message (cacheKey), a non-append edit, or a write after the
-    // stream was ended means the old tree is stale — start over. Otherwise feed
-    // only the newly appended suffix so the already-rendered DOM is never
-    // touched (this is what keeps code blocks from fragmenting mid-stream).
-    if (!parser || key !== local.cacheKey || !text.startsWith(fed) || ended) {
-      key = local.cacheKey
-      reset(container)
-    }
-
-    const chunk = text.slice(fed.length)
-    if (chunk.length > 0 && parser) {
-      smd.parser_write(parser, chunk)
-      fed = text
-    }
-
-    // streaming-markdown buffers the trailing token until end-of-stream. For
-    // static (non-streaming) text the write above never gets a follow-up, so
-    // the last character stays buffered and unrendered. `complete` signals the
-    // text is final: flush the buffer so the whole string renders.
-    if (local.complete && parser && !ended) {
-      smd.parser_end(parser)
-      ended = true
-    }
-  })
-
   createEffect(() => {
     const container = root()
     if (!container || isServer) return
     if (copyCleanup) copyCleanup()
     copyCleanup = setupCopy(container)
   })
-
   onCleanup(() => {
     if (copyCleanup) copyCleanup()
+  })
+
+  // Derive inline-code colors from the chosen code-block theme, so `inline`
+  // code shares the theme's pill background + text color (github-dark -> the
+  // GitHub look). Re-runs when the theme changes; a stale-guard drops results
+  // that resolve after the theme moved on.
+  createEffect(() => {
+    const container = root()
+    const name = theme()
+    if (!container || isServer) return
+    themeColors(name)
+      .then((c) => {
+        if (!c || theme() !== name) return
+        container.style.setProperty("--markdown-inline-bg", c.bg)
+        container.style.setProperty("--markdown-inline-fg", c.fg)
+      })
+      .catch(() => {})
   })
 
   return (
@@ -231,29 +206,46 @@ export function Markdown(
       }}
       ref={setRoot}
       {...others}
-    />
+    >
+      <SolidMarkdown
+        renderingStrategy="reconcile"
+        skipHtml
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={components(labels, theme)}
+      >
+        {local.text}
+      </SolidMarkdown>
+    </div>
   )
 }
 
 function setupCopy(root: HTMLElement) {
-  const timeouts = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>()
+  const timeouts = new Map<Element, ReturnType<typeof setTimeout>>()
+
+  const flash = async (el: Element, content: string) => {
+    const clipboard = navigator?.clipboard
+    if (!content || !clipboard) return
+    await clipboard.writeText(content)
+    el.setAttribute("data-copied", "true")
+    const existing = timeouts.get(el)
+    if (existing) clearTimeout(existing)
+    timeouts.set(
+      el,
+      setTimeout(() => el.removeAttribute("data-copied"), 2000),
+    )
+  }
 
   const handleClick = async (event: MouseEvent) => {
     const target = event.target
     if (!(target instanceof Element)) return
+    // Block code: the dedicated copy button copies the fence body. (Inline code
+    // copy is owned by the InlineCode component + Tooltip, not this delegation.)
     const button = target.closest('[data-slot="markdown-copy-button"]')
-    if (!(button instanceof HTMLButtonElement)) return
-    const code = button.closest('[data-component="markdown-code"]')?.querySelector("code")
-    const content = code?.textContent ?? ""
-    if (!content) return
-    const clipboard = navigator?.clipboard
-    if (!clipboard) return
-    await clipboard.writeText(content)
-    button.setAttribute("data-copied", "true")
-    const existing = timeouts.get(button)
-    if (existing) clearTimeout(existing)
-    const timeout = setTimeout(() => button.removeAttribute("data-copied"), 2000)
-    timeouts.set(button, timeout)
+    if (button instanceof HTMLButtonElement) {
+      const code = button.closest('[data-component="markdown-code"]')?.querySelector("code")
+      await flash(button, code?.textContent ?? "")
+    }
   }
 
   root.addEventListener("click", handleClick)

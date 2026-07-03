@@ -192,18 +192,64 @@
     }
   }
 
+  /* Inline code: a GitHub-style pill whose background + text derive from the
+     chosen code-block theme (--markdown-inline-bg / --markdown-inline-fg, set
+     by the Markdown component). Falls back to the prose accent + surface when
+     the theme colors haven't resolved yet. */
+  [data-slot="inline-code"],
   :not(pre) > code {
+    position: relative;
     font-family: var(--markdown-code-family);
     font-feature-settings: var(--font-family-mono--font-feature-settings);
-    color: var(--markdown-code);
+    color: var(--markdown-inline-fg, var(--markdown-code));
+    /* Fallback background is transparent (not a surface color): until the
+       theme's --markdown-inline-bg resolves, the pill shows no box and the
+       accent text stays readable — so there is never a same-color-on-same-color
+       blank flash during streaming. */
+    background: var(--markdown-inline-bg, transparent);
     font-weight: var(--markdown-code-weight);
     font-size: var(--markdown-code-size);
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+    cursor: pointer;
+    transition:
+      filter 0.12s ease,
+      box-shadow 0.12s ease;
+  }
 
-    /* padding: 2px 2px; */
-    /* margin: 0 1.5px; */
-    /* border-radius: 2px; */
-    /* background: var(--surface-base); */
-    /* box-shadow: 0 0 0 0.5px var(--border-weak-base); */
+  [data-slot="inline-code"]:hover {
+    filter: brightness(1.15);
+    box-shadow: 0 0 0 1px var(--border-weak-base);
+  }
+
+  /* CSS-only hover hint: a small bubble above the pill, driven by the pill's
+     data-tooltip attribute ("Copy" / "Copied"). No wrapper element, so the pill
+     keeps its exact inline layout and the click lands on it directly. */
+  [data-slot="inline-code"][data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-float-base);
+    color: var(--text-invert-strong);
+    border: 1px solid var(--border-weak-base, rgba(0, 0, 0, 0.07));
+    box-shadow: var(--shadow-md);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: 1000;
+  }
+
+  [data-slot="inline-code"][data-tooltip]:hover::after {
+    opacity: 1;
   }
 
   /* Tables: GitHub GFM table styling (github-markdown-css) */

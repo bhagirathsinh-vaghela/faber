@@ -691,6 +691,14 @@ export type EventQuestionDeferred = {
   }
 }
 
+export type EventSessionPingArmed = {
+  type: "session.ping.armed"
+  properties: {
+    sessionID: string
+    armed: boolean
+  }
+}
+
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -908,14 +916,6 @@ export type EventCommandExecuted = {
   }
 }
 
-export type EventSessionPingArmed = {
-  type: "session.ping.armed"
-  properties: {
-    sessionID: string
-    armed: boolean
-  }
-}
-
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -1112,6 +1112,8 @@ export type AppearancePreference = {
   fontSize: number
   font: string
   codeFont: string
+  codeTheme: string
+  diffTheme: string
   fontWeight: number
   headingWeight: {
     [key: string]: number
@@ -1169,6 +1171,7 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionDeferred
+  | EventSessionPingArmed
   | EventSessionCompacted
   | EventBackgroundTaskCreated
   | EventBackgroundTaskProgress
@@ -1183,7 +1186,6 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
-  | EventSessionPingArmed
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted

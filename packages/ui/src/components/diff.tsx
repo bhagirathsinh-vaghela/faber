@@ -3,7 +3,8 @@ import { FileDiff, type SelectedLineRange } from "@pierre/diffs"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createEffect, createMemo, createSignal, onCleanup, splitProps } from "solid-js"
 import { createDefaultOptions, type DiffProps, styleVariables } from "../pierre"
-import { getWorkerPool } from "../pierre/worker"
+import { getWorkerPool, setDiffTheme } from "../pierre/worker"
+import { useDiffTheme } from "../context/diff-theme"
 
 type SelectionSide = "additions" | "deletions"
 
@@ -75,10 +76,16 @@ export function Diff<T>(props: DiffProps<T>) {
   ])
 
   const mobile = createMediaQuery("(max-width: 640px)")
+  const theme = useDiffTheme()
 
   const options = createMemo(() => {
+    // Reading the theme signal here makes the render effect (which depends on
+    // options()) re-run on theme change; setDiffTheme re-themes the shared
+    // worker pool that does the actual highlighting.
+    const name = theme()
+    setDiffTheme(name)
     const opts = {
-      ...createDefaultOptions(props.diffStyle),
+      ...createDefaultOptions(props.diffStyle, name),
       ...others,
     }
     if (!mobile()) return opts

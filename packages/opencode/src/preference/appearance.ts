@@ -12,6 +12,8 @@ export namespace AppearancePreference {
       fontSize: z.number(),
       font: z.string(),
       codeFont: z.string(),
+      codeTheme: z.string(),
+      diffTheme: z.string(),
       fontWeight: z.number(),
       headingWeight: z.record(z.string(), z.number()),
       // Per-mode CSS custom-property overrides: { light: {...}, dark: {...} }.
@@ -29,6 +31,8 @@ export namespace AppearancePreference {
     fontSize: 13,
     font: "jetbrains-mono",
     codeFont: "jetbrains-mono",
+    codeTheme: "github-dark",
+    diffTheme: "github-dark",
     fontWeight: 400,
     headingWeight: { "1": 700, "2": 700, "3": 700, "4": 700, "5": 700, "6": 700 },
     overrides: { light: {}, dark: {} },

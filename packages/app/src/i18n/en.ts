@@ -609,6 +609,10 @@ export const dict = {
   "settings.fonts.bodyWeight.description": "Thickness of normal body text",
   "settings.fonts.codeFont.title": "Code block font",
   "settings.fonts.codeFont.description": "Font for fenced code blocks in the chat",
+  "settings.fonts.codeTheme.title": "Code block theme",
+  "settings.fonts.codeTheme.description": "Syntax-highlighting theme for fenced code blocks",
+  "settings.fonts.diffTheme.title": "Diff theme",
+  "settings.fonts.diffTheme.description": "Syntax-highlighting theme for edit and patch diff previews",
 
   "settings.general.section.appearance": "Appearance",
   "settings.general.section.notifications": "System notifications",
