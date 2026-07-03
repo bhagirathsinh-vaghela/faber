@@ -1537,12 +1537,37 @@ ToolRegistry.register({
         <Show when={completed()}>
           <div data-component="question-answers">
             <For each={questions()}>
-              {(q, i) => (
-                <div data-slot="question-answer-item">
-                  <div data-slot="question-text">{q.question}</div>
-                  <div data-slot="answer-text">{format(answers()[i()])}</div>
-                </div>
-              )}
+              {(q, i) => {
+                const answer = createMemo(() => answers()[i()])
+                const picked = createMemo(() => {
+                  const a = answer()
+                  if (!a?.length) return []
+                  if (a.length === 1 && a[0] === DEFERRED_ANSWER) return []
+                  return a.map((label) => ({
+                    label,
+                    description: q.options.find((o) => o.label === label)?.description,
+                  }))
+                })
+                return (
+                  <div data-slot="question-answer-item">
+                    <div data-slot="question-text">{q.question}</div>
+                    <Show when={picked().length} fallback={<div data-slot="answer-text">{format(answer())}</div>}>
+                      <For each={picked()}>
+                        {(choice) => (
+                          <div data-slot="answer-choice">
+                            <div data-slot="answer-text">{choice.label}</div>
+                            <Show when={choice.description}>
+                              <div data-slot="answer-description">
+                                <Markdown class="question-markdown" text={choice.description!} complete />
+                              </div>
+                            </Show>
+                          </div>
+                        )}
+                      </For>
+                    </Show>
+                  </div>
+                )
+              }}
             </For>
           </div>
         </Show>

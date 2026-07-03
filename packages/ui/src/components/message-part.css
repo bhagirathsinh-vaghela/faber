@@ -784,6 +784,17 @@
     [data-slot="answer-text"] {
       color: var(--text-strong);
     }
+
+    [data-slot="answer-choice"] {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    [data-slot="answer-description"] {
+      color: var(--text-weak);
+      font-size: 11px;
+    }
   }
 }
 
