@@ -17,6 +17,9 @@ export type RecentSession = {
   directory: string
   title: string
   updated: number
+  busy: boolean
+  unseen: boolean
+  pingAt?: number
 }
 
 export type EventInstallationUpdated = {

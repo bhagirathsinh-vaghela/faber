@@ -10,6 +10,13 @@ import z from "zod"
 // list is capped, held in memory, and written through to disk on a debounce.
 // Lossy on purpose: a crash loses at most the last few touches, which only
 // reorders a handful of recent entries.
+//
+// The entry is the full overview projection: alongside the durable recency it
+// carries the live per-session flags the overview buckets on (busy, unseen) and
+// the next-ping deadline. Those flags only ever flip for a session that a turn
+// already touched, so the entry is present when they change — no join, no scan.
+// They are instance-lifetime, so the disk flush strips them and hydrate defaults
+// them off.
 export namespace SessionRecent {
   const KEY = ["recent"]
   const LIMIT = 50
@@ -23,9 +30,18 @@ export namespace SessionRecent {
       // Last real-turn timestamp — the same signal that stamps session
       // lastActivity. Pings and views never reach here.
       updated: z.number(),
+      busy: z.boolean(),
+      unseen: z.boolean(),
+      // Epoch ms the next cache ping fires; absent when no ping is scheduled.
+      // The client renders the countdown from this against its own clock, so a
+      // new deadline is the only thing that has to cross the wire.
+      pingAt: z.number().optional(),
     })
     .meta({ ref: "RecentSession" })
   export type Entry = z.infer<typeof Entry>
+
+  const Stored = Entry.pick({ sessionID: true, directory: true, title: true, updated: true, unseen: true })
+  type Stored = z.infer<typeof Stored>
 
   export const Event = {
     Updated: BusEvent.define("recent.updated", z.object({ entries: Entry.array() })),
@@ -34,8 +50,8 @@ export namespace SessionRecent {
   const entries = new Map<string, Entry>()
 
   const hydrate = lazy(async () => {
-    const stored = await Storage.read<Entry[]>(KEY).catch(() => [] as Entry[])
-    for (const entry of stored) entries.set(entry.sessionID, entry)
+    const stored = await Storage.read<Stored[]>(KEY).catch(() => [] as Stored[])
+    for (const entry of stored) entries.set(entry.sessionID, { ...entry, busy: false })
   })
 
   const sorted = () => [...entries.values()].sort((a, b) => b.updated - a.updated)
@@ -45,15 +61,46 @@ export namespace SessionRecent {
     if (timer) return
     timer = setTimeout(() => {
       timer = undefined
-      void Storage.write(KEY, sorted())
+      const durable: Stored[] = sorted().map(({ busy, pingAt, ...rest }) => rest)
+      void Storage.write(KEY, durable)
     }, FLUSH_MS)
   }
 
-  function publish() {
+  // Emits split by how fresh the client needs them. A transition — busy on/off,
+  // unseen dot, a ping countdown appearing or clearing — is actionable state and
+  // publishes at once, so the overview learns it the instant the session view
+  // does. Pure recency reordering and ping-deadline drift are not actionable (the
+  // buckets and the shown countdown are unchanged; only sort order moves), and a
+  // long turn fires one per assistant step seconds apart. Those mutate the map now
+  // but only arm a slow safety-net timer, so the reordered list reaches clients
+  // within LAZY_MS even if no transition happens to carry it sooner.
+  const LAZY_MS = 2000
+  let lazyTimer: ReturnType<typeof setTimeout> | undefined
+
+  function emit() {
     GlobalBus.emit("event", {
       directory: "global",
       payload: { type: Event.Updated.type, properties: { entries: sorted() } },
     })
+  }
+
+  // A transition: emit the settled list immediately. Any pending lazy emit is now
+  // redundant — this frame already carries the freshest order — so cancel it.
+  function publish() {
+    if (lazyTimer) {
+      clearTimeout(lazyTimer)
+      lazyTimer = undefined
+    }
+    emit()
+  }
+
+  // A non-actionable change (recency/drift): coalesce onto a single trailing emit.
+  function publishLazy() {
+    if (lazyTimer) return
+    lazyTimer = setTimeout(() => {
+      lazyTimer = undefined
+      emit()
+    }, LAZY_MS)
   }
 
   export async function list() {
@@ -62,18 +109,59 @@ export namespace SessionRecent {
   }
 
   // A real turn touched this session: move it to the front and evict the oldest
-  // past the cap. Re-inserting keeps the map's own order irrelevant — sorted()
-  // orders by updated — but the delete+set keeps eviction simple.
-  export async function touch(input: Entry) {
+  // past the cap. Live flags survive a re-touch so a busy turn that writes many
+  // messages doesn't strobe the spinner off between chunks.
+  export async function touch(input: Omit<Entry, "busy" | "unseen" | "pingAt">) {
     await hydrate()
+    const prev = entries.get(input.sessionID)
     entries.delete(input.sessionID)
-    entries.set(input.sessionID, input)
+    entries.set(input.sessionID, {
+      ...input,
+      busy: prev?.busy ?? false,
+      unseen: prev?.unseen ?? false,
+      pingAt: prev?.pingAt,
+    })
     if (entries.size > LIMIT) {
       const drop = sorted().slice(LIMIT)
       for (const entry of drop) entries.delete(entry.sessionID)
     }
     flush()
+    // Recency only — the order moved, no actionable flag changed. Let it ride the
+    // safety-net timer (or the next transition) instead of emitting per step.
+    publishLazy()
+  }
+
+  // Live-flag flips. The entry is guaranteed present (the turn that set the flag
+  // already touched it); a missing entry means the session aged out of the cap,
+  // so the flip is irrelevant to the overview and dropped.
+  export async function setBusy(sessionID: string, busy: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.busy === busy) return
+    entry.busy = busy
     publish()
+  }
+
+  export async function setUnseen(sessionID: string, unseen: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.unseen === unseen) return
+    entry.unseen = unseen
+    flush()
+    publish()
+  }
+
+  export async function setPing(sessionID: string, pingAt: number | undefined) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.pingAt === pingAt) return
+    // The countdown appearing or clearing is actionable and emits at once; a
+    // deadline shifting while it stays present is drift the ticking client
+    // absorbs, so it rides the lazy timer.
+    const appearedOrCleared = entry.pingAt === undefined || pingAt === undefined
+    entry.pingAt = pingAt
+    if (appearedOrCleared) publish()
+    if (!appearedOrCleared) publishLazy()
   }
 
   export async function remove(sessionID: string) {

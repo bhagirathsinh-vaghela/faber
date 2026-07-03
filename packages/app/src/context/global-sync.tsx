@@ -201,15 +201,20 @@ function createGlobalSync() {
     model_preference: ModelPreference
     stash: StashEntry[]
     reload: undefined | "pending" | "complete"
-    // Every armed cache-ping daemon on this instance, keyed by sessionID, with
-    // the countdown inputs. Fetched globally so the overview reads active state
-    // for its recent sessions without bootstrapping each directory.
-    armed_hub: Record<string, { lastRequestAt?: number; beforeExpiry: number }>
-    // Recent-session LRU, server-owned so every client renders the same
-    // overview. Seeded once at bootstrap, then replaced wholesale from the
-    // recent.updated event (the event carries the full list). unseen/busy are
-    // read live per row, not stored here.
-    recent_hub: { sessionID: string; directory: string; title: string; updated: number }[]
+    // The complete home overview, server-owned so every client renders the same
+    // list without opening any directory. Seeded once at bootstrap, then replaced
+    // wholesale from the recent.updated event (which carries the full list). Each
+    // entry already carries its live flags (busy, unseen) and next-ping deadline;
+    // the client only ticks the deadline into a countdown string.
+    recent_hub: {
+      sessionID: string
+      directory: string
+      title: string
+      updated: number
+      busy: boolean
+      unseen: boolean
+      pingAt?: number
+    }[]
   }>({
     ready: false,
     path: { state: "", config: "", worktree: "", directory: "", home: "" },
@@ -220,7 +225,6 @@ function createGlobalSync() {
     model_preference: { user: [], recent: [], variant: {} },
     stash: [],
     reload: undefined,
-    armed_hub: {},
     recent_hub: [],
   })
 
@@ -870,8 +874,6 @@ function createGlobalSync() {
       }
       case "session.ping.armed": {
         setStore("ping_armed", event.properties.sessionID, event.properties.armed)
-        // Membership changed — refresh the global armed hub the overview reads.
-        void refreshArmedHub()
         break
       }
       case "permission.autoaccept": {
@@ -1054,20 +1056,6 @@ function createGlobalSync() {
     clearTimeout(timer)
   })
 
-  // Pull the instance-wide armed set into a flat session-keyed map. The overview
-  // reads this for its recent sessions; refreshed on every arm/disarm event.
-  async function refreshArmedHub() {
-    const armed = await globalSDK.client.global
-      .pingArmed()
-      .then((x) => x.data)
-      .catch(() => undefined)
-    if (!armed) return
-    const hub: Record<string, { lastRequestAt?: number; beforeExpiry: number }> = {}
-    for (const entry of armed)
-      hub[entry.sessionID] = { lastRequestAt: entry.lastRequestAt, beforeExpiry: entry.beforeExpiry }
-    setGlobalStore("armed_hub", reconcile(hub))
-  }
-
   // Pull the instance-wide recent session list. Server-owned so every client
   // renders the same overview; refreshed on bootstrap, reconnect, and session
   // membership changes.
@@ -1126,7 +1114,6 @@ function createGlobalSync() {
           setGlobalStore("provider_auth", x.data ?? {})
         }),
       ),
-      retry(() => refreshArmedHub()),
       retry(() => refreshRecent()),
       retry(() =>
         globalSDK.client.preference.model.get().then((x) => {

@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Instance } from "@/project/instance"
+import { SessionRecent } from "./recent"
 import z from "zod"
 
 export namespace SessionStatus {
@@ -63,6 +64,7 @@ export namespace SessionStatus {
       sessionID,
       status,
     })
+    void SessionRecent.setBusy(sessionID, status.type === "busy" || status.type === "retry")
     if (status.type === "idle") {
       // deprecated
       Bus.publish(Event.Idle, {

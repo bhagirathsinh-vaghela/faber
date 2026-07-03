@@ -22,6 +22,19 @@ export function cacheCountdownFrom(base: number | undefined, beforeExpiry: numbe
   if (base + CACHE_TTL <= now) return null
   const remaining = base + CACHE_TTL - beforeExpiry - now
   if (remaining <= 0) return null
+  return format(remaining)
+}
+
+// Countdown to an absolute deadline the server already resolved (the overview's
+// next-ping timestamp). The client just renders time-remaining against its clock.
+export function cacheCountdownUntil(at: number | undefined, now: number): string | null {
+  if (!at) return null
+  const remaining = at - now
+  if (remaining <= 0) return null
+  return format(remaining)
+}
+
+function format(remaining: number): string {
   const mins = Math.floor(remaining / 60000)
   const secs = Math.floor((remaining % 60000) / 1000)
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`

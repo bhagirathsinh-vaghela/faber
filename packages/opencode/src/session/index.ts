@@ -380,10 +380,12 @@ export namespace Session {
   }
 
   export function markUnseen(id: string) {
+    void SessionRecent.setUnseen(id, true)
     return update(id, (session) => (session.unseen = true), { touch: false })
   }
 
   export function markSeen(id: string) {
+    void SessionRecent.setUnseen(id, false)
     return update(
       id,
       (session) => {

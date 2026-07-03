@@ -7882,13 +7882,24 @@
           },
           "updated": {
             "type": "number"
+          },
+          "busy": {
+            "type": "boolean"
+          },
+          "unseen": {
+            "type": "boolean"
+          },
+          "pingAt": {
+            "type": "number"
           }
         },
         "required": [
           "sessionID",
           "directory",
           "title",
-          "updated"
+          "updated",
+          "busy",
+          "unseen"
         ]
       },
       "Event.installation.updated": {

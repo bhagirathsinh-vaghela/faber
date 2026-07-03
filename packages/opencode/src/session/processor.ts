@@ -15,6 +15,8 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { SessionRecent } from "./recent"
+import { CACHE_TTL, beforeExpiry } from "./ping"
 
 // Anthropic model cost rates ($/million tokens)
 // https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table
@@ -100,11 +102,17 @@ export namespace SessionProcessor {
             // Anchor the cache TTL to request dispatch time (parent sessions only) —
             // every request that reaches Anthropic restarts the 5m cache window.
             const dispatchedAt = Date.now()
-            await Session.update(input.sessionID, (draft) => {
+            const updated = await Session.update(input.sessionID, (draft) => {
               draft.cacheMarkers = cacheMarkers
               draft.systemBlockCount = systemBlockCount
               if (!draft.parentID) draft.cache = { lastRequestAt: dispatchedAt }
             })
+            // The overview's next-ping countdown rides the recent LRU, which the
+            // post-turn ping daemon only stamps at turn end. Stamp it here too, off
+            // the same mid-turn anchor the session statusline reads, so the overview
+            // lights up in step instead of lagging a whole turn behind.
+            if (!updated.parentID)
+              void SessionRecent.setPing(input.sessionID, dispatchedAt + CACHE_TTL - (await beforeExpiry()))
 
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()

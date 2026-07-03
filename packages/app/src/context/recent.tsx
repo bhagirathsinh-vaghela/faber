@@ -1,7 +1,7 @@
 import { createMemo, createSignal, onCleanup } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
-import { cacheCountdownFrom } from "@/utils/cache-countdown"
+import { cacheCountdownUntil } from "@/utils/cache-countdown"
 
 export type OverviewRow = {
   sessionID: string
@@ -22,29 +22,21 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     const timer = setInterval(() => setNow(Date.now()), 1000)
     onCleanup(() => clearInterval(timer))
 
-    // Membership, title, and base recency come from the server-owned recent hub
-    // so every client renders the same overview. Live busy/countdown are layered
-    // on top: countdown from the global armed hub (correct after a reload), busy
-    // from the directory child store only when it is already open (bootstrap:
-    // false) — a not-open session simply reads not-busy.
+    // The whole overview is the server-owned recent hub — membership, recency,
+    // and the live flags (busy, unseen, next-ping deadline) all ride the same
+    // projection, so every client renders identically without opening any
+    // directory. The only client-local work is ticking the ping deadline into a
+    // mm:ss string against the local clock.
     const rows = createMemo<OverviewRow[]>(() =>
-      globalSync.data.recent_hub.map((entry) => {
-        const [child] = globalSync.child(entry.directory, { bootstrap: false })
-        const status = child.session_status[entry.sessionID]
-        const busy = status?.type === "busy" || status?.type === "retry"
-        const unseen = child.session.find((s) => s.id === entry.sessionID)?.unseen === true
-        const armed = globalSync.data.armed_hub[entry.sessionID]
-        const countdown = armed ? cacheCountdownFrom(armed.lastRequestAt, armed.beforeExpiry, now()) : null
-        return {
-          sessionID: entry.sessionID,
-          directory: entry.directory,
-          title: entry.title,
-          updated: entry.updated,
-          busy,
-          unseen,
-          countdown,
-        }
-      }),
+      globalSync.data.recent_hub.map((entry) => ({
+        sessionID: entry.sessionID,
+        directory: entry.directory,
+        title: entry.title,
+        updated: entry.updated,
+        busy: entry.busy,
+        unseen: entry.unseen,
+        countdown: cacheCountdownUntil(entry.pingAt, now()),
+      })),
     )
 
     // A session is in exactly one bucket. Both sort by last real-turn activity

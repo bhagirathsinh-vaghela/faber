@@ -16,6 +16,7 @@ import { SessionPrompt } from "./prompt"
 import { computeStepCost } from "./processor"
 import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
+import { SessionRecent } from "./recent"
 
 export const CACHE_TTL = 5 * 60 * 1000
 const DEFAULT_BEFORE_EXPIRY = 10
@@ -125,6 +126,7 @@ export namespace SessionPing {
     const entry = active.get(sessionID)
     if (!entry) return
     active.delete(sessionID)
+    void SessionRecent.setPing(sessionID, undefined)
     armed(sessionID, entry.directory, false)
   }
 
@@ -179,6 +181,9 @@ export namespace SessionPing {
       try {
         const next = await evaluate(sessionID)
         if (next.type === "stop") break
+        // The overview reads the next-ping deadline off the recent LRU; stamp it
+        // when a ping is scheduled, clear it while idle (no ping is coming).
+        void SessionRecent.setPing(sessionID, next.type === "ping" ? next.at : undefined)
         // "ping" sleeps the exact time to the ping moment; "idle" backs off a
         // coarse tick and re-checks.
         await sleep(next.type === "ping" ? next.delay : IDLE_TICK, signal)
@@ -195,7 +200,7 @@ export namespace SessionPing {
     if (entry?.id === id) disarm(sessionID)
   }
 
-  type Next = { type: "ping"; delay: number } | { type: "idle" } | { type: "stop" }
+  type Next = { type: "ping"; delay: number; at: number } | { type: "idle" } | { type: "stop" }
 
   // Tri-state, never throws — read failures surface as "idle" so a transient
   // hiccup retries instead of killing the daemon.
@@ -214,7 +219,7 @@ export namespace SessionPing {
     const now = Date.now()
     if (base + CACHE_TTL <= now) return { type: "idle" } // cache expired — wait for next turn
     const target = base + CACHE_TTL - (await beforeExpiry())
-    return { type: "ping", delay: Math.max(0, target - now) }
+    return { type: "ping", delay: Math.max(0, target - now), at: target }
   }
 
   async function ping(sessionID: string, signal: AbortSignal, options?: { cacheProbeMessageID?: string }) {
