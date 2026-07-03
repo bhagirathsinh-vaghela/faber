@@ -490,7 +490,9 @@ export function MessageBox(props: {
       >
         <span data-slot="message-box-diamond">{"\u25c8"}</span>
         <Show when={number() !== undefined}>
-          <span data-slot="message-box-number" style={{ color: "var(--color-text-weak)" }}>{"#" + number()}</span>
+          <span data-slot="message-box-number" style={{ color: "var(--color-text-weak)" }}>
+            {"#" + number()}
+          </span>
         </Show>
         <span data-slot="message-box-label">{props.label ?? (isUser ? "USER" : "ASSISTANT")}</span>
         <span data-slot="message-box-time" style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>

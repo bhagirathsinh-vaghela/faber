@@ -51,7 +51,6 @@ import { DialogDock } from "@/components/dialog-dock"
 import { useProviders } from "@/hooks/use-providers"
 import { useCommand } from "@/context/command"
 import { useSettings } from "@/context/settings"
-import { useRecent } from "@/context/recent"
 import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
@@ -155,7 +154,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const permission = usePermission()
   const language = useLanguage()
   const settings = useSettings()
-  const recentSessions = useRecent()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -1644,7 +1642,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const send = async () => {
       const ok = await waitForWorktree()
       if (!ok) return
-      recentSessions.upsert(session)
       await client.session.prompt({
         sessionID: session.id,
         agent,

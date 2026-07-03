@@ -40,7 +40,6 @@ import { getFilename } from "@opencode-ai/util/path"
 import { Session, type Message, type TextPart } from "@opencode-ai/sdk/v2/client"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
-import { useRecent } from "@/context/recent"
 import { createStore, produce, reconcile } from "solid-js/store"
 import {
   DragDropProvider,
@@ -97,7 +96,6 @@ export default function Layout(props: ParentProps) {
   const params = useParams()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
-  const recent = useRecent()
   const layout = useLayout()
   const layoutReady = createMemo(() => layout.ready())
   const platform = usePlatform()
@@ -1669,9 +1667,6 @@ export default function Layout(props: ParentProps) {
         setStore("lastSession", directory, id)
         notification.session.markViewed(id)
         void globalSDK.client.session.seen({ directory, sessionID: id })
-        const [viewed] = globalSync.child(directory, { bootstrap: false })
-        const session = viewed.session.find((s) => s.id === id)
-        if (session) recent.upsert(session)
         const expanded = untrack(() => store.workspaceExpanded[directory])
         if (expanded === false) {
           setStore("workspaceExpanded", directory, true)

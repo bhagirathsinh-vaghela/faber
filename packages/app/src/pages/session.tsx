@@ -2053,10 +2053,7 @@ export default function Page() {
                                   when={renaming()}
                                   fallback={
                                     <div class="group/title flex items-center gap-1 min-w-0">
-                                      <h1
-                                        class="text-16-medium text-text-strong truncate"
-                                        onDblClick={startRename}
-                                      >
+                                      <h1 class="text-16-medium text-text-strong truncate" onDblClick={startRename}>
                                         {info()?.title}
                                       </h1>
                                       <IconButton

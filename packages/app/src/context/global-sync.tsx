@@ -205,6 +205,11 @@ function createGlobalSync() {
     // the countdown inputs. Fetched globally so the overview reads active state
     // for its recent sessions without bootstrapping each directory.
     armed_hub: Record<string, { lastRequestAt?: number; beforeExpiry: number }>
+    // Recent-session LRU, server-owned so every client renders the same
+    // overview. Seeded once at bootstrap, then replaced wholesale from the
+    // recent.updated event (the event carries the full list). unseen/busy are
+    // read live per row, not stored here.
+    recent_hub: { sessionID: string; directory: string; title: string; updated: number }[]
   }>({
     ready: false,
     path: { state: "", config: "", worktree: "", directory: "", home: "" },
@@ -216,6 +221,7 @@ function createGlobalSync() {
     stash: [],
     reload: undefined,
     armed_hub: {},
+    recent_hub: [],
   })
 
   const queued = new Set<string>()
@@ -731,6 +737,10 @@ function createGlobalSync() {
             set("stash", reconcile(event.properties.entries, { key: "timestamp" }))
           return
         }
+        case "recent.updated": {
+          setGlobalStore("recent_hub", reconcile(event.properties.entries, { key: "sessionID" }))
+          return
+        }
       }
       return
     }
@@ -1058,6 +1068,18 @@ function createGlobalSync() {
     setGlobalStore("armed_hub", reconcile(hub))
   }
 
+  // Pull the instance-wide recent session list. Server-owned so every client
+  // renders the same overview; refreshed on bootstrap, reconnect, and session
+  // membership changes.
+  async function refreshRecent() {
+    const recent = await globalSDK.client.global
+      .recent()
+      .then((x) => x.data)
+      .catch(() => undefined)
+    if (!recent) return
+    setGlobalStore("recent_hub", reconcile(recent, { key: "sessionID" }))
+  }
+
   async function bootstrap() {
     const health = await globalSDK.client.global
       .health()
@@ -1105,6 +1127,7 @@ function createGlobalSync() {
         }),
       ),
       retry(() => refreshArmedHub()),
+      retry(() => refreshRecent()),
       retry(() =>
         globalSDK.client.preference.model.get().then((x) => {
           if (x.data) setGlobalStore("model_preference", x.data)

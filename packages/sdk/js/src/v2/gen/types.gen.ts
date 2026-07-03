@@ -12,6 +12,13 @@ export type BadRequestError = {
   success: false
 }
 
+export type RecentSession = {
+  sessionID: string
+  directory: string
+  title: string
+  updated: number
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -514,6 +521,13 @@ export type EventMessagePartRemoved = {
   }
 }
 
+export type EventRecentUpdated = {
+  type: "recent.updated"
+  properties: {
+    entries: Array<RecentSession>
+  }
+}
+
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
@@ -952,6 +966,7 @@ export type Session = {
   seen?: {
     at: number
   }
+  lastActivity?: number
   tokens?: {
     input: number
     cacheRead: number
@@ -1139,6 +1154,7 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventRecentUpdated
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
   | EventPermissionAsked
@@ -2662,6 +2678,31 @@ export type GlobalPingArmedResponses = {
 }
 
 export type GlobalPingArmedResponse = GlobalPingArmedResponses[keyof GlobalPingArmedResponses]
+
+export type GlobalRecentData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/recent"
+}
+
+export type GlobalRecentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalRecentError = GlobalRecentErrors[keyof GlobalRecentErrors]
+
+export type GlobalRecentResponses = {
+  /**
+   * Recent sessions
+   */
+  200: Array<RecentSession>
+}
+
+export type GlobalRecentResponse = GlobalRecentResponses[keyof GlobalRecentResponses]
 
 export type GlobalEventData = {
   body?: never

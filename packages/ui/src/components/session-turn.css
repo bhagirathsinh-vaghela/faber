@@ -235,9 +235,7 @@
          content (no effect). The inner calc is the full height-to-dock (100dvh
          minus the title bar, the live dock height --prompt-height, and a fixed gap
          for the block's top padding); we take half of it. */
-      max-height: calc(
-        (100dvh - var(--session-title-height, 0px) - var(--prompt-height, 8rem) - 72px) / 2
-      ) !important;
+      max-height: calc((100dvh - var(--session-title-height, 0px) - var(--prompt-height, 8rem) - 72px) / 2) !important;
       overflow-y: auto !important;
       overscroll-behavior: contain;
       /* Reset the one-line row layout the collapsed rule forces on the box back to

@@ -11,6 +11,7 @@ import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
 import { SessionPing } from "../../session/ping"
+import { SessionRecent } from "../../session/recent"
 import { errors } from "../error"
 import { Web } from "../web"
 
@@ -64,6 +65,29 @@ export const GlobalRoutes = lazy(() =>
       }),
       async (c) => {
         return c.json(await SessionPing.listArmed())
+      },
+    )
+    .get(
+      "/recent",
+      describeRoute({
+        summary: "Get recent sessions",
+        description:
+          "The recent-session LRU: root sessions touched by a real turn, ordered by last activity. Server-owned and in-memory, so every web client renders the same overview without scanning the session store.",
+        operationId: "global.recent",
+        responses: {
+          200: {
+            description: "Recent sessions",
+            content: {
+              "application/json": {
+                schema: resolver(z.array(SessionRecent.Entry)),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      async (c) => {
+        return c.json(await SessionRecent.list())
       },
     )
     .get(

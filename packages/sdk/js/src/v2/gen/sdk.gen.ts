@@ -60,6 +60,8 @@ import type {
   GlobalHealthResponses,
   GlobalPingArmedErrors,
   GlobalPingArmedResponses,
+  GlobalRecentErrors,
+  GlobalRecentResponses,
   GlobalWebReloadResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
@@ -338,6 +340,18 @@ export class Global extends HeyApiClient {
   public pingArmed<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalPingArmedResponses, GlobalPingArmedErrors, ThrowOnError>({
       url: "/global/ping/armed",
+      ...options,
+    })
+  }
+
+  /**
+   * Get recent sessions
+   *
+   * The recent-session LRU: root sessions touched by a real turn, ordered by last activity. Server-owned and in-memory, so every web client renders the same overview without scanning the session store.
+   */
+  public recent<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalRecentResponses, GlobalRecentErrors, ThrowOnError>({
+      url: "/global/recent",
       ...options,
     })
   }

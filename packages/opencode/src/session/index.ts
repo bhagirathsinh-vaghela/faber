@@ -13,6 +13,7 @@ import { Installation } from "../installation"
 import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
+import { SessionRecent } from "./recent"
 import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
 import { SessionPrompt } from "./prompt"
@@ -121,6 +122,11 @@ export namespace Session {
           at: z.number(),
         })
         .optional(),
+      // Timestamp of the last real transcript turn, for recency ordering in the
+      // home overview. Stamped from message writes only, so pings (which never
+      // persist a message) and session opens never advance it — unlike
+      // time.updated, which pings bump.
+      lastActivity: z.number().optional(),
       tokens: z
         .object({
           input: z.number(),
@@ -364,6 +370,9 @@ export namespace Session {
         draft.time.updated = Date.now()
       }
     })
+    // An archived session leaves the overview; eviction is idempotent, so
+    // evicting on any archived update (not just the transition) is harmless.
+    if (result.time.archived) void SessionRecent.remove(id)
     Bus.publish(Event.Updated, {
       info: result,
     })
@@ -457,6 +466,7 @@ export namespace Session {
         await Storage.remove(msg)
       }
       await Storage.remove(["session", project.id, sessionID])
+      void SessionRecent.remove(sessionID)
       Bus.publish(Event.Deleted, {
         info: session,
       })
@@ -467,6 +477,26 @@ export namespace Session {
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     await Storage.write(["message", msg.sessionID, msg.id], msg)
+    // A message write is the only real-turn signal (pings never persist a
+    // message). Stamp lastActivity with touch:false so it doesn't bump
+    // time.updated; the guard keeps it to one write once the timestamp settles
+    // (streaming chunks share a created time until completed lands). The same
+    // signal feeds the recent-session LRU the overview reads.
+    const at = ("completed" in msg.time ? msg.time.completed : undefined) ?? msg.time.created
+    const session = await update(
+      msg.sessionID,
+      (draft) => {
+        if (!draft.lastActivity || at > draft.lastActivity) draft.lastActivity = at
+      },
+      { touch: false },
+    ).catch(() => undefined)
+    if (session && !session.parentID)
+      void SessionRecent.touch({
+        sessionID: session.id,
+        directory: session.directory,
+        title: session.title,
+        updated: session.lastActivity ?? at,
+      })
     Bus.publish(MessageV2.Event.Updated, {
       info: msg,
     })

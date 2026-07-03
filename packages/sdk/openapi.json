@@ -105,6 +105,44 @@
         ]
       }
     },
+    "/global/recent": {
+      "get": {
+        "operationId": "global.recent",
+        "summary": "Get recent sessions",
+        "description": "The recent-session LRU: root sessions touched by a real turn, ordered by last activity. Server-owned and in-memory, so every web client renders the same overview without scanning the session store.",
+        "responses": {
+          "200": {
+            "description": "Recent sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecentSession"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.recent({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/event": {
       "get": {
         "operationId": "global.event",
@@ -7830,6 +7868,29 @@
           "success"
         ]
       },
+      "RecentSession": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "sessionID",
+          "directory",
+          "title",
+          "updated"
+        ]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -9584,6 +9645,33 @@
           "properties"
         ]
       },
+      "Event.recent.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "recent.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RecentSession"
+                }
+              }
+            },
+            "required": [
+              "entries"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.file.watcher.updated": {
         "type": "object",
         "properties": {
@@ -11012,6 +11100,9 @@
               "at"
             ]
           },
+          "lastActivity": {
+            "type": "number"
+          },
           "tokens": {
             "default": {
               "input": 0,
@@ -11596,10 +11687,20 @@
                 }
               }
             },
-            "required": ["light", "dark"]
+            "required": [
+              "light",
+              "dark"
+            ]
           }
         },
-        "required": ["fontSize", "font", "codeFont", "fontWeight", "headingWeight", "overrides"]
+        "required": [
+          "fontSize",
+          "font",
+          "codeFont",
+          "fontWeight",
+          "headingWeight",
+          "overrides"
+        ]
       },
       "Event.appearance.preference.updated": {
         "type": "object",
@@ -11612,7 +11713,10 @@
             "$ref": "#/components/schemas/AppearancePreference"
           }
         },
-        "required": ["type", "properties"]
+        "required": [
+          "type",
+          "properties"
+        ]
       },
       "StashEntry": {
         "type": "object",
@@ -11697,6 +11801,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.message.part.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.recent.updated"
           },
           {
             "$ref": "#/components/schemas/Event.file.watcher.updated"
