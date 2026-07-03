@@ -22,6 +22,7 @@ import { QuestionPanel } from "@/components/question-panel"
 import { MessageFooter } from "@/components/message-footer"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { IconButton } from "@opencode-ai/ui/icon-button"
+import { InlineInput } from "@opencode-ai/ui/inline-input"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -387,6 +388,39 @@ export default function Page() {
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+
+  const [renaming, setRenaming] = createSignal(false)
+  const [draft, setDraft] = createSignal("")
+  const [renameWidth, setRenameWidth] = createSignal("0px")
+  let renameRef: HTMLInputElement | undefined
+  let renameSizer: HTMLSpanElement | undefined
+
+  const measureRename = (text: string) => {
+    if (!renameSizer) return
+    renameSizer.textContent = text
+    const padding = 12
+    setRenameWidth(`${Math.ceil(renameSizer.getBoundingClientRect().width) + padding}px`)
+  }
+
+  const startRename = () => {
+    const current = info()
+    if (!current?.title) return
+    setDraft(current.title)
+    setRenaming(true)
+    requestAnimationFrame(() => {
+      measureRename(current.title)
+      renameRef?.focus()
+    })
+  }
+
+  const commitRename = async () => {
+    const current = info()
+    const next = draft().trim()
+    setRenaming(false)
+    if (!current || !next || next === current.title) return
+    await sdk.client.session.update({ sessionID: current.id, title: next })
+  }
+
   const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
   const reviewCount = createMemo(() => Math.max(info()?.summary?.files ?? 0, diffs().length))
   const hasReview = createMemo(() => reviewCount() > 0)
@@ -2016,7 +2050,55 @@ export default function Page() {
                                 />
                               </Show>
                               <Show when={info()?.title}>
-                                <h1 class="text-16-medium text-text-strong truncate">{info()?.title}</h1>
+                                <Show
+                                  when={renaming()}
+                                  fallback={
+                                    <div class="group/title flex items-center gap-1 min-w-0">
+                                      <h1
+                                        class="text-16-medium text-text-strong truncate"
+                                        onDblClick={startRename}
+                                      >
+                                        {info()?.title}
+                                      </h1>
+                                      <IconButton
+                                        tabIndex={-1}
+                                        icon="pencil-line"
+                                        variant="ghost"
+                                        class="opacity-0 group-hover/title:opacity-100 focus-visible:opacity-100 shrink-0"
+                                        onClick={startRename}
+                                        aria-label={language.t("common.rename")}
+                                      />
+                                    </div>
+                                  }
+                                >
+                                  <InlineInput
+                                    ref={renameRef}
+                                    class="text-16-medium text-text-strong min-w-0 max-w-full px-1.5 -mx-1.5"
+                                    width={renameWidth()}
+                                    value={draft()}
+                                    onInput={(event) => {
+                                      setDraft(event.currentTarget.value)
+                                      measureRename(event.currentTarget.value)
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        event.preventDefault()
+                                        void commitRename()
+                                        return
+                                      }
+                                      if (event.key === "Escape") {
+                                        event.preventDefault()
+                                        setRenaming(false)
+                                      }
+                                    }}
+                                    onBlur={() => setRenaming(false)}
+                                  />
+                                  <span
+                                    ref={renameSizer}
+                                    aria-hidden="true"
+                                    class="text-16-medium invisible absolute whitespace-pre pointer-events-none"
+                                  />
+                                </Show>
                               </Show>
                             </div>
                           </div>
