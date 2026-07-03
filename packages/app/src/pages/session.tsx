@@ -2024,7 +2024,6 @@ export default function Page() {
                           markScrollGesture(e.currentTarget)
                           if (isDesktop()) scheduleScrollSpy(e.currentTarget)
                         }}
-                        onClick={autoScroll.handleInteraction}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
                         style={{ "--session-title-height": info()?.title || info()?.parentID ? "40px" : "0px" }}
                       >
