@@ -130,9 +130,10 @@
       display: inline-flex;
     }
 
-    /* The message box becomes a fixed single-line pill: no header, tight padding,
-       everything past the first line clipped. MessageBox sets padding/margin/
-       background inline, so these need !important. */
+    /* The message box becomes a fixed single-line pill: the header (◈ #N <time>)
+       and the first line of text sit side by side on one row, everything past the
+       first line clipped. MessageBox sets padding/margin/background inline, so
+       these need !important. */
     [data-component="message-box"] {
       margin-bottom: 0 !important;
       padding-top: 0.375rem !important;
@@ -140,10 +141,24 @@
       /* line-height (1.5em) + top/bottom padding (0.375rem each). */
       max-height: calc(1.5em + 0.75rem) !important;
       overflow: hidden !important;
+      /* Lay header and message content on one horizontal row (the box is display:
+         block by default, so flex must be set explicitly here). */
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center;
+      gap: 8px;
     }
 
-    /* MessageBox sets the header display inline, so hiding it needs !important. */
+    /* Header stays inline (no stacking margin) and doesn't grow: show ◈, #N, and
+       the timestamp; drop the USER label and the right-aligned actions
+       (revert/copy). All return when expanded. */
     [data-slot="message-box-header"] {
+      margin-bottom: 0 !important;
+      flex-shrink: 0;
+    }
+
+    [data-slot="message-box-label"],
+    [data-slot="message-box-actions"] {
       display: none !important;
     }
 
@@ -193,52 +208,57 @@
     }
   }
 
-  /* --- Pinned + expanded: drop the full message as an absolute overlay so it
-     covers the content below without pushing layout or moving the scroll. --- */
+  /* --- Expanded: show the full message IN FLOW, growing the block and pushing
+     the content below it down. Click toggles it (see session-turn.tsx). --- */
   [data-slot="session-turn-sticky"][data-stuck-expanded="true"] {
-    /* Sibling sticky blocks are z-index:20 and each is its own stacking context,
-       so the inner overlay's z-index alone can't rise above the NEXT turn's bar.
-       Raise this whole block's stacking context while expanded so its overlay
-       paints above later sticky headers. */
-    z-index: 40;
+    /* Keep the base z-index (20), which is BELOW the session title (z-30) so a
+       prompt bar being pushed out scrolls UNDER the title, not over it. The old
+       z-40 here was for the floating-overlay design (gone now that expand is
+       in-flow) and made every expanded bar out-rank the title. */
 
-    /* The collapsed one-liner (message-content) STAYS in flow at its clamped
-       height, so the block never resizes and nothing below shifts. Only the inner
-       message-box floats out as an absolute panel overlaying the content below. */
-    [data-slot="session-turn-message-content"] {
-      position: relative;
-      /* Hold the collapsed one-liner's height in flow while the box floats out,
-         so the block keeps its size (box line-height 1.5em + 0.375rem*2 pad). */
-      height: calc(1.5em + 0.75rem);
-    }
-
-    [data-component="message-box"] {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 0;
-      z-index: 30;
-    }
-
-    /* Undo the collapse clamp so the full message shows. These override the
-       [data-stuck="true"] rules above (which also match), so each clamp that was
-       set with !important must be un-set with !important here. The box grows to
-       fit its content but caps at the space below the pinned bar and scrolls
-       internally when the message is longer than that. --session-title-height is
-       the sticky title bar; 96px leaves breathing room above the dock. */
+    /* Undo the collapse clamp so the full message shows IN FLOW: the box grows to
+       its natural height and the block grows with it, pushing the content below
+       down (not a floating overlay). These override the [data-stuck="true"] rules
+       above (which also match), so each clamp set with !important must be un-set
+       with !important here. The ceiling is bounded by the two REAL edges of the
+       transcript viewport: the sticky title bar at the top (--session-title-height)
+       and the dock at the bottom (--prompt-height, the live measured height of the
+       prompt input — the same var the scroll-to-bottom button anchors to). 24px of
+       breathing room above the dock. Both boundaries are dynamic, so this is
+       correct on any window/device; beyond it the box scrolls internally. */
     [data-component="message-box"] {
       margin-bottom: 0 !important;
       padding-top: 0.5rem !important;
       padding-bottom: 0.5rem !important;
-      max-height: calc(100vh - var(--session-title-height, 0px) - 96px) !important;
+      /* Cap a very tall prompt at HALF the space from here down to the dock, and
+         scroll internally past that; a short prompt is under this and sizes to its
+         content (no effect). The inner calc is the full height-to-dock (100dvh
+         minus the title bar, the live dock height --prompt-height, and a fixed gap
+         for the block's top padding); we take half of it. */
+      max-height: calc(
+        (100dvh - var(--session-title-height, 0px) - var(--prompt-height, 8rem) - 72px) / 2
+      ) !important;
       overflow-y: auto !important;
       overscroll-behavior: contain;
-      /* Opaque + shadow so it reads as a panel floating over the transcript. */
-      background: var(--background-stronger) !important;
-      box-shadow: 0 8px 24px color-mix(in srgb, var(--color-shadow, #000) 35%, transparent);
+      /* Reset the one-line row layout the collapsed rule forces on the box back to
+         the natural vertical stack (header on top, message below). */
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: 0 !important;
     }
 
     [data-slot="message-box-header"] {
+      display: flex !important;
+    }
+
+    /* Bring back the USER label and header actions the one-liner hid. Label is a
+       plain inline span; the actions row is a flex container. */
+    [data-slot="message-box-label"] {
+      display: inline !important;
+    }
+
+    [data-slot="message-box-actions"] {
       display: flex !important;
     }
 

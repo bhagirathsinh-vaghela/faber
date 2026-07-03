@@ -488,12 +488,12 @@ export function MessageBox(props: {
           "letter-spacing": "0.04em",
         }}
       >
-        <span>{"\u25c8"}</span>
+        <span data-slot="message-box-diamond">{"\u25c8"}</span>
         <Show when={number() !== undefined}>
-          <span style={{ color: "var(--color-text-weak)" }}>{"#" + number()}</span>
+          <span data-slot="message-box-number" style={{ color: "var(--color-text-weak)" }}>{"#" + number()}</span>
         </Show>
-        <span>{props.label ?? (isUser ? "USER" : "ASSISTANT")}</span>
-        <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
+        <span data-slot="message-box-label">{props.label ?? (isUser ? "USER" : "ASSISTANT")}</span>
+        <span data-slot="message-box-time" style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
           {messageTime(props.message.time.created)}
         </span>
         {/* Title-bar actions, pinned right: revert (user, hover-reveal) then
