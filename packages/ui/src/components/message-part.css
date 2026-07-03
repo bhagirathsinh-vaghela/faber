@@ -10,7 +10,7 @@
    --box-border-strength. */
 .accent-box {
   --box-accent: var(--color-text-weak, #8b949e);
-  --box-border-strength: 55%;
+  --box-border-strength: 80%;
   /* Reproduce the original look (accent at 7% painted over the transcript
      backdrop) but OPAQUELY: mix the accent into the SOLID backdrop color rather
      than over `transparent`. The backdrop the box actually sits on is
@@ -495,7 +495,7 @@
        "steps" content, so grey lets them recede. Solid grey (not an alpha
        token) keeps the color-mix result opaque. */
     --box-accent: var(--box-accent-tool, var(--ink-dark-11, #b1b7b7));
-    --box-border-strength: 55%;
+    --box-border-strength: 80%;
     --box-fill-strength: 7%;
     --box-backdrop: var(--color-background-strong, #010409);
     border-color: color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop));
