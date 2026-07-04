@@ -61,13 +61,14 @@ export const DialogStash: Component = () => {
     // the selected entry, so the current draft is swapped into the stash rather
     // than clobbered.
     const current = prompt.dirty() ? prompt.current() : undefined
+    const end = item.prompt.reduce((len, p) => len + ("content" in p ? p.content.length : 0), 0)
     dialog.close()
-    prompt.set(item.prompt)
+    prompt.set(item.prompt, end)
     stash.removeAt(item.index)
     if (current) stash.push(current)
-    // The stash content is now in the dock, so put the caret there. Deferred so
-    // it runs after the dialog tears down, otherwise Kobalte restores focus to
-    // the trigger on close and clobbers this.
+    // The stash content is now in the dock, so put the caret there at the end.
+    // Deferred so it runs after the dialog tears down, otherwise Kobalte
+    // restores focus to the trigger on close and clobbers this.
     requestAnimationFrame(() => command.trigger("prompt.focus"))
   }
 

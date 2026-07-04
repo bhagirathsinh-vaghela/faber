@@ -965,7 +965,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       description: language.t("command.prompt.focus.description"),
       category: language.t("command.category.session"),
       keybind: "alt+.",
-      onSelect: () => editorRef.focus(),
+      onSelect: () => {
+        editorRef.focus()
+        requestAnimationFrame(() => setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current())))
+      },
     },
   ])
 

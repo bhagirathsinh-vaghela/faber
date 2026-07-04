@@ -687,7 +687,7 @@ export default function Page() {
         const active = document.activeElement as HTMLElement | null
         if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return
         focusedFor = id
-        requestAnimationFrame(() => inputRef?.focus())
+        requestAnimationFrame(() => command.trigger("prompt.focus"))
       },
     ),
   )
@@ -2258,7 +2258,7 @@ export default function Page() {
                 </button>
               </Show>
 
-              <QuestionPanel onClose={() => inputRef?.focus()} />
+              <QuestionPanel onClose={() => command.trigger("prompt.focus")} />
 
               <Show when={request()} keyed>
                 {(perm) => (
