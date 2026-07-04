@@ -151,6 +151,19 @@ export namespace SessionRecent {
     publish()
   }
 
+  // A rename lands on the entry's title without moving its recency. Guaranteed
+  // present like the flag flips: a session the overview shows was touched by a
+  // turn; one it doesn't show needs no update. Title text is actionable — it's
+  // what the overview renders — so emit at once.
+  export async function setTitle(sessionID: string, title: string) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.title === title) return
+    entry.title = title
+    flush()
+    publish()
+  }
+
   export async function setPing(sessionID: string, pingAt: number | undefined) {
     await hydrate()
     const entry = entries.get(sessionID)

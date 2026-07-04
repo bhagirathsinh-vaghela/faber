@@ -373,6 +373,10 @@ export namespace Session {
     // An archived session leaves the overview; eviction is idempotent, so
     // evicting on any archived update (not just the transition) is harmless.
     if (result.time.archived) void SessionRecent.remove(id)
+    // A rename (or auto-title) must reach the overview, which reads the recent
+    // entry's title — session.updated only refreshes the open session's view.
+    // setTitle no-ops when unchanged, so calling it on every update is cheap.
+    else void SessionRecent.setTitle(id, result.title)
     Bus.publish(Event.Updated, {
       info: result,
     })
