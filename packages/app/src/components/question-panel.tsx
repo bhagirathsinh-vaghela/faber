@@ -4,7 +4,6 @@ import type { QuestionRequest } from "@opencode-ai/sdk/v2"
 import { Button } from "@opencode-ai/ui/button"
 import { Markdown } from "@opencode-ai/ui/markdown"
 import { useSDK } from "@/context/sdk"
-import { useSync } from "@/context/sync"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useQuestion } from "@/context/question"
@@ -71,7 +70,6 @@ function Panel(props: {
   onClose?: () => void
 }) {
   const sdk = useSDK()
-  const sync = useSync()
   const command = useCommand()
   const local = useLocal()
 
@@ -124,50 +122,6 @@ function Panel(props: {
   })
 
   const isPending = (id: string) => props.pendingIDs.has(id)
-
-  const TIMEOUT = (sync.data.config as any)?.tui?.question_timeout ?? 120
-  const [remaining, setRemaining] = createSignal(TIMEOUT)
-  const timerActive = createMemo(() => {
-    if (TIMEOUT === 0) return false
-    const r = request()
-    return Boolean(r && isPending(r.id))
-  })
-
-  createEffect(
-    on(
-      () => request()?.id,
-      (id) => {
-        if (id && isPending(id)) setRemaining(TIMEOUT)
-      },
-    ),
-  )
-
-  createEffect(() => {
-    if (!timerActive()) return
-    const handle = setInterval(() => {
-      setRemaining((prev) => {
-        const next = prev - 1
-        if (next <= 0) {
-          defer()
-          return 0
-        }
-        return next
-      })
-    }, 1000)
-    onCleanup(() => clearInterval(handle))
-  })
-
-  // Color maps continuously to time left: hue sweeps green (120°) -> amber ->
-  // red (0°) in lockstep with the remaining fraction. No thresholds, no floor —
-  // one smooth glide from full green at the start to pure red at expiry.
-  const fraction = createMemo(() => (TIMEOUT > 0 ? Math.max(0, Math.min(1, remaining() / TIMEOUT)) : 1))
-  const barColor = createMemo(() => `hsl(${Math.round(120 * fraction())}, 85%, 55%)`)
-  const mmss = createMemo(() => {
-    const total = Math.max(0, remaining())
-    const m = Math.floor(total / 60)
-    const s = total % 60
-    return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`
-  })
 
   function resetForRequest() {
     setStore({ tab: 0, answers: [], custom: [], selected: 0, editing: false })
@@ -444,44 +398,6 @@ function Panel(props: {
       }
       data-component="question-panel"
     >
-      {/* Circular countdown ring, straddling the top-right corner. Faint full
-          track + colored arc that depletes clockwise from 12 o'clock (circle
-          rotated -90° so the dash starts at top). pathLength=100 makes the dash
-          math size-independent. Seconds number sits inside. */}
-      <Show when={timerActive()}>
-        <div class="absolute -right-3 -top-3 z-20 h-12 w-12">
-          <svg class="h-full w-full -rotate-90" viewBox="0 0 36 36">
-            <circle
-              cx="18"
-              cy="18"
-              r="16"
-              fill="var(--color-background-base)"
-              stroke="var(--color-border-weak-base)"
-              stroke-width="3"
-            />
-            <circle
-              cx="18"
-              cy="18"
-              r="16"
-              fill="none"
-              stroke={barColor()}
-              stroke-width="3"
-              stroke-linecap="round"
-              pathLength="100"
-              stroke-dasharray="100"
-              stroke-dashoffset={100 * (1 - fraction())}
-              style={{ transition: "stroke-dashoffset 1s linear, stroke 0.5s linear" }}
-            />
-          </svg>
-          <div
-            class="absolute inset-0 flex items-center justify-center text-11-regular font-semibold [font-variant-numeric:tabular-nums]"
-            style={{ color: barColor() }}
-          >
-            {mmss()}
-          </div>
-        </div>
-      </Show>
-
       <div class="flex flex-col gap-2 px-4 py-3 pr-6">
         {/* Request tabs (multiple pending requests) */}
         <Show when={multiRequest()}>
