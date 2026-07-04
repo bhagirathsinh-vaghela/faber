@@ -726,7 +726,7 @@ export function SessionTurn(
                               message={assistantMessage}
                               responsePartId={working() ? undefined : responsePartId()}
                               hideReasoning={!working()}
-                              footer={!working() ? props.footer : undefined}
+                              footer={props.footer}
                             />
                           )}
                         </For>

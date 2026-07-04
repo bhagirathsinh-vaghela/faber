@@ -880,9 +880,12 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       <MessageBox message={props.message} numberKey={part.id} copy={displayText}>
         <Markdown text={throttledText()} cacheKey={part.id} />
         {/* Snapshot line under every assistant text box, matching the Response
-            box. Only present once the turn is done (the page withholds footer
-            while streaming), so nothing flickers mid-stream. */}
-        <Show when={props.footer}>{props.footer!(props.message as AssistantMessage)}</Show>
+            box. Gate on this block's OWN completion, not the whole turn: an
+            intermediate step gets its chips as soon as it finishes, while the
+            still-streaming last block stays footer-less until it completes. */}
+        <Show when={props.footer && (props.message as AssistantMessage).time.completed}>
+          {props.footer!(props.message as AssistantMessage)}
+        </Show>
       </MessageBox>
     </Show>
   )
