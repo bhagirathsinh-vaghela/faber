@@ -19,7 +19,7 @@ import { agentColor } from "@/utils/agent"
 // Deferred-question state (pending ∪ deferred list, visibility) lives in the
 // shared question context so the prompt action bar's count sees deferred ones
 // too; question_list (alt+y) toggles visibility to bring a deferred one back.
-export function QuestionPanel() {
+export function QuestionPanel(props: { onClose?: () => void }) {
   const command = useCommand()
   const language = useLanguage()
   const question = useQuestion()
@@ -56,6 +56,7 @@ export function QuestionPanel() {
         onHide={question.hide}
         onAnswered={question.answered}
         onDismissed={question.drop}
+        onClose={props.onClose}
       />
     </Show>
   )
@@ -67,6 +68,7 @@ function Panel(props: {
   onHide: (reqs: QuestionRequest[]) => void
   onAnswered: (id: string, answers: string[][], questions: QuestionRequest["questions"]) => void
   onDismissed: (id: string) => void
+  onClose?: () => void
 }) {
   const sdk = useSDK()
   const sync = useSync()
@@ -409,6 +411,12 @@ function Panel(props: {
       document.removeEventListener("focusout", trackFocus)
       panel?.removeEventListener("mousedown", guardMouseDown, true)
       panel?.removeEventListener("click", guardClick, true)
+      // The panel blurred the dock on mount and owns focus for its lifetime, so
+      // hand focus back on close. Only when focus is still loose (on the panel
+      // or fallen to <body>): a deliberate click into another field during the
+      // panel's life keeps its focus, matching "focus stays unless I click away".
+      const active = document.activeElement
+      if (!active || active === document.body || (panel && panel.contains(active))) props.onClose?.()
     })
   })
 

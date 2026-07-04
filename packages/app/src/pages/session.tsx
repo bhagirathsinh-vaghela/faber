@@ -2237,7 +2237,7 @@ export default function Page() {
                 </button>
               </Show>
 
-              <QuestionPanel />
+              <QuestionPanel onClose={() => inputRef?.focus()} />
 
               <Show when={request()} keyed>
                 {(perm) => (
