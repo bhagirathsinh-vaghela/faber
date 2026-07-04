@@ -74,6 +74,10 @@ export const dict = {
   "ui.tool.task.label.agent": "Agent",
   "ui.tool.task.label.toolset": "Toolset",
   "ui.tool.task.label.tools": "Tools",
+  "ui.tool.task.preparing": "Preparing task\u2026",
+  "ui.tool.write.preparing": "Writing file\u2026",
+  "ui.tool.edit.preparing": "Editing file\u2026",
+  "ui.tool.patch.preparing": "Preparing patch\u2026",
   "ui.tool.skill": "Skill",
 
   "ui.common.file.one": "file",

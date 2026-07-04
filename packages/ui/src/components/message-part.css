@@ -349,6 +349,95 @@
   margin: 0 0 4px;
 }
 
+/* Live "args still streaming" affordance (write/edit/patch/task pending state):
+   a shimmering label above a slim animated bar. Inset to align with the tool
+   trigger row above (12px left) and given vertical breathing room so it isn't
+   cramped against the box edges. */
+[data-slot="tool-streaming"] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-weaker-base);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Inside the task-output accent box (which already has its own padding), drop
+   the inset so it doesn't double up — just a little top gap under the header. */
+[data-component="task-output"] [data-slot="tool-streaming"] {
+  padding: 4px 0 2px;
+  border-top: none;
+}
+
+[data-slot="tool-streaming"] .tool-streaming-label {
+  font-weight: var(--font-weight-medium);
+}
+
+/* Streaming affordance: single agent color (--syntax-type, the same color the
+   dock/message footer uses for the agent name — Build/Plan/etc), so it reads as
+   "the agent is actively working here". Track is a dim tint of that color. */
+[data-slot="tool-streaming-bar"] {
+  --stream-accent: var(--syntax-type);
+  position: relative;
+  width: 100%;
+  max-width: 240px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--stream-accent) 16%, transparent);
+  overflow: hidden;
+  /* Whole bar gently breathes so it's alive even at a glance. */
+  animation: stream-bar-breathe 2.4s ease-in-out infinite;
+}
+
+/* Indeterminate pulse: a single soft highlight band that sweeps left -> right
+   then back, continuously (ping-pong via animation-direction: alternate). No
+   proportional fill (we can't know the total mid-stream); the back-and-forth
+   glide is what reads as "actively working". alternate reverses at each end so
+   there's no teleport/seam. */
+[data-slot="tool-streaming-bar-fill"] {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 55%;
+  border-radius: inherit;
+  /* Wide, soft feather on both sides so the band has no hard edge — it glides
+     rather than snaps as it sweeps. */
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--stream-accent) 50%, transparent) 30%,
+    var(--stream-accent) 50%,
+    color-mix(in srgb, var(--stream-accent) 50%, transparent) 70%,
+    transparent 100%
+  );
+  will-change: transform;
+  /* Slower + gentle sinusoidal easing for a calm, smooth ping-pong. */
+  animation: stream-bar-pulse 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+@keyframes stream-bar-pulse {
+  from {
+    transform: translateX(-25%);
+  }
+  to {
+    /* track is ~100/55 ≈ 182% of the band; leave a little inset at each end */
+    transform: translateX(107%);
+  }
+}
+
+/* Subtle brightness breathe on the whole bar. */
+@keyframes stream-bar-breathe {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 [data-component="edit-trigger"],
 [data-component="write-trigger"] {
   display: flex;

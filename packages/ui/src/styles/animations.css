@@ -22,6 +22,36 @@
   }
 }
 
+/* Sweeps a bright highlight left-to-right across text to signal live activity.
+   The text is painted with a gradient (base color -> highlight -> base) that is
+   wider than the text; animating background-position slides the highlight band
+   across the glyphs via background-clip: text. */
+@keyframes text-shimmer {
+  0% {
+    background-position: 100% center;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+[data-component="text-shimmer"] {
+  display: inline-block;
+  background-image: linear-gradient(
+    90deg,
+    var(--shimmer-base) calc(50% - var(--shimmer-spread)),
+    var(--shimmer-highlight),
+    var(--shimmer-base) calc(50% + var(--shimmer-spread))
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer var(--shimmer-duration, 2s) linear infinite;
+}
+
 @keyframes fadeUp {
   from {
     opacity: 0;

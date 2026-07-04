@@ -34,6 +34,7 @@ import { Dialog } from "./dialog"
 import { useI18n } from "../context/i18n"
 import { BasicTool } from "./basic-tool"
 import { GenericTool } from "./basic-tool"
+import { TextShimmer } from "./text-shimmer"
 import { Button } from "./button"
 import { Card } from "./card"
 import { Icon } from "./icon"
@@ -1293,6 +1294,11 @@ ToolRegistry.register({
                     <Markdown text={dispatchMarkdown()} complete />
                   </div>
                 </Match>
+                {/* Args still streaming (prompt/description being written): show
+                    a live counter instead of an empty box. */}
+                <Match when={props.status === "pending"}>
+                  <ToolStreaming label={i18n.t("ui.tool.task.preparing")} />
+                </Match>
               </Switch>
             </div>
           </Match>
@@ -1381,26 +1387,51 @@ ToolRegistry.register({
           </div>
         }
       >
-        <Show when={props.metadata.filediff?.path || props.input.filePath}>
-          <div data-component="edit-content">
-            <Dynamic
-              component={diffComponent}
-              before={{
-                name: props.metadata?.filediff?.file || props.input.filePath,
-                contents: props.metadata?.filediff?.before || props.input.oldString,
-              }}
-              after={{
-                name: props.metadata?.filediff?.file || props.input.filePath,
-                contents: props.metadata?.filediff?.after || props.input.newString,
-              }}
-            />
-          </div>
-        </Show>
+        <Switch>
+          <Match when={props.metadata.filediff?.path || props.input.newString || props.input.oldString}>
+            <div data-component="edit-content">
+              <Dynamic
+                component={diffComponent}
+                before={{
+                  name: props.metadata?.filediff?.file || props.input.filePath,
+                  contents: props.metadata?.filediff?.before || props.input.oldString,
+                }}
+                after={{
+                  name: props.metadata?.filediff?.file || props.input.filePath,
+                  contents: props.metadata?.filediff?.after || props.input.newString,
+                }}
+              />
+            </div>
+          </Match>
+          {/* Args still streaming (old/new strings being written): show a live
+              streaming bar instead of an empty box. */}
+          <Match when={props.status === "pending"}>
+            <ToolStreaming label={i18n.t("ui.tool.edit.preparing")} />
+          </Match>
+        </Switch>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
       </BasicTool>
     )
   },
 })
+
+// Live "working" affordance shown while a tool call's arguments are still
+// streaming (status === "pending", before the parsed input arrives). Replaces
+// an empty/stuck box with a shimmering label + an indeterminate progress bar: a
+// highlight band travels continuously across the track the whole time args
+// stream. We can't know the total argument size mid-stream (and providers chunk
+// tool input coarsely), so a proportional fill reads as "stuck" on small/chunky
+// payloads. A traveling band always moves, so it always reads as active.
+function ToolStreaming(props: { label: string }) {
+  return (
+    <div data-slot="tool-streaming">
+      <TextShimmer class="tool-streaming-label">{props.label}</TextShimmer>
+      <span data-slot="tool-streaming-bar" data-indeterminate>
+        <span data-slot="tool-streaming-bar-fill" />
+      </span>
+    </div>
+  )
+}
 
 ToolRegistry.register({
   name: "write",
@@ -1430,19 +1461,25 @@ ToolRegistry.register({
           </div>
         }
       >
-        <Show when={props.input.content}>
-          <div data-component="write-content">
-            <Dynamic
-              component={codeComponent}
-              file={{
-                name: props.input.filePath,
-                contents: props.input.content,
-                cacheKey: checksum(props.input.content),
-              }}
-              overflow="scroll"
-            />
-          </div>
-        </Show>
+        <Switch>
+          <Match when={props.input.content}>
+            <div data-component="write-content">
+              <Dynamic
+                component={codeComponent}
+                file={{
+                  name: props.input.filePath,
+                  contents: props.input.content,
+                  cacheKey: checksum(props.input.content),
+                }}
+                overflow="scroll"
+              />
+            </div>
+          </Match>
+          {/* Args still streaming: show a live streaming bar instead of an empty box. */}
+          <Match when={props.status === "pending"}>
+            <ToolStreaming label={i18n.t("ui.tool.write.preparing")} />
+          </Match>
+        </Switch>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
       </BasicTool>
     )
@@ -1483,7 +1520,8 @@ ToolRegistry.register({
           subtitle: subtitle(),
         }}
       >
-        <Show when={files().length > 0}>
+        <Switch>
+          <Match when={files().length > 0}>
           <div data-component="apply-patch-files">
             <For each={files()}>
               {(file) => (
@@ -1532,7 +1570,13 @@ ToolRegistry.register({
               )}
             </For>
           </div>
-        </Show>
+          </Match>
+          {/* Args still streaming (patchText being written): show a live
+              streaming bar instead of an empty box. */}
+          <Match when={props.status === "pending"}>
+            <ToolStreaming label={i18n.t("ui.tool.patch.preparing")} />
+          </Match>
+        </Switch>
       </BasicTool>
     )
   },
