@@ -6,6 +6,7 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { useStash } from "@/context/stash"
 import { usePrompt, type Prompt } from "@/context/prompt"
 import { useLanguage } from "@/context/language"
+import { useCommand } from "@/context/command"
 
 interface StashItem {
   index: number
@@ -37,6 +38,7 @@ export const DialogStash: Component = () => {
   const prompt = usePrompt()
   const dialog = useDialog()
   const language = useLanguage()
+  const command = useCommand()
 
   const items = createMemo((): StashItem[] =>
     stash
@@ -63,6 +65,10 @@ export const DialogStash: Component = () => {
     prompt.set(item.prompt)
     stash.removeAt(item.index)
     if (current) stash.push(current)
+    // The stash content is now in the dock, so put the caret there. Deferred so
+    // it runs after the dialog tears down, otherwise Kobalte restores focus to
+    // the trigger on close and clobbers this.
+    requestAnimationFrame(() => command.trigger("prompt.focus"))
   }
 
   return (
