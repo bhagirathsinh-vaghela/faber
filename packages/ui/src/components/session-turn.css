@@ -760,10 +760,6 @@
     flex-direction: column;
     align-self: stretch;
     gap: 12px;
-    margin-left: 12px;
-    padding-left: 12px;
-    padding-right: 12px;
-    border-left: 1px solid var(--border-base);
 
     > :first-child > [data-component="markdown"]:first-child {
       margin-top: 0;
