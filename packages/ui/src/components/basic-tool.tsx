@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { children, createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { Collapsible } from "./collapsible"
 import { Icon, IconProps } from "./icon"
 import { CopyButton } from "./copy-button"
@@ -37,6 +37,12 @@ export interface BasicToolProps {
 
 export function BasicTool(props: BasicToolProps) {
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
+  // Resolve children once into a stable accessor. Gating Collapsible.Content on
+  // `props.children` truthiness via <Show> memoizes the resolved element and
+  // freezes streaming updates inside it (e.g. bash output that grows over time).
+  // The children() helper keeps the inner reactivity live while still letting us
+  // check whether a body exists.
+  const body = children(() => props.children)
 
   createEffect(() => {
     if (props.forceOpen) setOpen(true)
@@ -116,13 +122,13 @@ export function BasicTool(props: BasicToolProps) {
               </Show>
             </div>
           </Show>
-          <Show when={props.children && !props.hideDetails && !props.locked}>
+          <Show when={body() && !props.hideDetails && !props.locked}>
             <Collapsible.Arrow />
           </Show>
         </div>
       </Collapsible.Trigger>
-      <Show when={props.children && !props.hideDetails}>
-        <Collapsible.Content>{props.children}</Collapsible.Content>
+      <Show when={!props.hideDetails && body()}>
+        <Collapsible.Content>{body()}</Collapsible.Content>
       </Show>
     </Collapsible>
   )

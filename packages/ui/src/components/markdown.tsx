@@ -6,7 +6,7 @@ import { SolidMarkdown, type SolidMarkdownComponents } from "solid-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
-import { ComponentProps, createEffect, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
+import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
 import { isServer } from "solid-js/web"
 
 const iconPaths = {
@@ -140,8 +140,11 @@ function components(labels: CopyLabels, theme: () => string): SolidMarkdownCompo
       return <InlineCode text={text} labels={labels} children={props.children} />
     },
     pre(props) {
-      const fence = fenceSource(props.node as unknown as Hast)
-      return <CodeBlock lang={fence.lang} source={fence.text} labels={labels} theme={theme()} />
+      // Read props.node inside a memo so reconcile's in-place node mutations
+      // (streaming code output that grows line by line) flow through to
+      // CodeBlock. Snapshotting once here froze fenced output at its first line.
+      const fence = createMemo(() => fenceSource(props.node as unknown as Hast))
+      return <CodeBlock lang={fence().lang} source={fence().text} labels={labels} theme={theme()} />
     },
     a(props) {
       return (
