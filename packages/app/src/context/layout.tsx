@@ -216,6 +216,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       prune(active)
     })
 
+    // Always start with the review file-tree panel closed on a fresh load,
+    // ignoring the persisted open state. Gated on ready() so it runs after
+    // hydration; the once flag keeps it from re-firing on later store writes.
+    let fileTreeReset = false
+    createEffect(() => {
+      if (!ready()) return
+      if (fileTreeReset) return
+      fileTreeReset = true
+      setStore("fileTree", "opened", false)
+    })
+
     onMount(() => {
       const flush = () => batch(() => scroll.flushAll())
       const handleVisibility = () => {

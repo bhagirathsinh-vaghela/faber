@@ -792,7 +792,9 @@ export default function Page() {
       title: language.t("command.review.toggle"),
       description: "",
       category: language.t("command.category.view"),
-      keybind: "mod+shift+r",
+      // alt (not mod/ctrl) so it collides with no browser hard-reload:
+      // Cmd+Shift+R on macOS and Ctrl+Shift+R on Windows/Linux both reload.
+      keybind: "alt+shift+r",
       onSelect: () => layout.fileTree.toggle(),
     },
     {
