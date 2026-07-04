@@ -68,9 +68,16 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         const map = new Map<string, number>()
         let n = 0
         for (const message of props.data.message[sessionID]) {
-          if (message.role === "user") map.set(message.id, ++n)
-          for (const part of props.data.part[message.id] ?? []) {
-            if (part.type === "text" || part.type === "tool") map.set(part.id, ++n)
+          // One number per message. Every text/tool part of an assistant
+          // message shares that message's number, so a text block and the
+          // tool it called in the same step read as one block, not two.
+          const parts = props.data.part[message.id] ?? []
+          const numbered = message.role === "user" || parts.some((p) => p.type === "text" || p.type === "tool")
+          if (!numbered) continue
+          const num = ++n
+          map.set(message.id, num)
+          for (const part of parts) {
+            if (part.type === "text" || part.type === "tool") map.set(part.id, num)
           }
         }
         result[sessionID] = map
