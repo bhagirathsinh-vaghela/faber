@@ -68,6 +68,12 @@ export const dict = {
   "ui.tool.todos.read": "Read to-dos",
   "ui.tool.questions": "Questions",
   "ui.tool.agent": "{{type}} Agent",
+  "ui.tool.task.dispatched": "Dispatched",
+  "ui.tool.task.label.task": "Task",
+  "ui.tool.task.label.summary": "Summary",
+  "ui.tool.task.label.agent": "Agent",
+  "ui.tool.task.label.toolset": "Toolset",
+  "ui.tool.task.label.tools": "Tools",
   "ui.tool.skill": "Skill",
 
   "ui.common.file.one": "file",

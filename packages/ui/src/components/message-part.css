@@ -331,6 +331,24 @@
   overflow-y: auto;
 }
 
+/* Dispatched badge in the TASK OUTPUT header, pinned right. */
+[data-slot="task-output-status"] {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--syntax-constant) 15%, transparent);
+  color: var(--syntax-constant);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Dispatch fields render as one markdown block (bold labels + code pills),
+   so it themes with the rest of the UI. Tighten the stacked label lines. */
+[data-slot="task-output-dispatch"] [data-component="markdown"] p {
+  margin: 0 0 4px;
+}
+
 [data-component="edit-trigger"],
 [data-component="write-trigger"] {
   display: flex;

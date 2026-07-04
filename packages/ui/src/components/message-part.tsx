@@ -318,8 +318,18 @@ function stripTaskMeta(text: string): string {
     .split("\n")
     .filter((line) => {
       const trimmed = line.trim()
+      // The opaque IDs carry nothing a reader can act on. Everything else
+      // (agent, toolset, summary, status, duration) is surfaced as styled
+      // fields, so it comes OUT of the raw body and renders as UI instead.
       if (trimmed.startsWith("task_id:")) return false
       if (trimmed.startsWith("session_id:")) return false
+      if (trimmed.startsWith("Background task started:")) return false
+      if (trimmed.startsWith("agent:")) return false
+      if (trimmed.startsWith("toolset:")) return false
+      if (trimmed.startsWith("summary:")) return false
+      if (trimmed.startsWith("type: subagent")) return false
+      if (trimmed.startsWith("status:")) return false
+      if (trimmed.startsWith("duration:")) return false
       if (trimmed === "Results will be delivered when the task completes.") return false
       return true
     })
@@ -340,17 +350,62 @@ function stripTaskOutput(text: string): string {
   return stripTaskMeta(cleaned)
 }
 
+// Ring-dot separator, same as the assistant footer chip line.
+function TaskDot() {
+  return (
+    <span
+      class="mx-2 inline-block size-[4px] rounded-full border align-middle"
+      style={{ "border-color": "var(--text-weaker)" }}
+    />
+  )
+}
+
+function taskStatusColor(status: string): string {
+  if (status === "failed") return "var(--syntax-critical)"
+  if (status === "cancelled") return "var(--text-weak)"
+  return "var(--syntax-string)"
+}
+
+function taskDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
+}
+
+// Fields matched to the footer chip line: agent=type, subagent kind=constant,
+// status=state color, duration=number. Every field the reader saw before stays,
+// now colored by its semantic token instead of flat gray.
 function TaskResultDisplay(props: { part: TextPart }) {
   const meta = () => props.part.backgroundTaskResult!
   const content = createMemo(() => stripTaskResult(props.part.text))
+  const fields = createMemo(() => {
+    const m = meta()
+    const result: { color: string; text: string }[] = []
+    if (m.agent) result.push({ color: "var(--syntax-type)", text: m.agent })
+    result.push({ color: "var(--syntax-constant)", text: m.type })
+    result.push({ color: taskStatusColor(m.status), text: m.status })
+    result.push({ color: "var(--syntax-primitive)", text: taskDuration(m.duration) })
+    return result
+  })
   return (
     <div data-component="task-result" data-scrollable>
-      <div data-slot="task-result-meta" class="text-text-weak text-sm mb-2 flex flex-wrap gap-x-2">
-        <span>{meta().agent ?? meta().type}</span>
-        <span>·</span>
-        <span>{meta().status}</span>
-        <span>·</span>
-        <span>{Math.round(meta().duration / 1000) + "s"}</span>
+      <div
+        data-slot="task-result-meta"
+        class="mb-2 flex flex-row flex-wrap items-center font-mono"
+        style={{ "font-size": "11px", "line-height": "1.2" }}
+      >
+        <For each={fields()}>
+          {(field, i) => (
+            <>
+              <Show when={i() > 0}>
+                <TaskDot />
+              </Show>
+              <span class="font-medium" style={{ color: field.color }}>
+                {field.text}
+              </span>
+            </>
+          )}
+        </For>
       </div>
       <Markdown text={content()} cacheKey={props.part.id} />
     </div>
@@ -1116,6 +1171,21 @@ ToolRegistry.register({
       }
     }
 
+    // Dispatch fields as one markdown block so it themes like the rest of the
+    // UI: bold labels, code pills for the agent/toolset/tool identifiers.
+    const dispatchMarkdown = createMemo(() => {
+      const lines: string[] = []
+      const push = (label: string, value: string) => lines.push(`**${label}** ${value}`)
+      if (props.input.description) push(i18n.t("ui.tool.task.label.task"), props.input.description)
+      if (props.metadata.summary) push(i18n.t("ui.tool.task.label.summary"), props.metadata.summary as string)
+      push(i18n.t("ui.tool.task.label.agent"), `\`${props.input.subagent_type || props.tool}\``)
+      if (props.metadata.toolset) push(i18n.t("ui.tool.task.label.toolset"), `\`${props.metadata.toolset as string}\``)
+      const tools = props.metadata.tools
+      if (Array.isArray(tools) && tools.length)
+        push(i18n.t("ui.tool.task.label.tools"), tools.map((t) => `\`${t}\``).join(" "))
+      return lines.join("\n\n")
+    })
+
     const renderChildToolPart = () => {
       const toolData = childToolPart()
       if (!toolData) return null
@@ -1199,28 +1269,31 @@ ToolRegistry.register({
               >
                 <span>{"\u25c8"}</span>
                 <span>TASK OUTPUT</span>
-                <span style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
-                  {"\u2502 " + i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool })}
-                </span>
-                <Show when={childSessionId() && data.navigateToSession}>
-                  <button
-                    style={{ "margin-left": "auto", color: "var(--color-text-weak)", "font-weight": "400" }}
-                    onClick={handleSubtitleClick}
-                  >
-                    {props.input.description}
-                  </button>
+                <Show when={props.metadata.status === "async_launched"}>
+                  <span data-slot="task-output-status">{i18n.t("ui.tool.task.dispatched")}</span>
                 </Show>
               </div>
-              <Show when={props.output && stripTaskOutput(props.output)}>
-                {(body) => (
-                  <div data-slot="tool-body">
-                    <CopyButton content={() => body()} />
-                    <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
-                      <Markdown text={body()} complete />
+              <Switch>
+                {/* A real inline result (rare/future sync path) wins. */}
+                <Match when={props.output && stripTaskOutput(props.output)}>
+                  {(body) => (
+                    <div data-slot="tool-body">
+                      <CopyButton content={() => body()} />
+                      <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
+                        <Markdown text={body()} complete />
+                      </div>
                     </div>
+                  )}
+                </Match>
+                {/* Background dispatch: no inline result, so lay out what was
+                    launched as labeled fields. The real result lands as a
+                    separate TASK RESULT box below. */}
+                <Match when={props.metadata.status === "async_launched"}>
+                  <div data-slot="task-output-dispatch">
+                    <Markdown text={dispatchMarkdown()} complete />
                   </div>
-                )}
-              </Show>
+                </Match>
+              </Switch>
             </div>
           </Match>
         </Switch>
