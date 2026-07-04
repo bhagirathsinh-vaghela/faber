@@ -257,6 +257,7 @@ function Panel(props: {
     const text = input?.value.trim() ?? ""
     if (!text) {
       setStore("editing", false)
+      panel?.focus()
       return
     }
     if (multi()) {
@@ -265,10 +266,15 @@ function Panel(props: {
       setStore("custom", inputs)
       if (!(store.answers[store.tab] ?? []).includes(text)) toggle(text)
       setStore("editing", false)
+      panel?.focus()
       return
     }
-    pick(text, true)
     setStore("editing", false)
+    // A single-question request answers and unmounts here (onClose hands focus
+    // to the dock). A multi-question request stays open on the next tab, so pull
+    // focus back to the panel off the vanishing textarea to keep driving it.
+    if (!single()) panel?.focus()
+    pick(text, true)
   }
 
   const total = createMemo(() => options().length + (custom() ? 1 : 0))
@@ -640,7 +646,10 @@ function Panel(props: {
                           e.preventDefault()
                           submitCustom()
                         }
-                        if (e.key === "Escape") setStore("editing", false)
+                        if (e.key === "Escape") {
+                          setStore("editing", false)
+                          panel?.focus()
+                        }
                       }}
                     />
                     <Button type="submit" variant="primary" size="small">
