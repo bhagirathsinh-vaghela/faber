@@ -1139,37 +1139,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      if (event.altKey || event.ctrlKey || event.metaKey) return
-      const { collapsed } = getCaretState()
-      if (!collapsed) return
-
-      const cursorPosition = getCursorPosition(editorRef)
-      const textLength = promptLength(prompt.current())
-      const textContent = prompt
-        .current()
-        .map((part) => ("content" in part ? part.content : ""))
-        .join("")
-      const isEmpty = textContent.trim() === "" || textLength <= 1
-      const hasNewlines = textContent.includes("\n")
-      const inHistory = store.historyIndex >= 0
-      const atStart = cursorPosition <= (isEmpty ? 1 : 0)
-      const atEnd = cursorPosition >= (isEmpty ? textLength - 1 : textLength)
-      const allowUp = isEmpty || atStart || (!hasNewlines && !inHistory) || (inHistory && atEnd)
-      const allowDown = isEmpty || atEnd || (!hasNewlines && !inHistory) || (inHistory && atStart)
-
-      if (event.key === "ArrowUp") {
-        if (!allowUp) return
-        if (navigateHistory("up")) {
-          event.preventDefault()
-        }
-        return
-      }
-
-      if (!allowDown) return
-      if (navigateHistory("down")) {
-        event.preventDefault()
-      }
+    // Prompt history is explicit: ctrl+shift+up / ctrl+shift+down. Plain up/down
+    // stay native caret movement, so they always move within the text (including
+    // wrapped rows) and never surprise-jump to a previous prompt. Ctrl+Shift is
+    // used because every other arrow combo is a reserved macOS text shortcut
+    // (option = paragraph, cmd = document), while plain ctrl+arrow is Mission
+    // Control; adding shift dodges both.
+    if (
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      event.ctrlKey &&
+      event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      if (navigateHistory(event.key === "ArrowUp" ? "up" : "down")) event.preventDefault()
       return
     }
 
