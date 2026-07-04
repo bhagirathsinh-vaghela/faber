@@ -898,7 +898,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             hideDetails={props.hideDetails}
             forceOpen={forceOpen()}
             locked={showPermission()}
-            defaultOpen={props.defaultOpen}
           />
         </Match>
       </Switch>
@@ -1009,6 +1008,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        defaultOpen
         icon="bullet-list"
         trigger={{ title: i18n.t("ui.tool.list"), subtitle: getDirectory(props.input.path || "/") }}
       >
@@ -1031,6 +1031,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        defaultOpen
         icon="magnifying-glass-menu"
         trigger={{
           title: i18n.t("ui.tool.glob"),
@@ -1060,6 +1061,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        defaultOpen
         icon="magnifying-glass-menu"
         trigger={{
           title: i18n.t("ui.tool.grep"),
@@ -1105,6 +1107,31 @@ ToolRegistry.register({
               <Icon name="square-arrow-top-right" size="small" />
             </a>
           ) : undefined,
+        }}
+      />
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "websearch",
+  render(props) {
+    const i18n = useI18n()
+    const args = () => {
+      const out: string[] = []
+      if (props.input.type) out.push("type=" + props.input.type)
+      if (props.input.numResults) out.push("results=" + props.input.numResults)
+      return out
+    }
+    return (
+      <BasicTool
+        {...props}
+        icon="magnifying-glass"
+        defaultOpen
+        trigger={{
+          title: i18n.t("ui.tool.websearch"),
+          subtitle: props.input.query || "",
+          args: args(),
         }}
       >
         <Show when={props.output}>
@@ -1333,6 +1360,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        defaultOpen
         icon="console"
         trigger={{
           title: i18n.t("ui.tool.shell"),
@@ -1365,6 +1393,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        defaultOpen
         icon="code-lines"
         trigger={
           <div data-component="edit-trigger">
@@ -1443,6 +1472,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        defaultOpen
         icon="code-lines"
         trigger={
           <div data-component="write-trigger">
@@ -1514,6 +1544,7 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
+        defaultOpen
         icon="code-lines"
         trigger={{
           title: i18n.t("ui.tool.patch"),
