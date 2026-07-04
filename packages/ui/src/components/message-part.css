@@ -1,3 +1,33 @@
+/* Native thin scrollbar for internally-scrolling tool bodies (tool output, task
+   result, edit/patch diffs, write code preview). These previously hid the
+   scrollbar entirely, so a body scrolling within its max-height gave no visual
+   cue. Reuses the session-scroller thumb style (--border-weak-base) for a
+   subtle, consistent bar. */
+[data-component="tool-output"][data-scrollable],
+[data-component="task-result"][data-scrollable],
+[data-component="edit-content"],
+[data-component="write-content"] [data-component="code"],
+[data-component="apply-patch-file-diff"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-weak-base) transparent;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-weak-base);
+    border-radius: 5px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
 /* The single accent-box scheme. Every transcript box (message, task, tool
    cards) uses this: set ONE variable, --box-accent, to the box's main color and
    the border + background are derived from it here. Change the formula once and
@@ -158,6 +188,35 @@
   }
 }
 
+/* Tool row: zero the trigger's vertical padding so the 24px inner tool-trigger
+   centers cleanly in the 32px row. With the base 6px padding it sat ~4px below
+   center (hugging the bottom). Scoped to tool rows so other collapsibles
+   (session turns) keep their padding. */
+[data-component="tool-part-wrapper"] [data-slot="collapsible-trigger"] {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Tool body: always show the full content at its natural height. Kobalte only
+   re-measures --kb-collapsible-content-height when the open/closed state flips,
+   NOT when content grows. A tool that opens mid-stream with one line therefore
+   stayed locked to one line as its output streamed in, until a manual
+   collapse+expand forced a re-measure. Forcing auto height + visible overflow
+   on the open tool body bypasses the stale measurement so streaming output
+   grows the body live and it is fully expanded on its own. */
+[data-component="tool-part-wrapper"] [data-slot="collapsible-content"][data-expanded] {
+  height: auto !important;
+  overflow: visible;
+}
+
+/* The collapsible box uses overflow:clip (for its rounded corners on expand),
+   which also crops the trigger's 24px action/copy buttons top and bottom in the
+   32px row. Clip only horizontally on tool rows so the corners stay rounded but
+   the buttons' full border is visible; the content below still fits the width. */
+[data-component="tool-part-wrapper"] [data-component="collapsible"] {
+  overflow: clip visible;
+}
+
 [data-component="reasoning-part"] {
   width: 100%;
   color: var(--text-base);
@@ -213,6 +272,27 @@
   }
 }
 
+/* Body-level copy for tools whose output is NOT a fenced code block (webfetch,
+   task, todowrite) and so do not get the CodeBlock's own copy button. Positions
+   a single copy button at the body's top-right, revealed on hover, matching the
+   code-block copy affordance so copy always lives WITH the visible content. */
+[data-slot="tool-body"] {
+  position: relative;
+
+  [data-slot="box-copy"] {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  &:hover [data-slot="box-copy"] {
+    opacity: 1;
+  }
+}
+
 [data-component="tool-output"] {
   white-space: pre;
   padding: 8px 12px;
@@ -226,30 +306,19 @@
     width: 100%;
     min-width: 0;
 
+    /* Let the fenced .shiki code block keep its full GitHub-style box
+       (background, border, padding from markdown.css) inside tool output, so
+       shell/search results look like the code blocks in prose. Only reset the
+       outer margin; tool-output's own padding becomes the gap around the box. */
     pre {
       margin: 0;
-      padding: 0;
-      background-color: transparent !important;
-      border: none !important;
     }
-  }
-
-  pre {
-    margin: 0;
-    padding: 0;
-    background: none;
   }
 
   &[data-scrollable] {
     height: auto;
     max-height: 240px;
     overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
 
     [data-component="markdown"] {
       overflow: visible;
@@ -260,12 +329,6 @@
 [data-component="task-result"][data-scrollable] {
   max-height: 240px;
   overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 [data-component="edit-trigger"],
@@ -338,13 +401,6 @@
   border-top: 1px solid var(--border-weaker-base);
   max-height: 420px;
   overflow-y: auto;
-
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 [data-component="write-content"] {
@@ -355,14 +411,6 @@
   [data-component="code"] {
     padding-bottom: 0px !important;
   }
-
-  /* Hide scrollbar */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 [data-component="tool-action"] {
@@ -371,6 +419,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-weak);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+a[data-component="tool-action"]:hover {
+  color: var(--text-base);
+  background: var(--background-stronger);
 }
 
 [data-component="todos"] {
@@ -862,12 +921,6 @@
 [data-component="apply-patch-file-diff"] {
   max-height: 420px;
   overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 [data-component="tool-loaded-file"] {

@@ -28,10 +28,10 @@ export interface BasicToolProps {
   forceOpen?: boolean
   locked?: boolean
   onSubtitleClick?: () => void
-  // When set, a copy button appears in the tool's title bar (left of the
-  // collapse arrow) and copies this text. Wired only for tools whose body is
-  // text worth copying (bash output, read, search results); omitted for tools
-  // whose body is a diff/confirmation (edit, write, todos).
+  // Optional title-bar copy button. Prefer a body-level copy (next to the
+  // visible content) instead: fenced-output tools get one free from CodeBlock,
+  // and non-fenced tools render their own via the tool-body slot. This prop is
+  // kept for non-tool callers (e.g. MessageBox) that have no separate body.
   copy?: () => string
 }
 
@@ -99,7 +99,6 @@ export function BasicTool(props: BasicToolProps) {
                           </For>
                         </Show>
                       </div>
-                      <Show when={trigger().action}>{trigger().action}</Show>
                     </div>
                   )}
                 </Match>
@@ -107,8 +106,15 @@ export function BasicTool(props: BasicToolProps) {
               </Switch>
             </div>
           </div>
-          <Show when={props.copy}>
-            <CopyButton content={props.copy!} class="basic-tool-copy" />
+          <Show when={(isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action) || props.copy}>
+            <div data-slot="basic-tool-actions">
+              <Show when={isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action}>
+                {(action) => action()}
+              </Show>
+              <Show when={props.copy}>
+                <CopyButton content={props.copy!} class="basic-tool-copy" />
+              </Show>
+            </div>
           </Show>
           <Show when={props.children && !props.hideDetails && !props.locked}>
             <Collapsible.Arrow />

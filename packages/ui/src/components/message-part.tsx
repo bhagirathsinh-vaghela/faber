@@ -951,7 +951,6 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="bullet-list"
-        copy={() => props.output ?? ""}
         trigger={{ title: i18n.t("ui.tool.list"), subtitle: getDirectory(props.input.path || "/") }}
       >
         <Show when={props.output}>
@@ -974,7 +973,6 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="magnifying-glass-menu"
-        copy={() => props.output ?? ""}
         trigger={{
           title: i18n.t("ui.tool.glob"),
           subtitle: getDirectory(props.input.path || "/"),
@@ -1004,7 +1002,6 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="magnifying-glass-menu"
-        copy={() => props.output ?? ""}
         trigger={{
           title: i18n.t("ui.tool.grep"),
           subtitle: getDirectory(props.input.path || "/"),
@@ -1031,22 +1028,33 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         icon="window-cursor"
-        copy={() => props.output ?? ""}
         trigger={{
           title: i18n.t("ui.tool.webfetch"),
           subtitle: props.input.url || "",
           args: props.input.format ? ["format=" + props.input.format] : [],
-          action: (
-            <div data-component="tool-action">
+          action: props.input.url ? (
+            <a
+              data-component="icon-button"
+              data-size="normal"
+              data-variant="secondary"
+              data-slot="tool-action"
+              href={props.input.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
               <Icon name="square-arrow-top-right" size="small" />
-            </div>
-          ),
+            </a>
+          ) : undefined,
         }}
       >
         <Show when={props.output}>
           {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <Markdown text={output()} complete />
+            <div data-slot="tool-body">
+              <CopyButton content={() => output()} />
+              <div data-component="tool-output" data-scrollable>
+                <Markdown text={output()} complete />
+              </div>
             </div>
           )}
         </Show>
@@ -1202,8 +1210,11 @@ ToolRegistry.register({
               </div>
               <Show when={props.output && stripTaskOutput(props.output)}>
                 {(body) => (
-                  <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
-                    <Markdown text={body()} complete />
+                  <div data-slot="tool-body">
+                    <CopyButton content={() => body()} />
+                    <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
+                      <Markdown text={body()} complete />
+                    </div>
                   </div>
                 )}
               </Show>
@@ -1235,26 +1246,28 @@ ToolRegistry.register({
   name: "bash",
   render(props) {
     const i18n = useI18n()
+    const command = () => props.input.command ?? props.metadata.command ?? ""
+    const output = () => props.output || props.metadata.output
     return (
       <BasicTool
         {...props}
         icon="console"
-        copy={() => {
-          const cmd = props.input.command ?? props.metadata.command ?? ""
-          const out = props.output || props.metadata.output
-          return out ? `$ ${cmd}\n\n${stripAnsi(out)}` : `$ ${cmd}`
-        }}
         trigger={{
           title: i18n.t("ui.tool.shell"),
           subtitle: props.input.description,
         }}
       >
-        <div data-component="tool-output" data-scrollable>
-          <Markdown
-            text={`\`\`\`command\n$ ${props.input.command ?? props.metadata.command ?? ""}${props.output || props.metadata.output ? "\n\n" + stripAnsi(props.output || props.metadata.output) : ""}\n\`\`\``}
-            complete
-          />
-        </div>
+        {/* Only render the body once the command has streamed in. While the
+            call is still running with no command text yet, showing the fence
+            would print a bare "$" with nothing after it (looks blank/broken). */}
+        <Show when={command()}>
+          <div data-component="tool-output" data-scrollable>
+            <Markdown
+              text={`\`\`\`command\n$ ${command()}${output() ? "\n\n" + stripAnsi(output()) : ""}\n\`\`\``}
+              complete
+            />
+          </div>
+        </Show>
       </BasicTool>
     )
   },
@@ -1469,32 +1482,35 @@ ToolRegistry.register({
       return `${list.filter((t: Todo) => t.status === "completed").length}/${list.length}`
     })
 
+    const asMarkdown = () =>
+      todos()
+        .map((t: Todo) => `- [${t.status === "completed" ? "x" : " "}] ${t.content}`)
+        .join("\n")
+
     return (
       <BasicTool
         {...props}
         defaultOpen
         icon="checklist"
-        copy={() =>
-          todos()
-            .map((t: Todo) => `- [${t.status === "completed" ? "x" : " "}] ${t.content}`)
-            .join("\n")
-        }
         trigger={{
           title: i18n.t("ui.tool.todos"),
           subtitle: subtitle(),
         }}
       >
         <Show when={todos().length}>
-          <div data-component="todos">
-            <For each={todos()}>
-              {(todo: Todo) => (
-                <Checkbox readOnly checked={todo.status === "completed"}>
-                  <div data-slot="message-part-todo-content" data-completed={todo.status === "completed"}>
-                    {todo.content}
-                  </div>
-                </Checkbox>
-              )}
-            </For>
+          <div data-slot="tool-body">
+            <CopyButton content={asMarkdown} />
+            <div data-component="todos">
+              <For each={todos()}>
+                {(todo: Todo) => (
+                  <Checkbox readOnly checked={todo.status === "completed"}>
+                    <div data-slot="message-part-todo-content" data-completed={todo.status === "completed"}>
+                      {todo.content}
+                    </div>
+                  </Checkbox>
+                )}
+              </For>
+            </div>
           </div>
         </Show>
       </BasicTool>

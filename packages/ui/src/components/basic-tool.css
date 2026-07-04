@@ -94,4 +94,21 @@
     letter-spacing: var(--letter-spacing-normal);
     color: var(--text-weak);
   }
+
+  /* Right-side control cluster: the optional action (e.g. webfetch's open-link)
+     and the copy button, grouped so they sit adjacent instead of split across
+     the row. */
+  [data-slot="basic-tool-actions"] {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+
+    /* The dense tool row (32px, clipped by the collapsible) has no room for the
+       button's 3px focus ring, which would be cropped top/bottom. Keep the
+       resting 1px hairline border on focus instead of the large focus ring. */
+    [data-component="icon-button"]:focus-visible:not(:active) {
+      box-shadow: var(--shadow-xs-border);
+    }
+  }
 }
