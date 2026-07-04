@@ -671,6 +671,27 @@ export default function Page() {
     ),
   )
 
+  // Land focus in the dock when a session opens (fresh mount, direct URL, or an
+  // in-session switch), so the user can type without clicking first. Keyed on
+  // params.id, not onMount, because the view is reused across session switches.
+  // Skip when another surface owns input: a pending question (its panel grabs
+  // focus), the terminal, a dialog, or focus already sitting in an editable.
+  let focusedFor: string | undefined
+  createEffect(
+    on(
+      () => [params.id, prompt.ready()] as const,
+      ([id, ready]) => {
+        if (!id || !ready || focusedFor === id) return
+        if ((sync.data.question[id] ?? []).length > 0) return
+        if (view().terminal.opened() || dialog.active) return
+        const active = document.activeElement as HTMLElement | null
+        if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return
+        focusedFor = id
+        requestAnimationFrame(() => inputRef?.focus())
+      },
+    ),
+  )
+
   createEffect(() => {
     const id = lastUserMessage()?.id
     if (!id) return
