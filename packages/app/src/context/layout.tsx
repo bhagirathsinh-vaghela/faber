@@ -1,5 +1,5 @@
 import { createStore, produce } from "solid-js/store"
-import { batch, createEffect, createMemo, on, onCleanup, onMount, type Accessor } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useGlobalSDK } from "./global-sdk"
@@ -117,6 +117,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         sessionView: {} as Record<string, SessionView>,
       }),
     )
+
+    // Zen mode is intentionally ephemeral — an in-memory signal, never
+    // persisted, so it always starts off on a fresh load/reload.
+    const [zenOpened, setZenOpened] = createSignal(false)
 
     const MAX_SESSION_KEYS = 50
     const meta = { active: undefined as string | undefined, pruned: false }
@@ -545,6 +549,21 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         toggle() {
           setStore("mobileSidebar", "opened", (x) => !x)
+        },
+      },
+      // Zen mode: hides all chrome (titlebar, tab bar, prompt dock), leaving
+      // only the scrollable message list and a floating exit pill. Deliberately
+      // NOT persisted — it always resets to off on load/reload.
+      zen: {
+        opened: zenOpened,
+        enter() {
+          setZenOpened(true)
+        },
+        exit() {
+          setZenOpened(false)
+        },
+        toggle() {
+          setZenOpened((x) => !x)
         },
       },
       view(sessionKey: string | Accessor<string>) {

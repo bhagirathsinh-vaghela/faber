@@ -13,7 +13,7 @@ import {
 } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
-import { Dynamic } from "solid-js/web"
+import { Dynamic, Portal } from "solid-js/web"
 import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
@@ -1840,12 +1840,97 @@ export default function Page() {
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
   })
 
+  // Zen exit-pill. Rendered through a Portal to <body> so it escapes the app
+  // shell's `contain: strict` <main> (which clips fixed descendants and was
+  // hiding the pill on desktop). Default anchor is the bottom-right corner via
+  // CSS bottom/right — no measurement needed. Desktop stays pinned there (click
+  // exits, no drag). Mobile can drag it: past a small threshold we switch to
+  // explicit viewport left/top coords (in-memory only, resets on reload); a
+  // press that never crosses the threshold exits zen.
+  const pillSize = () => (isDesktop() ? 40 : 52)
+  const PILL_MARGIN = 16
+  const DRAG_THRESHOLD = 6
+  // Read a safe-area inset (exposed as a CSS var in index.css) as a number, so
+  // a dragged pill can't be parked under the status bar / home indicator. 0 in
+  // a normal browser.
+  const inset = (name: "--sat" | "--sar" | "--sab" | "--sal") =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0
+  const clampPill = (x: number, y: number) => ({
+    x: Math.max(PILL_MARGIN + inset("--sal"), Math.min(x, window.innerWidth - pillSize() - PILL_MARGIN - inset("--sar"))),
+    y: Math.max(PILL_MARGIN + inset("--sat"), Math.min(y, window.innerHeight - pillSize() - PILL_MARGIN - inset("--sab"))),
+  })
+  const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
+  const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
+  // Explicit coords apply only on mobile after a drag; otherwise null = anchor
+  // to the bottom-right corner via CSS.
+  const pillCoords = createMemo(() => (isDesktop() ? null : (drag() ?? pos())))
+
+  function startPillDrag(e: PointerEvent) {
+    // Desktop: no drag — the pill is corner-pinned, so a press just exits.
+    if (isDesktop()) {
+      layout.zen.exit()
+      return
+    }
+    e.preventDefault()
+    const startX = e.clientX
+    const startY = e.clientY
+    let moved = false
+
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return
+      moved = true
+      setDrag(clampPill(ev.clientX - pillSize() / 2, ev.clientY - pillSize() / 2))
+    }
+    const up = () => {
+      document.removeEventListener("pointermove", move)
+      document.removeEventListener("pointerup", up)
+      const final = drag()
+      setDrag(null)
+      if (!moved) {
+        layout.zen.exit()
+        return
+      }
+      if (final) setPos(final)
+    }
+    document.addEventListener("pointermove", move)
+    document.addEventListener("pointerup", up)
+  }
+
   return (
     <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
       <SessionHeader />
+      {/* Zen mode exit: the only chrome left when zen hides everything else.
+          Portaled to <body> so the shell's contain:strict <main> can't clip it.
+          Anchored bottom-right by default; mobile can drag it (see pillCoords). */}
+      <Show when={layout.zen.opened()}>
+        <Portal>
+          <button
+            type="button"
+            onPointerDown={startPillDrag}
+            aria-label={language.t("zen.exit")}
+            class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing md:cursor-pointer md:active:cursor-pointer hover:bg-surface-raised-base-hover"
+            classList={{ "transition-none": drag() !== null }}
+            style={{
+              // Default corner anchor adds the device safe-area insets so the
+              // pill clears the status bar / home indicator in a standalone PWA.
+              // In a normal browser these env() values are 0, so it's a no-op.
+              ...(pillCoords()
+                ? { left: `${pillCoords()!.x}px`, top: `${pillCoords()!.y}px` }
+                : {
+                    right: `calc(${PILL_MARGIN}px + env(safe-area-inset-right))`,
+                    bottom: `calc(${PILL_MARGIN}px + env(safe-area-inset-bottom))`,
+                  }),
+              width: `${pillSize()}px`,
+              height: `${pillSize()}px`,
+            }}
+          >
+            <Icon name="eye" class="size-7 md:size-5" />
+          </button>
+        </Portal>
+      </Show>
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         {/* Mobile tab bar */}
-        <Show when={!isDesktop() && params.id}>
+        <Show when={!isDesktop() && params.id && !layout.zen.opened()}>
           <Tabs class="h-auto">
             <Tabs.List>
               <Tabs.Trigger
@@ -1882,7 +1967,14 @@ export default function Page() {
           }}
           style={{
             width: isDesktop() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
-            "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
+            // In zen the prompt dock is hidden, so collapse its reserved space
+            // to 0 — otherwise the message list keeps padding for a dock that
+            // isn't there.
+            "--prompt-height": layout.zen.opened() ? "0px" : store.promptHeight ? `${store.promptHeight}px` : undefined,
+            // In zen the titlebar is gone, so this panel must itself clear the
+            // device's top safe-area inset (status bar). Tight gap on top of it.
+            // --sat is 0 in a browser, so it degrades to just the small gap.
+            "padding-top": layout.zen.opened() ? "calc(var(--sat) + 0.25rem)" : undefined,
           }}
         >
           <div class="flex-1 min-h-0 overflow-hidden">
@@ -2048,9 +2140,12 @@ export default function Page() {
                           if (isDesktop()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
-                        style={{ "--session-title-height": info()?.title || info()?.parentID ? "40px" : "0px" }}
+                        style={{
+                          "--session-title-height":
+                            !layout.zen.opened() && (info()?.title || info()?.parentID) ? "40px" : "0px",
+                        }}
                       >
-                        <Show when={info()?.title || info()?.parentID}>
+                        <Show when={!layout.zen.opened() && (info()?.title || info()?.parentID)}>
                           <div
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,
@@ -2126,13 +2221,19 @@ export default function Page() {
                         <div
                           ref={autoScroll.contentRef}
                           role="log"
-                          class="flex flex-col gap-4 items-start justify-start pb-[calc(var(--prompt-height,8rem)+32px)] md:pb-[calc(var(--prompt-height,10rem)+32px)] transition-[margin]"
+                          class="flex flex-col gap-4 items-start justify-start transition-[margin]"
                           classList={{
                             "w-full": true,
                             "md:max-w-[90%] md:mx-auto": centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
+                            // Normal: reserve space for the floating prompt dock.
+                            // Zen: dock is gone, so no bottom reservation — just
+                            // the home-indicator safe area (via inline style).
+                            "pb-[calc(var(--prompt-height,8rem)+32px)] md:pb-[calc(var(--prompt-height,10rem)+32px)]":
+                              !layout.zen.opened(),
                           }}
+                          style={{ "padding-bottom": layout.zen.opened() ? "var(--sab)" : undefined }}
                         >
                           <Show when={store.turnStart > 0}>
                             <div class="w-full flex justify-center">
@@ -2231,11 +2332,15 @@ export default function Page() {
             </Switch>
           </div>
 
-          {/* Prompt input */}
+          {/* Prompt input — hidden entirely in zen mode (messages only). */}
           <div
             ref={(el) => (promptDock = el)}
             data-slot="prompt-dock"
-            class="absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none"
+            classList={{
+              "absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none":
+                true,
+              hidden: layout.zen.opened(),
+            }}
           >
             <div
               classList={{

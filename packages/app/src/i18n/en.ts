@@ -114,6 +114,11 @@ export const dict = {
   "actionbar.autoinject.tooltip": "Toggle auto-inject",
   "actionbar.questions.tooltip": "Show pending questions",
 
+  "dock.hide": "Hide usage",
+  "dock.show": "Show usage",
+  "zen.enter": "Zen mode",
+  "zen.exit": "Exit zen mode",
+
   "dialog.provider.search.placeholder": "Search providers",
   "dialog.provider.empty": "No providers found",
   "dialog.provider.group.popular": "Popular",

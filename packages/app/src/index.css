@@ -1,5 +1,15 @@
 @import "@opencode-ai/ui/styles/tailwind";
 
+/* Expose the device safe-area insets as custom properties so JS can read them
+   via getComputedStyle (the established env()->var bridge). 0px in a normal
+   browser; real values only in a standalone PWA with viewport-fit=cover. */
+:root {
+  --sat: env(safe-area-inset-top);
+  --sar: env(safe-area-inset-right);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+}
+
 /* Question panel renders the question text and option descriptions through the
    shared Markdown component so they inherit the same strong/em/code/heading
    theme tokens the chat uses (and any appearance customization the user sets).

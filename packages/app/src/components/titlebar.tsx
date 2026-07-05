@@ -133,11 +133,12 @@ export function Titlebar() {
   }
 
   return (
-    <header
-      data-slot="titlebar"
-      class="h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
-      style={{ "min-height": minHeight() }}
-    >
+    <Show when={!layout.zen.opened()}>
+      <header
+        data-slot="titlebar"
+        class="h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
+        style={{ "min-height": minHeight() }}
+      >
       <div
         classList={{
           "flex items-center min-w-0": true,
@@ -254,7 +255,8 @@ export function Titlebar() {
           <div class="w-6 shrink-0" />
           <div data-tauri-decorum-tb class="flex flex-row" />
         </Show>
-      </div>
-    </header>
+        </div>
+      </header>
+    </Show>
   )
 }

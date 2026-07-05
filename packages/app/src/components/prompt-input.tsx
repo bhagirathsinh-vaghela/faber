@@ -351,6 +351,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const [composing, setComposing] = createSignal(false)
   const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
 
+  // Whole-dock collapse: one toggle hides the entire usage + action-bar strip
+  // (its contents render unchanged when shown). Reclaims vertical space on a
+  // crowded viewport without per-component logic.
+  const [dockHidden, setDockHidden] = createSignal(false)
+
   const addImageAttachment = async (file: File) => {
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) return
 
@@ -2151,6 +2156,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Button>
                 </Tooltip>
               </Show>
+              <Tooltip placement="top" value={language.t("zen.enter")}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  class="size-9 px-1 md:size-6"
+                  onClick={() => layout.zen.enter()}
+                  aria-label={language.t("zen.enter")}
+                >
+                  <Icon name="glasses" class="size-5.5 md:size-4.5" />
+                </Button>
+              </Tooltip>
             </div>
             <Tooltip
               placement="top"
@@ -2184,10 +2200,38 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </div>
         </div>
         <Show when={params.id}>
-          <div class="border-t border-border-weak-base px-3 py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
-            <Statusline />
-            <PromptActionBar />
-          </div>
+          <Show
+            when={!dockHidden()}
+            fallback={
+              <div class="border-t border-border-weak-base px-3 py-0.5 flex flex-row items-center justify-end">
+                <Tooltip value={language.t("dock.show")} placement="top" gutter={8}>
+                  <IconButton
+                    icon="arrow-up"
+                    variant="ghost"
+                    class="size-5 p-0"
+                    onClick={() => setDockHidden(false)}
+                    aria-label={language.t("dock.show")}
+                  />
+                </Tooltip>
+              </div>
+            }
+          >
+            <div class="border-t border-border-weak-base px-3 py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
+              <Statusline />
+              <div class="flex flex-row flex-wrap items-center gap-1.5">
+                <PromptActionBar />
+                <Tooltip value={language.t("dock.hide")} placement="top" gutter={8}>
+                  <IconButton
+                    icon="chevron-down"
+                    variant="ghost"
+                    class="size-5 p-0 shrink-0"
+                    onClick={() => setDockHidden(true)}
+                    aria-label={language.t("dock.hide")}
+                  />
+                </Tooltip>
+              </div>
+            </div>
+          </Show>
         </Show>
       </form>
     </div>
