@@ -1553,54 +1553,54 @@ ToolRegistry.register({
       >
         <Switch>
           <Match when={files().length > 0}>
-          <div data-component="apply-patch-files">
-            <For each={files()}>
-              {(file) => (
-                <div data-component="apply-patch-file">
-                  <div data-slot="apply-patch-file-header">
-                    <Switch>
-                      <Match when={file.type === "delete"}>
-                        <span data-slot="apply-patch-file-action" data-type="delete">
-                          {i18n.t("ui.patch.action.deleted")}
-                        </span>
-                      </Match>
-                      <Match when={file.type === "add"}>
-                        <span data-slot="apply-patch-file-action" data-type="add">
-                          {i18n.t("ui.patch.action.created")}
-                        </span>
-                      </Match>
-                      <Match when={file.type === "move"}>
-                        <span data-slot="apply-patch-file-action" data-type="move">
-                          {i18n.t("ui.patch.action.moved")}
-                        </span>
-                      </Match>
-                      <Match when={file.type === "update"}>
-                        <span data-slot="apply-patch-file-action" data-type="update">
-                          {i18n.t("ui.patch.action.patched")}
-                        </span>
-                      </Match>
-                    </Switch>
-                    <span data-slot="apply-patch-file-path">{file.relativePath}</span>
+            <div data-component="apply-patch-files">
+              <For each={files()}>
+                {(file) => (
+                  <div data-component="apply-patch-file">
+                    <div data-slot="apply-patch-file-header">
+                      <Switch>
+                        <Match when={file.type === "delete"}>
+                          <span data-slot="apply-patch-file-action" data-type="delete">
+                            {i18n.t("ui.patch.action.deleted")}
+                          </span>
+                        </Match>
+                        <Match when={file.type === "add"}>
+                          <span data-slot="apply-patch-file-action" data-type="add">
+                            {i18n.t("ui.patch.action.created")}
+                          </span>
+                        </Match>
+                        <Match when={file.type === "move"}>
+                          <span data-slot="apply-patch-file-action" data-type="move">
+                            {i18n.t("ui.patch.action.moved")}
+                          </span>
+                        </Match>
+                        <Match when={file.type === "update"}>
+                          <span data-slot="apply-patch-file-action" data-type="update">
+                            {i18n.t("ui.patch.action.patched")}
+                          </span>
+                        </Match>
+                      </Switch>
+                      <span data-slot="apply-patch-file-path">{file.relativePath}</span>
+                      <Show when={file.type !== "delete"}>
+                        <DiffChanges changes={{ additions: file.additions, deletions: file.deletions }} />
+                      </Show>
+                      <Show when={file.type === "delete"}>
+                        <span data-slot="apply-patch-deletion-count">-{file.deletions}</span>
+                      </Show>
+                    </div>
                     <Show when={file.type !== "delete"}>
-                      <DiffChanges changes={{ additions: file.additions, deletions: file.deletions }} />
-                    </Show>
-                    <Show when={file.type === "delete"}>
-                      <span data-slot="apply-patch-deletion-count">-{file.deletions}</span>
+                      <div data-component="apply-patch-file-diff">
+                        <Dynamic
+                          component={diffComponent}
+                          before={{ name: file.filePath, contents: file.before }}
+                          after={{ name: file.filePath, contents: file.after }}
+                        />
+                      </div>
                     </Show>
                   </div>
-                  <Show when={file.type !== "delete"}>
-                    <div data-component="apply-patch-file-diff">
-                      <Dynamic
-                        component={diffComponent}
-                        before={{ name: file.filePath, contents: file.before }}
-                        after={{ name: file.filePath, contents: file.after }}
-                      />
-                    </div>
-                  </Show>
-                </div>
-              )}
-            </For>
-          </div>
+                )}
+              </For>
+            </div>
           </Match>
           {/* Args still streaming (patchText being written): show a live
               streaming bar instead of an empty box. */}

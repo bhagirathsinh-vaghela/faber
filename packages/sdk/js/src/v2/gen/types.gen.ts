@@ -650,6 +650,10 @@ export type QuestionRequest = {
   id: string
   sessionID: string
   /**
+   * When the question was asked (epoch millis)
+   */
+  time: number
+  /**
    * Questions to ask
    */
   questions: Array<QuestionInfo>
@@ -677,14 +681,6 @@ export type EventQuestionReplied = {
 
 export type EventQuestionRejected = {
   type: "question.rejected"
-  properties: {
-    sessionID: string
-    requestID: string
-  }
-}
-
-export type EventQuestionDeferred = {
-  type: "question.deferred"
   properties: {
     sessionID: string
     requestID: string
@@ -1170,7 +1166,6 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
-  | EventQuestionDeferred
   | EventSessionPingArmed
   | EventSessionCompacted
   | EventBackgroundTaskCreated
@@ -2005,10 +2000,6 @@ export type Config = {
      * Show the session header bar at the top of the TUI
      */
     header?: boolean
-    /**
-     * Seconds before a pending question auto-defers (default: 120, 0 disables)
-     */
-    question_timeout?: number
   }
   server?: ServerConfig
   /**
@@ -4822,39 +4813,6 @@ export type QuestionRejectResponses = {
 }
 
 export type QuestionRejectResponse = QuestionRejectResponses[keyof QuestionRejectResponses]
-
-export type QuestionDeferData = {
-  body?: never
-  path: {
-    requestID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/question/{requestID}/defer"
-}
-
-export type QuestionDeferErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type QuestionDeferError = QuestionDeferErrors[keyof QuestionDeferErrors]
-
-export type QuestionDeferResponses = {
-  /**
-   * Question deferred successfully
-   */
-  200: boolean
-}
-
-export type QuestionDeferResponse = QuestionDeferResponses[keyof QuestionDeferResponses]
 
 export type ProviderListData = {
   body?: never

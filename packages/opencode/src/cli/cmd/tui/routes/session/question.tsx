@@ -1,25 +1,23 @@
 import { createStore } from "solid-js/store"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
 import { useKeybind } from "../../context/keybind"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
 import type { QuestionRequest } from "@opencode-ai/sdk/v2"
 import { useSDK } from "../../context/sdk"
-import { useSync } from "../../context/sync"
-import { EmptyBorder, SplitBorder } from "../../component/border"
+import { SplitBorder } from "../../component/border"
 import { useTextareaKeybindings } from "../../component/textarea-keybindings"
 import { useDialog } from "../../ui/dialog"
 
 export function QuestionPrompt(props: {
   requests: QuestionRequest[]
   pendingIDs: Set<string>
-  onHide: (requests: QuestionRequest[]) => void
+  onCollapse: () => void
   onAnswered: (id: string, answers: string[][], questions: QuestionRequest["questions"]) => void
   onDismissed: (id: string) => void
 }) {
   const sdk = useSDK()
-  const sync = useSync()
   const { theme } = useTheme()
   const keybind = useKeybind()
   const bindings = useTextareaKeybindings()
@@ -58,50 +56,6 @@ export function QuestionPrompt(props: {
     return props.pendingIDs.has(id)
   }
 
-  const TIMEOUT = sync.data.config.tui?.question_timeout ?? 120
-  const WARN_AT = 10
-  const DANGER_AT = 3
-  const [remaining, setRemaining] = createSignal(TIMEOUT)
-  const timerActive = createMemo(() => {
-    if (TIMEOUT === 0) return false
-    const r = request()
-    return Boolean(r && isPending(r.id))
-  })
-
-  createEffect(
-    on(
-      () => request()?.id,
-      (id) => {
-        if (id && isPending(id)) setRemaining(TIMEOUT)
-      },
-    ),
-  )
-
-  createEffect(() => {
-    if (!timerActive()) return
-    const handle = setInterval(() => {
-      setRemaining((prev) => {
-        const next = prev - 1
-        if (next <= 0) {
-          for (const r of props.requests) {
-            if (isPending(r.id)) sdk.client.question.defer({ requestID: r.id })
-          }
-          props.onHide(props.requests)
-          return 0
-        }
-        return next
-      })
-    }, 1000)
-    onCleanup(() => clearInterval(handle))
-  })
-
-  const barColor = createMemo(() => {
-    const r = remaining()
-    if (r <= DANGER_AT) return theme.error
-    if (r <= WARN_AT) return theme.warning
-    return theme.accent
-  })
-
   function submit() {
     const r = request()
     if (!r) return
@@ -119,15 +73,6 @@ export function QuestionPrompt(props: {
       sdk.client.question.reject({ requestID: r.id })
     }
     props.onDismissed(r.id)
-  }
-
-  function defer() {
-    for (const r of props.requests) {
-      if (isPending(r.id)) {
-        sdk.client.question.defer({ requestID: r.id })
-      }
-    }
-    props.onHide(props.requests)
   }
 
   function pick(answer: string, isCustom: boolean = false) {
@@ -315,7 +260,7 @@ export function QuestionPrompt(props: {
       }
       if (evt.name === "escape" || keybind.match("app_exit", evt)) {
         evt.preventDefault()
-        defer()
+        props.onCollapse()
       }
     } else {
       const opts = options()
@@ -348,7 +293,7 @@ export function QuestionPrompt(props: {
 
       if (evt.name === "escape" || keybind.match("app_exit", evt)) {
         evt.preventDefault()
-        defer()
+        props.onCollapse()
       }
     }
   })
@@ -578,7 +523,7 @@ export function QuestionPrompt(props: {
           </text>
 
           <text fg={theme.text}>
-            esc <span style={{ fg: theme.textMuted }}>defer</span>
+            esc <span style={{ fg: theme.textMuted }}>collapse</span>
           </text>
 
           <Show when={keybind.print("question_dismiss")}>
@@ -588,30 +533,6 @@ export function QuestionPrompt(props: {
           </Show>
         </box>
       </box>
-      <Show when={timerActive()}>
-        <box flexDirection="row" height={1} width="100%">
-          <Show when={remaining() > 0}>
-            <box
-              flexGrow={remaining()}
-              flexShrink={0}
-              height={1}
-              border={["bottom"]}
-              borderColor={barColor()}
-              customBorderChars={{ ...EmptyBorder, horizontal: "▄" }}
-            />
-          </Show>
-          <Show when={remaining() < TIMEOUT}>
-            <box
-              flexGrow={TIMEOUT - remaining()}
-              flexShrink={0}
-              height={1}
-              border={["bottom"]}
-              borderColor={theme.backgroundElement}
-              customBorderChars={{ ...EmptyBorder, horizontal: "▄" }}
-            />
-          </Show>
-        </box>
-      </Show>
     </box>
   )
 }

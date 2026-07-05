@@ -4506,68 +4506,6 @@
         ]
       }
     },
-    "/question/{requestID}/defer": {
-      "post": {
-        "operationId": "question.defer",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "requestID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Defer question request",
-        "description": "Defer a question request. The user may answer later.",
-        "responses": {
-          "200": {
-            "description": "Question deferred successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.defer({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/provider": {
       "get": {
         "operationId": "provider.list",
@@ -10049,6 +9987,10 @@
             "type": "string",
             "pattern": "^ses.*"
           },
+          "time": {
+            "description": "When the question was asked (epoch millis)",
+            "type": "number"
+          },
           "questions": {
             "description": "Questions to ask",
             "type": "array",
@@ -10075,6 +10017,7 @@
         "required": [
           "id",
           "sessionID",
+          "time",
           "questions"
         ]
       },
@@ -10141,34 +10084,6 @@
           "type": {
             "type": "string",
             "const": "question.rejected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "sessionID",
-              "requestID"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.question.deferred": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.deferred"
           },
           "properties": {
             "type": "object",
@@ -11855,9 +11770,6 @@
             "$ref": "#/components/schemas/Event.question.rejected"
           },
           {
-            "$ref": "#/components/schemas/Event.question.deferred"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.ping.armed"
           },
           {
@@ -13243,12 +13155,6 @@
                 "description": "Show the session header bar at the top of the TUI",
                 "default": false,
                 "type": "boolean"
-              },
-              "question_timeout": {
-                "description": "Seconds before a pending question auto-defers (default: 120, 0 disables)",
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
               }
             }
           },

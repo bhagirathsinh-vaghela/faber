@@ -35,6 +35,7 @@ export namespace Question {
     .object({
       id: Identifier.schema("question"),
       sessionID: Identifier.schema("session"),
+      time: z.number().describe("When the question was asked (epoch millis)"),
       questions: z.array(Info).describe("Questions to ask"),
       tool: z
         .object({
@@ -60,8 +61,6 @@ export namespace Question {
   })
   export type Reply = z.infer<typeof Reply>
 
-  export const DEFERRED_ANSWER: Answer = ["__deferred__"]
-
   export const Event = {
     Asked: BusEvent.define("question.asked", Request),
     Replied: BusEvent.define(
@@ -74,13 +73,6 @@ export namespace Question {
     ),
     Rejected: BusEvent.define(
       "question.rejected",
-      z.object({
-        sessionID: z.string(),
-        requestID: z.string(),
-      }),
-    ),
-    Deferred: BusEvent.define(
-      "question.deferred",
       z.object({
         sessionID: z.string(),
         requestID: z.string(),
@@ -117,6 +109,7 @@ export namespace Question {
       const info: Request = {
         id,
         sessionID: input.sessionID,
+        time: Date.now(),
         questions: input.questions,
         tool: input.tool,
       }
@@ -172,25 +165,6 @@ export namespace Question {
     constructor() {
       super("The user dismissed this question")
     }
-  }
-
-  export async function defer(requestID: string): Promise<void> {
-    const s = await state()
-    const existing = s.pending[requestID]
-    if (!existing) {
-      log.warn("defer for unknown request", { requestID })
-      return
-    }
-    delete s.pending[requestID]
-
-    log.info("deferred", { requestID })
-
-    Bus.publish(Event.Deferred, {
-      sessionID: existing.info.sessionID,
-      requestID: existing.info.id,
-    })
-
-    existing.resolve(existing.info.questions.map(() => DEFERRED_ANSWER))
   }
 
   export async function list() {

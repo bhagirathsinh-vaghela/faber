@@ -42,7 +42,6 @@ import type {
 import { useLocal } from "@tui/context/local"
 import { useDirectory } from "@tui/context/directory"
 import { Locale } from "@/util/locale"
-import { Identifier } from "@/id/id"
 import type { Tool } from "@/tool/tool"
 import type { ReadTool } from "@/tool/read"
 import type { WriteTool } from "@/tool/write"
@@ -169,12 +168,7 @@ export function Session() {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.question[x.id] ?? [])
   })
-  const [deferredQuestions, setDeferredQuestions] = createSignal<(typeof sync.data.question)[string]>([])
-  const questions = createMemo(() => {
-    const ids = new Set(pendingQuestions().map((q) => q.id))
-    const deferred = deferredQuestions().filter((q) => !ids.has(q.id))
-    return [...pendingQuestions(), ...deferred]
-  })
+  const questions = pendingQuestions
   const [showQuestion, setShowQuestion] = createSignal(false)
   createEffect(
     on(
@@ -1064,7 +1058,7 @@ export function Session() {
       enabled: questions().length > 0,
       onSelect: (dialog) => {
         dialog.clear()
-        setShowQuestion((prev) => !prev)
+        setShowQuestion(true)
       },
     },
     {
@@ -1485,52 +1479,32 @@ export function Session() {
                 <QuestionPrompt
                   requests={questions()}
                   pendingIDs={new Set(pendingQuestions().map((q) => q.id))}
-                  onHide={(reqs) => {
-                    setDeferredQuestions((prev) => {
-                      const ids = new Set(prev.map((q) => q.id))
-                      return [...prev, ...reqs.filter((q) => !ids.has(q.id))]
-                    })
-                    setShowQuestion(false)
-                  }}
-                  onAnswered={(id, answers, qs) => {
-                    setDeferredQuestions((prev) => prev.filter((q) => q.id !== id))
+                  onCollapse={() => setShowQuestion(false)}
+                  onAnswered={() => {
                     toBottom()
-                    if (!pendingQuestions().some((q) => q.id === id)) {
-                      const formatted = qs
-                        .map((q, i) => {
-                          const ans = answers[i]?.join(", ") || "Unanswered"
-                          return `"${q.question}" = "${ans}"`
-                        })
-                        .join("\n")
-                      const sid = session()?.parentID ?? session()?.id ?? route.sessionID
-                      const selectedModel = local.model.current()
-                      sdk.client.session
-                        .prompt({
-                          sessionID: sid,
-                          messageID: Identifier.ascending("message"),
-                          agent: local.agent.current().name,
-                          model: selectedModel
-                            ? {
-                                providerID: selectedModel.providerID,
-                                modelID: selectedModel.modelID,
-                              }
-                            : undefined,
-                          variant: local.model.variant.current(),
-                          parts: [
-                            {
-                              id: Identifier.ascending("part"),
-                              type: "text",
-                              text: `Answering your earlier deferred question:\n${formatted}`,
-                            },
-                          ],
-                        })
-                        .catch(() => {})
-                    }
                   }}
-                  onDismissed={(id) => {
-                    setDeferredQuestions((prev) => prev.filter((q) => q.id !== id))
-                  }}
+                  onDismissed={() => {}}
                 />
+              </Show>
+              <Show when={permissions().length === 0 && questions().length > 0 && !showQuestion()}>
+                <box
+                  backgroundColor={theme.backgroundPanel}
+                  border={["left"]}
+                  borderColor={theme.accent}
+                  customBorderChars={SplitBorder.customBorderChars}
+                  flexDirection="row"
+                  gap={1}
+                  paddingLeft={2}
+                  paddingRight={2}
+                  onMouseUp={() => setShowQuestion(true)}
+                >
+                  <text fg={theme.text}>
+                    {questions().length} question{questions().length > 1 ? "s" : ""} pending
+                  </text>
+                  <Show when={keybind.print("question_list")}>
+                    <text fg={theme.textMuted}>{keybind.print("question_list")} expand</text>
+                  </Show>
+                </box>
               </Show>
               <Prompt
                 visible={!session()?.parentID && permissions().length === 0}

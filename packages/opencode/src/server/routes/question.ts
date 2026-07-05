@@ -94,35 +94,5 @@ export const QuestionRoutes = lazy(() =>
         await Question.reject(params.requestID)
         return c.json(true)
       },
-    )
-    .post(
-      "/:requestID/defer",
-      describeRoute({
-        summary: "Defer question request",
-        description: "Defer a question request. The user may answer later.",
-        operationId: "question.defer",
-        responses: {
-          200: {
-            description: "Question deferred successfully",
-            content: {
-              "application/json": {
-                schema: resolver(z.boolean()),
-              },
-            },
-          },
-          ...errors(400, 404),
-        },
-      }),
-      validator(
-        "param",
-        z.object({
-          requestID: z.string(),
-        }),
-      ),
-      async (c) => {
-        const params = c.req.valid("param")
-        await Question.defer(params.requestID)
-        return c.json(true)
-      },
     ),
 )
