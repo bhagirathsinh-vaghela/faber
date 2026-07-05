@@ -2,6 +2,7 @@ import { createStore } from "solid-js/store"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import type { QuestionRequest } from "@opencode-ai/sdk/v2"
 import { Button } from "@opencode-ai/ui/button"
+import { Icon } from "@opencode-ai/ui/icon"
 import { Markdown } from "@opencode-ai/ui/markdown"
 import { useSDK } from "@/context/sdk"
 import { useCommand } from "@/context/command"
@@ -13,27 +14,36 @@ import { agentColor } from "@/utils/agent"
 // Pinned question prompt. Mirrors the TUI QuestionPrompt
 // (packages/opencode/src/cli/cmd/tui/routes/session/question.tsx): tabbed
 // multi-question/multi-request flow, single-question fast path, custom answers,
-// multi-select, review/confirm, and a countdown bar that auto-defers on timeout.
+// multi-select, and review/confirm.
 //
-// Deferred-question state (pending ∪ deferred list, visibility) lives in the
-// shared question context so the prompt action bar's count sees deferred ones
-// too; question_list (alt+y) toggles visibility to bring a deferred one back.
+// The question blocks server-side; the ping daemon keeps the cache warm, so the
+// web panel offers collapse (not defer). Collapse shrinks the floating panel to
+// a one-line bar near the dock without answering — the question stays pending.
+// A new question auto-expands. (Defer stays for the TUI, which cannot collapse.)
 export function QuestionPanel(props: { onClose?: () => void }) {
   const command = useCommand()
   const language = useLanguage()
   const question = useQuestion()
+  const local = useLocal()
 
+  // Agent-tinted accent, same as the expanded panel's focused border. The
+  // collapsed bar keeps this thin accent even while unfocused so it stays
+  // attention-seeking (a live question is still blocking in the background).
+  const accent = createMemo(() => {
+    const a = local.agent.current()
+    return (a && agentColor(a.name, a.color)) ?? "var(--icon-interactive-base)"
+  })
+
+  // A newly-arrived question pops the panel back open even if the user had
+  // collapsed a previous one — a question demands attention.
   createEffect(
     on(
       () => question.pending().length,
       (len, prev) => {
-        if (len > 0 && !prev) question.show()
+        if (len > (prev ?? 0)) question.expand()
       },
     ),
   )
-  createEffect(() => {
-    if (question.count === 0 && question.visible()) question.toggle()
-  })
 
   command.register(() => [
     {
@@ -43,30 +53,72 @@ export function QuestionPanel(props: { onClose?: () => void }) {
       category: language.t("command.category.session"),
       keybind: "alt+y",
       disabled: question.count === 0,
-      onSelect: () => question.toggle(),
+      onSelect: () => question.expand(),
     },
   ])
 
+  // Earliest ask-time across pending requests — the "asked at" the user sees.
+  const asked = createMemo(() => {
+    const times = question.requests().map((r) => r.time)
+    return times.length ? Math.min(...times) : undefined
+  })
+
   return (
-    <Show when={question.count > 0 && question.visible()}>
-      <Panel
-        requests={question.requests()}
-        pendingIDs={question.pendingIDs()}
-        onHide={question.hide}
-        onAnswered={question.answered}
-        onDismissed={question.drop}
-        onClose={props.onClose}
-      />
+    <Show when={question.count > 0}>
+      <Show
+        when={!question.collapsed()}
+        fallback={
+          <button
+            type="button"
+            class="mb-3 flex w-full flex-row items-center gap-2 rounded-md border bg-background-base/95 px-4 py-2 text-left shadow-md hover:bg-background-element"
+            style={{ "border-color": accent() }}
+            onClick={question.expand}
+            data-component="question-collapsed"
+          >
+            <Icon name="help" class="text-text-weak" />
+            <span class="text-13-regular text-text-base">
+              {language.t("question.collapsed", { count: question.total() })}
+            </span>
+            <Show when={asked()}>
+              <span class="ml-auto text-11-regular text-text-weak tabular-nums">{clock(asked()!)}</span>
+            </Show>
+            <div
+              data-slot="collapsible-arrow"
+              class="flex h-6 w-6 shrink-0 items-center justify-center text-text-weak"
+              classList={{ "ml-auto": !asked() }}
+            >
+              <Icon name="chevron-grabber-vertical" size="small" />
+            </div>
+          </button>
+        }
+      >
+        <Panel
+          requests={question.requests()}
+          pendingIDs={question.pendingIDs()}
+          asked={asked()}
+          onCollapse={() => {
+            question.collapse()
+            // Collapse hands the dock back the keyboard (caret to end), same as
+            // answering/dismissing — the question stays live in the background.
+            command.trigger("prompt.focus")
+          }}
+          onClose={props.onClose}
+        />
+      </Show>
     </Show>
   )
+}
+
+// Short wall-clock "asked at", matching dialog-stash / dialog-fork.
+function clock(ms: number) {
+  return new Date(ms).toLocaleTimeString(undefined, { timeStyle: "short" })
 }
 
 function Panel(props: {
   requests: QuestionRequest[]
   pendingIDs: Set<string>
-  onHide: (reqs: QuestionRequest[]) => void
-  onAnswered: (id: string, answers: string[][], questions: QuestionRequest["questions"]) => void
-  onDismissed: (id: string) => void
+  asked?: number
+  onCollapse: () => void
   onClose?: () => void
 }) {
   const sdk = useSDK()
@@ -132,21 +184,12 @@ function Panel(props: {
     if (!r) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
     if (isPending(r.id)) sdk.client.question.reply({ requestID: r.id, answers })
-    props.onAnswered(r.id, answers, r.questions)
   }
 
   function reject() {
     const r = request()
     if (!r) return
     if (isPending(r.id)) sdk.client.question.reject({ requestID: r.id })
-    props.onDismissed(r.id)
-  }
-
-  function defer() {
-    for (const r of props.requests) {
-      if (isPending(r.id)) sdk.client.question.defer({ requestID: r.id })
-    }
-    props.onHide(props.requests)
   }
 
   function pick(answer: string, isCustom = false) {
@@ -162,11 +205,15 @@ function Panel(props: {
       const r = request()
       if (!r) return
       if (isPending(r.id)) sdk.client.question.reply({ requestID: r.id, answers: [[answer]] })
-      props.onAnswered(r.id, [[answer]], r.questions)
       return
     }
     setStore("tab", store.tab + 1)
     setStore("selected", 0)
+    // A mouse click on an option leaves DOM focus on that button, which then
+    // unmounts as the tab advances and focus falls to <body>. Keyboard Enter
+    // never leaves the panel. Pull focus back so both paths behave the same and
+    // the next tab keeps driving from the keyboard.
+    panel?.focus()
   }
 
   function toggle(answer: string) {
@@ -317,7 +364,7 @@ function Panel(props: {
         return
       case "Escape":
         stop()
-        defer()
+        props.onCollapse()
         return
     }
   }
@@ -337,6 +384,9 @@ function Panel(props: {
   let swallowClick = false
   function guardMouseDown(event: MouseEvent) {
     if (focused()) return
+    // The collapse header always acts, focused or not — it never picks a choice,
+    // so it must not be swallowed by the defocused-press guard.
+    if ((event.target as HTMLElement | null)?.closest("[data-question-collapse]")) return
     // Defocused press: take focus for the panel, not the button, and remember
     // to swallow the click this press will generate so no choice is picked.
     event.preventDefault()
@@ -398,6 +448,27 @@ function Panel(props: {
       }
       data-component="question-panel"
     >
+      {/* Collapse control — floats top-right over the panel so it takes no row
+          from the content (the tabs/question heading stay put). The whole
+          control (asked-at time + native grabber chevron) is clickable. Collapse
+          keeps the question live (server-side) and returns focus to the dock.
+          data-question-collapse exempts it from the defocused-press guard so the
+          first click always collapses. */}
+      <button
+        type="button"
+        data-question-collapse
+        class="absolute right-2 top-2 flex flex-row items-center gap-1.5 rounded px-1 hover:bg-surface-raised-base"
+        title="Collapse"
+        onClick={() => props.onCollapse()}
+      >
+        <Show when={props.asked}>
+          <span class="text-11-regular text-text-weak tabular-nums">{clock(props.asked!)}</span>
+        </Show>
+        <div data-slot="collapsible-arrow" class="flex h-6 w-6 shrink-0 items-center justify-center text-text-weak">
+          <Icon name="chevron-grabber-vertical" size="small" />
+        </div>
+      </button>
+
       <div class="flex flex-col gap-2 px-4 py-3 pr-6">
         {/* Request tabs (multiple pending requests) */}
         <Show when={multiRequest()}>
@@ -599,18 +670,12 @@ function Panel(props: {
 
       {/* Actions. Each button carries the keyboard shortcut that triggers it,
           shown as a hint above (handled in handleKey: alt+D reject, Escape
-          defer, Enter submit, Tab cycles requests). */}
+          collapse, Enter submit, Tab cycles requests). */}
       <div class="flex flex-row items-end gap-2 justify-end px-4 pb-3">
         <div class="flex flex-col items-center gap-0.5">
           <kbd class="text-11-regular text-text-weak">⌥D</kbd>
           <Button variant="secondary" size="small" onClick={reject}>
             Dismiss
-          </Button>
-        </div>
-        <div class="flex flex-col items-center gap-0.5">
-          <kbd class="text-11-regular text-text-weak">Esc</kbd>
-          <Button variant="secondary" size="small" onClick={defer}>
-            Defer
           </Button>
         </div>
         <Show when={confirm() || single()}>

@@ -24,7 +24,7 @@ export function PromptActionBar() {
   const [available, setAvailable] = createSignal(0)
   const [autoInject, setAutoInject] = createSignal(true)
 
-  const questions = createMemo(() => question.count)
+  const questions = createMemo(() => question.total())
 
   async function refresh() {
     const sessionID = params.id
