@@ -156,9 +156,21 @@ export namespace SessionPrompt {
   export type PromptInput = z.infer<typeof PromptInput>
 
   export const prompt = fn(PromptInput, async (input) => {
-    SessionPing.stop(input.sessionID)
+    // The cache-ping daemon stays ARMED across the turn — we do NOT stop it here.
+    // A turn that keeps dispatching model requests inside CACHE_TTL re-anchors the
+    // cache faster than the daemon's scheduled ping, so evaluate() naturally keeps
+    // the daemon quiet (its ping target slides past every dispatch). The daemon
+    // only fires when a turn STALLS with no dispatch for longer than
+    // CACHE_TTL - beforeExpiry — a blocking question, a long-running tool, or a
+    // single slow model step — which is exactly the gap that used to let the cache
+    // die mid-turn (footer "--" then a cache miss on resume). Keeping it armed
+    // makes that stall self-heal. Any brief ping/turn overlap is safe: the cache
+    // prefix is read-only shared state and lastRequestAt is last-writer-wins.
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
+    // Reset ping telemetry ({ count, time, pending }) for the new turn's display.
+    // This is display state only (statusline's "N× pinged" / in-flight indicator);
+    // it does not touch cache.lastRequestAt, so it never affects the cache clock.
     if (session.ping) {
       await Session.update(input.sessionID, (draft) => {
         draft.ping = undefined
