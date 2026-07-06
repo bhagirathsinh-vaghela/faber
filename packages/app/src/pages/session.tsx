@@ -1849,13 +1849,21 @@ export default function Page() {
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
   })
 
-  // Zen exit-pill. Rendered through a Portal to <body> so it escapes the app
-  // shell's `contain: strict` <main> (which clips fixed descendants and was
-  // hiding the pill on desktop). Default anchor is the bottom-right corner via
-  // CSS bottom/right — no measurement needed. Desktop stays pinned there (click
-  // exits, no drag). Mobile can drag it: past a small threshold we switch to
-  // explicit viewport left/top coords (in-memory only, resets on reload); a
-  // press that never crosses the threshold exits zen.
+  // Zen toggle-pill. Always visible (this is the only zen control — the dock
+  // has no enter button). Rendered through a Portal to <body> so it escapes the
+  // app shell's `contain: strict` <main> (which clips fixed descendants).
+  // Default anchor sits just above the prompt dock on the right, tracking the
+  // dock height. Because the dock collapses to 0 in zen, we hold the last
+  // non-zero dock height so the pill stays put across the toggle. Desktop
+  // presses toggle (no drag); mobile can drag past a small threshold to switch
+  // to explicit viewport left/top coords (in-memory only, resets on reload); a
+  // press that never crosses the threshold toggles zen.
+  const [dockHeight, setDockHeight] = createSignal(0)
+  createEffect(() => {
+    if (layout.zen.opened()) return
+    const h = store.promptHeight
+    if (h > 0) setDockHeight(h)
+  })
   const pillSize = () => (isDesktop() ? 40 : 52)
   const PILL_MARGIN = 16
   const DRAG_THRESHOLD = 6
@@ -1875,9 +1883,9 @@ export default function Page() {
   const pillCoords = createMemo(() => (isDesktop() ? null : (drag() ?? pos())))
 
   function startPillDrag(e: PointerEvent) {
-    // Desktop: no drag — the pill is corner-pinned, so a press just exits.
+    // Desktop: no drag — the pill is pinned, so a press just toggles zen.
     if (isDesktop()) {
-      layout.zen.exit()
+      layout.zen.toggle()
       return
     }
     e.preventDefault()
@@ -1896,7 +1904,7 @@ export default function Page() {
       const final = drag()
       setDrag(null)
       if (!moved) {
-        layout.zen.exit()
+        layout.zen.toggle()
         return
       }
       if (final) setPos(final)
@@ -1908,35 +1916,34 @@ export default function Page() {
   return (
     <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
       <SessionHeader />
-      {/* Zen mode exit: the only chrome left when zen hides everything else.
+      {/* Zen toggle: always-visible pill, the only zen control.
           Portaled to <body> so the shell's contain:strict <main> can't clip it.
-          Anchored bottom-right by default; mobile can drag it (see pillCoords). */}
-      <Show when={layout.zen.opened()}>
-        <Portal>
-          <button
-            type="button"
-            onPointerDown={startPillDrag}
-            aria-label={language.t("zen.exit")}
-            class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing md:cursor-pointer md:active:cursor-pointer hover:bg-surface-raised-base-hover"
-            classList={{ "transition-none": drag() !== null }}
-            style={{
-              // Default corner anchor adds the device safe-area insets so the
-              // pill clears the status bar / home indicator in a standalone PWA.
-              // In a normal browser these env() values are 0, so it's a no-op.
-              ...(pillCoords()
-                ? { left: `${pillCoords()!.x}px`, top: `${pillCoords()!.y}px` }
-                : {
-                    right: `calc(${PILL_MARGIN}px + env(safe-area-inset-right))`,
-                    bottom: `calc(${PILL_MARGIN}px + env(safe-area-inset-bottom))`,
-                  }),
-              width: `${pillSize()}px`,
-              height: `${pillSize()}px`,
-            }}
-          >
-            <Icon name="eye" class="size-7 md:size-5" />
-          </button>
-        </Portal>
-      </Show>
+          Anchored just above the prompt dock on the right by default; the held
+          dock height keeps it put across the zen toggle. Mobile can drag it. */}
+      <Portal>
+        <button
+          type="button"
+          onPointerDown={startPillDrag}
+          aria-label={layout.zen.opened() ? language.t("zen.exit") : language.t("zen.enter")}
+          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing md:cursor-pointer md:active:cursor-pointer hover:bg-surface-raised-base-hover"
+          classList={{ "transition-none": drag() !== null }}
+          style={{
+            // Default anchor: right edge, just above the dock. The safe-area
+            // insets keep it clear of the status bar / home indicator in a
+            // standalone PWA (0 in a normal browser, so a no-op there).
+            ...(pillCoords()
+              ? { left: `${pillCoords()!.x}px`, top: `${pillCoords()!.y}px` }
+              : {
+                  right: `calc(${PILL_MARGIN}px + env(safe-area-inset-right))`,
+                  bottom: `calc(${dockHeight() + PILL_MARGIN}px + env(safe-area-inset-bottom))`,
+                }),
+            width: `${pillSize()}px`,
+            height: `${pillSize()}px`,
+          }}
+        >
+          <Icon name={layout.zen.opened() ? "eye" : "glasses"} class="size-7 md:size-5" />
+        </button>
+      </Portal>
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         {/* Mobile tab bar — portaled into the titlebar center so it shares the
             top row instead of taking a dedicated band below it. */}

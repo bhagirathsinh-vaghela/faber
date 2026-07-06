@@ -2144,17 +2144,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Button>
                 </Tooltip>
               </Show>
-              <Tooltip placement="top" value={language.t("zen.enter")}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  class="size-9 px-1 md:size-6"
-                  onClick={() => layout.zen.enter()}
-                  aria-label={language.t("zen.enter")}
-                >
-                  <Icon name="glasses" class="size-5.5 md:size-4.5" />
-                </Button>
-              </Tooltip>
             </div>
             <Tooltip
               placement="top"
