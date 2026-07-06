@@ -159,7 +159,7 @@ export function Titlebar() {
             icon="house"
             variant="ghost"
             class="size-8 rounded-md"
-            onClick={() => navigate("/")}
+            onClick={() => command.trigger("overview.open")}
             aria-label={language.t("common.home")}
           />
         </div>
@@ -186,7 +186,7 @@ export function Titlebar() {
               variant="ghost"
               icon="house"
               class="size-6 p-0"
-              onClick={() => navigate("/")}
+              onClick={() => command.trigger("overview.open")}
               aria-label={language.t("common.home")}
             />
           </Tooltip>

@@ -46,6 +46,7 @@ import { checksum, base64Encode } from "@opencode-ai/util/encode"
 import { findLast } from "@opencode-ai/util/array"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectFile } from "@/components/dialog-select-file"
+import { DialogOverview } from "@/components/dialog-overview"
 import FileTree from "@/components/file-tree"
 import { DialogSelectModel } from "@/components/dialog-select-model"
 import { DialogSelectMcp } from "@/components/dialog-select-mcp"
@@ -755,6 +756,13 @@ export default function Page() {
       keybind: "mod+p",
       slash: "open",
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
+    },
+    {
+      id: "overview.open",
+      title: language.t("command.overview.open"),
+      category: language.t("command.category.session"),
+      keybind: "mod+k",
+      onSelect: () => dialog.show(() => <DialogOverview />),
     },
     {
       id: "tab.close",

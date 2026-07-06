@@ -46,6 +46,7 @@ export const dict = {
 
   "command.session.new": "New session",
   "command.file.open": "Open file",
+  "command.overview.open": "Open overview",
   "command.tab.close": "Close tab",
   "command.context.addSelection": "Add selection to context",
   "command.context.addSelection.description": "Add selected lines from the current file",
@@ -493,6 +494,7 @@ export const dict = {
   "notification.session.error.title": "Session error",
   "notification.session.error.fallbackDescription": "An error occurred",
 
+  "home.title": "Overview",
   "home.recentProjects": "Recent projects",
   "home.recentSessions": "Recent sessions",
   "home.empty.title": "No recent projects",

@@ -147,3 +147,33 @@
     opacity: 0.8;
   }
 }
+
+/* A halo that expands and fades outward from a status dot to signal live work,
+   like a radar ping. Only opacity and transform animate (dodges the Lightning
+   CSS @keyframes-with-custom-properties bug the dock glow also avoids). */
+.status-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: status-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes status-ping {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-ping::after {
+    animation: none;
+  }
+}
