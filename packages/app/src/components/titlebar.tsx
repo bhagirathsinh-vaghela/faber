@@ -133,12 +133,17 @@ export function Titlebar() {
   }
 
   return (
-    <Show when={!layout.zen.opened()}>
-      <header
-        data-slot="titlebar"
-        class="h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
-        style={{ "min-height": minHeight() }}
-      >
+    // Zen hides the titlebar via `hidden`, not <Show>. Unmounting it destroys
+    // the #opencode-titlebar-{center,right} portal targets that session-header
+    // memoizes; on zen exit the header would portal into the stale detached
+    // nodes and its search box / Share button would never reappear until a
+    // reload. Keeping the element mounted preserves those targets.
+    <header
+      data-slot="titlebar"
+      class="h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
+      classList={{ hidden: layout.zen.opened() }}
+      style={{ "min-height": minHeight() }}
+    >
       <div
         classList={{
           "flex items-center min-w-0": true,
@@ -256,7 +261,6 @@ export function Titlebar() {
           <div data-tauri-decorum-tb class="flex flex-row" />
         </Show>
         </div>
-      </header>
-    </Show>
+    </header>
   )
 }
