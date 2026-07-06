@@ -97,6 +97,8 @@ export interface MessageProps {
   // Completed-turn snapshot line, threaded from the page down to each
   // assistant text box. Absent while the turn is streaming.
   footer?: (message: AssistantMessage) => JSX.Element
+  // Extra control for the boxed header's actions row (sticky expand chevron).
+  action?: JSX.Element
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -423,6 +425,7 @@ export function Message(props: MessageProps) {
               message={props.message}
               label="TASK RESULT"
               accent={taskAccent(part().backgroundTaskResult!.status)}
+              action={props.action}
             >
               <TaskResultDisplay part={part()} />
             </MessageBox>
@@ -437,6 +440,7 @@ export function Message(props: MessageProps) {
           >
             <MessageBox
               message={userMessage() as UserMessage}
+              action={props.action}
               copy={() =>
                 (props.parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined)
                   ?.text ?? ""
@@ -470,6 +474,9 @@ export function MessageBox(props: {
   label?: string
   accent?: string
   copy?: () => string
+  // Extra control rendered inline in the title-bar actions row, after copy
+  // (e.g. the collapse/expand chevron on sticky user messages).
+  action?: JSX.Element
   children: JSX.Element
 }) {
   const data = useData()
@@ -572,6 +579,7 @@ export function MessageBox(props: {
           <Show when={props.copy}>
             <CopyButton content={props.copy!} />
           </Show>
+          {props.action}
         </div>
       </div>
       {props.children}

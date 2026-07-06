@@ -1,3 +1,24 @@
+/* Silver bullet for the Tailwind v4 Preflight change that sets `cursor: default`
+   on <button> (and our base reset does the same for <a>). Every interactive
+   element gets the pointer here; disabled ones get not-allowed. In the utilities
+   layer so it wins over both Preflight (base) and any component rule, meaning no
+   component ever needs its own enabled-cursor rule again.
+   https://github.com/tailwindlabs/tailwindcss/discussions/18182 */
+button,
+[role="button"],
+label,
+select,
+summary,
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"],
+[disabled] {
+  cursor: not-allowed;
+}
+
 :root {
   interpolate-size: allow-keywords;
 

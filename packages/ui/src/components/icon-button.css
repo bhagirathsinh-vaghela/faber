@@ -50,17 +50,20 @@
     &:hover:not(:disabled) {
       background-color: var(--button-secondary-hover);
     }
-    &:focus:not(:disabled) {
+    /* Exclude :hover so a focused-then-hovered button still shows the hover
+       background — otherwise these (equal specificity, later in source) win over
+       :hover and the hover effect vanishes once the button has been clicked. */
+    &:focus:not(:hover):not(:disabled) {
       background-color: var(--button-secondary-base);
     }
-    &:focus-visible:not(:active) {
+    &:focus-visible:not(:active):not(:hover) {
       background-color: var(--button-secondary-base);
       box-shadow: var(--shadow-xs-border-focus);
     }
     &:focus-visible:active {
       box-shadow: none;
     }
-    &:active:not(:disabled) {
+    &:active:not(:hover):not(:disabled) {
       background-color: var(--button-secondary-base);
     }
 

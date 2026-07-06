@@ -38,6 +38,7 @@ import { Icon } from "./icon"
 import { Card } from "./card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
+import { IconButton } from "./icon-button"
 import { Spinner } from "./spinner"
 import { createStore } from "solid-js/store"
 import { DateTime, DurationUnit, Interval } from "luxon"
@@ -616,20 +617,30 @@ export function SessionTurn(
                           setStuckExpanded((v) => !v)
                         }}
                       >
-                        <Message message={msg()} parts={stickyParts()} boxed />
-                        {/* Collapse/expand affordance shown only while pinned. */}
-                        <button
-                          data-slot="session-turn-sticky-expand"
-                          type="button"
-                          aria-label={stuckExpanded() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")}
-                          aria-expanded={stuckExpanded()}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setStuckExpanded((v) => !v)
-                          }}
-                        >
-                          <Icon name="chevron-grabber-vertical" size="small" />
-                        </button>
+                        <Message
+                          message={msg()}
+                          parts={stickyParts()}
+                          boxed
+                          action={
+                            /* Collapse/expand affordance, inline in the box's
+                               actions row. Uses IconButton (same as the copy
+                               button) so its size, hit area, and hover match. */
+                            <IconButton
+                              data-slot="session-turn-sticky-expand"
+                              icon="chevron-grabber-vertical"
+                              variant="secondary"
+                              type="button"
+                              aria-label={
+                                stuckExpanded() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")
+                              }
+                              aria-expanded={stuckExpanded()}
+                              onClick={(event: MouseEvent) => {
+                                event.stopPropagation()
+                                setStuckExpanded((v) => !v)
+                              }}
+                            />
+                          }
+                        />
                       </div>
 
                       {/* Trigger (sticky) */}

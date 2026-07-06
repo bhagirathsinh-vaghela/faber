@@ -92,29 +92,11 @@
     position: relative;
   }
 
-  /* Collapse/expand affordance: hidden by default, revealed only while the block
-     is pinned (stuck). Sits on the right edge of the collapsed bar. */
+  /* The expand chevron is an IconButton (same component as the copy button) so
+     size/hit-area/hover all match. It lives inline in the box's actions row;
+     just hidden until the block is pinned. */
   [data-slot="session-turn-sticky-expand"] {
     display: none;
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    z-index: 2;
-    align-items: center;
-    justify-content: center;
-    height: 22px;
-    width: 22px;
-    padding: 0;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    cursor: pointer;
-    color: var(--text-weak);
-
-    &:hover {
-      background: var(--surface-raised-base);
-      color: var(--text-base);
-    }
   }
 
   /* --- Pinned (stuck) state: collapse the message to a fixed one-line bar,
@@ -126,8 +108,13 @@
       cursor: pointer;
     }
 
+    /* The chevron sits on top of the collapsed bar as the explicit expand
+       button: clickable and above everything (the bar itself is also a click
+       target, but its handler ignores clicks on buttons, so no double-fire). */
     [data-slot="session-turn-sticky-expand"] {
       display: inline-flex;
+      pointer-events: auto;
+      z-index: 3;
     }
 
     /* The message box becomes a fixed single-line pill: the header (◈ #N <time>)
@@ -149,17 +136,35 @@
       gap: 8px;
     }
 
+    /* One-liner box is position:relative so the chevron can pin to its right
+       edge (see below). */
+    [data-component="message-box"] {
+      position: relative;
+    }
+
     /* Header stays inline (no stacking margin) and doesn't grow: show ◈, #N, and
-       the timestamp; drop the USER label and the right-aligned actions
-       (revert/copy). All return when expanded. */
+       the timestamp; drop the USER label, revert, and copy. The chevron is
+       lifted out of the header flow and pinned to the bar's right edge so the
+       message text (a separate box child) can fill the space between. */
     [data-slot="message-box-header"] {
       margin-bottom: 0 !important;
       flex-shrink: 0;
     }
 
     [data-slot="message-box-label"],
-    [data-slot="message-box-actions"] {
+    [data-slot="message-box-revert"],
+    [data-slot="box-copy"] {
       display: none !important;
+    }
+
+    /* Actions row carries only the chevron now; pin it to the box's right edge,
+       vertically centered on the one-line bar. */
+    [data-slot="message-box-actions"] {
+      position: absolute;
+      top: 50%;
+      right: 0.75rem;
+      transform: translateY(-50%);
+      z-index: 2;
     }
 
     /* Attachment thumbnails shrink to a single inline row so an image-only
@@ -193,7 +198,9 @@
       align-items: center;
       gap: 6px;
       overflow: hidden;
-      padding-right: 28px;
+      /* Clear the chevron pill pinned at right:0.75rem (~26px wide) so the
+         one-line text never runs underneath it. */
+      padding-right: 44px;
     }
 
     /* Text clamps to a single line. Covers user prompts and task-result bodies. */
@@ -256,8 +263,25 @@
       display: inline !important;
     }
 
+    /* Actions row (revert, copy, expand chevron) flows normally when expanded —
+       the chevron is inline here, so no reserved corner space is needed. The
+       collapsed rules hid revert/copy and absolutely-pinned the row; un-set all
+       of that so the full row returns to normal flow. */
     [data-slot="message-box-actions"] {
       display: flex !important;
+      position: static !important;
+      transform: none !important;
+    }
+
+    [data-slot="message-box-revert"],
+    [data-slot="box-copy"] {
+      display: revert !important;
+    }
+
+    /* Re-enable the chevron's own click here: when expanded it is a real button
+       (collapse), not the pass-through affordance the collapsed bar makes it. */
+    [data-slot="session-turn-sticky-expand"] {
+      pointer-events: auto;
     }
 
     /* Back to the natural stacked layout (attachments above text). */
