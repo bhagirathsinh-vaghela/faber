@@ -129,6 +129,7 @@ export function SessionTurn(
     messageID: string
     lastUserMessageID?: string
     stepsExpanded?: boolean
+    collapsePrompt?: boolean
     onStepsExpandedToggle?: () => void
     onUserInteracted?: () => void
     footer?: (message: AssistantMessage) => JSX.Element
@@ -427,6 +428,10 @@ export function SessionTurn(
   // clicking collapses to the one-line bar, clicking again expands.
   const [stuckExpanded, setStuckExpanded] = createSignal(true)
   const collapsed = () => true
+  // Display state for the sticky bar. `collapsePrompt` (zen mode) forces the
+  // one-line bar without touching the user's own toggle, so leaving zen reverts
+  // to whatever they had.
+  const stuckOpen = () => !props.collapsePrompt && stuckExpanded()
 
   const updateStickyHeight = (height: number) => {
     const root = rootRef()
@@ -600,7 +605,7 @@ export function SessionTurn(
                     <div
                       data-slot="session-turn-sticky"
                       data-stuck={collapsed() ? "true" : undefined}
-                      data-stuck-expanded={collapsed() && stuckExpanded() ? "true" : undefined}
+                      data-stuck-expanded={collapsed() && stuckOpen() ? "true" : undefined}
                       ref={setStickyRef}
                     >
                       {/* User Message */}
@@ -630,10 +635,8 @@ export function SessionTurn(
                               icon="chevron-grabber-vertical"
                               variant="secondary"
                               type="button"
-                              aria-label={
-                                stuckExpanded() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")
-                              }
-                              aria-expanded={stuckExpanded()}
+                              aria-label={stuckOpen() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")}
+                              aria-expanded={stuckOpen()}
                               onClick={(event: MouseEvent) => {
                                 event.stopPropagation()
                                 setStuckExpanded((v) => !v)

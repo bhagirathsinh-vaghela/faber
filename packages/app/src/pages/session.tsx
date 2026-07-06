@@ -2315,6 +2315,7 @@ export default function Page() {
                                     lastUserMessageID={lastUserMessage()?.id}
                                     footer={(m) => <MessageFooter message={m} />}
                                     stepsExpanded={store.expanded[message.id] ?? true}
+                                    collapsePrompt={layout.zen.opened() && message.id === lastUserMessage()?.id}
                                     onStepsExpandedToggle={() =>
                                       setStore("expanded", message.id, (open: boolean | undefined) => !open)
                                     }
