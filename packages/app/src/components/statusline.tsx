@@ -56,7 +56,7 @@ export function Statusline() {
     <Show when={stats()}>
       {(s) => (
         <UsageLine
-          class="px-2 py-1"
+          class="px-2 py-0 md:py-1"
           stats={s()}
           totals={totals()}
           cost={sessionCost()}

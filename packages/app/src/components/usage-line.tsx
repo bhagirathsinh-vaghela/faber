@@ -78,7 +78,7 @@ export function UsageLine(props: {
   const anySession = () => show("input") || show("output") || show("session-cache-write") || show("cost")
 
   return (
-    <div class={"flex flex-row flex-wrap items-center gap-1.5 " + (props.class ?? "pt-0.5")}>
+    <div class={"flex flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5 " + (props.class ?? "pt-0.5")}>
       <Show when={props.leading}>
         <ChipGroup>
           <Chip>{props.leading}</Chip>

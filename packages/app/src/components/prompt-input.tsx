@@ -1660,7 +1660,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   return (
-    <div class="relative size-full _max-h-[320px] flex flex-col gap-3">
+    <div class="relative size-full _max-h-[320px] flex flex-col gap-1 md:gap-3 [--dock-font-size:var(--font-size-x-small)] md:[--dock-font-size:var(--font-size-small)]">
       <Show when={store.popover}>
         <div
           ref={(el) => {
@@ -1919,14 +1919,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
-              "w-full p-3 pr-12 text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              "w-full px-2 pt-2 pb-0 pr-12 text-13-semibold md:p-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap":
+                true,
               "[&_[data-type=file]]:text-syntax-property": true,
               "[&_[data-type=agent]]:text-syntax-type": true,
               "font-mono!": store.mode === "shell",
             }}
           />
           <Show when={!prompt.dirty()}>
-            <div class="absolute top-0 inset-x-0 p-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
+            <div class="absolute top-0 inset-x-0 p-2 pr-12 text-13-regular md:p-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
               {store.mode === "shell"
                 ? language.t("prompt.placeholder.shell")
                 : commentCount() > 1
@@ -1937,7 +1938,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
-        <div class="relative px-3 py-1.5 flex items-center justify-between gap-2">
+        <div class="relative px-3 pt-0 pb-0.5 md:py-1.5 flex items-center justify-between gap-2">
           <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!">
             <Show when={working()}>
               {/* Working indicator: the spinner sits ON TOP of a soft, diffuse
@@ -2203,7 +2204,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </div>
             }
           >
-            <div class="border-t border-border-weak-base px-3 py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
+            <div class="border-t border-border-weak-base px-3 py-0 md:py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
               <Statusline />
               <div class="flex flex-row flex-wrap items-center gap-1.5">
                 <PromptActionBar />
