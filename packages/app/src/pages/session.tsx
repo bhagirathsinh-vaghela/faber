@@ -336,6 +336,7 @@ export default function Page() {
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const centered = createMemo(() => isDesktop() && !layout.fileTree.opened())
+  const tabMount = createMemo(() => document.getElementById("opencode-titlebar-center") ?? undefined)
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -1937,40 +1938,44 @@ export default function Page() {
         </Portal>
       </Show>
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
-        {/* Mobile tab bar */}
-        <Show when={!isDesktop() && params.id && !layout.zen.opened()}>
-          <Tabs class="h-auto">
-            <Tabs.List>
-              <Tabs.Trigger
-                value="session"
-                class="w-1/2"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "session")}
-              >
-                {language.t("session.tab.session")}
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="changes"
-                class="w-1/2 !border-r-0"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "changes")}
-              >
-                <Switch>
-                  <Match when={hasReview()}>
-                    {language.t("session.review.filesChanged", { count: reviewCount() })}
-                  </Match>
-                  <Match when={true}>{language.t("session.review.change.other")}</Match>
-                </Switch>
-              </Tabs.Trigger>
-            </Tabs.List>
-          </Tabs>
+        {/* Mobile tab bar — portaled into the titlebar center so it shares the
+            top row instead of taking a dedicated band below it. */}
+        <Show when={!isDesktop() && params.id && !layout.zen.opened() ? tabMount() : undefined}>
+          {(mount) => (
+            <Portal mount={mount()}>
+              <Tabs value={store.mobileTab} class="h-auto" data-slot="mobile-session-tabs">
+                <Tabs.List>
+                  <Tabs.Trigger
+                    value="session"
+                    classes={{ button: "px-3" }}
+                    onClick={() => setStore("mobileTab", "session")}
+                  >
+                    {language.t("session.tab.session")}
+                  </Tabs.Trigger>
+                  <Tabs.Trigger
+                    value="changes"
+                    class="!border-r-0"
+                    classes={{ button: "px-3" }}
+                    onClick={() => setStore("mobileTab", "changes")}
+                  >
+                    <Switch>
+                      <Match when={hasReview()}>
+                        {language.t("session.review.filesChanged", { count: reviewCount() })}
+                      </Match>
+                      <Match when={true}>{language.t("session.review.change.other")}</Match>
+                    </Switch>
+                  </Tabs.Trigger>
+                </Tabs.List>
+              </Tabs>
+            </Portal>
+          )}
         </Show>
 
         {/* Session panel */}
         <div
           classList={{
             "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
-            "flex-1 pt-6 md:pt-3": true,
+            "flex-1 pt-0 md:pt-3": true,
             "md:flex-none": layout.fileTree.opened(),
           }}
           style={{
@@ -2150,7 +2155,11 @@ export default function Page() {
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
                         style={{
                           "--session-title-height":
-                            !layout.zen.opened() && (info()?.title || info()?.parentID) ? "40px" : "0px",
+                            !layout.zen.opened() && (info()?.title || info()?.parentID)
+                              ? isDesktop()
+                                ? "28px"
+                                : "24px"
+                              : "0px",
                         }}
                       >
                         <Show when={!layout.zen.opened() && (info()?.title || info()?.parentID)}>
@@ -2162,7 +2171,7 @@ export default function Page() {
                               "md:max-w-[90%] md:mx-auto": centered(),
                             }}
                           >
-                            <div class="h-10 flex items-center gap-1">
+                            <div class="h-6 md:h-7 flex items-center gap-1">
                               <Show when={info()?.parentID}>
                                 <IconButton
                                   tabIndex={-1}
@@ -2179,7 +2188,7 @@ export default function Page() {
                                   when={renaming()}
                                   fallback={
                                     <div class="group/title flex items-center gap-1 min-w-0">
-                                      <h1 class="text-16-medium text-text-strong truncate" onDblClick={startRename}>
+                                      <h1 class="text-14-medium text-text-strong truncate" onDblClick={startRename}>
                                         {info()?.title}
                                       </h1>
                                       <IconButton
@@ -2195,7 +2204,7 @@ export default function Page() {
                                 >
                                   <InlineInput
                                     ref={renameRef}
-                                    class="text-16-medium text-text-strong min-w-0 max-w-full px-1.5 -mx-1.5"
+                                    class="text-14-medium text-text-strong min-w-0 max-w-full px-1.5 -mx-1.5"
                                     width={renameWidth()}
                                     value={draft()}
                                     onInput={(event) => {
@@ -2218,7 +2227,7 @@ export default function Page() {
                                   <span
                                     ref={renameSizer}
                                     aria-hidden="true"
-                                    class="text-16-medium invisible absolute whitespace-pre pointer-events-none"
+                                    class="text-14-medium invisible absolute whitespace-pre pointer-events-none"
                                   />
                                 </Show>
                               </Show>
@@ -2340,14 +2349,16 @@ export default function Page() {
             </Switch>
           </div>
 
-          {/* Prompt input — hidden entirely in zen mode (messages only). */}
+          {/* Prompt input — hidden entirely in zen mode (messages only) and on
+              the mobile Changes tab, where you're reviewing a diff, not
+              composing, so the dock is dead weight over the file list. */}
           <div
             ref={(el) => (promptDock = el)}
             data-slot="prompt-dock"
             classList={{
               "absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none":
                 true,
-              hidden: layout.zen.opened(),
+              hidden: layout.zen.opened() || mobileChanges(),
             }}
           >
             <div

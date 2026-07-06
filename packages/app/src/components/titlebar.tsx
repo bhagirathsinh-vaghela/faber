@@ -140,7 +140,7 @@ export function Titlebar() {
     // reload. Keeping the element mounted preserves those targets.
     <header
       data-slot="titlebar"
-      class="h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
+      class="h-8 md:h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
       classList={{ hidden: layout.zen.opened() }}
       style={{ "min-height": minHeight() }}
     >
