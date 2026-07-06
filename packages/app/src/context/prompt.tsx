@@ -3,7 +3,6 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { batch, createMemo, createRoot, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
-import { Persist, persisted } from "@/utils/persist"
 import { checksum } from "@opencode-ai/util/encode"
 
 interface PartBase {
@@ -114,25 +113,26 @@ type PromptCacheEntry = {
   dispose: VoidFunction
 }
 
-function createPromptSession(dir: string, id: string | undefined) {
-  const legacy = `${dir}/prompt${id ? "/" + id : ""}.v2`
-
-  const [store, setStore, _, ready] = persisted(
-    Persist.scoped(dir, id, "prompt", [legacy]),
-    createStore<{
-      prompt: Prompt
-      cursor?: number
-      context: {
-        items: (ContextItem & { key: string })[]
-      }
-    }>({
-      prompt: clonePrompt(DEFAULT_PROMPT),
-      cursor: undefined,
-      context: {
-        items: [],
-      },
-    }),
-  )
+function createPromptSession() {
+  // The prompt draft is deliberately in-memory only. Persisting it to
+  // localStorage caused sent prompts to resurrect on reload (a stale re-persist
+  // during the busy window landed after the clear). Not persisting means a
+  // reload while typing loses the unsubmitted draft — an accepted tradeoff that
+  // removes the whole resurrection bug class: with nothing on disk, there is no
+  // stale write to race a submit.
+  const [store, setStore] = createStore<{
+    prompt: Prompt
+    cursor?: number
+    context: {
+      items: (ContextItem & { key: string })[]
+    }
+  }>({
+    prompt: clonePrompt(DEFAULT_PROMPT),
+    cursor: undefined,
+    context: {
+      items: [],
+    },
+  })
 
   function keyForItem(item: ContextItem) {
     if (item.type !== "file") return item.type
@@ -151,7 +151,7 @@ function createPromptSession(dir: string, id: string | undefined) {
   }
 
   return {
-    ready,
+    ready: () => true,
     current: createMemo(() => store.prompt),
     cursor: createMemo(() => store.cursor),
     dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
@@ -218,7 +218,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       }
 
       const entry = createRoot((dispose) => ({
-        value: createPromptSession(dir, id),
+        value: createPromptSession(),
         dispose,
       }))
 

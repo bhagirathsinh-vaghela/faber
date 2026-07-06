@@ -76,15 +76,6 @@ type PendingPrompt = {
 
 const pending = new Map<string, PendingPrompt>()
 
-// A reload/navigation cancels the in-flight prompt fetch, which rejects the
-// send like any other failure. Track page teardown so the send catch can tell
-// an aborted-by-unload send from a real error and skip restoring the input
-// (otherwise the just-sent draft gets re-persisted and reappears on reload).
-let unloading = false
-if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", () => (unloading = true))
-}
-
 interface PromptInputProps {
   class?: string
   ref?: (el: HTMLDivElement) => void
@@ -1644,10 +1635,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
 
     void send().catch((err) => {
-      // The reload/navigation that cancelled the fetch is tearing the page
-      // down. The prompt already reached the server, so leave the cleared
-      // input cleared instead of re-persisting the sent draft.
-      if (unloading) return
       pending.delete(session.id)
       if (sessionDirectory === projectDirectory) {
         sync.set("session_status", session.id, { type: "idle" })
