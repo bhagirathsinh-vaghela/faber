@@ -49,6 +49,7 @@ import { PermissionNext } from "@/permission/next"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { SessionPing } from "./ping"
+import { SessionPin } from "./pin"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
@@ -167,6 +168,9 @@ export namespace SessionPrompt {
     // makes that stall self-heal. Any brief ping/turn overlap is safe: the cache
     // prefix is read-only shared state and lastRequestAt is last-writer-wins.
     const session = await Session.get(input.sessionID)
+    // Adopt before any pin read (createUserMessage pins otherwise): a child
+    // must share its parent's snapshot, not the current generation.
+    if (session.parentID) SessionPin.adopt(session.id, session.parentID)
     await SessionRevert.cleanup(session)
     // Reset ping telemetry ({ count, time, pending }) for the new turn's display.
     // This is display state only (statusline's "N× pinged" / in-flight indicator);
@@ -296,6 +300,10 @@ export namespace SessionPrompt {
 
     let step = 0
     const session = await Session.get(sessionID)
+    // Pin prompt-shaping state on the first turn after boot; child sessions
+    // inherit the parent's pin so a config refresh mid-task can't split them.
+    if (session.parentID) SessionPin.adopt(sessionID, session.parentID)
+    const snapshot = await SessionPin.get(sessionID)
     while (true) {
       SessionStatus.set(sessionID, { type: "busy" })
       log.info("loop", { step, sessionID })
@@ -577,7 +585,7 @@ export namespace SessionPrompt {
       }
 
       // normal processing
-      const agent = await Agent.get(lastUser.agent)
+      const agent = snapshot.agents[lastUser.agent] ?? (await Agent.get(lastUser.agent))
       const maxSteps = agent.steps ?? Infinity
       const isLastStep = step >= maxSteps
       msgs = await insertReminders({
@@ -630,6 +638,7 @@ export namespace SessionPrompt {
         processor,
         bypassAgentCheck,
         messages: msgs,
+        snapshot,
       })
 
       if (step === 1) {
@@ -662,7 +671,7 @@ export namespace SessionPrompt {
 
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
-      const instructions = await InstructionPrompt.system()
+      const instructions = snapshot.instructions
       const variants = model.variants ?? ProviderTransform.variants(model)
       const variant = lastUser.variant ? variants[lastUser.variant] : undefined
       const stripReasoning =
@@ -806,6 +815,7 @@ export namespace SessionPrompt {
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
     messages: MessageV2.WithParts[]
+    snapshot?: SessionPin.Snapshot
   }) {
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
@@ -848,6 +858,7 @@ export namespace SessionPrompt {
     const registered = await ToolRegistry.tools(
       { modelID: input.model.api.id, providerID: input.model.providerID },
       input.agent,
+      input.snapshot,
     )
     // Effective allowlist: an explicit session allowlist (subtask/compaction)
     // wins; otherwise plan mode derives one that keeps every tool on the wire and
@@ -1003,7 +1014,10 @@ export namespace SessionPrompt {
   }
 
   async function createUserMessage(input: PromptInput) {
-    const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
+    const snapshot = await SessionPin.get(input.sessionID)
+    const agent =
+      snapshot.agents[input.agent ?? snapshot.defaultAgent ?? ""] ??
+      (await Agent.get(input.agent ?? (await Agent.defaultAgent())))
     const model = input.model ?? (await lastModel(input.sessionID)) ?? agent.model
     const info: MessageV2.Info = {
       id: input.messageID ?? Identifier.ascending("message"),
@@ -1545,7 +1559,7 @@ export namespace SessionPrompt {
     if (session.revert) {
       await SessionRevert.cleanup(session)
     }
-    const agent = await Agent.get(input.agent)
+    const agent = (await SessionPin.get(input.sessionID)).agents[input.agent] ?? (await Agent.get(input.agent))
     const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),
@@ -1791,8 +1805,9 @@ export namespace SessionPrompt {
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const command = await Command.get(input.command)
-    const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
+    const snapshot = await SessionPin.get(input.sessionID)
+    const command = snapshot.commands[input.command] ?? (await Command.get(input.command))
+    const agentName = command.agent ?? input.agent ?? snapshot.defaultAgent ?? (await Agent.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []
     const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
@@ -1844,7 +1859,7 @@ export namespace SessionPrompt {
         return Provider.parseModel(command.model)
       }
       if (command.agent) {
-        const cmdAgent = await Agent.get(command.agent)
+        const cmdAgent = snapshot.agents[command.agent] ?? (await Agent.get(command.agent))
         if (cmdAgent?.model) {
           return cmdAgent.model
         }
@@ -1866,7 +1881,7 @@ export namespace SessionPrompt {
       }
       throw e
     }
-    const agent = await Agent.get(agentName)
+    const agent = snapshot.agents[agentName] ?? (await Agent.get(agentName))
     if (!agent) {
       const available = await Agent.list().then((agents) => agents.filter((a) => !a.hidden).map((a) => a.name))
       const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
@@ -1897,7 +1912,7 @@ export namespace SessionPrompt {
         ]
       : [...templateParts, ...(input.parts ?? [])]
 
-    const userAgent = isSubtask ? (input.agent ?? (await Agent.defaultAgent())) : agentName
+    const userAgent = isSubtask ? (input.agent ?? snapshot.defaultAgent ?? (await Agent.defaultAgent())) : agentName
     const userModel = isSubtask
       ? input.model
         ? Provider.parseModel(input.model)

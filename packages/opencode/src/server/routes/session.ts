@@ -8,6 +8,7 @@ import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
 import { SessionPing } from "../../session/ping"
+import { SessionPin } from "../../session/pin"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
@@ -146,6 +147,10 @@ export const SessionRoutes = lazy(() =>
         // resumed session within a live window keeps getting pinged even though
         // no new prompt has been sent this process.
         if (!session.parentID) SessionPing.start(sessionID)
+        // Pin prompt-shaping state at view time, not just first turn — a config
+        // reload between opening a session and prompting it must not change
+        // what the session was opened against.
+        if (!session.parentID) SessionPin.ensure(sessionID)
         return c.json(session)
       },
     )
@@ -262,6 +267,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         await Session.remove(sessionID)
+        SessionPin.drop(sessionID)
         return c.json(true)
       },
     )
@@ -986,7 +992,8 @@ export const SessionRoutes = lazy(() =>
       "/:sessionID/ping/stop",
       describeRoute({
         summary: "Stop cache ping",
-        description: "Stop the cache ping daemon for this session. Reopening the session re-arms it.",
+        description:
+          "Stop the cache ping daemon and drop the session's pinned prompt state. Reopening the session re-arms the ping and re-pins against current config.",
         operationId: "session.pingStop",
         responses: {
           200: {
@@ -1007,7 +1014,9 @@ export const SessionRoutes = lazy(() =>
         }),
       ),
       async (c) => {
-        SessionPing.stop(c.req.valid("param").sessionID)
+        const sessionID = c.req.valid("param").sessionID
+        SessionPing.stop(sessionID)
+        SessionPin.drop(sessionID)
         return c.json({ ok: true })
       },
     )

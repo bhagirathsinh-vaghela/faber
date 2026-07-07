@@ -354,7 +354,8 @@ const parameters = z
   .strict()
 
 export const TaskTool = Tool.define("task", async (ctx) => {
-  const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary"))
+  const snapshot = ctx?.snapshot
+  const agents = (snapshot?.agentList ?? (await Agent.list())).filter((a) => a.mode !== "primary")
 
   // Filter agents by permissions if agent provided
   const caller = ctx?.agent
@@ -362,7 +363,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
     : agents
 
-  const toolsets = await Agent.toolsets()
+  const toolsets = snapshot?.toolsets ?? (await Agent.toolsets())
   const description = DESCRIPTION.replace(
     "{agents}",
     accessibleAgents
@@ -388,7 +389,6 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         }
       }
 
-      const toolsets = await Agent.toolsets()
       const allowed = toolsets[params.toolset]
       if (!allowed) {
         return {
@@ -411,7 +411,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         })
       }
 
-      const agent = await Agent.get(ctx.agent)
+      const agent = snapshot?.agents[ctx.agent] ?? (await Agent.get(ctx.agent))
       if (!agent) throw new Error(`Unknown agent type: ${ctx.agent} is not a valid agent type`)
 
       const session = await iife(async () => {

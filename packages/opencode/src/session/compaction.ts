@@ -15,7 +15,7 @@ import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { SystemPrompt } from "./system"
-import { InstructionPrompt } from "./instruction"
+import { SessionPin } from "./pin"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -107,7 +107,8 @@ export namespace SessionCompaction {
     // the largest request in the session). The "summarize, no tools" instruction
     // instead rides in the trailing user message, and allowedTools: [] is the
     // runtime guard that blocks any tool the model attempts.
-    const agent = await Agent.get(userMessage.agent)
+    const snapshot = await SessionPin.get(input.sessionID)
+    const agent = snapshot.agents[userMessage.agent] ?? (await Agent.get(userMessage.agent))
     const model = await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await Session.updateMessage({
       id: Identifier.ascending("message"),
@@ -153,8 +154,9 @@ export namespace SessionCompaction {
       processor,
       bypassAgentCheck: false,
       messages: input.messages,
+      snapshot,
     })
-    const instructions = await InstructionPrompt.system()
+    const instructions = snapshot.instructions
     const system = {
       env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
       globalInstructions: instructions.global,

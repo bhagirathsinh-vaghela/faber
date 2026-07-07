@@ -2,6 +2,7 @@ import z from "zod"
 import type { MessageV2 } from "../session/message-v2"
 import type { Agent } from "../agent/agent"
 import type { PermissionNext } from "../permission/next"
+import type { SessionPin } from "../session/pin"
 import { Truncate } from "./truncation"
 
 export namespace Tool {
@@ -11,6 +12,7 @@ export namespace Tool {
 
   export interface InitContext {
     agent?: Agent.Info
+    snapshot?: SessionPin.Snapshot
   }
 
   export type Context<M extends Metadata = Metadata> = {

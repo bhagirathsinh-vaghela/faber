@@ -1926,7 +1926,7 @@ export class Session extends HeyApiClient {
   /**
    * Stop cache ping
    *
-   * Stop the cache ping daemon for this session. Reopening the session re-arms it.
+   * Stop the cache ping daemon and drop the session's pinned prompt state. Reopening the session re-arms the ping and re-pins against current config.
    */
   public pingStop<ThrowOnError extends boolean = false>(
     parameters: {

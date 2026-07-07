@@ -13,6 +13,7 @@ import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import type { Agent } from "../agent/agent"
+import type { SessionPin } from "../session/pin"
 import { Tool } from "./tool"
 import { Instance } from "../project/instance"
 import { Config } from "../config/config"
@@ -152,6 +153,7 @@ export namespace ToolRegistry {
       modelID: string
     },
     agent?: Agent.Info,
+    snapshot?: SessionPin.Snapshot,
   ) {
     const tools = await all(model.providerID)
     const anthropicSearch = await nativeSearch(model.providerID)
@@ -179,7 +181,7 @@ export namespace ToolRegistry {
           using _ = log.time(t.id)
           return {
             id: t.id,
-            ...(await t.init({ agent })),
+            ...(await t.init({ agent, snapshot })),
           }
         }),
     )

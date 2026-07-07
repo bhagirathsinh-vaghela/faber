@@ -8,7 +8,7 @@ import { Agent } from "@/agent/agent"
 import { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { SystemPrompt } from "./system"
-import { InstructionPrompt } from "./instruction"
+import { SessionPin } from "./pin"
 import { ProviderTransform } from "@/provider/transform"
 import { Plugin } from "@/plugin"
 import { clone } from "remeda"
@@ -239,8 +239,9 @@ export namespace SessionPing {
     if (!lastUser) return
 
     const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
-    const agent = await Agent.get(lastUser.agent)
-    const instructions = await InstructionPrompt.system()
+    const snapshot = await SessionPin.get(sessionID)
+    const agent = snapshot.agents[lastUser.agent] ?? (await Agent.get(lastUser.agent))
+    const instructions = snapshot.instructions
 
     const sessionMessages = clone(msgs)
     await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
@@ -273,6 +274,7 @@ export namespace SessionPing {
       processor: undefined as any,
       bypassAgentCheck: false,
       messages: msgs,
+      snapshot,
     })
 
     // Anchor the cache TTL to dispatch time — a ping is a real request that

@@ -18,7 +18,7 @@ function relativePath(absolute: string) {
 }
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
-  const skills = await Skill.all()
+  const skills = ctx?.snapshot ? Object.values(ctx.snapshot.skills) : await Skill.all()
   skills.sort((a, b) => a.name.localeCompare(b.name))
 
   // Filter skills by agent permissions if agent provided
@@ -73,15 +73,15 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
   return {
     description,
     parameters,
-    async execute(params: z.infer<typeof parameters>, ctx) {
-      const skill = await Skill.get(params.name)
+    async execute(params: z.infer<typeof parameters>, execCtx) {
+      const skill = ctx?.snapshot ? ctx.snapshot.skills[params.name] : await Skill.get(params.name)
 
       if (!skill) {
-        const available = await Skill.all().then((x) => Object.keys(x).join(", "))
+        const available = accessibleSkills.map((s) => s.name).join(", ")
         throw new Error(`Skill "${params.name}" not found. Available skills: ${available || "none"}`)
       }
 
-      await ctx.ask({
+      await execCtx.ask({
         permission: "skill",
         patterns: [params.name],
         always: [params.name],
@@ -98,7 +98,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           cwd: dir,
           follow: false,
           hidden: true,
-          signal: ctx.abort,
+          signal: execCtx.abort,
         })) {
           if (file.includes("SKILL.md")) {
             continue
