@@ -576,6 +576,7 @@ export default function Page() {
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
   let scroller: HTMLDivElement | undefined
+  let contentEl: HTMLDivElement | undefined
 
   const scrollGestureWindowMs = 250
 
@@ -1683,24 +1684,56 @@ export default function Page() {
 
   // Reload streams messages in progressively and mounts older turns ABOVE the
   // viewport (async backfill), so a single scroll-to-bottom fires against a
-  // partial list and then drifts as more content loads. Keep pinning to the
-  // bottom every frame until it holds steady for a sustained window, or the
-  // user scrolls away. This "stick to the tail through async growth" is the
-  // standard chat-reload behavior.
-  const restoreScroll = (held = 0, tries = 0) => {
+  // partial list and then drifts as more content loads. A fixed time-boxed loop
+  // gave up before slow payloads landed: messagesReady() flips when the store
+  // slot exists, but the message content can arrive seconds later (a slow
+  // fetch), so the old loop settled against a partial transcript and stranded
+  // the view once the real content grew in. Instead, follow the tail through
+  // content growth — pin now, then re-pin on every content resize until the user
+  // scrolls away or the height goes quiet. Deterministic regardless of when the
+  // payload arrives.
+  let restoreObserver: ResizeObserver | undefined
+  let restoreSettle: ReturnType<typeof setTimeout> | undefined
+  const stopRestore = () => {
+    restoreObserver?.disconnect()
+    restoreObserver = undefined
+    if (restoreSettle) clearTimeout(restoreSettle)
+    restoreSettle = undefined
+  }
+  const restoreScroll = () => {
     const el = scroller
     if (!el) return
-    // A real user scroll gesture takes over — stop pinning.
-    if (hasScrollGesture()) return
 
-    const before = el.scrollTop
-    el.scrollTop = el.scrollHeight
-    const steady = Math.abs(el.scrollTop - before) < 1 ? held + 1 : 0
+    stopRestore()
 
-    // ~500ms with no correction (30 frames) = settled; 4s hard cap.
-    if (steady >= 30 || tries > 240) return
-    requestAnimationFrame(() => restoreScroll(steady, tries + 1))
+    const pin = () => {
+      // A real user scroll gesture takes over — stop following.
+      if (hasScrollGesture()) {
+        stopRestore()
+        return
+      }
+      el.scrollTop = el.scrollHeight
+    }
+
+    pin()
+
+    const content = contentEl
+    if (!content) return
+    restoreObserver = new ResizeObserver(() => {
+      if (hasScrollGesture()) {
+        stopRestore()
+        return
+      }
+      requestAnimationFrame(pin)
+      // Each growth resets the settle timer; once the height is quiet for a
+      // beat (no more content arriving), detach.
+      if (restoreSettle) clearTimeout(restoreSettle)
+      restoreSettle = setTimeout(stopRestore, 750)
+    })
+    restoreObserver.observe(content)
+    restoreSettle = setTimeout(stopRestore, 750)
   }
+  onCleanup(stopRestore)
 
   // Home mirror of restoreScroll: render every loaded turn, then pin to the
   // top while older turns backfill in above (which would otherwise push us
@@ -2309,7 +2342,10 @@ export default function Page() {
                         </Show>
 
                         <div
-                          ref={autoScroll.contentRef}
+                          ref={(el) => {
+                            contentEl = el
+                            autoScroll.contentRef(el)
+                          }}
                           role="log"
                           class="flex flex-col gap-4 items-start justify-start transition-[margin]"
                           classList={{
