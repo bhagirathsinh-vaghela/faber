@@ -312,8 +312,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["usage-cost"] = mixColors(success[8], info[8], 0.35)
   // Cache write = the most cost-bearing op (amber/warning).
   tokens["usage-cache-write"] = warning[8]
-  // Output tokens this turn — orange, between warning and error.
-  tokens["usage-next-turn"] = mixColors(warning[8], error[8], 0.6)
+  // Output tokens this turn — info-blue, distinct from the amber cache-write.
+  tokens["usage-next-turn"] = mixColors(info[8], primary[8], 0.2)
   // Session totals: neutral, follows base text.
   tokens["usage-totals"] = "var(--text-base)"
   // Git branch accent (dock cwd line) — success-green, the powerline convention.

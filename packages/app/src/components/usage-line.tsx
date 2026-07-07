@@ -100,10 +100,10 @@ export function UsageLine(props: {
         </ChipGroup>
       </Show>
 
-      {/* Per-turn group (this turn's activity): pulse marker · cached · write · next. */}
+      {/* Per-turn group (this turn's activity): cached · write · next. The group
+          box + dividers carry the grouping, so no leading marker chip. */}
       <Show when={anyTurn()}>
         <ChipGroup>
-          <Chip icon={icon("usage-per-turn")} accent="usage-totals" tooltip="turn" />
           <Show when={show("cached")}>
             <Chip
               icon={icon("usage-cached")}
@@ -134,10 +134,9 @@ export function UsageLine(props: {
         </ChipGroup>
       </Show>
 
-      {/* Session group (Σ cluster): sigma marker · input · output · cache-write · cost. */}
+      {/* Session group: input · output · cache-write · cost. */}
       <Show when={anySession()}>
         <ChipGroup>
-          <Chip icon={icon("usage-totals")} accent="usage-totals" tooltip="Session totals" />
           <Show when={show("input")}>
             <Chip
               icon={icon("usage-input")}
