@@ -1,4 +1,3 @@
-import os from "os"
 import { spawn, type Subprocess } from "bun"
 import { cmd } from "./cmd"
 
@@ -262,7 +261,7 @@ export const SuperviseCommand = cmd({
     })
 
     console.log(
-      `supervisor listening on http://${os.hostname()}:${SUPERVISOR_PORT} (opencode :${PORT}, stage :${ALT_PORT})`,
+      `supervisor listening on 0.0.0.0:${SUPERVISOR_PORT} (local: http://localhost:${SUPERVISOR_PORT}, opencode :${PORT}, stage :${ALT_PORT})`,
     )
     await new Promise(() => {})
   },
