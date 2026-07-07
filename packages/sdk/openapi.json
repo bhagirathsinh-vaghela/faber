@@ -11288,6 +11288,34 @@
           "properties"
         ]
       },
+      "Event.dock.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dock.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "desktop": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mobile": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["desktop", "mobile"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Pty": {
         "type": "object",
         "properties": {
@@ -11828,6 +11856,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.error"
+          },
+          {
+            "$ref": "#/components/schemas/Event.dock.updated"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"

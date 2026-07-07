@@ -1029,6 +1029,14 @@ export type EventSessionError = {
   }
 }
 
+export type EventDockUpdated = {
+  type: "dock.updated"
+  properties: {
+    desktop: Array<string>
+    mobile: Array<string>
+  }
+}
+
 export type Pty = {
   id: string
   title: string
@@ -1186,6 +1194,7 @@ export type Event =
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
+  | EventDockUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited

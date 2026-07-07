@@ -1,6 +1,8 @@
 import z from "zod"
 import path from "path"
 import { Global } from "@/global"
+import { BusEvent } from "@/bus/bus-event"
+import { GlobalBus } from "@/bus/global"
 
 export namespace Dock {
   // Per-surface sets of VISIBLE field IDs from the canonical registry.
@@ -12,6 +14,13 @@ export namespace Dock {
     mobile: z.string().array(),
   })
   export type Config = z.infer<typeof Config>
+
+  // Broadcast on every write so all open clients live-update their dock,
+  // mirroring model.preference.updated. Registered on import (server routes pull
+  // in this module), so it lands in the generated Event union automatically.
+  export const Event = {
+    Updated: BusEvent.define("dock.updated", Config),
+  }
 
   // Defaults: desktop shows everything, mobile shows the running-out /
   // costing essentials. Used when no config file exists yet.
@@ -48,6 +57,10 @@ export namespace Dock {
 
   export async function set(config: Config) {
     await Bun.write(file, JSON.stringify(config))
+    GlobalBus.emit("event", {
+      directory: "global",
+      payload: { type: Event.Updated.type, properties: config },
+    })
     return config
   }
 }

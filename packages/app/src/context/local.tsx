@@ -1,8 +1,9 @@
 import { createStore } from "solid-js/store"
-import { batch, createMemo } from "solid-js"
+import { batch, createMemo, onCleanup } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useSDK } from "./sdk"
+import { useGlobalSDK } from "./global-sdk"
 import { useSync } from "./sync"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { useProviders } from "@/hooks/use-providers"
@@ -14,6 +15,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
     const sdk = useSDK()
+    const globalSDK = useGlobalSDK()
     const sync = useSync()
     const providers = useProviders()
 
@@ -254,6 +256,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       sdk.client.app.dockConfig().then((res) => {
         if (res.data) setStore(res.data)
       })
+
+      // Any client's toggle broadcasts dock.updated on the global stream, so
+      // every other open client applies the change live without a reload.
+      const unsub = globalSDK.event.on("global", (event) => {
+        if (event.type !== "dock.updated") return
+        setStore(event.properties)
+      })
+      onCleanup(unsub)
 
       const surface = (): "desktop" | "mobile" => (desktop() ? "desktop" : "mobile")
 
