@@ -1743,6 +1743,32 @@ export default function Page() {
   }
   onCleanup(stopRestore)
 
+  // Older turns mount ABOVE the viewport (history backfill, load-earlier, turn
+  // windowing), shifting the content under a numerically unchanged scrollTop —
+  // a view left at the tail gets stranded mid-list. Whenever the rendered head
+  // moves to an older message while following the tail, re-pin. A user who has
+  // scrolled up is covered by native scroll anchoring instead: autoScroll sets
+  // overflow-anchor to auto exactly when userScrolled, so the browser holds
+  // their place and a manual correction here would double-shift it.
+  createEffect(
+    on(
+      () => [params.id, renderedUserMessages()[0]?.id] as const,
+      ([session, head], previous) => {
+        if (!previous) return
+        const [prevSession, prevHead] = previous
+        if (session !== prevSession) return
+        if (!head || !prevHead || head >= prevHead) return
+        if (autoScroll.userScrolled()) return
+        if (hasScrollGesture()) return
+
+        // restoreScroll rather than a bare pin: the prepended turns keep
+        // growing for a beat after mount (async parts, highlighting), and it
+        // follows that growth until the height goes quiet.
+        restoreScroll()
+      },
+    ),
+  )
+
   // Home mirror of restoreScroll: render every loaded turn, then pin to the
   // top while older turns backfill in above (which would otherwise push us
   // back down), until it holds steady or the user scrolls away.
