@@ -12,10 +12,11 @@ import { cmd } from "./cmd"
 //   POST /restart -> stage a fresh server on the alt port, health-check it,
 //                    kill the owned server, relaunch on the main port, then
 //                    resume interrupted turns and re-arm ping daemons.
-//   POST /reload  -> /global/dispose on the live server: new sessions pick up
-//                    config/AGENTS.md/skills changes; pinned sessions keep
-//                    their prompt state.
 //   GET  /status  -> owned pid + /global/health of the live server.
+//
+// There is no reload/dispose lever: session pins are content-addressed
+// (SessionPin), so new sessions always see current disk and a stopped session
+// re-pins fresh on reopen — nothing needs manual publishing.
 
 export const SuperviseCommand = cmd({
   command: "supervise",
@@ -97,15 +98,6 @@ export const SuperviseCommand = cmd({
 
     function launch(port: number) {
       return spawn(serveArgs(port), { stdout: "inherit", stderr: "inherit" })
-    }
-
-    // Config reload: dispose all instances on the owned server so NEW sessions
-    // pick up AGENTS.md/skills/config changes from disk. Running sessions keep
-    // their pinned prompt state (SessionPin) until explicitly stopped.
-    async function reloadConfig() {
-      const res = await fetch(`http://127.0.0.1:${PORT}/global/dispose`, { method: "POST" }).catch(() => null)
-      if (!res?.ok) return { ok: false, step: "dispose", detail: `server on ${PORT} unreachable or errored` }
-      return { ok: true, disposed: await res.json() }
     }
 
     type SessionRef = { sessionID: string; directory: string }
@@ -217,7 +209,6 @@ export const SuperviseCommand = cmd({
 </style></head><body>
 <h1>OpenCode Supervisor</h1>
 <p class="muted">supervisor :${SUPERVISOR_PORT} · opencode :${PORT} · stage :${ALT_PORT}</p>
-<button id="reload">Reload config (new sessions)</button>
 <button id="restart" class="danger">Restart server (staged cutover)</button>
 <button id="status">Status</button>
 <pre id="out">ready.</pre>
@@ -233,7 +224,6 @@ export const SuperviseCommand = cmd({
     } catch (e) { out.textContent = "error: " + e }
     buttons.forEach(b => b.disabled = false)
   }
-  document.getElementById("reload").onclick = () => call("/reload")
   document.getElementById("restart").onclick = () => {
     if (!confirm("Restart the server?\\n\\nHave you reviewed the sessions in the overview? Busy sessions will be auto-resumed, warm idle sessions re-armed, and every session re-pins against current config. Stop any session you do NOT want kept alive before restarting.")) return
     call("/restart")
@@ -254,7 +244,6 @@ export const SuperviseCommand = cmd({
           return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         if (url.pathname === "/status")
           return Response.json({ port: PORT, owned: !!current, pid: current?.pid ?? null, health: await health(PORT) })
-        if (url.pathname === "/reload" && req.method === "POST") return Response.json(await reloadConfig())
         if (url.pathname === "/restart" && req.method === "POST") return Response.json(await restart())
         return new Response("not found", { status: 404 })
       },

@@ -10,7 +10,7 @@ export namespace State {
   const recordsByKey = new Map<string, Map<any, Entry>>()
 
   export function create<S>(root: () => string, init: () => S, dispose?: (state: Awaited<S>) => Promise<void>) {
-    return () => {
+    const get = () => {
       const key = root()
       let entries = recordsByKey.get(key)
       if (!entries) {
@@ -26,6 +26,13 @@ export namespace State {
       })
       return state
     }
+    // Drop ONLY this unit's memo for the current key so the next access
+    // re-runs init. Unlike dispose(key) this never touches sibling units
+    // (their state and dispose callbacks stay untouched).
+    get.reset = () => {
+      recordsByKey.get(root())?.delete(init)
+    }
+    return get
   }
 
   export async function dispose(key: string) {

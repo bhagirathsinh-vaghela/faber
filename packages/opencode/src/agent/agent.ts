@@ -250,6 +250,10 @@ export namespace Agent {
     return result
   })
 
+  export function reset() {
+    state.reset()
+  }
+
   export async function get(agent: string) {
     return state().then((x) => x[agent])
   }

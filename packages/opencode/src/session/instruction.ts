@@ -78,6 +78,10 @@ export namespace InstructionPrompt {
     state().claims.delete(messageID)
   }
 
+  export function reset() {
+    state().instructions = undefined
+  }
+
   export async function systemPaths() {
     const config = await Config.get()
     const paths = new Set<string>()

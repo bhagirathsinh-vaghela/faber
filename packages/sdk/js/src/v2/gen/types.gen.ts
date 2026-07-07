@@ -766,21 +766,6 @@ export type EventCommandExecuted = {
   }
 }
 
-export type EventSessionPingArmed = {
-  type: "session.ping.armed"
-  properties: {
-    sessionID: string
-    armed: boolean
-  }
-}
-
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
-  }
-}
-
 export type BackgroundTask = {
   id: string
   parentSessionID: string
@@ -909,6 +894,21 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
+  }
+}
+
+export type EventSessionPingArmed = {
+  type: "session.ping.armed"
+  properties: {
+    sessionID: string
+    armed: boolean
+  }
+}
+
+export type EventSessionCompacted = {
+  type: "session.compacted"
+  properties: {
+    sessionID: string
   }
 }
 
@@ -1181,14 +1181,14 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
-  | EventSessionPingArmed
-  | EventSessionCompacted
   | EventBackgroundTaskCreated
   | EventBackgroundTaskProgress
   | EventBackgroundTaskCompleted
   | EventBackgroundTaskResultPending
   | EventBackgroundTaskAutoInjectChanged
   | EventTodoUpdated
+  | EventSessionPingArmed
+  | EventSessionCompacted
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted

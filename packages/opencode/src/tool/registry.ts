@@ -47,7 +47,14 @@ export namespace ToolRegistry {
         dot: true,
       })) {
         const namespace = path.basename(match, path.extname(match))
-        const mod = await import(match)
+        // Version the specifier with mtime: the ESM module cache never
+        // invalidates, so a bare re-import after an edit + registry rebuild
+        // would silently return the old module. Same content = same specifier,
+        // so unchanged files reuse the cached module.
+        const stat = await Bun.file(match)
+          .stat()
+          .catch(() => undefined)
+        const mod = await import(stat ? `${match}?v=${stat.mtimeMs}` : match)
         for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
           custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
         }
@@ -105,8 +112,8 @@ export namespace ToolRegistry {
     return (await Auth.get(providerID))?.type !== "oauth"
   }
 
-  async function all(providerID?: string): Promise<Tool.Info[]> {
-    const custom = await state().then((x) => x.custom)
+  async function all(providerID?: string, pinned?: Tool.Info[]): Promise<Tool.Info[]> {
+    const custom: Tool.Info[] = pinned ? pinned : await state().then((x) => x.custom)
     const config = await Config.get()
 
     // Use Anthropic-optimized tools (prompt-based webfetch, native server tool websearch)
@@ -155,7 +162,7 @@ export namespace ToolRegistry {
     agent?: Agent.Info,
     snapshot?: SessionPin.Snapshot,
   ) {
-    const tools = await all(model.providerID)
+    const tools = await all(model.providerID, snapshot?.custom)
     const anthropicSearch = await nativeSearch(model.providerID)
     const result = await Promise.all(
       tools

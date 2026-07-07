@@ -140,6 +140,10 @@ export namespace Command {
     return result
   })
 
+  export function reset() {
+    state.reset()
+  }
+
   export async function get(name: string) {
     return state().then((x) => x[name])
   }
