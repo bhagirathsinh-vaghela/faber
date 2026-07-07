@@ -962,7 +962,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       category: language.t("command.category.session"),
       keybind: "alt+.",
       onSelect: () => {
-        editorRef.focus()
+        // preventScroll: auto-focus on session load must not scroll the
+        // contenteditable (bottom of the dock) into view and yank the message
+        // list off its restored position.
+        editorRef.focus({ preventScroll: true })
         requestAnimationFrame(() => setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current())))
       },
     },

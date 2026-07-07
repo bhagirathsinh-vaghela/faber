@@ -8,6 +8,10 @@ import pkg from "../package.json"
 
 const DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl"
 
+// The message list is JS-scroll-controlled and restores its own position on
+// load; the browser's native restore would fight it, so disable it.
+if ("scrollRestoration" in history) history.scrollRestoration = "manual"
+
 const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   const locale = (() => {

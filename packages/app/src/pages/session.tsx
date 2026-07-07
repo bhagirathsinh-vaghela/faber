@@ -1534,10 +1534,17 @@ export default function Page() {
 
     const beforeTop = el.scrollTop
     const beforeHeight = el.scrollHeight
+    // When following the tail, stay pinned to the bottom as older turns load
+    // in rather than preserving a fixed offset (which would drift us upward).
+    const following = !autoScroll.userScrolled()
 
     setStore("turnStart", nextStart)
 
     requestAnimationFrame(() => {
+      if (following) {
+        el.scrollTop = el.scrollHeight
+        return
+      }
       const delta = el.scrollHeight - beforeHeight
       if (!delta) return
       el.scrollTop = beforeTop + delta
@@ -1662,10 +1669,31 @@ export default function Page() {
     updateHash(message.id)
   }
 
+  // Reload streams messages in progressively and mounts older turns ABOVE the
+  // viewport (async backfill), so a single scroll-to-bottom fires against a
+  // partial list and then drifts as more content loads. Keep pinning to the
+  // bottom every frame until it holds steady for a sustained window, or the
+  // user scrolls away. This "stick to the tail through async growth" is the
+  // standard chat-reload behavior.
+  const restoreScroll = (held = 0, tries = 0) => {
+    const el = scroller
+    if (!el) return
+    // A real user scroll gesture takes over — stop pinning.
+    if (hasScrollGesture()) return
+
+    const before = el.scrollTop
+    el.scrollTop = el.scrollHeight
+    const steady = Math.abs(el.scrollTop - before) < 1 ? held + 1 : 0
+
+    // ~500ms with no correction (30 frames) = settled; 4s hard cap.
+    if (steady >= 30 || tries > 240) return
+    requestAnimationFrame(() => restoreScroll(steady, tries + 1))
+  }
+
   const applyHash = (behavior: ScrollBehavior) => {
     const hash = window.location.hash.slice(1)
     if (!hash) {
-      autoScroll.forceScrollToBottom()
+      restoreScroll()
       return
     }
 
