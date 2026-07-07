@@ -22,6 +22,7 @@ export namespace Dock {
       "variant",
       "duration",
       "cwd",
+      "branch",
       "context",
       "cached",
       "cache-write",
@@ -31,7 +32,7 @@ export namespace Dock {
       "session-cache-write",
       "cost",
     ],
-    mobile: ["agent", "model", "cwd", "context", "cost"],
+    mobile: ["agent", "model", "cwd", "branch", "context", "cost"],
   }
 
   // Lives beside skill.json in the global state dir, so every client on one

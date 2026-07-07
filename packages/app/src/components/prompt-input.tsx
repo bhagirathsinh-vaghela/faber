@@ -2072,6 +2072,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <span class="truncate-start [unicode-bidi:plaintext] min-w-0" style={{ color: "var(--syntax-string)" }}>
                   {dir()}
                 </span>
+                <Show when={local.dock.isVisible("branch") && sync.data.vcs?.branch}>
+                  {(branch) => (
+                    <span
+                      class="ml-1.5 inline-flex shrink-0 items-center gap-1 [&_[data-component=icon]]:!text-current"
+                      style={{ color: "var(--branch)" }}
+                    >
+                      <Icon name="branch" class="size-3.5" />
+                      <span class="truncate">{branch()}</span>
+                    </span>
+                  )}
+                </Show>
               </span>
             </Show>
           </div>

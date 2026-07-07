@@ -316,6 +316,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["usage-next-turn"] = mixColors(warning[8], error[8], 0.6)
   // Session totals: neutral, follows base text.
   tokens["usage-totals"] = "var(--text-base)"
+  // Git branch accent (dock cwd line) — success-green, the powerline convention.
+  // Nudged off plain success[8] toward info so it reads distinct from the
+  // green-family money signal (cost) and the syntax-string path.
+  tokens["branch"] = mixColors(success[8], info[8], 0.15)
   // Model accent — magenta-family. Derived from the theme's primary (so it
   // harmonizes) but its hue is pulled toward magenta (~320°) and chroma lifted,
   // rather than mixColors() which lerps hue linearly and can take the long way

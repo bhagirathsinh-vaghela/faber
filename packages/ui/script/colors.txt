@@ -239,5 +239,6 @@
 --usage-cache-write: #DBA92E;
 --usage-next-turn: #DB6A2E;
 --usage-totals: var(--text-base);
+--branch: #37DB2E;
 --model: #E83CF5;
 --usage-bar-fill: gradient;

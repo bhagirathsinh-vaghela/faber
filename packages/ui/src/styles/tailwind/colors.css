@@ -244,6 +244,7 @@
   --color-usage-cache-write: var(--usage-cache-write);
   --color-usage-next-turn: var(--usage-next-turn);
   --color-usage-totals: var(--usage-totals);
+  --color-branch: var(--branch);
   --color-model: var(--model);
   --color-usage-bar-fill: var(--usage-bar-fill);
 }

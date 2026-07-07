@@ -18,6 +18,7 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
       { id: "variant", label: "Variant" },
       { id: "duration", label: "Duration (footer only)" },
       { id: "cwd", label: "Working directory" },
+      { id: "branch", label: "Git branch" },
     ],
   },
   {
