@@ -1140,6 +1140,18 @@ export default function Page() {
   ])
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    // Home/End always jump the transcript to the top/bottom, even from the
+    // prompt input (where they would otherwise just move the caret). Modifier
+    // combos (cmd+End etc.) are left to the browser.
+    const bare = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+    if ((event.key === "End" || event.key === "Home") && bare) {
+      if (dialog.active) return
+      event.preventDefault()
+      if (event.key === "End") resumeScroll()
+      else jumpToTop()
+      return
+    }
+
     const activeElement = document.activeElement as HTMLElement | undefined
     if (activeElement) {
       const isProtected = activeElement.closest("[data-prevent-autofocus]")
@@ -1688,6 +1700,25 @@ export default function Page() {
     // ~500ms with no correction (30 frames) = settled; 4s hard cap.
     if (steady >= 30 || tries > 240) return
     requestAnimationFrame(() => restoreScroll(steady, tries + 1))
+  }
+
+  // Home mirror of restoreScroll: render every loaded turn, then pin to the
+  // top while older turns backfill in above (which would otherwise push us
+  // back down), until it holds steady or the user scrolls away.
+  const jumpToTop = (held = 0, tries = 0) => {
+    const el = scroller
+    if (!el) return
+    if (hasScrollGesture()) return
+
+    autoScroll.pause()
+    if (store.turnStart > 0) setStore("turnStart", 0)
+
+    const before = el.scrollTop
+    el.scrollTop = 0
+    const steady = before < 1 ? held + 1 : 0
+
+    if (steady >= 30 || tries > 240) return
+    requestAnimationFrame(() => jumpToTop(steady, tries + 1))
   }
 
   const applyHash = (behavior: ScrollBehavior) => {
