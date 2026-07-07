@@ -1,4 +1,4 @@
-import { For, Show, onCleanup } from "solid-js"
+import { For, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -11,7 +11,6 @@ import { useRecent } from "@/context/recent"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { CACHE_TTL } from "@/utils/cache-countdown"
 import { useLanguage } from "@/context/language"
-import { useCommand } from "@/context/command"
 
 function getFilename(dir: string) {
   const parts = dir.split("/").filter(Boolean)
@@ -149,23 +148,10 @@ export function Overview(props: { onOpen?: () => void }) {
 export function DialogOverview() {
   const dialog = useDialog()
   const language = useLanguage()
-  const command = useCommand()
-  const state = { selected: false }
 
   const open = () => {
-    state.selected = true
     dialog.close()
   }
-
-  // On dismiss without picking a session, Kobalte restores focus to the
-  // trigger (the titlebar house button), not the dock the user was typing in.
-  // Return the caret to the dock on teardown. Deferred past the dialog close so
-  // Kobalte's own focus-restore can't clobber it. Skipped when a session was
-  // selected — the opening session focuses its own dock (session.tsx).
-  onCleanup(() => {
-    if (state.selected) return
-    requestAnimationFrame(() => command.trigger("prompt.focus"))
-  })
 
   return (
     <Dialog size="large" title={language.t("home.title")} transition>

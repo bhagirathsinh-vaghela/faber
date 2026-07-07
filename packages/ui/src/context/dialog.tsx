@@ -30,12 +30,38 @@ function init() {
   const [active, setActive] = createSignal<Active | undefined>()
   const timer = { current: undefined as ReturnType<typeof setTimeout> | undefined }
   const lock = { value: false }
+  // Where focus goes when a dialog closes. The app registers this (it points at
+  // the prompt input) since this context lives below the app layer and can't
+  // reach the prompt itself. Skipped when something already claimed focus.
+  const restore = { current: undefined as (() => void) | undefined }
 
   onCleanup(() => {
     if (timer.current === undefined) return
     clearTimeout(timer.current)
     timer.current = undefined
   })
+
+  // A dialog left focus behind if the active element is the body, the overlay,
+  // or nothing at all — i.e. Kobalte's default trigger-restore or a plain
+  // dismiss. If a real element holds focus (a session dock, a chained dialog's
+  // input) the close was intentional about focus, so leave it alone.
+  const focusOrphaned = () => {
+    const el = document.activeElement
+    if (!el || el === document.body) return true
+    return el.closest("[data-component=dialog-overlay]") !== null
+  }
+
+  const runRestore = () => {
+    const fn = restore.current
+    if (!fn) return
+    // Deferred past teardown so Kobalte's own focus-restore runs first and we
+    // can see whether anything claimed focus before we override it.
+    requestAnimationFrame(() => {
+      if (active()) return
+      if (!focusOrphaned()) return
+      fn()
+    })
+  }
 
   const close = () => {
     const current = active()
@@ -55,6 +81,7 @@ function init() {
       current.dispose()
       if (active()?.id === id) setActive(undefined)
       lock.value = false
+      runRestore()
     }, 100)
   }
 
@@ -124,6 +151,9 @@ function init() {
     },
     close,
     show,
+    setRestore(fn: (() => void) | undefined) {
+      restore.current = fn
+    },
   }
 }
 
@@ -158,6 +188,9 @@ export function useDialog() {
     },
     close() {
       ctx.close()
+    },
+    setRestore(fn: (() => void) | undefined) {
+      ctx.setRestore(fn)
     },
   }
 }

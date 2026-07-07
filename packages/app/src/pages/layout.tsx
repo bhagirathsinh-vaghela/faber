@@ -1244,6 +1244,13 @@ export default function Layout(props: ParentProps) {
     return commands
   })
 
+  // Any dialog that closes without moving focus elsewhere returns the caret to
+  // the prompt, so a dismissed dialog never strands focus on the body.
+  onMount(() => {
+    dialog.setRestore(() => command.trigger("prompt.focus"))
+    onCleanup(() => dialog.setRestore(undefined))
+  })
+
   function connectProvider() {
     dialog.show(() => <DialogSelectProvider />)
   }
