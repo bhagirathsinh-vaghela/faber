@@ -99,6 +99,9 @@ export interface MessageProps {
   footer?: (message: AssistantMessage) => JSX.Element
   // Extra control for the boxed header's actions row (sticky expand chevron).
   action?: JSX.Element
+  // When set, the box header's identity (◈ #N ROLE time) becomes a button that
+  // scrolls this message into view. Used by the sticky user-message header.
+  onJump?: () => void
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -426,6 +429,7 @@ export function Message(props: MessageProps) {
               label="TASK RESULT"
               accent={taskAccent(part().backgroundTaskResult!.status)}
               action={props.action}
+              onJump={props.onJump}
             >
               <TaskResultDisplay part={part()} />
             </MessageBox>
@@ -441,6 +445,7 @@ export function Message(props: MessageProps) {
             <MessageBox
               message={userMessage() as UserMessage}
               action={props.action}
+              onJump={props.onJump}
               copy={() =>
                 (props.parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined)
                   ?.text ?? ""
@@ -477,6 +482,9 @@ export function MessageBox(props: {
   // Extra control rendered inline in the title-bar actions row, after copy
   // (e.g. the collapse/expand chevron on sticky user messages).
   action?: JSX.Element
+  // When set, the identity cluster (◈ #N ROLE time) becomes a button that
+  // scrolls this message into view.
+  onJump?: () => void
   children: JSX.Element
 }) {
   const data = useData()
@@ -551,15 +559,49 @@ export function MessageBox(props: {
           "letter-spacing": "0.04em",
         }}
       >
-        <span data-slot="message-box-diamond">{"\u25c8"}</span>
-        <Show when={number() !== undefined}>
-          <span data-slot="message-box-number" style={{ color: "var(--color-text-weak)" }}>
-            {"#" + number()}
+        <span
+          data-slot="message-box-identity"
+          // Sibling interactive control, not nested: the sticky bar's own click
+          // handler skips [role='button'], so the two never double-fire. Jump
+          // scrolls this message into view; the rest of the bar still toggles.
+          role={props.onJump ? "button" : undefined}
+          tabindex={props.onJump ? 0 : undefined}
+          title={props.onJump ? "Scroll to this message" : undefined}
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "0.5rem",
+            cursor: props.onJump ? "pointer" : undefined,
+          }}
+          onClick={
+            props.onJump
+              ? (event: MouseEvent) => {
+                  event.stopPropagation()
+                  props.onJump!()
+                }
+              : undefined
+          }
+          onKeyDown={
+            props.onJump
+              ? (event: KeyboardEvent) => {
+                  if (event.key !== "Enter" && event.key !== " ") return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  props.onJump!()
+                }
+              : undefined
+          }
+        >
+          <span data-slot="message-box-diamond">{"\u25c8"}</span>
+          <Show when={number() !== undefined}>
+            <span data-slot="message-box-number" style={{ color: "var(--color-text-weak)" }}>
+              {"#" + number()}
+            </span>
+          </Show>
+          <span data-slot="message-box-label">{props.label ?? (isUser ? "USER" : "ASSISTANT")}</span>
+          <span data-slot="message-box-time" style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
+            {messageTime(props.message.time.created)}
           </span>
-        </Show>
-        <span data-slot="message-box-label">{props.label ?? (isUser ? "USER" : "ASSISTANT")}</span>
-        <span data-slot="message-box-time" style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
-          {messageTime(props.message.time.created)}
         </span>
         {/* Title-bar actions, pinned right: revert (user, hover-reveal) then
             copy. Copy sits in the box's top-right corner for every box. */}

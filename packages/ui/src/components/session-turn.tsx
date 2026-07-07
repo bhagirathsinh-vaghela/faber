@@ -132,6 +132,7 @@ export function SessionTurn(
     collapsePrompt?: boolean
     onStepsExpandedToggle?: () => void
     onUserInteracted?: () => void
+    onJump?: () => void
     footer?: (message: AssistantMessage) => JSX.Element
     classes?: {
       root?: string
@@ -626,6 +627,7 @@ export function SessionTurn(
                           message={msg()}
                           parts={stickyParts()}
                           boxed
+                          onJump={props.onJump}
                           action={
                             /* Collapse/expand affordance, inline in the box's
                                actions row. Uses IconButton (same as the copy

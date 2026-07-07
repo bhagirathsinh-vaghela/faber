@@ -1628,8 +1628,12 @@ export default function Page() {
 
     const a = el.getBoundingClientRect()
     const b = root.getBoundingClientRect()
-    const top = a.top - b.top + root.scrollTop
-    root.scrollTo({ top, behavior })
+    // The scroller has a sticky session-title bar pinned at its top. Offset the
+    // target by its height (plus a small gap) so a jumped-to message lands just
+    // below the bar instead of clipped underneath it.
+    const titleHeight = parseFloat(getComputedStyle(root).getPropertyValue("--session-title-height")) || 0
+    const top = a.top - b.top + root.scrollTop - titleHeight - 8
+    root.scrollTo({ top: Math.max(0, top), behavior })
     return true
   }
 
@@ -1845,7 +1849,16 @@ export default function Page() {
     const ready = messagesReady()
     if (!sessionID || !ready) return
 
+    // Initial reload always pins to the bottom. A #message-<id> hash left over
+    // from an in-session jump (onJump/keyboard nav) must not "stick" across a
+    // reload, so drop it and restore to the tail. Non-message hashes (element
+    // deep-links) still resolve via applyHash.
     requestAnimationFrame(() => {
+      if (/^#message-/.test(window.location.hash)) {
+        clearMessageHash()
+        restoreScroll()
+        return
+      }
       applyHash("auto")
     })
   })
@@ -2423,6 +2436,7 @@ export default function Page() {
                                     onStepsExpandedToggle={() =>
                                       setStore("expanded", message.id, (open: boolean | undefined) => !open)
                                     }
+                                    onJump={() => scrollToMessage(message)}
                                     classes={{
                                       root: "min-w-0 w-full relative",
                                       content: "flex flex-col justify-between !overflow-visible",
