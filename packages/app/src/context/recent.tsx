@@ -10,7 +10,7 @@ export type OverviewRow = {
   updated: number
   busy: boolean
   unseen: boolean
-  countdown: string | null
+  pingAt?: number
 }
 
 export const { use: useRecent, provider: RecentProvider } = createSimpleContext({
@@ -25,8 +25,8 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     // The whole overview is the server-owned recent hub — membership, recency,
     // and the live flags (busy, unseen, next-ping deadline) all ride the same
     // projection, so every client renders identically without opening any
-    // directory. The only client-local work is ticking the ping deadline into a
-    // mm:ss string against the local clock.
+    // directory. The rows carry the raw ping deadline; the mm:ss string is ticked
+    // per row via countdown() so the clock never churns the list arrays.
     const rows = createMemo<OverviewRow[]>(() =>
       globalSync.data.recent_hub.map((entry) => ({
         sessionID: entry.sessionID,
@@ -35,25 +35,31 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
         updated: entry.updated,
         busy: entry.busy,
         unseen: entry.unseen,
-        countdown: cacheCountdownUntil(entry.pingAt, now()),
+        pingAt: entry.pingAt,
       })),
     )
 
     // A session is in exactly one bucket. Both sort by last real-turn activity
     // (never pings/views) — recent newest-first ("what I just did"), attention
     // oldest-first so the most-neglected sits on top ("what I've been ignoring").
-    // The countdown gates attention membership but not order: it's display-only.
+    // A pending ping gates attention membership but not order. Membership rides
+    // only server-pushed fields (busy/unseen/pingAt), never the local clock, so
+    // the buckets recompute on server updates rather than every tick — the ping
+    // deadline is cleared server-side when its window lapses.
+    const pending = (r: OverviewRow) => r.pingAt !== undefined
     const attention = createMemo(() =>
       rows()
-        .filter((r) => r.busy || r.unseen || r.countdown)
+        .filter((r) => r.busy || r.unseen || pending(r))
         .sort((a, b) => a.updated - b.updated),
     )
     const recent = createMemo(() =>
       rows()
-        .filter((r) => !(r.busy || r.unseen || r.countdown))
+        .filter((r) => !(r.busy || r.unseen || pending(r)))
         .sort((a, b) => b.updated - a.updated),
     )
 
-    return { attention, recent }
+    const countdown = (row: OverviewRow) => cacheCountdownUntil(row.pingAt, now())
+
+    return { attention, recent, countdown }
   },
 })

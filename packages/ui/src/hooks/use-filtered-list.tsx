@@ -14,6 +14,7 @@ export interface FilteredListProps<T> {
   sortGroupsBy?: (a: { category: string; items: T[] }, b: { category: string; items: T[] }) => number
   onSelect?: (value: T | undefined, index: number) => void
   noInitialSelection?: boolean
+  preserveActive?: boolean
 }
 
 export function useFilteredList<T>(props: FilteredListProps<T>) {
@@ -73,6 +74,10 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
   })
 
   const reset = () => {
+    if (props.preserveActive) {
+      const current = list.active()
+      if (current && flat().some((x) => props.key(x) === current)) return
+    }
     if (props.noInitialSelection) {
       list.setActive("")
       return

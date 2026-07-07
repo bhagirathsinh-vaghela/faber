@@ -282,6 +282,10 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                 type="text"
                 ref={(el: HTMLInputElement | HTMLTextAreaElement) => {
                   inputRef = el
+                  // Native autofocus only fires on document parse, not on SPA
+                  // navigation; focus imperatively so arrow keys reach the list
+                  // when the list mounts outside a dialog (e.g. the home page).
+                  if (searchProps().autofocus) queueMicrotask(() => el.focus())
                 }}
                 value={internalFilter()}
                 onChange={(value) => applyFilter(value)}

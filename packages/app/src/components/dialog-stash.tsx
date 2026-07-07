@@ -31,8 +31,7 @@ function formatTime(ms: number): string {
 
 // Stash list: up/down to select, Enter restores into the input and removes the
 // entry, the × button deletes an entry without restoring, Escape dismisses. The
-// search input is kept (it holds focus so the arrow keys drive the list) but
-// hidden, since the user wants a plain list without a visible search box.
+// search input holds focus so the arrow keys drive the list and typing filters.
 export const DialogStash: Component = () => {
   const stash = useStash()
   const prompt = usePrompt()
@@ -75,8 +74,8 @@ export const DialogStash: Component = () => {
   return (
     <Dialog title={language.t("dialog.stash.title")}>
       <List
-        class="flex-1 min-h-0 [&_[data-slot=list-search-wrapper]]:sr-only [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
-        search={{ autofocus: true }}
+        class="flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
+        search={{ placeholder: language.t("common.search.placeholder"), autofocus: true }}
         emptyMessage={language.t("dialog.stash.empty")}
         key={(x) => String(x.index)}
         items={items}
