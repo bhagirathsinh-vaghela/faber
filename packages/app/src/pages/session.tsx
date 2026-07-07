@@ -2057,9 +2057,10 @@ export default function Page() {
             // isn't there.
             "--prompt-height": layout.zen.opened() ? "0px" : store.promptHeight ? `${store.promptHeight}px` : undefined,
             // In zen the titlebar is gone, so this panel must itself clear the
-            // device's top safe-area inset (status bar). Tight gap on top of it.
-            // --sat is 0 in a browser, so it degrades to just the small gap.
-            "padding-top": layout.zen.opened() ? "calc(var(--sat) + 0.25rem)" : undefined,
+            // device's top safe-area inset (status bar), plus a 1rem gap that
+            // mirrors the bottom margin. --sat is 0 in a browser, so it degrades
+            // to just the gap.
+            "padding-top": layout.zen.opened() ? "calc(var(--sat) + 1rem)" : undefined,
           }}
         >
           <div class="flex-1 min-h-0 overflow-hidden">
@@ -2317,12 +2318,14 @@ export default function Page() {
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
                             // Normal: reserve space for the floating prompt dock.
-                            // Zen: dock is gone, so no bottom reservation — just
-                            // the home-indicator safe area (via inline style).
+                            // Zen: dock is gone, so no dock reservation — but keep
+                            // a sensible bottom margin (matching the dock's own
+                            // pb-4) plus the home-indicator safe area, so the last
+                            // message doesn't sit flush against the edge.
                             "pb-[calc(var(--prompt-height,8rem)+32px)] md:pb-[calc(var(--prompt-height,10rem)+32px)]":
                               !layout.zen.opened(),
                           }}
-                          style={{ "padding-bottom": layout.zen.opened() ? "var(--sab)" : undefined }}
+                          style={{ "padding-bottom": layout.zen.opened() ? "calc(var(--sab) + 1rem)" : undefined }}
                         >
                           <Show when={store.turnStart > 0}>
                             <div class="w-full flex justify-center">
