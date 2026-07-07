@@ -306,6 +306,13 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   // gradient at the current %.
   tokens["usage-context-start"] = success[8]
   tokens["usage-context-end"] = error[8]
+  // Gauge-chip VALUE text = metric IDENTITY, not severity. The context gauge's
+  // blue is set by HUE DIRECTLY (like the `model` token below), not by scale
+  // steps: a theme's `primary[10]` can be pale/desaturated, so deriving l/c from
+  // the seed but pinning the hue and lifting chroma gives a vivid, reliable blue
+  // (~250°) that still tracks the theme's lightness.
+  const blueSeed = hexToOklch(primary[isDark ? 10 : 8])
+  tokens["usage-id-context"] = oklchToHex({ l: blueSeed.l, c: Math.max(blueSeed.c, 0.18), h: 250 })
   // Cache read = fast/cheap (green). Cost is also a "green-family" money
   // signal, nudged off plain green so the two don't conflate.
   tokens["usage-cached"] = success[7]

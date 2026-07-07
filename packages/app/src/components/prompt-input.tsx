@@ -1919,8 +1919,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
-              "w-full px-2 pt-2 pb-0 pr-12 text-13-semibold md:p-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap":
-                true,
+              "w-full px-2 pt-2 pb-0 pr-12 text-13-semibold md:p-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
               "[&_[data-type=file]]:text-syntax-property": true,
               "[&_[data-type=agent]]:text-syntax-type": true,
               "font-mono!": store.mode === "shell",

@@ -1873,8 +1873,14 @@ export default function Page() {
   const inset = (name: "--sat" | "--sar" | "--sab" | "--sal") =>
     parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0
   const clampPill = (x: number, y: number) => ({
-    x: Math.max(PILL_MARGIN + inset("--sal"), Math.min(x, window.innerWidth - pillSize() - PILL_MARGIN - inset("--sar"))),
-    y: Math.max(PILL_MARGIN + inset("--sat"), Math.min(y, window.innerHeight - pillSize() - PILL_MARGIN - inset("--sab"))),
+    x: Math.max(
+      PILL_MARGIN + inset("--sal"),
+      Math.min(x, window.innerWidth - pillSize() - PILL_MARGIN - inset("--sar")),
+    ),
+    y: Math.max(
+      PILL_MARGIN + inset("--sat"),
+      Math.min(y, window.innerHeight - pillSize() - PILL_MARGIN - inset("--sab")),
+    ),
   })
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
@@ -2364,8 +2370,7 @@ export default function Page() {
             ref={(el) => (promptDock = el)}
             data-slot="prompt-dock"
             classList={{
-              "absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none":
-                true,
+              "absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
               hidden: layout.zen.opened() || mobileChanges(),
             }}
           >

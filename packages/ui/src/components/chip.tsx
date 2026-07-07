@@ -20,11 +20,17 @@ export type ChipProps = {
   // cluster marker) omits it.
   children?: JSX.Element
   // Raw theme token name (the runtime CSS var, NOT the --color- Tailwind alias)
-  // that colors BOTH the icon and the value, so they match. e.g. "usage-cached"
-  // → var(--usage-cached). Raw --<token> because Tailwind v4 tree-shakes the
-  // --color-* aliases when only referenced from inline styles; the theme loader
-  // always injects the raw var on :root. Omit for the neutral text-strong color.
+  // that colors the icon and (unless valueAccent overrides) the value, so they
+  // match by default. e.g. "usage-cached" → var(--usage-cached). Raw --<token>
+  // because Tailwind v4 tree-shakes the --color-* aliases when only referenced
+  // from inline styles; the theme loader always injects the raw var on :root.
+  // Omit for the neutral text-strong color.
   accent?: string
+  // Colors ONLY the value, splitting it from the icon. Used by gauge chips: the
+  // icon keeps the utilization ramp (a danger cue) while the value goes neutral
+  // so it stays legible over the colored fill instead of merging into it.
+  // Defaults to `accent` when unset, so plain chips keep icon+value matching.
+  valueAccent?: string
   // When set, the chip is interactive (renders a <button>).
   onClick?: (e: MouseEvent) => void
   // Fraction 0..1 for "value out of a max" metrics (e.g. context). The
@@ -42,9 +48,11 @@ export type ChipProps = {
   tooltipPlacement?: "top" | "bottom" | "left" | "right"
 }
 
-const halo = "0 1px 3px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.7)"
 const seg =
-  "inline-flex items-center gap-1 px-1 py-0.5 text-[length:var(--dock-font-size)] leading-tight font-mono " +
+  // Fixed content height so plain chips and gauge chips (value + meter bar) are
+  // the SAME height regardless of what's inside — content is vertically centered
+  // in this box.
+  "inline-flex items-center gap-1 px-1 py-px min-h-[20px] text-[length:var(--dock-font-size)] leading-tight font-mono " +
   "[font-weight:var(--dock-font-weight)] [font-variant-numeric:tabular-nums] whitespace-nowrap"
 
 // A single metric segment. Lives inside a ChipGroup. Carries its own accent
@@ -55,6 +63,7 @@ export function Chip(props: ChipProps) {
     "icon",
     "children",
     "accent",
+    "valueAccent",
     "onClick",
     "fill",
     "fillColor",
@@ -64,31 +73,62 @@ export function Chip(props: ChipProps) {
     "tooltipPlacement",
   ])
 
-  const tone = () => (local.accent ? `var(--${local.accent})` : "var(--color-text-strong)")
+  const iconTone = () => (local.accent ? `var(--${local.accent})` : "var(--color-text-strong)")
+  const valueTone = () =>
+    local.valueAccent ? `var(--${local.valueAccent})` : local.accent ? `var(--${local.accent})` : "var(--color-text-strong)"
 
-  const gaugeBg = () => {
-    if (local.fill === undefined) return undefined
-    const pct = Math.max(0, Math.min(1, local.fill)) * 100
+  // Utilization as a percentage 0..100, or undefined for non-gauge chips.
+  const gaugePct = () => (local.fill === undefined ? undefined : Math.max(0, Math.min(1, local.fill)) * 100)
+
+  // The meter bar (Intent-style: rounded track + rounded colored fill) sits
+  // directly UNDER the value, only as wide as the value column, so text stays
+  // clear of the fill and keeps its identity color at full legibility.
+  // Gauge chips pass a fill; plain chips render the SAME bar
+  // fully transparent so both chip types share identical layout — the value gets
+  // pushed up by the bar's height either way, keeping value baselines aligned
+  // across the row with no manual spacing math.
+  const gaugeBar = () => {
+    const pct = gaugePct()
+    const visible = pct !== undefined
     const tint = local.fillColor ? `var(--${local.fillColor})` : "var(--color-text-base)"
-    return `linear-gradient(to right, color-mix(in srgb, ${tint} 28%, transparent) ${pct}%, transparent ${pct}%)`
+    return (
+      <span
+        data-slot="chip-gauge"
+        class="block h-[2px] w-full overflow-hidden rounded-full"
+        classList={{ "bg-border-weak-base": visible, "bg-transparent": !visible }}
+      >
+        <Show when={visible}>
+          <span class="block h-full rounded-full" style={{ width: `${pct}%`, "background-color": tint }} />
+        </Show>
+      </span>
+    )
   }
 
+  // Every chip stacks value above the bar (real on gauge chips, transparent on
+  // plain ones) so the layout — and thus the value baseline — is identical.
+  const value = () => (
+    <Show when={local.children !== undefined}>
+      <span class="inline-flex flex-col justify-center gap-0 leading-none">
+        <span data-slot="chip-content" class="leading-none" style={{ color: valueTone() }}>
+          {local.children}
+        </span>
+        {gaugeBar()}
+      </span>
+    </Show>
+  )
+
   const content = (
-    <span class="inline-flex items-center gap-1" style={{ color: tone() }}>
+    <span class="inline-flex items-center gap-1">
       <Show when={local.icon}>
         <span
-          class="inline-flex size-4 shrink-0 items-center justify-center [&_[data-component=icon]]:!text-current [&_[data-slot=icon-svg]]:size-full [&_:is(path,circle,rect,line,ellipse,polyline,polygon)]:![stroke-width:2.6]"
+          class="inline-flex size-3.5 shrink-0 items-center justify-center [&_[data-component=icon]]:!text-current [&_[data-component=icon]]:!size-full [&_[data-slot=icon-svg]]:!size-full [&_:is(path,circle,rect,line,ellipse,polyline,polygon)]:![stroke-width:2.6]"
           data-slot="chip-icon"
-          style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.85))" }}
+          style={{ color: iconTone() }}
         >
           {local.icon}
         </span>
       </Show>
-      <Show when={local.children !== undefined}>
-        <span data-slot="chip-content" style={{ "text-shadow": halo }}>
-          {local.children}
-        </span>
-      </Show>
+      {value()}
     </span>
   )
 
@@ -98,7 +138,7 @@ export function Chip(props: ChipProps) {
     <Show
       when={local.onClick}
       fallback={
-        <span data-slot="chip" title={local.title} class={cls} style={{ "background-image": gaugeBg() }} {...rest}>
+        <span data-slot="chip" title={local.title} class={cls} {...rest}>
           {content}
         </span>
       }
@@ -110,7 +150,6 @@ export function Chip(props: ChipProps) {
         title={local.title}
         onClick={local.onClick}
         class={`${cls} cursor-pointer hover:bg-surface-raised-base-hover`}
-        style={{ "background-image": gaugeBg() }}
         {...rest}
       >
         {content}

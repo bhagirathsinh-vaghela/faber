@@ -60,7 +60,11 @@ export function UsageLine(props: {
   stats: UsageStats
   totals: SessionTotals
   cost: number
-  leading?: JSX.Element
+  // The dock's cache-countdown chip. Passed as icon + value (+ tooltip) so it
+  // renders through the SAME Chip layout as every other chip (icon slot + value
+  // column with the transparent alignment bar), instead of a custom blob that
+  // sat misaligned.
+  leading?: { icon: JSX.Element; value: JSX.Element; tooltip?: JSX.Element; accent?: string }
   class?: string
 }) {
   // Context fill color follows the same 75% threshold as utilizationColor:
@@ -80,9 +84,13 @@ export function UsageLine(props: {
   return (
     <div class={"flex flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5 " + (props.class ?? "pt-0.5")}>
       <Show when={props.leading}>
-        <ChipGroup>
-          <Chip>{props.leading}</Chip>
-        </ChipGroup>
+        {(l) => (
+          <ChipGroup>
+            <Chip icon={l().icon} accent={l().accent} tooltip={l().tooltip}>
+              {l().value}
+            </Chip>
+          </ChipGroup>
+        )}
       </Show>
 
       {/* Context: solo gauge chip (fill = how full the window is). */}
@@ -90,7 +98,7 @@ export function UsageLine(props: {
         <ChipGroup>
           <Chip
             icon={icon("usage-context")}
-            accent="usage-context-start"
+            accent="usage-id-context"
             fill={props.stats.percentage / 100}
             fillColor={contextFill()}
             tooltip={`Context window: ${tokens(props.stats.total)} of ${tokens(props.stats.limit)} used — how full the conversation is before older turns drop off.`}
