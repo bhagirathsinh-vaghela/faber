@@ -1,5 +1,6 @@
-import { createStore } from "solid-js/store"
+import { createStore, produce } from "solid-js/store"
 import { batch, createMemo, onCleanup } from "solid-js"
+import { useLocation } from "@solidjs/router"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useSDK } from "./sdk"
@@ -18,6 +19,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const globalSDK = useGlobalSDK()
     const sync = useSync()
     const providers = useProviders()
+    const location = useLocation()
+
+    // The session id in the URL, if any. Model selection is per-session AND
+    // per-tab: an open session's forward model is a pending pick held in THIS
+    // tab (not persisted). The switcher is forward-looking — it sets the model
+    // the next turn from this tab will use. On the new-session surface (no id)
+    // selection falls back to the global default.
+    const activeSessionID = createMemo(() => location.pathname.match(/\/session\/([^/?#]+)/)?.[1])
 
     function isModelValid(model: ModelKey) {
       const provider = providers.all().find((x) => x.id === model.providerID)
@@ -93,19 +102,36 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const model = (() => {
       const models = useModels()
 
+      // New-session surface (no session id) pending picks live here, per-tab.
+      // `variantSet` tracks whether the variant was explicitly picked (so an
+      // explicit "none" is distinguishable from "not picked"). Existing-session
+      // picks live in bySession / variantBySession instead.
       const [ephemeral, setEphemeral] = createStore<{
         model?: ModelKey
+        variant?: string
+        variantSet: boolean
+        bySession: Record<string, ModelKey>
+        variantBySession: Record<string, string | undefined>
       }>({
         model: undefined,
+        variant: undefined,
+        variantSet: false,
+        bySession: {},
+        variantBySession: {},
       })
 
-      const fallbackModel = createMemo<ModelKey | undefined>(() => {
-        for (const item of models.recent.list()) {
-          if (isModelValid(item)) {
-            return item
-          }
-        }
+      // The model the last turn in this session actually ran, read from the
+      // last user message. Used as the forward-model fallback (until this tab
+      // picks something) and as the baseline for the pending indicator.
+      const lastMessage = (sessionID: string) => sync.data.message[sessionID]?.findLast((m) => m.role === "user")
+      const lastMessageModel = (sessionID: string) => lastMessage(sessionID)?.model
+      const lastMessageVariant = (sessionID: string) => lastMessage(sessionID)?.variant
 
+      // The global default model = config.model (settings) → a connected
+      // provider's default. The recent list is history for the picker only and
+      // deliberately does NOT drive the default (picking a model no longer
+      // changes what a new session starts on; only settings does).
+      const fallbackModel = createMemo<ModelKey | undefined>(() => {
         if (sync.data.config.model) {
           const [providerID, modelID] = sync.data.config.model.split("/")
           if (isModelValid({ providerID, modelID })) {
@@ -134,9 +160,52 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
 
       const current = createMemo(() => {
-        const key = getFirstValidModel(() => ephemeral.model, fallbackModel)
+        // Open session: this tab's pending pick wins, else the model the last
+        // turn ran, else the global default. New-session surface: the tab-wide
+        // ephemeral pick, else the global default.
+        const id = activeSessionID()
+        const key = id
+          ? getFirstValidModel(
+              () => ephemeral.bySession[id],
+              () => lastMessageModel(id),
+              fallbackModel,
+            )
+          : getFirstValidModel(() => ephemeral.model, fallbackModel)
         if (!key) return undefined
         return models.find(key)
+      })
+
+      // The forward pick differs from its baseline. Baseline is the last turn's
+      // model/variant for an open session, or the global default for the
+      // new-session surface. Existing-session dot clears when the next turn
+      // stamps the pick onto a message; new-session dot clears when the pick
+      // matches the global default again. Model and variant get independent dots.
+      const sameModel = (a?: ModelKey, b?: ModelKey) =>
+        !!a && !!b && a.providerID === b.providerID && a.modelID === b.modelID
+
+      const pendingModel = createMemo(() => {
+        const id = activeSessionID()
+        if (id) {
+          const picked = ephemeral.bySession[id]
+          if (!picked) return false
+          const last = lastMessageModel(id)
+          if (!last) return false
+          return !sameModel(picked, last)
+        }
+        if (!ephemeral.model) return false
+        return !sameModel(ephemeral.model, fallbackModel())
+      })
+
+      const pendingVariant = createMemo(() => {
+        const id = activeSessionID()
+        if (id) {
+          if (!(id in ephemeral.variantBySession)) return false
+          return ephemeral.variantBySession[id] !== lastMessageVariant(id)
+        }
+        if (!ephemeral.variantSet) return false
+        const m = current()
+        const globalVariant = m ? models.variant.get({ providerID: m.provider.id, modelID: m.id }) : undefined
+        return ephemeral.variant !== globalVariant
       })
 
       const recent = createMemo(() => models.recent.list().map(models.find).filter(Boolean))
@@ -167,16 +236,42 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       return {
         ready: models.ready,
         current,
+        default: fallbackModel,
+        pendingModel,
+        pendingVariant,
         recent,
         list: models.list,
         cycle,
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
+          // Open session: the switch is a per-tab, per-session pending pick. It
+          // rides on the next prompt from this tab as input.model and does NOT
+          // touch the global recent list/default or any server state. Two tabs
+          // on the same idle session can each pick independently; whichever
+          // sends first wins for that turn.
+          const id = activeSessionID()
+          if (id && model) {
+            models.setVisibility(model, true)
+            setEphemeral("bySession", id, model)
+            // Variant is model-scoped; a new model invalidates a prior per-session
+            // variant pick. Drop the key so variant.current() falls back to the
+            // global preference for the newly picked model.
+            setEphemeral(
+              "variantBySession",
+              produce((v) => {
+                delete v[id]
+              }),
+            )
+            return
+          }
+          // New-session surface: a per-tab pending pick. Push to the recent list
+          // for the picker's history, but do NOT write config.model — the global
+          // default only changes via settings, so a new session shows a pending
+          // dot when its pick differs from that default.
           batch(() => {
             const next = model ?? fallbackModel()
             setEphemeral("model", next)
             if (model) models.setVisibility(model, true)
             if (options?.recent && model) models.recent.push(model)
-            if (model) sync.set("config", "model", model.providerID + "/" + model.modelID)
           })
         },
         visible(model: ModelKey) {
@@ -189,6 +284,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           current() {
             const m = current()
             if (!m) return undefined
+            // Open session: this tab's pending variant pick for the session (key
+            // present — value may be undefined for an explicit "none"), else the
+            // variant the last turn actually ran (symmetric with model), else the
+            // global per-model preference. New-session surface: the global
+            // preference. The pick rides on the next prompt as input.variant; it
+            // is never written to the global preference.
+            const id = activeSessionID()
+            if (id) {
+              if (id in ephemeral.variantBySession) return ephemeral.variantBySession[id]
+              const last = lastMessageVariant(id)
+              if (last !== undefined) return last
+              return models.variant.get({ providerID: m.provider.id, modelID: m.id })
+            }
+            // New-session surface: this tab's pending variant pick, else the
+            // global per-model preference.
+            if (ephemeral.variantSet) return ephemeral.variant
             return models.variant.get({ providerID: m.provider.id, modelID: m.id })
           },
           list() {
@@ -200,7 +311,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           set(value: string | undefined) {
             const m = current()
             if (!m) return
-            models.variant.set({ providerID: m.provider.id, modelID: m.id }, value)
+            const id = activeSessionID()
+            if (id) {
+              setEphemeral("variantBySession", id, value)
+              return
+            }
+            // New-session surface: a per-tab pending pick, not the global pref.
+            batch(() => {
+              setEphemeral("variant", value)
+              setEphemeral("variantSet", true)
+            })
           },
           cycle() {
             const variants = this.list()

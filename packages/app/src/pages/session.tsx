@@ -474,7 +474,11 @@ export default function Page() {
         const msg = lastUserMessage()
         if (!msg) return
         if (msg.agent) local.agent.set(msg.agent)
-        if (msg.model) local.model.set(msg.model)
+        // Model/variant are NOT mirrored here. The switcher is forward-looking
+        // and per-tab: current() already falls back to the last message's model
+        // when this tab has no pending pick, so no mirror is needed. Calling
+        // local.model.set here would create a spurious pending pick and defeat
+        // the pending indicator.
       },
     ),
   )

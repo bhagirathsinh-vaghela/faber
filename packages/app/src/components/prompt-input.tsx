@@ -2033,6 +2033,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <span class="truncate" style={{ color: "var(--model)" }}>
                           {local.model.current()?.name ?? language.t("dialog.model.select.title")}
                         </span>
+                        <Show when={local.model.pendingModel()}>
+                          <span
+                            class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
+                            title={language.t("model.pending")}
+                          />
+                        </Show>
                       </ModelSelectorPopover>
                     </TooltipKeybind>
                   </Show>
@@ -2047,15 +2053,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     title={language.t("command.model.variant.cycle")}
                     keybind={command.keybind("model.variant.cycle")}
                   >
-                    <Select
-                      options={["default", ...local.model.variant.list()]}
-                      current={local.model.variant.current() ?? "default"}
-                      label={(v) => (v === "default" ? language.t("common.default") : v)}
-                      onSelect={(v) => local.model.variant.set(v === "default" ? undefined : v)}
-                      class="capitalize max-w-[120px]"
-                      valueClass="truncate text-syntax-constant"
-                      variant="ghost"
-                    />
+                    <span class="inline-flex items-center">
+                      <Select
+                        options={["default", ...local.model.variant.list()]}
+                        current={local.model.variant.current() ?? "default"}
+                        label={(v) => (v === "default" ? language.t("common.default") : v)}
+                        onSelect={(v) => local.model.variant.set(v === "default" ? undefined : v)}
+                        class="capitalize max-w-[120px]"
+                        valueClass="truncate text-syntax-constant"
+                        variant="ghost"
+                      />
+                      <Show when={local.model.pendingVariant()}>
+                        <span
+                          class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
+                          title={language.t("model.pending")}
+                        />
+                      </Show>
+                    </span>
                   </TooltipKeybind>
                 </Show>
               </Match>
