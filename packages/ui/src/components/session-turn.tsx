@@ -429,10 +429,19 @@ export function SessionTurn(
   // clicking collapses to the one-line bar, clicking again expands.
   const [stuckExpanded, setStuckExpanded] = createSignal(true)
   const collapsed = () => true
-  // Display state for the sticky bar. `collapsePrompt` (zen mode) forces the
-  // one-line bar without touching the user's own toggle, so leaving zen reverts
-  // to whatever they had.
-  const stuckOpen = () => !props.collapsePrompt && stuckExpanded()
+  const stuckOpen = () => stuckExpanded()
+
+  // Entering zen (collapsePrompt true) seeds the one-line bar once; the chevron
+  // then drives stuckExpanded freely, so it can expand inside zen. A permanent
+  // override here would pin it collapsed and dead-toggle the chevron.
+  createEffect(
+    on(
+      () => props.collapsePrompt,
+      (collapse) => {
+        if (collapse) setStuckExpanded(false)
+      },
+    ),
+  )
 
   const updateStickyHeight = (height: number) => {
     const root = rootRef()
