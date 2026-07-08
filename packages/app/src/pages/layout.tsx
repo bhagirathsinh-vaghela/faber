@@ -1876,8 +1876,16 @@ export default function Layout(props: ParentProps) {
     })
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
-      const status = sessionStore.session_status[props.session.id]
-      return status?.type === "busy" || status?.type === "retry"
+      const busy = (id: string) => {
+        const status = sessionStore.session_status[id]
+        return status?.type === "busy" || status?.type === "retry"
+      }
+      if (busy(props.session.id)) return true
+
+      const childIDs =
+        props.children?.get(props.session.id) ??
+        sessionStore.session.filter((s) => s.parentID === props.session.id).map((s) => s.id)
+      return childIDs.some(busy)
     })
 
     const tint = createMemo(() => {

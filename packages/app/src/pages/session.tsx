@@ -35,6 +35,8 @@ import { BasicTool } from "@opencode-ai/ui/basic-tool"
 import { createAutoScroll } from "@opencode-ai/ui/hooks"
 import { SessionReview } from "@opencode-ai/ui/session-review"
 import { Mark } from "@opencode-ai/ui/logo"
+import { Spinner } from "@opencode-ai/ui/spinner"
+import { agentColor } from "@/utils/agent"
 
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
@@ -106,6 +108,15 @@ interface SessionReviewTabProps {
     container?: string
   }
 }
+
+// Squares that fill the zen busy bar — a full-width row of small rounded
+// squares pulsing opacity like the Spinner. Randomized once at module load so
+// the pulse looks organic, not lockstep. Count is generous so the row fills the
+// widest track; extras just clip off the end.
+const ZEN_BAR_SQUARES = Array.from({ length: 52 }, () => ({
+  delay: Math.random() * 1.2,
+  duration: 1 + Math.random(),
+}))
 
 function StickyAddButton(props: { children: JSX.Element }) {
   const [stuck, setStuck] = createSignal(false)
@@ -666,6 +677,19 @@ export default function Page() {
   )
 
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
+  const subtaskWorking = createMemo(() => {
+    if (!params.id) return false
+    return sync.data.session.some((s) => {
+      if (s.parentID !== params.id) return false
+      const child = sync.data.session_status[s.id]
+      return child?.type === "busy" || child?.type === "retry"
+    })
+  })
+  const titleWorking = createMemo(() => status().type !== "idle" || subtaskWorking())
+  const workingTint = createMemo(() => {
+    const agent = local.agent.current()
+    return agent ? agentColor(agent.name, agent.color) : undefined
+  })
 
   createEffect(
     on(
@@ -2337,6 +2361,12 @@ export default function Page() {
                                   when={renaming()}
                                   fallback={
                                     <div class="group/title flex items-center gap-1 min-w-0">
+                                      <Show when={titleWorking()}>
+                                        <Spinner
+                                          class="size-[15px] shrink-0"
+                                          style={{ color: workingTint() ?? "var(--icon-interactive-base)" }}
+                                        />
+                                      </Show>
                                       <h1 class="text-14-medium text-text-strong truncate" onDblClick={startRename}>
                                         {info()?.title}
                                       </h1>
@@ -2477,6 +2507,44 @@ export default function Page() {
                               )
                             }}
                           </For>
+                          {/* Zen hides the dock working indicator, so in zen the
+                              only busy cue is this bar trailing the last message.
+                              px-6 matches the message container inset so the bar's
+                              left edge aligns with the message text. Tint mirrors
+                              the dock indicator: agent color, plus a task-accent
+                              fill that cross-fades in while a subtask runs so the
+                              color oscillates the same way. */}
+                          <Show when={layout.zen.opened() && titleWorking()}>
+                            <div class="w-full px-6">
+                              <div
+                                class="zen-working-bar"
+                                style={{ "--stream-accent": workingTint() ?? "var(--icon-interactive-base)" }}
+                              >
+                                <span class="zen-working-bar-squares">
+                                  <For each={ZEN_BAR_SQUARES}>
+                                    {(sq) => (
+                                      <span
+                                        class="zen-working-bar-square"
+                                        style={{ "animation-delay": `${sq.delay}s`, "animation-duration": `${sq.duration}s` }}
+                                      />
+                                    )}
+                                  </For>
+                                </span>
+                                <Show when={subtaskWorking()}>
+                                  <span class="zen-working-bar-squares zen-working-bar-squares-task">
+                                    <For each={ZEN_BAR_SQUARES}>
+                                      {(sq) => (
+                                        <span
+                                          class="zen-working-bar-square"
+                                          style={{ "animation-delay": `${sq.delay}s`, "animation-duration": `${sq.duration}s` }}
+                                        />
+                                      )}
+                                    </For>
+                                  </span>
+                                </Show>
+                              </div>
+                            </div>
+                          </Show>
                         </div>
                       </div>
                     </div>

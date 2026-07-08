@@ -241,6 +241,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
   )
   const working = createMemo(() => status()?.type !== "idle")
+  const subtaskWorking = createMemo(() => {
+    if (!params.id) return false
+    return sync.data.session.some((s) => {
+      if (s.parentID !== params.id) return false
+      const child = sync.data.session_status[s.id]
+      return child?.type === "busy" || child?.type === "retry"
+    })
+  })
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
@@ -1942,18 +1950,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </div>
         <div class="relative px-3 pt-0 pb-0.5 md:py-1.5 flex items-center justify-between gap-2">
           <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!">
-            <Show when={working()}>
+            <Show when={working() || subtaskWorking()}>
               {/* Working indicator: the spinner sits ON TOP of a soft, diffuse
-                  agent-tinted glow that pulses behind it. */}
+                  agent-tinted glow that pulses behind it. While a subtask runs,
+                  a task-accent-tinted copy of both layers cross-fades over the
+                  base so the tint oscillates between the two colors. */}
               <span
                 class="dock-working-indicator mr-2"
                 style={{ "--dock-glow-tint": workingTint() ?? "var(--icon-interactive-base)" }}
               >
                 <span data-slot="dock-working-glow" class="dock-working-glow" />
+                <Show when={subtaskWorking()}>
+                  <span data-slot="dock-working-glow" class="dock-working-glow dock-working-glow-task" />
+                </Show>
                 <Spinner
                   class="dock-working-spinner"
                   style={{ color: workingTint() ?? "var(--icon-interactive-base)" }}
                 />
+                <Show when={subtaskWorking()}>
+                  <Spinner class="dock-working-spinner dock-working-spinner-task" />
+                </Show>
               </span>
             </Show>
             <Switch>
