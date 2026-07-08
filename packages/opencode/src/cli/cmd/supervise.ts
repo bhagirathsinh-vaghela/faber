@@ -59,22 +59,49 @@ export const SuperviseCommand = cmd({
       await proc.exited
     }
 
-    // PIDs of processes LISTENING on the port. lsof -Fpn field output is a flat
-    // list of `p<pid>` lines each followed by that pid's `n<name>` socket lines;
-    // a pid owns the port when one of its names ends `:<port>`. This parse is
-    // used instead of `-iTCP:<port>` because that arg form is unreliable on some
-    // lsof builds. LISTEN state excludes our own health-check client sockets.
-    async function listeners(port: number) {
-      const out = await new Response(spawn(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]).stdout)
+    async function run(cmd: string[]) {
+      return new Response(spawn(cmd, { stderr: "ignore" }).stdout)
         .text()
         .catch(() => "")
+    }
+
+    // ss -p prints LISTEN sockets with `users:(("proc",pid=NNN,fd=N))`; pull
+    // every pid on a row whose local address ends `:<port>`. The -p flag is
+    // required — without it ss emits no pid to match.
+    async function listenersSs(port: number) {
+      const out = await run(["ss", "-ltnHp"])
+      const pids: string[] = []
+      for (const line of out.split("\n")) {
+        const local = line.trim().split(/\s+/)[3] ?? ""
+        if (!local.endsWith(`:${port}`)) continue
+        for (const match of line.matchAll(/pid=(\d+)/g)) pids.push(match[1])
+      }
+      return pids
+    }
+
+    // lsof -Fpn output is flat: `p<pid>` lines each followed by that pid's
+    // `n<name>` socket lines; a pid owns the port when a name ends `:<port>`.
+    // The bare `-iTCP` form is used (not `-iTCP:<port>`) because the arg form
+    // is unreliable on some lsof builds.
+    async function listenersLsof(port: number) {
+      const out = await run(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"])
       const pids: string[] = []
       let pid = ""
       for (const line of out.split("\n")) {
         if (line[0] === "p") pid = line.slice(1)
-        else if (line[0] === "n" && line.endsWith(`:${port}`) && pid && pid !== String(process.pid)) pids.push(pid)
+        else if (line[0] === "n" && line.endsWith(`:${port}`) && pid) pids.push(pid)
       }
-      return [...new Set(pids)]
+      return pids
+    }
+
+    // PIDs LISTENING on the port, excluding this supervisor. ss is standard on
+    // Linux (and some containers have no lsof); lsof is the macOS path.
+    async function listeners(port: number) {
+      const which = await run(["sh", "-c", "command -v ss || true"])
+      const found = which.trim()
+        ? await listenersSs(port)
+        : await listenersLsof(port)
+      return [...new Set(found.filter((pid) => pid !== String(process.pid)))]
     }
 
     // Only used at bind time to reap an orphan left by a PRIOR supervisor that

@@ -28,16 +28,24 @@ import { WebCommand } from "./cli/cmd/web"
 import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
 
+// DOMException (e.g. an AbortError from a torn-down fetch/stream) is not an
+// Error instance, so `e.message` alone misses it and the raw object serializes
+// to "{}". Pull name+message off anything that carries them.
+function describe(e: unknown) {
+  if (e instanceof Error) return e.message
+  if (typeof e === "object" && e && "message" in e) {
+    const named = "name" in e ? `${(e as { name: unknown }).name}: ` : ""
+    return named + String((e as { message: unknown }).message)
+  }
+  return String(e)
+}
+
 process.on("unhandledRejection", (e) => {
-  Log.Default.error("rejection", {
-    e: e instanceof Error ? e.message : e,
-  })
+  Log.Default.error("rejection", { e: describe(e) })
 })
 
 process.on("uncaughtException", (e) => {
-  Log.Default.error("exception", {
-    e: e instanceof Error ? e.message : e,
-  })
+  Log.Default.error("exception", { e: describe(e) })
 })
 
 // Ensure clean exit when terminal closes or process is asked to terminate.

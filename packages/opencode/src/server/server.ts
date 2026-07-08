@@ -589,16 +589,17 @@ export namespace Server {
           async (c) => {
             log.info("event connected")
             return streamSSE(c, async (stream) => {
-              stream.writeSSE({
-                data: JSON.stringify({
-                  type: "server.connected",
-                  properties: {},
-                }),
-              })
+              // writeSSE rejects with an AbortError when the client disconnects
+              // or the server is torn down mid-write (e.g. a supervisor restart
+              // kills the process while this stream is open). That rejection is
+              // not an Error instance, so hono's streamSSE wrapper falls through
+              // to console.error and dumps the raw DOMException. Swallow it here
+              // — onAbort already handles teardown.
+              const send = (data: unknown) => stream.writeSSE({ data: JSON.stringify(data) }).catch(() => {})
+
+              send({ type: "server.connected", properties: {} })
               const unsub = Bus.subscribeAll(async (event) => {
-                await stream.writeSSE({
-                  data: JSON.stringify(event),
-                })
+                await send(event)
                 if (event.type === Bus.InstanceDisposed.type) {
                   stream.close()
                 }
@@ -606,12 +607,7 @@ export namespace Server {
 
               // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
               const heartbeat = setInterval(() => {
-                stream.writeSSE({
-                  data: JSON.stringify({
-                    type: "server.heartbeat",
-                    properties: {},
-                  }),
-                })
+                send({ type: "server.heartbeat", properties: {} })
               }, 30000)
 
               await new Promise<void>((resolve) => {
