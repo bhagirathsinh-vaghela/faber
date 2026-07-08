@@ -1640,6 +1640,26 @@ export default function Page() {
     },
   )
 
+  // Zen toggling swaps the message list's bottom padding (dock reservation vs
+  // safe-area), which changes scrollHeight under an unchanged scrollTop. The
+  // auto-scroll resize re-pin only runs while working/settling, so on an idle
+  // turn exiting zen leaves the last message cut off under the dock. If the
+  // user was following the bottom, re-pin after the padding swap lays out.
+  createEffect(
+    on(
+      () => layout.zen.opened(),
+      () => {
+        if (autoScroll.userScrolled()) return
+        const el = scroller
+        if (!el) return
+        requestAnimationFrame(() => {
+          el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
+        })
+      },
+      { defer: true },
+    ),
+  )
+
   const updateHash = (id: string) => {
     window.history.replaceState(null, "", `#${anchor(id)}`)
   }
