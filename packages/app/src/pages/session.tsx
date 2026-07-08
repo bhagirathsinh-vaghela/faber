@@ -109,15 +109,6 @@ interface SessionReviewTabProps {
   }
 }
 
-// Squares that fill the zen busy bar — a full-width row of small rounded
-// squares pulsing opacity like the Spinner. Randomized once at module load so
-// the pulse looks organic, not lockstep. Count is generous so the row fills the
-// widest track; extras just clip off the end.
-const ZEN_BAR_SQUARES = Array.from({ length: 52 }, () => ({
-  delay: Math.random() * 1.2,
-  duration: 1 + Math.random(),
-}))
-
 function StickyAddButton(props: { children: JSX.Element }) {
   const [stuck, setStuck] = createSignal(false)
   let button: HTMLDivElement | undefined
@@ -2538,38 +2529,21 @@ export default function Page() {
                           </For>
                           {/* Zen hides the dock working indicator, so in zen the
                               only busy cue is this bar trailing the last message.
-                              px-6 matches the message container inset so the bar's
-                              left edge aligns with the message text. Tint mirrors
-                              the dock indicator: agent color, plus a task-accent
-                              fill that cross-fades in while a subtask runs so the
-                              color oscillates the same way. */}
+                              px-3 (12px) matches the tool streaming bar's left
+                              inset so this bar lines up vertically with the tools'
+                              busy bars. Reuses the tool streaming bar's traveling
+                              band; tint mirrors the dock indicator: agent color,
+                              plus a task-accent band that cross-fades in while a
+                              subtask runs so the color oscillates the same way. */}
                           <Show when={layout.zen.opened() && titleWorking()}>
-                            <div class="w-full px-6">
+                            <div class="w-full px-3">
                               <div
                                 class="zen-working-bar"
                                 style={{ "--stream-accent": workingTint() ?? "var(--icon-interactive-base)" }}
                               >
-                                <span class="zen-working-bar-squares">
-                                  <For each={ZEN_BAR_SQUARES}>
-                                    {(sq) => (
-                                      <span
-                                        class="zen-working-bar-square"
-                                        style={{ "animation-delay": `${sq.delay}s`, "animation-duration": `${sq.duration}s` }}
-                                      />
-                                    )}
-                                  </For>
-                                </span>
+                                <span class="zen-working-bar-fill" />
                                 <Show when={subtaskWorking()}>
-                                  <span class="zen-working-bar-squares zen-working-bar-squares-task">
-                                    <For each={ZEN_BAR_SQUARES}>
-                                      {(sq) => (
-                                        <span
-                                          class="zen-working-bar-square"
-                                          style={{ "animation-delay": `${sq.delay}s`, "animation-duration": `${sq.duration}s` }}
-                                        />
-                                      )}
-                                    </For>
-                                  </span>
+                                  <span class="zen-working-bar-fill zen-working-bar-fill-task" />
                                 </Show>
                               </div>
                             </div>

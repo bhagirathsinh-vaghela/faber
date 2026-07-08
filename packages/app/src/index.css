@@ -197,48 +197,62 @@
   border-radius: 999px;
   overflow: hidden;
   background: color-mix(in srgb, var(--stream-accent, var(--icon-interactive-base)) 16%, transparent);
+  /* Whole bar gently breathes, matching the tool streaming bar. */
+  animation: zen-bar-breathe 2.4s ease-in-out infinite;
 }
 
-/* The fill is a full-width row of small rounded squares (like the Spinner),
-   each filling the full track height, spanning the whole track and pulsing
-   opacity in place — no travel. */
-.zen-working-bar-squares {
+/* A single soft highlight band that sweeps left <-> right continuously, exactly
+   like the tool streaming bar shown while a tool's args stream from the LLM. No
+   proportional fill (we can't know the total mid-turn); the traveling glide is
+   what reads as "actively working". Keyframes use transform/opacity only (no
+   custom properties inside @keyframes) to dodge the Lightning CSS bug. */
+.zen-working-bar-fill {
   position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-rows: 1fr;
-  grid-auto-flow: column;
-  grid-auto-columns: 4px;
-  align-content: stretch;
-  justify-content: space-between;
-  gap: 1px;
-  padding: 0 1px;
-  overflow: hidden;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 55%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--stream-accent, var(--icon-interactive-base)) 50%, transparent) 30%,
+    var(--stream-accent, var(--icon-interactive-base)) 50%,
+    color-mix(in srgb, var(--stream-accent, var(--icon-interactive-base)) 50%, transparent) 70%,
+    transparent 100%
+  );
+  will-change: transform;
+  animation: zen-bar-pulse 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
 }
 
-.zen-working-bar-square {
-  border-radius: 1px;
-  background: var(--stream-accent, var(--icon-interactive-base));
-  animation: zen-square-pulse 1.4s ease-in-out infinite;
+@keyframes zen-bar-pulse {
+  from {
+    transform: translateX(-25%);
+  }
+  to {
+    /* track is ~100/55 ≈ 182% of the band; leave a little inset at each end */
+    transform: translateX(107%);
+  }
 }
 
-/* Brighter than the Spinner's pulse-opacity (0.4<->1): a higher floor keeps the
-   squares vivid at full color while still breathing. */
-@keyframes zen-square-pulse {
+@keyframes zen-bar-breathe {
   0%,
   100% {
-    opacity: 0.72;
+    opacity: 0.85;
   }
   50% {
     opacity: 1;
   }
 }
 
-/* Task-accent copy of the square row, cross-fading over the base while a subtask
-   runs, so the tint oscillates agent-color <-> task-accent like the dock. */
-.zen-working-bar-squares-task {
+/* Task-accent copy of the traveling band, cross-fading over the base while a
+   subtask runs, so the tint oscillates agent-color <-> task-accent like the
+   dock. It rides the same sweep, so both bands move in lockstep. */
+.zen-working-bar-fill-task {
   --stream-accent: var(--box-accent-task);
-  animation: dock-task-fade 2.6s ease-in-out infinite;
+  animation:
+    zen-bar-pulse 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate,
+    dock-task-fade 2.6s ease-in-out infinite;
 }
 
 
@@ -248,12 +262,14 @@
     opacity: 0.85;
   }
 
-  .zen-working-bar-square {
+  .zen-working-bar-fill {
     animation: none;
+    /* Freeze the band centered so it still reads as a filled bar at rest. */
+    transform: translateX(41%);
     opacity: 0.85;
   }
 
-  .zen-working-bar-squares-task {
+  .zen-working-bar-fill-task {
     opacity: 0.5;
   }
 }
