@@ -125,7 +125,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       // picks something) and as the baseline for the pending indicator.
       const lastMessage = (sessionID: string) => sync.data.message[sessionID]?.findLast((m) => m.role === "user")
       const lastMessageModel = (sessionID: string) => lastMessage(sessionID)?.model
-      const lastMessageVariant = (sessionID: string) => lastMessage(sessionID)?.variant
 
       // The global default model = config.model (settings) → a connected
       // provider's default. The recent list is history for the picker only and
@@ -183,6 +182,32 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const sameModel = (a?: ModelKey, b?: ModelKey) =>
         !!a && !!b && a.providerID === b.providerID && a.modelID === b.modelID
 
+      // The variant that will actually ride on the next prompt, and the baseline
+      // the pending dot is measured against. A variant only makes sense relative
+      // to the model that offers it: undefined ("no variant") is always valid, a
+      // named variant must be a key in the current model's variants. Candidates
+      // are walked in priority order and the first the model offers wins; a pick
+      // the newly-switched model does not offer is skipped, so the variant resets
+      // to that model's global preference instead of carrying a meaningless value
+      // forward.
+      const resolveVariant = () => {
+        const m = current()
+        if (!m) return { value: undefined, baseline: undefined }
+        const offered = (value: string | undefined) => value === undefined || !!m.variants?.[value]
+        const pref = models.variant.get({ providerID: m.provider.id, modelID: m.id })
+        const base = offered(pref) ? pref : undefined
+        const id = activeSessionID()
+        if (id) {
+          const last = lastMessage(id)
+          const baseline = last && sameModel(last.model, { providerID: m.provider.id, modelID: m.id }) && offered(last.variant) ? last.variant : base
+          if (id in ephemeral.variantBySession && offered(ephemeral.variantBySession[id]))
+            return { value: ephemeral.variantBySession[id], baseline }
+          return { value: baseline, baseline }
+        }
+        if (ephemeral.variantSet && offered(ephemeral.variant)) return { value: ephemeral.variant, baseline: base }
+        return { value: base, baseline: base }
+      }
+
       const pendingModel = createMemo(() => {
         const id = activeSessionID()
         if (id) {
@@ -197,15 +222,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
 
       const pendingVariant = createMemo(() => {
-        const id = activeSessionID()
-        if (id) {
-          if (!(id in ephemeral.variantBySession)) return false
-          return ephemeral.variantBySession[id] !== lastMessageVariant(id)
-        }
-        if (!ephemeral.variantSet) return false
-        const m = current()
-        const globalVariant = m ? models.variant.get({ providerID: m.provider.id, modelID: m.id }) : undefined
-        return ephemeral.variant !== globalVariant
+        const resolved = resolveVariant()
+        return resolved.value !== resolved.baseline
       })
 
       const recent = createMemo(() => models.recent.list().map(models.find).filter(Boolean))
@@ -282,25 +300,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         },
         variant: {
           current() {
-            const m = current()
-            if (!m) return undefined
-            // Open session: this tab's pending variant pick for the session (key
-            // present — value may be undefined for an explicit "none"), else the
-            // variant the last turn actually ran (symmetric with model), else the
-            // global per-model preference. New-session surface: the global
-            // preference. The pick rides on the next prompt as input.variant; it
-            // is never written to the global preference.
-            const id = activeSessionID()
-            if (id) {
-              if (id in ephemeral.variantBySession) return ephemeral.variantBySession[id]
-              const last = lastMessageVariant(id)
-              if (last !== undefined) return last
-              return models.variant.get({ providerID: m.provider.id, modelID: m.id })
-            }
-            // New-session surface: this tab's pending variant pick, else the
-            // global per-model preference.
-            if (ephemeral.variantSet) return ephemeral.variant
-            return models.variant.get({ providerID: m.provider.id, modelID: m.id })
+            return resolveVariant().value
           },
           list() {
             const m = current()
