@@ -3578,7 +3578,7 @@
           }
         ],
         "summary": "Stop cache ping",
-        "description": "Stop the cache ping daemon for this session. Reopening the session re-arms it.",
+        "description": "Stop the cache ping daemon and drop the session's pinned prompt state. Reopening the session re-arms the ping and re-pins against current config.",
         "responses": {
           "200": {
             "description": "Ping daemon stopped",
@@ -4180,6 +4180,253 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.appearance.set({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/preference/themes": {
+      "get": {
+        "operationId": "preference.theme.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List user themes",
+        "description": "Get the server-owned named user themes (base + appearance overrides).",
+        "responses": {
+          "200": {
+            "description": "User themes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserTheme"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.theme.list({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "preference.theme.save",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Save a user theme",
+        "description": "Create or update a named user theme (upsert by id).",
+        "responses": {
+          "200": {
+            "description": "User theme saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserTheme"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.theme.save({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/preference/themes/{id}": {
+      "delete": {
+        "operationId": "preference.theme.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove a user theme",
+        "description": "Delete a named user theme by id.",
+        "responses": {
+          "200": {
+            "description": "User theme removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.theme.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/preference/themes/active": {
+      "get": {
+        "operationId": "preference.theme.getActive",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get active theme",
+        "description": "Get the id of the active user theme, or null.",
+        "responses": {
+          "200": {
+            "description": "Active theme id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.theme.getActive({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "preference.theme.setActive",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Set active theme",
+        "description": "Set the active user theme id (null clears it).",
+        "responses": {
+          "200": {
+            "description": "Active theme updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.theme.setActive({\n  ...\n})"
           }
         ]
       }
@@ -10106,26 +10353,22 @@
           "properties"
         ]
       },
-      "Event.session.ping.armed": {
+      "Event.tui.prompt.append": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "session.ping.armed"
+            "const": "tui.prompt.append"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "sessionID": {
+              "text": {
                 "type": "string"
-              },
-              "armed": {
-                "type": "boolean"
               }
             },
             "required": [
-              "sessionID",
-              "armed"
+              "text"
             ]
           }
         },
@@ -10134,22 +10377,205 @@
           "properties"
         ]
       },
-      "Event.session.compacted": {
+      "Event.tui.command.execute": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "session.compacted"
+            "const": "tui.command.execute"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "session.list",
+                      "session.new",
+                      "session.share",
+                      "session.interrupt",
+                      "session.compact",
+                      "session.page.up",
+                      "session.page.down",
+                      "session.line.up",
+                      "session.line.down",
+                      "session.half.page.up",
+                      "session.half.page.down",
+                      "session.first",
+                      "session.last",
+                      "prompt.clear",
+                      "prompt.submit",
+                      "agent.cycle"
+                    ]
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "command"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.tui.toast.show": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tui.toast.show"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "variant": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "success",
+                  "warning",
+                  "error"
+                ]
+              },
+              "duration": {
+                "description": "Duration in milliseconds",
+                "default": 5000,
+                "type": "number"
+              }
+            },
+            "required": [
+              "message",
+              "variant"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.tui.session.select": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tui.session.select"
           },
           "properties": {
             "type": "object",
             "properties": {
               "sessionID": {
-                "type": "string"
+                "description": "Session ID to navigate to",
+                "type": "string",
+                "pattern": "^ses"
               }
             },
             "required": [
               "sessionID"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.mcp.tools.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.tools.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "server"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.mcp.browser.open.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.browser.open.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "mcpName": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mcpName",
+              "url"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "arguments": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": [
+              "name",
+              "sessionID",
+              "arguments",
+              "messageID"
             ]
           }
         },
@@ -10610,229 +11036,50 @@
           "properties"
         ]
       },
-      "Event.tui.prompt.append": {
+      "Event.session.ping.armed": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "tui.prompt.append"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "text"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.tui.command.execute": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "tui.command.execute"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "command": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "enum": [
-                      "session.list",
-                      "session.new",
-                      "session.share",
-                      "session.interrupt",
-                      "session.compact",
-                      "session.page.up",
-                      "session.page.down",
-                      "session.line.up",
-                      "session.line.down",
-                      "session.half.page.up",
-                      "session.half.page.down",
-                      "session.first",
-                      "session.last",
-                      "prompt.clear",
-                      "prompt.submit",
-                      "agent.cycle"
-                    ]
-                  },
-                  {
-                    "type": "string"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "command"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.tui.toast.show": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "tui.toast.show"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "title": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              },
-              "variant": {
-                "type": "string",
-                "enum": [
-                  "info",
-                  "success",
-                  "warning",
-                  "error"
-                ]
-              },
-              "duration": {
-                "description": "Duration in milliseconds",
-                "default": 5000,
-                "type": "number"
-              }
-            },
-            "required": [
-              "message",
-              "variant"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.tui.session.select": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "tui.session.select"
+            "const": "session.ping.armed"
           },
           "properties": {
             "type": "object",
             "properties": {
               "sessionID": {
-                "description": "Session ID to navigate to",
-                "type": "string",
-                "pattern": "^ses"
+                "type": "string"
+              },
+              "armed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sessionID",
+              "armed"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.compacted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.compacted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
               }
             },
             "required": [
               "sessionID"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.mcp.tools.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.tools.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "server"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.mcp.browser.open.failed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.browser.open.failed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "mcpName": {
-                "type": "string"
-              },
-              "url": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "mcpName",
-              "url"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.command.executed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "command.executed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "sessionID": {
-                "type": "string",
-                "pattern": "^ses.*"
-              },
-              "arguments": {
-                "type": "string"
-              },
-              "messageID": {
-                "type": "string",
-                "pattern": "^msg.*"
-              }
-            },
-            "required": [
-              "name",
-              "sessionID",
-              "arguments",
-              "messageID"
             ]
           }
         },
@@ -11311,10 +11558,16 @@
                 }
               }
             },
-            "required": ["desktop", "mobile"]
+            "required": [
+              "desktop",
+              "mobile"
+            ]
           }
         },
-        "required": ["type", "properties"]
+        "required": [
+          "type",
+          "properties"
+        ]
       },
       "Pty": {
         "type": "object",
@@ -11680,6 +11933,145 @@
           "properties"
         ]
       },
+      "UserTheme": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "baseId": {
+            "type": "string"
+          },
+          "fontSize": {
+            "type": "number"
+          },
+          "font": {
+            "type": "string"
+          },
+          "codeFont": {
+            "type": "string"
+          },
+          "codeTheme": {
+            "type": "string"
+          },
+          "diffTheme": {
+            "type": "string"
+          },
+          "fontWeight": {
+            "type": "number"
+          },
+          "headingWeight": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "overrides": {
+            "type": "object",
+            "properties": {
+              "light": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "dark": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "light",
+              "dark"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "baseId",
+          "fontSize",
+          "font",
+          "codeFont",
+          "codeTheme",
+          "diffTheme",
+          "fontWeight",
+          "headingWeight",
+          "overrides"
+        ]
+      },
+      "Event.theme.preference.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "theme.preference.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "themes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UserTheme"
+                }
+              }
+            },
+            "required": [
+              "themes"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.theme.preference.active-updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "theme.preference.active-updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "active": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "active"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "StashEntry": {
         "type": "object",
         "properties": {
@@ -11798,10 +12190,25 @@
             "$ref": "#/components/schemas/Event.question.rejected"
           },
           {
-            "$ref": "#/components/schemas/Event.session.ping.armed"
+            "$ref": "#/components/schemas/Event.tui.prompt.append"
           },
           {
-            "$ref": "#/components/schemas/Event.session.compacted"
+            "$ref": "#/components/schemas/Event.tui.command.execute"
+          },
+          {
+            "$ref": "#/components/schemas/Event.tui.toast.show"
+          },
+          {
+            "$ref": "#/components/schemas/Event.tui.session.select"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.tools.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.browser.open.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.command.executed"
           },
           {
             "$ref": "#/components/schemas/Event.background.task.created"
@@ -11822,25 +12229,10 @@
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.tui.prompt.append"
+            "$ref": "#/components/schemas/Event.session.ping.armed"
           },
           {
-            "$ref": "#/components/schemas/Event.tui.command.execute"
-          },
-          {
-            "$ref": "#/components/schemas/Event.tui.toast.show"
-          },
-          {
-            "$ref": "#/components/schemas/Event.tui.session.select"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.tools.changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.browser.open.failed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.command.executed"
+            "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"
@@ -11883,6 +12275,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.appearance.preference.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.theme.preference.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.theme.preference.active-updated"
           },
           {
             "$ref": "#/components/schemas/Event.stash.updated"

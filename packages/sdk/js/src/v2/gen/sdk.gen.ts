@@ -107,6 +107,14 @@ import type {
   PreferenceStashPushResponses,
   PreferenceStashRemoveErrors,
   PreferenceStashRemoveResponses,
+  PreferenceThemeGetActiveResponses,
+  PreferenceThemeListResponses,
+  PreferenceThemeRemoveErrors,
+  PreferenceThemeRemoveResponses,
+  PreferenceThemeSaveErrors,
+  PreferenceThemeSaveResponses,
+  PreferenceThemeSetActiveErrors,
+  PreferenceThemeSetActiveResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -209,6 +217,7 @@ import type {
   TuiSelectSessionResponses,
   TuiShowToastResponses,
   TuiSubmitPromptResponses,
+  UserTheme,
   VcsGetResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
@@ -2334,6 +2343,154 @@ export class Appearance extends HeyApiClient {
   }
 }
 
+export class Theme extends HeyApiClient {
+  /**
+   * List user themes
+   *
+   * Get the server-owned named user themes (base + appearance overrides).
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PreferenceThemeListResponses, unknown, ThrowOnError>({
+      url: "/preference/themes",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save a user theme
+   *
+   * Create or update a named user theme (upsert by id).
+   */
+  public save<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      userTheme?: UserTheme
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "userTheme", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<PreferenceThemeSaveResponses, PreferenceThemeSaveErrors, ThrowOnError>({
+      url: "/preference/themes",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a user theme
+   *
+   * Delete a named user theme by id.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      PreferenceThemeRemoveResponses,
+      PreferenceThemeRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/preference/themes/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get active theme
+   *
+   * Get the id of the active user theme, or null.
+   */
+  public getActive<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PreferenceThemeGetActiveResponses, unknown, ThrowOnError>({
+      url: "/preference/themes/active",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set active theme
+   *
+   * Set the active user theme id (null clears it).
+   */
+  public setActive<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      id?: string | null
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      PreferenceThemeSetActiveResponses,
+      PreferenceThemeSetActiveErrors,
+      ThrowOnError
+    >({
+      url: "/preference/themes/active",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Stash extends HeyApiClient {
   /**
    * List stash entries
@@ -2435,6 +2592,11 @@ export class Preference extends HeyApiClient {
   private _appearance?: Appearance
   get appearance(): Appearance {
     return (this._appearance ??= new Appearance({ client: this.client }))
+  }
+
+  private _theme?: Theme
+  get theme(): Theme {
+    return (this._theme ??= new Theme({ client: this.client }))
   }
 
   private _stash?: Stash

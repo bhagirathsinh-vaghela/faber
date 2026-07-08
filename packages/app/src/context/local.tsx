@@ -199,7 +199,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const id = activeSessionID()
         if (id) {
           const last = lastMessage(id)
-          const baseline = last && sameModel(last.model, { providerID: m.provider.id, modelID: m.id }) && offered(last.variant) ? last.variant : base
+          const baseline =
+            last && sameModel(last.model, { providerID: m.provider.id, modelID: m.id }) && offered(last.variant)
+              ? last.variant
+              : base
           if (id in ephemeral.variantBySession && offered(ephemeral.variantBySession[id]))
             return { value: ephemeral.variantBySession[id], baseline }
           return { value: baseline, baseline }

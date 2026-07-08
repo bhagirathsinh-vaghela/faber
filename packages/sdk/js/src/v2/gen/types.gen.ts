@@ -1137,6 +1137,43 @@ export type EventAppearancePreferenceUpdated = {
   properties: AppearancePreference
 }
 
+export type UserTheme = {
+  id: string
+  name: string
+  baseId: string
+  fontSize: number
+  font: string
+  codeFont: string
+  codeTheme: string
+  diffTheme: string
+  fontWeight: number
+  headingWeight: {
+    [key: string]: number
+  }
+  overrides: {
+    light: {
+      [key: string]: string
+    }
+    dark: {
+      [key: string]: string
+    }
+  }
+}
+
+export type EventThemePreferenceUpdated = {
+  type: "theme.preference.updated"
+  properties: {
+    themes: Array<UserTheme>
+  }
+}
+
+export type EventThemePreferenceActiveUpdated = {
+  type: "theme.preference.active-updated"
+  properties: {
+    active: string | null
+  }
+}
+
 export type StashEntry = {
   prompt: Array<unknown>
   timestamp: number
@@ -1203,6 +1240,8 @@ export type Event =
   | EventWorktreeFailed
   | EventModelPreferenceUpdated
   | EventAppearancePreferenceUpdated
+  | EventThemePreferenceUpdated
+  | EventThemePreferenceActiveUpdated
   | EventStashUpdated
 
 export type GlobalEvent = {
@@ -4659,6 +4698,129 @@ export type PreferenceAppearanceSetResponses = {
 }
 
 export type PreferenceAppearanceSetResponse = PreferenceAppearanceSetResponses[keyof PreferenceAppearanceSetResponses]
+
+export type PreferenceThemeListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/themes"
+}
+
+export type PreferenceThemeListResponses = {
+  /**
+   * User themes
+   */
+  200: Array<UserTheme>
+}
+
+export type PreferenceThemeListResponse = PreferenceThemeListResponses[keyof PreferenceThemeListResponses]
+
+export type PreferenceThemeSaveData = {
+  body?: UserTheme
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/themes"
+}
+
+export type PreferenceThemeSaveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceThemeSaveError = PreferenceThemeSaveErrors[keyof PreferenceThemeSaveErrors]
+
+export type PreferenceThemeSaveResponses = {
+  /**
+   * User theme saved
+   */
+  200: boolean
+}
+
+export type PreferenceThemeSaveResponse = PreferenceThemeSaveResponses[keyof PreferenceThemeSaveResponses]
+
+export type PreferenceThemeRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/preference/themes/{id}"
+}
+
+export type PreferenceThemeRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceThemeRemoveError = PreferenceThemeRemoveErrors[keyof PreferenceThemeRemoveErrors]
+
+export type PreferenceThemeRemoveResponses = {
+  /**
+   * User theme removed
+   */
+  200: boolean
+}
+
+export type PreferenceThemeRemoveResponse = PreferenceThemeRemoveResponses[keyof PreferenceThemeRemoveResponses]
+
+export type PreferenceThemeGetActiveData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/themes/active"
+}
+
+export type PreferenceThemeGetActiveResponses = {
+  /**
+   * Active theme id
+   */
+  200: string | null
+}
+
+export type PreferenceThemeGetActiveResponse =
+  PreferenceThemeGetActiveResponses[keyof PreferenceThemeGetActiveResponses]
+
+export type PreferenceThemeSetActiveData = {
+  body?: {
+    id: string | null
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/themes/active"
+}
+
+export type PreferenceThemeSetActiveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceThemeSetActiveError = PreferenceThemeSetActiveErrors[keyof PreferenceThemeSetActiveErrors]
+
+export type PreferenceThemeSetActiveResponses = {
+  /**
+   * Active theme updated
+   */
+  200: boolean
+}
+
+export type PreferenceThemeSetActiveResponse =
+  PreferenceThemeSetActiveResponses[keyof PreferenceThemeSetActiveResponses]
 
 export type PreferenceStashListData = {
   body?: never

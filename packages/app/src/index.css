@@ -255,7 +255,6 @@
     dock-task-fade 2.6s ease-in-out infinite;
 }
 
-
 @media (prefers-reduced-motion: reduce) {
   .zen-working-bar {
     animation: none;

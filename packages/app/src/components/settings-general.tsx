@@ -95,9 +95,20 @@ export const SettingsGeneral: Component = () => {
       .finally(() => setStore("checking", false))
   }
 
-  const themeOptions = createMemo(() =>
-    Object.entries(theme.themes()).map(([id, def]) => ({ id, name: def.name ?? id })),
-  )
+  // Built-in bases first, then the user's named themes. `user` marks which
+  // branch a selection takes: user themes apply via the settings context (base +
+  // overrides); built-ins go straight to the theme provider.
+  const themeOptions = createMemo(() => [
+    ...Object.entries(theme.themes()).map(([id, def]) => ({ id, name: def.name ?? id, user: false })),
+    ...settings.themes.list().map((t) => ({ id: t.id, name: t.name, user: true })),
+  ])
+
+  const currentThemeOption = createMemo(() => {
+    const opts = themeOptions()
+    const activeUser = settings.themes.activeID()
+    if (activeUser) return opts.find((o) => o.user && o.id === activeUser)
+    return opts.find((o) => !o.user && o.id === theme.themeId())
+  })
 
   const colorSchemeOptions = createMemo((): { value: ColorScheme; label: string }[] => [
     { value: "system", label: language.t("theme.scheme.system") },
@@ -179,15 +190,19 @@ export const SettingsGeneral: Component = () => {
               <Select
                 data-action="settings-theme"
                 options={themeOptions()}
-                current={themeOptions().find((o) => o.id === theme.themeId())}
+                current={currentThemeOption()}
                 value={(o) => o.id}
                 label={(o) => o.name}
                 onSelect={(option) => {
                   if (!option) return
-                  theme.setTheme(option.id)
+                  if (option.user) settings.themes.select(option.id)
+                  else settings.themes.selectBase(option.id)
                 }}
                 onHighlight={(option) => {
-                  if (!option) return
+                  // Skip hover-preview for user themes, and while a user theme is
+                  // active: its inline overrides would mask the previewed base, so
+                  // the preview would look identical and mislead. Click still switches.
+                  if (!option || option.user || settings.themes.activeID()) return
                   theme.previewTheme(option.id)
                   return () => theme.cancelPreview()
                 }}

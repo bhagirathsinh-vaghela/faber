@@ -43,6 +43,22 @@
   --box-accent-task: var(--color-icon-warning-base);
   --box-accent-tool: var(--ink-dark-11, #b1b7b7);
 
+  /* Explicit per-box border + fill tokens. Defaults reproduce the derived
+     accent-box look (border = accent 80% / fill = accent 7%, mixed into the
+     solid panel backdrop so the fill stays opaque and flicker-free). Set any
+     of these in Customization to override border and background independently
+     of the accent. */
+  --box-backdrop: var(--color-background-strong, #010409);
+  --box-accent-user: var(--color-icon-agent-build-base);
+  --box-border-user: color-mix(in srgb, var(--box-accent-user) 80%, var(--box-backdrop));
+  --box-bg-user: color-mix(in srgb, var(--box-accent-user) 7%, var(--box-backdrop));
+  --box-border-assistant: color-mix(in srgb, var(--box-accent-assistant) 80%, var(--box-backdrop));
+  --box-bg-assistant: color-mix(in srgb, var(--box-accent-assistant) 7%, var(--box-backdrop));
+  --box-border-task: color-mix(in srgb, var(--box-accent-task) 80%, var(--box-backdrop));
+  --box-bg-task: color-mix(in srgb, var(--box-accent-task) 7%, var(--box-backdrop));
+  --box-border-tool: color-mix(in srgb, var(--box-accent-tool) 80%, var(--box-backdrop));
+  --box-bg-tool: color-mix(in srgb, var(--box-accent-tool) 7%, var(--box-backdrop));
+
   /* Markdown heading scale + weight (themable). Weight is per-level so each
      heading's thickness is independently customizable; --markdown-heading-weight
      stays as the shared default the per-level tokens fall back to. */

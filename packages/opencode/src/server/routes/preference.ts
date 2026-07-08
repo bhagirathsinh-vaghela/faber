@@ -3,6 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { ModelPreference } from "@/preference/model"
 import { AppearancePreference } from "@/preference/appearance"
+import { ThemePreference } from "@/preference/theme"
 import { Stash } from "@/preference/stash"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
@@ -96,6 +97,120 @@ export const PreferenceRoutes = lazy(() =>
       validator("json", AppearancePreference.Info),
       async (c) => {
         await AppearancePreference.set(c.req.valid("json"))
+        return c.json(true)
+      },
+    )
+    .get(
+      "/themes",
+      describeRoute({
+        summary: "List user themes",
+        description: "Get the server-owned named user themes (base + appearance overrides).",
+        operationId: "preference.theme.list",
+        responses: {
+          200: {
+            description: "User themes",
+            content: {
+              "application/json": {
+                schema: resolver(ThemePreference.Info.array()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await ThemePreference.list())
+      },
+    )
+    .put(
+      "/themes",
+      describeRoute({
+        summary: "Save a user theme",
+        description: "Create or update a named user theme (upsert by id).",
+        operationId: "preference.theme.save",
+        responses: {
+          200: {
+            description: "User theme saved",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", ThemePreference.Info),
+      async (c) => {
+        await ThemePreference.save(c.req.valid("json"))
+        return c.json(true)
+      },
+    )
+    .delete(
+      "/themes/:id",
+      describeRoute({
+        summary: "Remove a user theme",
+        description: "Delete a named user theme by id.",
+        operationId: "preference.theme.remove",
+        responses: {
+          200: {
+            description: "User theme removed",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("param", z.object({ id: z.string() })),
+      async (c) => {
+        await ThemePreference.remove({ id: c.req.valid("param").id })
+        return c.json(true)
+      },
+    )
+    .get(
+      "/themes/active",
+      describeRoute({
+        summary: "Get active theme",
+        description: "Get the id of the active user theme, or null.",
+        operationId: "preference.theme.getActive",
+        responses: {
+          200: {
+            description: "Active theme id",
+            content: {
+              "application/json": {
+                schema: resolver(z.string().nullable()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await ThemePreference.getActive())
+      },
+    )
+    .put(
+      "/themes/active",
+      describeRoute({
+        summary: "Set active theme",
+        description: "Set the active user theme id (null clears it).",
+        operationId: "preference.theme.setActive",
+        responses: {
+          200: {
+            description: "Active theme updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", z.object({ id: z.string().nullable() })),
+      async (c) => {
+        await ThemePreference.setActive({ id: c.req.valid("json").id })
         return c.json(true)
       },
     )

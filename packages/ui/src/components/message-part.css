@@ -50,10 +50,15 @@
      under GPU compositing; mixing into the solid backdrop composites once. */
   --box-fill-strength: 7%;
   --box-backdrop: var(--color-background-strong, #010409);
+  /* Border and fill are now driven by explicit --box-border / --box-bg, which
+     each box type points at its per-type token (assistant/task/tool). They fall
+     back to the accent-derived mix so any box that only sets --box-accent still
+     renders the original look. */
   --box-fill: color-mix(in srgb, var(--box-accent) var(--box-fill-strength), var(--box-backdrop));
-  border: 1px solid color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop));
+  border: 1px solid
+    var(--box-border, color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop)));
   border-radius: 8px;
-  background: var(--box-fill);
+  background: var(--box-bg, var(--box-fill));
 }
 
 [data-component="assistant-message"] {
@@ -664,8 +669,15 @@ a[data-component="tool-action"]:hover {
     --box-border-strength: 80%;
     --box-fill-strength: 7%;
     --box-backdrop: var(--color-background-strong, #010409);
-    border-color: color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop));
-    background-color: color-mix(in srgb, var(--box-accent) var(--box-fill-strength), var(--box-backdrop));
+    /* Explicit tool border/bg tokens win; default to the accent-derived mix. */
+    border-color: var(
+      --box-border-tool,
+      color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop))
+    );
+    background-color: var(
+      --box-bg-tool,
+      color-mix(in srgb, var(--box-accent) var(--box-fill-strength), var(--box-backdrop))
+    );
   }
 
   &[data-permission="true"],

@@ -74,9 +74,7 @@ export const SuperviseCommand = cmd({
     }
 
     async function run(cmd: string[]) {
-      return new Response(spawn(cmd, { stderr: "ignore" }).stdout)
-        .text()
-        .catch(() => "")
+      return new Response(spawn(cmd, { stderr: "ignore" }).stdout).text().catch(() => "")
     }
 
     // ss -p prints LISTEN sockets with `users:(("proc",pid=NNN,fd=N))`; pull
@@ -112,9 +110,7 @@ export const SuperviseCommand = cmd({
     // Linux (and some containers have no lsof); lsof is the macOS path.
     async function listeners(port: number) {
       const which = await run(["sh", "-c", "command -v ss || true"])
-      const found = which.trim()
-        ? await listenersSs(port)
-        : await listenersLsof(port)
+      const found = which.trim() ? await listenersSs(port) : await listenersLsof(port)
       return [...new Set(found.filter((pid) => pid !== String(process.pid)))]
     }
 
@@ -326,8 +322,7 @@ export const SuperviseCommand = cmd({
       idleTimeout: 255,
       async fetch(req) {
         const url = new URL(req.url)
-        if (url.pathname === "/")
-          return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8" } })
+        if (url.pathname === "/") return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         if (url.pathname === "/status")
           return Response.json({ port: PORT, owned: !!current, pid: current?.pid ?? null, health: await health(PORT) })
         if (url.pathname === "/restart" && req.method === "POST") return Response.json(await restart())

@@ -1,6 +1,7 @@
 import { Component, For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { Select } from "@opencode-ai/ui/select"
 import { Button } from "@opencode-ai/ui/button"
+import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { useTheme } from "@opencode-ai/ui/theme"
 import { useLanguage } from "@/context/language"
 import { useSettings, monoFontFamily } from "@/context/settings"
@@ -10,7 +11,19 @@ import { SettingsRow } from "./settings-row"
 // Read a token's current effective value off the document (override or theme).
 function computed(token: string): string {
   if (typeof document === "undefined") return ""
-  return getComputedStyle(document.documentElement).getPropertyValue(token).trim()
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(token).trim()
+  // getPropertyValue returns the RAW declared value, so a token whose default is
+  // a var() chain or a color-mix() (e.g. the box bg/border tokens) comes back as
+  // an unparseable expression. Resolve it to a concrete rgb() by letting the
+  // browser evaluate it as a `color` on a throwaway element.
+  if (!raw || (!raw.includes("var(") && !raw.includes("color-mix("))) return raw
+  const probe = document.createElement("span")
+  probe.style.color = `var(${token})`
+  probe.style.display = "none"
+  document.documentElement.appendChild(probe)
+  const resolved = getComputedStyle(probe).color
+  probe.remove()
+  return resolved || raw
 }
 
 // Normalize any CSS color the browser understands to #rrggbb for the native
@@ -124,6 +137,27 @@ export const SettingsCustomization: Component = () => {
   const theme = useTheme()
   const language = useLanguage()
   const [query, setQuery] = createSignal("")
+  // Inline name prompt for Save-as / Rename / Duplicate. `naming` holds which
+  // action is in flight; `nameInput` is the field value.
+  const [naming, setNaming] = createSignal<"saveAs" | "rename" | "duplicate" | null>(null)
+  const [nameInput, setNameInput] = createSignal("")
+
+  const commitName = () => {
+    const name = nameInput().trim()
+    const action = naming()
+    if (!name || !action) return setNaming(null)
+    if (action === "saveAs") settings.themes.saveAs(name)
+    if (action === "rename") {
+      const id = settings.themes.activeID()
+      if (id) settings.themes.rename(id, name)
+    }
+    if (action === "duplicate") {
+      const id = settings.themes.activeID()
+      if (id) settings.themes.duplicate(id, name)
+    }
+    setNaming(null)
+    setNameInput("")
+  }
 
   const mode = () => theme.mode()
 
@@ -162,7 +196,15 @@ export const SettingsCustomization: Component = () => {
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-raised-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
         <div class="flex flex-col gap-3 pt-6 pb-4">
           <div class="flex items-center justify-between gap-4">
-            <h2 class="text-16-medium text-text-strong">{language.t("settings.tab.customization")}</h2>
+            <div class="flex items-baseline gap-2 min-w-0">
+              <h2 class="text-16-medium text-text-strong shrink-0">{language.t("settings.tab.customization")}</h2>
+              <span class="text-12-regular text-text-weak truncate">
+                {settings.themes.activeName()}
+                <Show when={settings.themes.dirty()}>
+                  <span class="text-text-warning-base"> •</span>
+                </Show>
+              </span>
+            </div>
             <div class="flex items-center gap-2">
               <Button variant="ghost" size="small" onClick={() => settings.overrides.resetAll(mode())}>
                 {language.t("settings.customization.resetAll")}
@@ -170,21 +212,97 @@ export const SettingsCustomization: Component = () => {
               <Button
                 variant="secondary"
                 size="small"
-                disabled={!settings.appearance.dirty()}
-                onClick={() => settings.appearance.discard()}
+                disabled={!settings.themes.dirty()}
+                onClick={() => settings.themes.discard()}
               >
                 {language.t("settings.customization.discard")}
               </Button>
-              <Button
-                variant="primary"
-                size="small"
-                disabled={!settings.appearance.dirty()}
-                onClick={() => settings.appearance.save()}
-              >
-                {language.t("settings.customization.save")}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenu.Trigger as={Button} variant="primary" size="small" disabled={!settings.themes.dirty()}>
+                  {language.t("settings.customization.save")}
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content class="mt-1">
+                    <Show when={settings.themes.activeID()}>
+                      <DropdownMenu.Item onSelect={() => settings.themes.saveOver()}>
+                        <DropdownMenu.ItemLabel>Save to “{settings.themes.activeName()}”</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                    </Show>
+                    <Show when={!settings.themes.activeID()}>
+                      <DropdownMenu.Item onSelect={() => settings.themes.saveToCustomized()}>
+                        <DropdownMenu.ItemLabel>Save as “{settings.themes.activeName()}”</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                    </Show>
+                    <DropdownMenu.Item
+                      onSelect={() => {
+                        setNameInput("")
+                        setNaming("saveAs")
+                      }}
+                    >
+                      <DropdownMenu.ItemLabel>Save as new theme…</DropdownMenu.ItemLabel>
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu>
+              <Show when={settings.themes.activeID()}>
+                <DropdownMenu>
+                  <DropdownMenu.Trigger as={Button} variant="secondary" size="small">
+                    ⋯
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content class="mt-1">
+                      <DropdownMenu.Item
+                        onSelect={() => {
+                          setNameInput(`${settings.themes.activeName()} copy`)
+                          setNaming("duplicate")
+                        }}
+                      >
+                        <DropdownMenu.ItemLabel>Duplicate…</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        onSelect={() => {
+                          setNameInput(settings.themes.activeName())
+                          setNaming("rename")
+                        }}
+                      >
+                        <DropdownMenu.ItemLabel>Rename…</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        onSelect={() => {
+                          const id = settings.themes.activeID()
+                          if (id) settings.themes.remove(id)
+                        }}
+                      >
+                        <DropdownMenu.ItemLabel>Delete</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu>
+              </Show>
             </div>
           </div>
+          <Show when={naming()}>
+            <div class="flex items-center gap-2">
+              <input
+                type="text"
+                autofocus
+                placeholder="Theme name"
+                class="flex-1 px-3 py-1.5 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+                value={nameInput()}
+                onInput={(e) => setNameInput(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitName()
+                  if (e.key === "Escape") setNaming(null)
+                }}
+              />
+              <Button variant="primary" size="small" onClick={commitName}>
+                {language.t("common.save") ?? "Save"}
+              </Button>
+              <Button variant="ghost" size="small" onClick={() => setNaming(null)}>
+                {language.t("common.cancel") ?? "Cancel"}
+              </Button>
+            </div>
+          </Show>
           <div class="flex items-center justify-between gap-4">
             <span class="text-12-regular text-text-weak">
               {language.t("settings.customization.modeNote")} <b class="text-text-strong">{mode()}</b>

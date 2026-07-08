@@ -104,18 +104,6 @@ export interface MessageProps {
   onJump?: () => void
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  ask: "var(--color-icon-agent-ask-base)",
-  build: "var(--color-icon-agent-build-base)",
-  docs: "var(--color-icon-agent-docs-base)",
-  plan: "var(--color-icon-agent-plan-base)",
-}
-
-function messageAgentColor(name: string | undefined): string {
-  if (!name) return "var(--color-icon-agent-build-base)"
-  return AGENT_COLORS[name] ?? AGENT_COLORS[name.toLowerCase()] ?? "var(--color-icon-agent-build-base)"
-}
-
 function messageTime(ms: number): string {
   const d = new Date(ms)
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`
@@ -531,8 +519,16 @@ export function MessageBox(props: {
     })
   }
   const number = createMemo(() => data.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id))
-  const accent =
-    props.accent ?? (isUser ? messageAgentColor((props.message as any).agent) : "var(--box-accent-assistant)")
+  const accent = props.accent ?? (isUser ? "var(--box-accent-user)" : "var(--box-accent-assistant)")
+  // User and assistant boxes each get explicit, independently-customizable
+  // border/bg tokens (user matches the assistant scheme with its own fixed
+  // token set — no per-agent color). A caller-supplied accent (props.accent)
+  // opts out and falls back to accent-derived border/bg in .accent-box.
+  const boxTokens = props.accent
+    ? {}
+    : isUser
+      ? { "--box-border": "var(--box-border-user)", "--box-bg": "var(--box-bg-user)" }
+      : { "--box-border": "var(--box-border-assistant)", "--box-bg": "var(--box-bg-assistant)" }
   return (
     <div
       data-component="message-box"
@@ -543,6 +539,7 @@ export function MessageBox(props: {
         // supplies its accent + its own padding. Inter-box spacing comes from
         // the turn list's `gap`, same as tool boxes — no own bottom margin.
         "--box-accent": accent,
+        ...boxTokens,
         padding: "0.5rem 0.75rem",
       }}
     >
@@ -1329,6 +1326,8 @@ ToolRegistry.register({
               class="accent-box"
               style={{
                 "--box-accent": TASK_ACCENT,
+                "--box-border": "var(--box-border-task)",
+                "--box-bg": "var(--box-bg-task)",
                 padding: "0.5rem 0.75rem",
               }}
             >

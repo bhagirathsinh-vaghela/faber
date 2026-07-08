@@ -103,6 +103,30 @@ export interface Appearance {
   overrides: { light: Record<string, string>; dark: Record<string, string> }
 }
 
+// A named user theme: an appearance diff (fonts + per-mode overrides) layered on
+// top of a built-in base. Mirrors the server ThemePreference.Info shape.
+export interface UserTheme extends Appearance {
+  id: string
+  name: string
+  baseId: string
+}
+
+// True when an appearance carries any edit worth migrating into a named theme —
+// any per-mode override, or a font/size/weight differing from the default.
+function hasCustomizations(a: Appearance): boolean {
+  if (Object.keys(a.overrides?.light ?? {}).length > 0) return true
+  if (Object.keys(a.overrides?.dark ?? {}).length > 0) return true
+  const d = defaultAppearance
+  return (
+    a.fontSize !== d.fontSize ||
+    a.font !== d.font ||
+    a.codeFont !== d.codeFont ||
+    a.codeTheme !== d.codeTheme ||
+    a.diffTheme !== d.diffTheme ||
+    a.fontWeight !== d.fontWeight
+  )
+}
+
 const defaultAppearance: Appearance = {
   fontSize: 13,
   font: "jetbrains-mono",
@@ -133,24 +157,171 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     // recomputes on any edit. unwrap() would strip reactivity and freeze dirty.
     const dirty = createMemo(() => JSON.stringify(work) !== JSON.stringify(saved()))
 
-    const save = () => {
-      const snapshot = structuredClone(unwrap(work))
-      return globalSDK.client.preference.appearance
-        .set({ appearancePreference: snapshot as any })
-        .then(() => setSaved(snapshot))
-        .catch(() => undefined)
-    }
-
     const discard = () => setWork(reconcile(structuredClone(saved())))
 
+    // Named themes: the working appearance (`work`) is always "edits on top of a
+    // base". A user theme bundles that appearance with an id/name/base. `themes`
+    // is the server-persisted collection; `activeThemeID` is which one is active.
+    const [themes, setThemes] = createStore<UserTheme[]>([])
+    const [activeThemeID, setActiveThemeID] = createSignal<string | null>(null)
+    // Working identity of an unsaved derived theme (auto-created on first edit of
+    // a built-in). Null once nothing derived is in flight.
+    const [workingID, setWorkingID] = createSignal<string | null>(null)
+    const [workingName, setWorkingName] = createSignal<string | null>(null)
+
+    const activeName = createMemo(() => {
+      const id = activeThemeID()
+      const t = id ? themes.find((x) => x.id === id) : undefined
+      return t?.name ?? workingName() ?? theme.themes()[theme.themeId()]?.name ?? theme.themeId()
+    })
+
+    // Snapshot the live appearance into a UserTheme record.
+    const snapshot = (id: string, name: string): UserTheme => ({
+      ...structuredClone(unwrap(work)),
+      id,
+      name,
+      baseId: theme.themeId(),
+    })
+
+    const upsertLocal = (t: UserTheme) => {
+      const at = themes.findIndex((x) => x.id === t.id)
+      if (at === -1) setThemes(themes.length, t)
+      else setThemes(at, reconcile(t))
+    }
+
+    const push = (t: UserTheme) =>
+      globalSDK.client.preference.theme.save({ userTheme: t as any }).catch(() => undefined)
+
+    // Apply a stored user theme: switch to its base, load its appearance into
+    // `work`, mark it active and saved (a freshly-loaded theme is not dirty).
+    const applyTheme = (t: UserTheme) => {
+      if (theme.themeId() !== t.baseId) theme.setTheme(t.baseId)
+      const appearance: Appearance = { ...structuredClone(defaultAppearance), ...t }
+      setWork(reconcile(appearance))
+      setSaved(structuredClone(appearance))
+      setActiveThemeID(t.id)
+      setWorkingID(null)
+      setWorkingName(null)
+      globalSDK.client.preference.theme.setActive({ id: t.id }).catch(() => undefined)
+    }
+
+    // Switch to a plain built-in base: change the base AND clear the active user
+    // theme + its overrides. Without the reset, the active theme's inline
+    // overrides keep painting over the new base and it looks like nothing changed.
+    const selectBase = (id: string) => {
+      theme.setTheme(id)
+      setActiveThemeID(null)
+      setWorkingID(null)
+      setWorkingName(null)
+      setWork(reconcile(structuredClone(defaultAppearance)))
+      setSaved(structuredClone(defaultAppearance))
+      globalSDK.client.preference.theme.setActive({ id: null }).catch(() => undefined)
+    }
+
+    // Called when an override/appearance edit happens while no user theme is
+    // active — derive an unsaved "<Base> (customized)" theme so edits have a home.
+    const deriveIfNeeded = () => {
+      if (activeThemeID() || workingID()) return
+      const base = theme.themes()[theme.themeId()]
+      setWorkingID(crypto.randomUUID())
+      setWorkingName(`${base?.name ?? theme.themeId()} (customized)`)
+    }
+
+    // Save destinations — the "where does this land" decision.
+    const saveToCustomized = () => {
+      const id = workingID() ?? crypto.randomUUID()
+      const name = workingName() ?? `${theme.themes()[theme.themeId()]?.name ?? theme.themeId()} (customized)`
+      const t = snapshot(id, name)
+      upsertLocal(t)
+      setActiveThemeID(id)
+      setWorkingID(null)
+      setSaved(structuredClone(unwrap(work)))
+      globalSDK.client.preference.theme.setActive({ id }).catch(() => undefined)
+      return push(t)
+    }
+
+    const saveAs = (name: string) => {
+      const id = crypto.randomUUID()
+      const t = snapshot(id, name)
+      upsertLocal(t)
+      setActiveThemeID(id)
+      setWorkingID(null)
+      setWorkingName(null)
+      setSaved(structuredClone(unwrap(work)))
+      globalSDK.client.preference.theme.setActive({ id }).catch(() => undefined)
+      return push(t)
+    }
+
+    const saveOver = () => {
+      const id = activeThemeID()
+      if (!id) return saveToCustomized()
+      const existing = themes.find((x) => x.id === id)
+      const t = snapshot(id, existing?.name ?? activeName())
+      upsertLocal(t)
+      setSaved(structuredClone(unwrap(work)))
+      return push(t)
+    }
+
+    const duplicate = (id: string, name: string) => {
+      const src = themes.find((x) => x.id === id)
+      if (!src) return
+      const copy: UserTheme = { ...structuredClone(unwrap(src)), id: crypto.randomUUID(), name }
+      upsertLocal(copy)
+      return push(copy)
+    }
+
+    const rename = (id: string, name: string) => {
+      const at = themes.findIndex((x) => x.id === id)
+      if (at === -1) return
+      setThemes(at, "name", name)
+      return push(snapshot(id, name))
+    }
+
+    const removeTheme = (id: string) => {
+      setThemes((list) => list.filter((x) => x.id !== id))
+      if (activeThemeID() === id) setActiveThemeID(null)
+      return globalSDK.client.preference.theme.remove({ id }).catch(() => undefined)
+    }
+
     onMount(() => {
-      globalSDK.client.preference.appearance
-        .get()
-        .then((r) => {
-          const info = (r as any).data ?? r
-          if (!info) return
-          setWork(reconcile(info as Appearance))
-          setSaved(structuredClone(unwrap(work)))
+      // Load themes + active pointer, then fall back to (or migrate) the legacy
+      // single appearance blob so nothing a user tuned before named themes is lost.
+      Promise.all([
+        globalSDK.client.preference.theme.list().then((r) => ((r as any).data ?? r) as UserTheme[]),
+        globalSDK.client.preference.theme.getActive().then((r) => ((r as any).data ?? r) as string | null),
+        globalSDK.client.preference.appearance.get().then((r) => ((r as any).data ?? r) as Appearance | null),
+      ])
+        .then(([list, active, appearance]) => {
+          const themeList = Array.isArray(list) ? list : []
+
+          // Migration: first run with no themes but existing custom overrides.
+          // Turn the legacy appearance into a named theme so it becomes selectable.
+          if (themeList.length === 0 && appearance && hasCustomizations(appearance)) {
+            const migrated: UserTheme = {
+              ...structuredClone(defaultAppearance),
+              ...appearance,
+              id: crypto.randomUUID(),
+              name: "Custom",
+              baseId: theme.themeId(),
+            }
+            themeList.push(migrated)
+            active = migrated.id
+            push(migrated)
+            globalSDK.client.preference.theme.setActive({ id: migrated.id }).catch(() => undefined)
+          }
+
+          setThemes(reconcile(themeList))
+          const target = active ? themeList.find((t) => t.id === active) : undefined
+          if (target) {
+            applyTheme(target)
+            return
+          }
+          // No active user theme: seed work from the legacy appearance so the
+          // customization editor still reflects saved overrides.
+          if (appearance) {
+            setWork(reconcile({ ...structuredClone(defaultAppearance), ...appearance }))
+            setSaved(structuredClone(unwrap(work)))
+          }
         })
         .catch(() => undefined)
     })
@@ -207,42 +378,70 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
       },
       appearance: {
         // Live/working values. Edits apply immediately (Apply); Save persists.
+        // Every edit calls deriveIfNeeded so editing a built-in base auto-creates
+        // an unsaved "<Base> (customized)" working theme.
         fontSize: () => work.fontSize,
         setFontSize(value: number) {
+          deriveIfNeeded()
           setWork("fontSize", value)
         },
         font: () => work.font,
         setFont(value: string) {
+          deriveIfNeeded()
           setWork("font", value)
         },
         codeFont: () => work.codeFont,
         setCodeFont(value: string) {
+          deriveIfNeeded()
           setWork("codeFont", value)
         },
         codeTheme: () => work.codeTheme ?? defaultAppearance.codeTheme,
         setCodeTheme(value: string) {
+          deriveIfNeeded()
           setWork("codeTheme", value)
         },
         diffTheme: () => work.diffTheme ?? defaultAppearance.diffTheme,
         setDiffTheme(value: string) {
+          deriveIfNeeded()
           setWork("diffTheme", value)
         },
         fontWeight: () => work.fontWeight,
         setFontWeight(value: number) {
+          deriveIfNeeded()
           setWork("fontWeight", value)
         },
         headingWeight: (level: number) => work.headingWeight[level] ?? 700,
         setHeadingWeight(level: number, value: number) {
+          deriveIfNeeded()
           setWork("headingWeight", level, value)
         },
-        // Save/Discard for the whole appearance slice (server-persisted).
         dirty,
-        save,
+        discard,
+      },
+      // Named themes: the active theme, the collection, save destinations, CRUD.
+      themes: {
+        list: () => themes,
+        activeID: activeThemeID,
+        activeName,
+        dirty,
+        apply: applyTheme,
+        selectBase,
+        select(id: string) {
+          const t = themes.find((x) => x.id === id)
+          if (t) applyTheme(t)
+        },
+        saveToCustomized,
+        saveAs,
+        saveOver,
+        duplicate,
+        rename,
+        remove: removeTheme,
         discard,
       },
       overrides: {
         get: (mode: "light" | "dark", token: string) => work.overrides[mode]?.[token],
         set(mode: "light" | "dark", token: string, value: string) {
+          deriveIfNeeded()
           setWork("overrides", mode, token, value)
         },
         reset(mode: "light" | "dark", token: string) {

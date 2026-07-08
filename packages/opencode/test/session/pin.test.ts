@@ -12,7 +12,7 @@ describe("SessionPin", () => {
         await Bun.write(path.join(dir, "AGENTS.md"), "# Version One")
       },
     })
-    const provide = <R,>(fn: () => Promise<R>) => Instance.provide({ directory: tmp.path, fn })
+    const provide = <R>(fn: () => Promise<R>) => Instance.provide({ directory: tmp.path, fn })
 
     const running = await provide(() => SessionPin.get("ses_pin_running"))
     expect(running.instructions.project.join("\n")).toContain("# Version One")
@@ -42,7 +42,7 @@ describe("SessionPin", () => {
         await Bun.write(path.join(dir, "AGENTS.md"), "# Shared")
       },
     })
-    const provide = <R,>(fn: () => Promise<R>) => Instance.provide({ directory: tmp.path, fn })
+    const provide = <R>(fn: () => Promise<R>) => Instance.provide({ directory: tmp.path, fn })
     const before = SessionPin.stats().entries
 
     const one = await provide(() => SessionPin.get("ses_share_one"))
@@ -63,7 +63,7 @@ describe("SessionPin", () => {
         await Bun.write(path.join(dir, "AGENTS.md"), "# Parent Era")
       },
     })
-    const provide = <R,>(fn: () => Promise<R>) => Instance.provide({ directory: tmp.path, fn })
+    const provide = <R>(fn: () => Promise<R>) => Instance.provide({ directory: tmp.path, fn })
 
     const parent = await provide(() => SessionPin.get("ses_adopt_parent"))
     await Bun.write(path.join(tmp.path, "AGENTS.md"), "# Child Era")

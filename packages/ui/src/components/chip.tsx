@@ -75,7 +75,11 @@ export function Chip(props: ChipProps) {
 
   const iconTone = () => (local.accent ? `var(--${local.accent})` : "var(--color-text-strong)")
   const valueTone = () =>
-    local.valueAccent ? `var(--${local.valueAccent})` : local.accent ? `var(--${local.accent})` : "var(--color-text-strong)"
+    local.valueAccent
+      ? `var(--${local.valueAccent})`
+      : local.accent
+        ? `var(--${local.accent})`
+        : "var(--color-text-strong)"
 
   // Utilization as a percentage 0..100, or undefined for non-gauge chips.
   const gaugePct = () => (local.fill === undefined ? undefined : Math.max(0, Math.min(1, local.fill)) * 100)

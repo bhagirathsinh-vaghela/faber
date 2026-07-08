@@ -18,18 +18,77 @@ export interface TokenGroup {
   entries: TokenEntry[]
 }
 
+// Groups are ordered most-reached first (surfaces, then chat boxes, then text,
+// then markdown, then code). Related concerns are merged into one section so a
+// setting is where you'd expect it (all background surfaces together, all text
+// tiers together) rather than scattered across the list.
 export const THEME_CATALOG: TokenGroup[] = [
   {
-    group: "Body text",
+    group: "Surfaces & backgrounds",
     entries: [
-      { token: "--text-base", label: "Color", type: "color" },
-      { token: "--text-base-weight", label: "Weight", type: "weight" },
+      { token: "--background-base", label: "Page background", type: "color" },
+      {
+        token: "--background-stronger",
+        label: "Session & dock background",
+        type: "color",
+        shared: "message area and prompt dock",
+      },
+      {
+        token: "--surface-raised-stronger-non-alpha",
+        label: "Input box background",
+        type: "color",
+        shared: "mention popup and thumbnails",
+      },
+      { token: "--background-weak", label: "Recessed background", type: "color" },
+      { token: "--background-strong", label: "Raised background", type: "color" },
+      { token: "--surface-base", label: "Surface", type: "color" },
+      { token: "--surface-raised-base", label: "Raised surface", type: "color" },
+      { token: "--border-weak-base", label: "Subtle border", type: "color" },
     ],
   },
   {
-    group: "Headings",
+    group: "Message boxes",
     entries: [
-      { token: "--markdown-heading", label: "Color (all levels)", type: "color" },
+      { token: "--box-bg-user", label: "User box background", type: "color" },
+      { token: "--box-border-user", label: "User box border", type: "color" },
+      { token: "--box-accent-user", label: "User box accent", type: "color" },
+      { token: "--box-bg-assistant", label: "Assistant box background", type: "color" },
+      { token: "--box-border-assistant", label: "Assistant box border", type: "color" },
+      { token: "--box-accent-assistant", label: "Assistant box accent", type: "color" },
+      { token: "--box-bg-task", label: "Task box background", type: "color" },
+      { token: "--box-border-task", label: "Task box border", type: "color" },
+      { token: "--box-accent-task", label: "Task box accent", type: "color" },
+      { token: "--box-bg-tool", label: "Tool box background", type: "color" },
+      { token: "--box-border-tool", label: "Tool box border", type: "color" },
+      { token: "--box-accent-tool", label: "Tool box accent", type: "color" },
+    ],
+  },
+  {
+    group: "Text",
+    entries: [
+      { token: "--text-base", label: "Body text color", type: "color" },
+      { token: "--text-base-weight", label: "Body text weight", type: "weight" },
+      { token: "--text-strong", label: "Strong text (input, filenames)", type: "color" },
+      { token: "--text-weak", label: "Secondary text (blockquotes, captions)", type: "color" },
+      { token: "--text-weaker", label: "Muted text (timestamps, todos)", type: "color" },
+      { token: "--text-critical-base", label: "Error text", type: "color" },
+      { token: "--text-success-base", label: "Success text", type: "color" },
+      { token: "--text-warning-base", label: "Warning text", type: "color" },
+    ],
+  },
+  {
+    group: "Markdown",
+    entries: [
+      { token: "--markdown-heading", label: "Heading color (all levels)", type: "color" },
+      { token: "--markdown-strong", label: "Bold color", type: "color" },
+      { token: "--markdown-emph", label: "Italic color", type: "color" },
+      { token: "--markdown-link", label: "Link color", type: "color" },
+      { token: "--markdown-list-item", label: "Bullet color", type: "color" },
+      { token: "--markdown-list-enumeration", label: "Number color", type: "color" },
+      { token: "--markdown-code", label: "Inline code color", type: "color" },
+      { token: "--markdown-code-family", label: "Inline code font", type: "family" },
+      { token: "--markdown-code-weight", label: "Inline code weight", type: "weight" },
+      { token: "--markdown-code-size", label: "Inline code size", type: "size" },
       { token: "--markdown-heading-1-size", label: "H1 size", type: "size" },
       { token: "--markdown-heading-1-weight", label: "H1 weight", type: "weight" },
       { token: "--markdown-heading-2-size", label: "H2 size", type: "size" },
@@ -45,35 +104,7 @@ export const THEME_CATALOG: TokenGroup[] = [
     ],
   },
   {
-    group: "Inline styles",
-    entries: [
-      { token: "--markdown-strong", label: "Bold color", type: "color" },
-      { token: "--markdown-emph", label: "Italic color", type: "color" },
-      { token: "--markdown-code", label: "Inline code color", type: "color" },
-      { token: "--markdown-code-family", label: "Inline code font", type: "family" },
-      { token: "--markdown-code-weight", label: "Inline code weight", type: "weight" },
-      { token: "--markdown-code-size", label: "Inline code size", type: "size" },
-      { token: "--markdown-link", label: "Link color", type: "color" },
-    ],
-  },
-  {
-    group: "Lists & quotes",
-    entries: [
-      { token: "--markdown-list-item", label: "Bullet color", type: "color" },
-      { token: "--markdown-list-enumeration", label: "Number color", type: "color" },
-      { token: "--text-weak", label: "Blockquote / caption color", type: "color", shared: "secondary text" },
-    ],
-  },
-  {
-    group: "Text tiers",
-    entries: [
-      { token: "--text-strong", label: "Strong text (input, filenames)", type: "color" },
-      { token: "--text-weak", label: "Secondary text", type: "color", shared: "blockquotes" },
-      { token: "--text-weaker", label: "Muted text (timestamps, todos)", type: "color" },
-    ],
-  },
-  {
-    group: "Code block syntax",
+    group: "Code syntax",
     entries: [
       { token: "--syntax-keyword", label: "Keyword", type: "color" },
       { token: "--syntax-string", label: "String", type: "color" },
@@ -85,31 +116,6 @@ export const THEME_CATALOG: TokenGroup[] = [
       { token: "--syntax-operator", label: "Operator", type: "color" },
       { token: "--syntax-punctuation", label: "Punctuation", type: "color" },
       { token: "--syntax-comment", label: "Comment", type: "color" },
-    ],
-  },
-  {
-    group: "Semantic",
-    entries: [
-      { token: "--text-critical-base", label: "Error text", type: "color" },
-      { token: "--text-success-base", label: "Success text", type: "color" },
-      { token: "--text-warning-base", label: "Warning text", type: "color" },
-    ],
-  },
-  {
-    group: "Chat boxes",
-    entries: [
-      { token: "--box-accent-assistant", label: "Assistant box accent", type: "color" },
-      { token: "--box-accent-task", label: "Task box accent", type: "color" },
-      { token: "--box-accent-tool", label: "Tool box accent", type: "color" },
-    ],
-  },
-  {
-    group: "Backgrounds",
-    entries: [
-      { token: "--background-base", label: "Page background", type: "color" },
-      { token: "--surface-base", label: "Surface", type: "color" },
-      { token: "--surface-raised-base", label: "Raised surface", type: "color" },
-      { token: "--border-weak-base", label: "Subtle border", type: "color" },
     ],
   },
 ]
