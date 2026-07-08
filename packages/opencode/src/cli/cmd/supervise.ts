@@ -1,4 +1,6 @@
 import { spawn, type Subprocess } from "bun"
+import os from "os"
+import path from "path"
 import { cmd } from "./cmd"
 
 // Supervisor for the long-lived OpenCode server: a small outer shell that owns
@@ -12,6 +14,8 @@ import { cmd } from "./cmd"
 //   POST /restart -> stage a fresh server on the alt port, health-check it,
 //                    kill the owned server, relaunch on the main port, then
 //                    resume interrupted turns and re-arm ping daemons.
+//   POST /stop    -> kill the owned server (and reap any orphan); supervisor
+//                    stays up. The page's Start button is /restart from cold.
 //   GET  /status  -> owned pid + /global/health of the live server.
 //
 // There is no reload/dispose lever: session pins are content-addressed
@@ -30,6 +34,16 @@ export const SuperviseCommand = cmd({
     const SUPERVISOR_PORT = args.port
     const PORT = args["serve-port"]
     const ALT_PORT = args["stage-port"]
+
+    // Optional per-machine config. uiUrl is the browser-facing URL of the
+    // OpenCode UI when a proxy/tunnel fronts it on a different scheme/host/port
+    // than PORT (e.g. a Caddy https origin). Absent → the page falls back to
+    // the current host with PORT.
+    const configFile = path.join(os.homedir(), ".config", "opencode", "supervisor.json")
+    const uiUrl = await Bun.file(configFile)
+      .json()
+      .then((c) => (typeof c.uiUrl === "string" ? c.uiUrl : ""))
+      .catch(() => "")
 
     // Compiled binary: execPath IS the opencode CLI (argv[1] is the embedded
     // /$bunfs entry — not a real file). Source run (bun): execPath is bun and
@@ -236,31 +250,71 @@ export const SuperviseCommand = cmd({
 </style></head><body>
 <h1>OpenCode Supervisor</h1>
 <p class="muted">supervisor :${SUPERVISOR_PORT} · opencode :${PORT} · stage :${ALT_PORT}</p>
-<a id="open" target="_blank" rel="noopener"><button>Open OpenCode</button></a>
-<button id="restart" class="danger">Restart server (staged cutover)</button>
-<button id="status">Status</button>
+<p id="state" class="muted">checking…</p>
+<a id="open" target="_blank" rel="noopener"><button id="openbtn" disabled>Open OpenCode</button></a>
+<button id="primary" disabled>…</button>
+<button id="stop" class="danger" disabled>Stop</button>
 <pre id="out">ready.</pre>
 <script>
   const out = document.getElementById("out")
-  async function call(path, btn) {
-    const buttons = document.querySelectorAll("button")
-    buttons.forEach(b => b.disabled = true)
-    out.textContent = "working: " + path + " ..."
+  const state = document.getElementById("state")
+  const primary = document.getElementById("primary")
+  const stopBtn = document.getElementById("stop")
+  const openBtn = document.getElementById("openbtn")
+  const openLink = document.getElementById("open")
+  const configUiUrl = ${JSON.stringify(uiUrl)}
+
+  const fallbackUrl = () => {
+    const u = new URL(location.href)
+    u.port = "${PORT}"
+    u.pathname = "/"
+    return u.toString()
+  }
+  openLink.href = configUiUrl || fallbackUrl()
+
+  let busy = false
+  async function call(path, confirmMsg) {
+    if (confirmMsg && !confirm(confirmMsg)) return
+    busy = true
+    for (const b of document.querySelectorAll("button")) b.disabled = true
+    out.textContent = "working: " + path + " …"
     try {
-      const r = await fetch(path, { method: path === "/status" ? "GET" : "POST" })
+      const r = await fetch(path, { method: "POST" })
       out.textContent = JSON.stringify(await r.json(), null, 2)
     } catch (e) { out.textContent = "error: " + e }
-    buttons.forEach(b => b.disabled = false)
+    busy = false
+    refresh()
   }
-  document.getElementById("restart").onclick = () => {
-    if (!confirm("Restart the server?\\n\\nHave you reviewed the sessions in the overview? Busy sessions will be auto-resumed, warm idle sessions re-armed, and every session re-pins against current config. Stop any session you do NOT want kept alive before restarting.")) return
-    call("/restart")
+
+  const RESTART_CONFIRM = "Restart the server?\\n\\nBusy sessions will be auto-resumed, warm idle sessions re-armed, and every session re-pins against current config. Stop any session you do NOT want kept alive before restarting."
+  const STOP_CONFIRM = "Stop the server?\\n\\nEvery open session's UI will disconnect until the next start."
+
+  function render(s) {
+    const up = !!(s && s.health && s.health.healthy)
+    if (up) {
+      state.textContent = "running · pid " + s.pid + " · " + s.health.version + " · " + s.health.host
+      primary.textContent = "Restart"
+      primary.onclick = () => call("/restart", RESTART_CONFIRM)
+    } else {
+      state.textContent = "not running"
+      primary.textContent = "Start"
+      primary.onclick = () => call("/restart")
+    }
+    primary.disabled = busy
+    stopBtn.disabled = busy || !up
+    openBtn.disabled = !up
   }
-  document.getElementById("status").onclick = () => call("/status")
-  const ocUrl = new URL(location.href)
-  ocUrl.port = "${PORT}"
-  ocUrl.pathname = "/"
-  document.getElementById("open").href = ocUrl.toString()
+
+  async function refresh() {
+    try {
+      const r = await fetch("/status")
+      render(await r.json())
+    } catch { state.textContent = "supervisor unreachable" }
+  }
+
+  stopBtn.onclick = () => call("/stop", STOP_CONFIRM)
+  refresh()
+  setInterval(() => { if (!busy) refresh() }, 3000)
 </script>
 </body></html>`
 
@@ -277,6 +331,12 @@ export const SuperviseCommand = cmd({
         if (url.pathname === "/status")
           return Response.json({ port: PORT, owned: !!current, pid: current?.pid ?? null, health: await health(PORT) })
         if (url.pathname === "/restart" && req.method === "POST") return Response.json(await restart())
+        if (url.pathname === "/stop" && req.method === "POST") {
+          await stop(current)
+          current = null
+          await reapOrphan(PORT)
+          return Response.json({ ok: true, health: await health(PORT) })
+        }
         return new Response("not found", { status: 404 })
       },
     })
