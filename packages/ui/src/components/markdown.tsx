@@ -4,6 +4,7 @@ import { highlightCode, themeColors } from "../context/marked"
 import { copyText } from "../util/clipboard"
 import { SolidMarkdown, type SolidMarkdownComponents } from "solid-markdown"
 import remarkGfm from "remark-gfm"
+import remarkBreaks from "remark-breaks"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
@@ -213,7 +214,7 @@ export function Markdown(
       <SolidMarkdown
         renderingStrategy="reconcile"
         skipHtml
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
         rehypePlugins={[rehypeKatex]}
         components={components(labels, theme)}
       >
