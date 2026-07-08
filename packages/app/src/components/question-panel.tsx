@@ -434,7 +434,13 @@ function Panel(props: {
     <div
       ref={(el) => (panel = el)}
       tabindex={-1}
-      class="relative mb-3 rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
+      // max-h caps the panel to the viewport so a tall question (many options /
+      // long descriptions) can't grow past the top of the screen inside the
+      // bottom-pinned dock. dvh (not vh) tracks mobile browser chrome, matching
+      // #root's h-dvh; 16rem leaves room for the dock's pt-12, the prompt input
+      // below, and the bottom safe-area. The content div scrolls; the collapse
+      // control and actions row stay pinned.
+      class="relative mb-3 flex max-h-[calc(100dvh-16rem)] flex-col rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
       classList={{ "border-border-base cursor-default": !focused() }}
       style={
         focused()
@@ -469,7 +475,12 @@ function Panel(props: {
         </div>
       </button>
 
-      <div class="flex flex-col gap-2 px-4 py-3 pr-6">
+      {/* Scroll region: only the question content scrolls when it exceeds the
+          panel's capped height. data-scrollable opts into the transcript's
+          nested-scroll contract so createAutoScroll / the session-scroller wheel
+          handlers don't hijack this inner scroll. min-h-0 lets it shrink below
+          content height inside the flex column. */}
+      <div data-scrollable class="flex min-h-0 flex-col gap-2 overflow-y-auto no-scrollbar px-4 py-3 pr-6">
         {/* Request tabs (multiple pending requests) */}
         <Show when={multiRequest()}>
           <div class="flex flex-row flex-wrap gap-1">
@@ -671,7 +682,7 @@ function Panel(props: {
       {/* Actions. Each button carries the keyboard shortcut that triggers it,
           shown as a hint above (handled in handleKey: alt+D reject, Escape
           collapse, Enter submit, Tab cycles requests). */}
-      <div class="flex flex-row items-end gap-2 justify-end px-4 pb-3">
+      <div class="flex shrink-0 flex-row items-end gap-2 justify-end px-4 pb-3">
         <div class="flex flex-col items-center gap-0.5">
           <kbd class="text-11-regular text-text-weak">⌥D</kbd>
           <Button variant="secondary" size="small" onClick={reject}>
