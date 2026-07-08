@@ -1,6 +1,7 @@
 import { createStore, produce } from "solid-js/store"
 import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
+import { captureFocus } from "@opencode-ai/ui/util/focus"
 import { useGlobalSync } from "./global-sync"
 import { useGlobalSDK } from "./global-sdk"
 import { useServer } from "./server"
@@ -121,6 +122,21 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // Zen mode is intentionally ephemeral — an in-memory signal, never
     // persisted, so it always starts off on a fresh load/reload.
     const [zenOpened, setZenOpened] = createSignal(false)
+
+    // Entering zen hides the chrome that holds the focused element (dock,
+    // titlebar), which blurs it. Snapshot it so exit hands focus back to
+    // exactly where it was stolen from, not a hardcoded target.
+    let zenFocus: (() => boolean) | undefined
+    const enterZen = () => {
+      zenFocus = captureFocus()
+      setZenOpened(true)
+    }
+    const exitZen = () => {
+      const restore = zenFocus
+      zenFocus = undefined
+      setZenOpened(false)
+      restore?.()
+    }
 
     const MAX_SESSION_KEYS = 50
     const meta = { active: undefined as string | undefined, pruned: false }
@@ -556,14 +572,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       // NOT persisted — it always resets to off on load/reload.
       zen: {
         opened: zenOpened,
-        enter() {
-          setZenOpened(true)
-        },
-        exit() {
-          setZenOpened(false)
-        },
+        enter: enterZen,
+        exit: exitZen,
         toggle() {
-          setZenOpened((x) => !x)
+          if (zenOpened()) exitZen()
+          else enterZen()
         },
       },
       view(sessionKey: string | Accessor<string>) {

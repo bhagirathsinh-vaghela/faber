@@ -4,6 +4,7 @@ import type { QuestionRequest } from "@opencode-ai/sdk/v2"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Markdown } from "@opencode-ai/ui/markdown"
+import { captureFocus } from "@opencode-ai/ui/util/focus"
 import { useSDK } from "@/context/sdk"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
@@ -122,7 +123,6 @@ function Panel(props: {
   onClose?: () => void
 }) {
   const sdk = useSDK()
-  const command = useCommand()
   const local = useLocal()
 
   // Focus-highlight accent = the current session agent's color (same color the
@@ -297,13 +297,14 @@ function Panel(props: {
 
   let panel: HTMLDivElement | undefined
 
-  // A pending question owns all input. The capture-phase keydown handler runs
-  // before any focused element (prompt contenteditable included) sees the key,
-  // and both preventDefault + stopPropagation so the prompt's own handler never
-  // fires — the question is answered before anything else can be typed. The
-  // global command keymap is suspended for the panel's lifetime too. The
-  // custom-answer textarea is the one exception: it keeps its own Enter/Escape
-  // handling, so yield while it has focus.
+  // The capture-phase keydown handler runs before any focused element (prompt
+  // contenteditable included) sees the key, and both preventDefault +
+  // stopPropagation on the keys it consumes so the prompt's own handler never
+  // fires — the question is answered before anything else can be typed. Keys it
+  // does NOT consume fall through untouched, so unrelated global keybinds (zen,
+  // the palette) keep working while a question is up. The custom-answer textarea
+  // is the one exception: it keeps its own Enter/Escape handling, so yield while
+  // it has focus.
   function handleKey(event: KeyboardEvent) {
     if (store.editing) return
 
@@ -403,7 +404,10 @@ function Panel(props: {
   }
 
   onMount(() => {
-    command.keybinds(false)
+    // Snapshot the surface the question interrupted (usually the prompt) so
+    // close hands focus back there. Capture before blurring, while it still
+    // holds focus.
+    const restore = captureFocus()
     // Pull focus off the prompt so the question is the clearly-active surface
     // and the caret stops blinking in the input behind it.
     ;(document.activeElement as HTMLElement | null)?.blur()
@@ -415,7 +419,6 @@ function Panel(props: {
     panel?.addEventListener("mousedown", guardMouseDown, true)
     panel?.addEventListener("click", guardClick, true)
     onCleanup(() => {
-      command.keybinds(true)
       document.removeEventListener("keydown", handleKey, true)
       document.removeEventListener("focusin", trackFocus)
       document.removeEventListener("focusout", trackFocus)
@@ -426,7 +429,11 @@ function Panel(props: {
       // or fallen to <body>): a deliberate click into another field during the
       // panel's life keeps its focus, matching "focus stays unless I click away".
       const active = document.activeElement
-      if (!active || active === document.body || (panel && panel.contains(active))) props.onClose?.()
+      if (!active || active === document.body || (panel && panel.contains(active))) {
+        // Prefer the interrupted surface; fall back to onClose (the prompt) when
+        // it unmounted while the question was up.
+        if (!restore()) props.onClose?.()
+      }
     })
   })
 

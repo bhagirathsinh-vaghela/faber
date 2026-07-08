@@ -12,6 +12,7 @@ import {
   type JSX,
 } from "solid-js"
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
+import { captureFocus } from "../util/focus"
 
 type DialogElement = () => JSX.Element
 
@@ -22,6 +23,7 @@ type Active = {
   owner: Owner
   onClose?: () => void
   setClosing: (closing: boolean) => void
+  restore: () => boolean
 }
 
 const Context = createContext<ReturnType<typeof init>>()
@@ -51,15 +53,18 @@ function init() {
     return el.closest("[data-component=dialog-overlay]") !== null
   }
 
-  const runRestore = () => {
+  const runRestore = (restoreTarget?: () => boolean) => {
     const fn = restore.current
-    if (!fn) return
     // Deferred past teardown so Kobalte's own focus-restore runs first and we
     // can see whether anything claimed focus before we override it.
     requestAnimationFrame(() => {
       if (active()) return
       if (!focusOrphaned()) return
-      fn()
+      // Prefer the element that held focus before this dialog opened; it's the
+      // truest "put me back where I was". Only when it's gone (unmounted while
+      // the dialog was up) fall back to the app-registered target (the prompt).
+      if (restoreTarget?.()) return
+      fn?.()
     })
   }
 
@@ -81,7 +86,7 @@ function init() {
       current.dispose()
       if (active()?.id === id) setActive(undefined)
       lock.value = false
-      runRestore()
+      runRestore(current.restore)
     }, 100)
   }
 
@@ -100,8 +105,15 @@ function init() {
   })
 
   const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
-    // Immediately dispose any existing dialog when showing a new one
+    // Snapshot focus before anything mounts or disposes — this is still the
+    // element the user was on (the trigger button, the prompt) at the instant
+    // show() runs. Chaining to a new dialog reuses the outgoing dialog's
+    // snapshot so focus tracks back to the original pre-dialog element, not the
+    // dialog content that's about to unmount.
     const current = active()
+    const restore = current?.restore ?? captureFocus()
+
+    // Immediately dispose any existing dialog when showing a new one
     if (current) {
       current.dispose()
       setActive(undefined)
@@ -142,7 +154,7 @@ function init() {
 
     if (!dispose || !setClosing) return
 
-    setActive({ id, node, dispose, owner, onClose, setClosing })
+    setActive({ id, node, dispose, owner, onClose, setClosing, restore })
   }
 
   return {
