@@ -236,6 +236,7 @@ export const SuperviseCommand = cmd({
 </style></head><body>
 <h1>OpenCode Supervisor</h1>
 <p class="muted">supervisor :${SUPERVISOR_PORT} · opencode :${PORT} · stage :${ALT_PORT}</p>
+<a id="open" target="_blank" rel="noopener"><button>Open OpenCode</button></a>
 <button id="restart" class="danger">Restart server (staged cutover)</button>
 <button id="status">Status</button>
 <pre id="out">ready.</pre>
@@ -256,6 +257,10 @@ export const SuperviseCommand = cmd({
     call("/restart")
   }
   document.getElementById("status").onclick = () => call("/status")
+  const ocUrl = new URL(location.href)
+  ocUrl.port = "${PORT}"
+  ocUrl.pathname = "/"
+  document.getElementById("open").href = ocUrl.toString()
 </script>
 </body></html>`
 
