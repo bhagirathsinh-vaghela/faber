@@ -95,6 +95,8 @@ export const dict = {
   "command.task.list.description": "Show running and completed subtasks",
   "command.task.pending": "Pending results",
   "command.task.pending.description": "Review and accept pending background task results",
+  "command.zen.toggle": "Toggle zen mode",
+  "command.zen.toggle.description": "Enter or exit distraction-free zen mode",
   "command.question.list": "Show pending questions",
   "command.question.list.description": "Expand the collapsed question panel",
   "question.collapsed": "{{count}} question(s) pending",

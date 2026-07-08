@@ -197,7 +197,6 @@
   border-radius: 999px;
   overflow: hidden;
   background: color-mix(in srgb, var(--stream-accent, var(--icon-interactive-base)) 16%, transparent);
-  animation: dock-glow-pulse 2.4s ease-in-out infinite;
 }
 
 /* The fill is a full-width row of small rounded squares (like the Spinner),

@@ -1096,9 +1096,18 @@ export default function Page() {
       title: language.t("command.task.pending"),
       description: language.t("command.task.pending.description"),
       category: language.t("command.category.session"),
-      keybind: "alt+z",
+      keybind: "alt+x",
       disabled: !params.id,
       onSelect: () => dialog.show(() => <DialogPending />),
+    },
+    {
+      id: "zen.toggle",
+      title: language.t("command.zen.toggle"),
+      description: language.t("command.zen.toggle.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+z",
+      disabled: !params.id,
+      onSelect: () => layout.zen.toggle(),
     },
     ...(sync.data.config.share !== "disabled"
       ? [
@@ -2340,8 +2349,8 @@ export default function Page() {
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,
                               "w-full": true,
-                              "px-4 md:px-6": true,
-                              "md:max-w-[90%] md:mx-auto": centered(),
+                              "px-4 md:px-0": true,
+                              "md:max-w-[95%] md:mx-auto": centered(),
                             }}
                           >
                             <div class="h-6 md:h-7 flex items-center gap-1">
@@ -2423,7 +2432,7 @@ export default function Page() {
                           class="flex flex-col gap-4 items-start justify-start transition-[margin]"
                           classList={{
                             "w-full": true,
-                            "md:max-w-[90%] md:mx-auto": centered(),
+                            "md:max-w-[95%] md:mx-auto": centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
                             // Normal: reserve space for the floating prompt dock.
@@ -2500,7 +2509,7 @@ export default function Page() {
                                     classes={{
                                       root: "min-w-0 w-full relative",
                                       content: "flex flex-col justify-between !overflow-visible",
-                                      container: "w-full px-4 md:px-6",
+                                      container: "w-full px-4 md:px-0",
                                     }}
                                   />
                                 </div>
@@ -2587,7 +2596,7 @@ export default function Page() {
             <div
               classList={{
                 "w-full pointer-events-auto": true,
-                "md:max-w-[90%] md:mx-auto": centered(),
+                "md:max-w-[95%] md:mx-auto": centered(),
               }}
             >
               <Show when={revertMessageID()}>
