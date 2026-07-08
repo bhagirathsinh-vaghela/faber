@@ -137,6 +137,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return home && sdk.directory.startsWith(home) ? "~" + sdk.directory.slice(home.length) : sdk.directory
   })
   const layout = useLayout()
+  // Zen slims the dock to just input + attach + submit (and the question/permission
+  // prompts). All other dock chrome (model/agent/variant selectors, the bottom
+  // status/action row, the permission auto-accept toggle) is gated behind !zen().
+  const zen = () => layout.zen.opened()
   const comments = useComments()
   const params = useParams()
   const dialog = useDialog()
@@ -1960,8 +1964,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
-        <div class="relative px-3 pt-0 pb-0.5 md:py-1.5 flex items-center justify-between gap-2">
-          <div class="dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!">
+        <div
+          classList={{
+            "flex items-center justify-between gap-2": true,
+            // Normal: the button row sits below the input. Zen: the model/agent
+            // chrome is gone, so pin attach+submit to the input's bottom-right as
+            // a hard boundary and let text wrap to their left (input keeps pr-12).
+            "relative px-3 pt-0 pb-0.5 md:py-1.5": !zen(),
+            "absolute bottom-0 right-0 px-2 pb-1.5": zen(),
+          }}
+        >
+          <div
+            classList={{
+              "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!":
+                true,
+              // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
+              hidden: zen(),
+            }}
+          >
             <Show when={working() || subtaskWorking()}>
               {/* Working indicator: the spinner sits ON TOP of a soft, diffuse
                   agent-tinted glow that pulses behind it. While a subtask runs,
@@ -2131,7 +2151,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Show>
           </div>
           <div class="flex items-center gap-1 shrink-0">
-            <Show when={store.mode === "normal" && params.id}>
+            <Show when={store.mode === "normal" && params.id && !zen()}>
               <Tooltip placement="top" value="Customize fields">
                 <Button
                   type="button"
@@ -2144,7 +2164,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Button>
               </Tooltip>
             </Show>
-            <Show when={permission.permissionsEnabled() && params.id}>
+            <Show when={permission.permissionsEnabled() && params.id && !zen()}>
               <TooltipKeybind
                 placement="top"
                 gutter={8}
@@ -2231,7 +2251,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Tooltip>
           </div>
         </div>
-        <Show when={params.id}>
+        <Show when={params.id && !zen()}>
           <Show
             when={!dockHidden()}
             fallback={

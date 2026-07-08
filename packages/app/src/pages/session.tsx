@@ -2172,10 +2172,10 @@ export default function Page() {
           }}
           style={{
             width: isDesktop() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
-            // In zen the prompt dock is hidden, so collapse its reserved space
-            // to 0 — otherwise the message list keeps padding for a dock that
-            // isn't there.
-            "--prompt-height": layout.zen.opened() ? "0px" : store.promptHeight ? `${store.promptHeight}px` : undefined,
+            // The slim zen dock is still measured by the promptDock ResizeObserver,
+            // so reserve its real height in both modes. The transcript otherwise
+            // scrolls under the visible zen dock and the bottom message is clipped.
+            "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             // In zen the titlebar is gone, so this panel must itself clear the
             // device's top safe-area inset (status bar), plus a 1rem gap that
             // mirrors the bottom margin. --sat is 0 in a browser, so it degrades
@@ -2446,15 +2446,12 @@ export default function Page() {
                             "md:max-w-[95%] md:mx-auto": centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
-                            // Normal: reserve space for the floating prompt dock.
-                            // Zen: dock is gone, so no dock reservation — but keep
-                            // a sensible bottom margin (matching the dock's own
-                            // pb-4) plus the home-indicator safe area, so the last
-                            // message doesn't sit flush against the edge.
-                            "pb-[calc(var(--prompt-height,8rem)+32px)] md:pb-[calc(var(--prompt-height,10rem)+32px)]":
-                              !layout.zen.opened(),
+                            // Reserve space for the floating prompt dock in both
+                            // modes: the slim zen dock still floats over the
+                            // transcript, so the last message needs the same
+                            // clearance or it sits under the dock.
+                            "pb-[calc(var(--prompt-height,8rem)+32px)] md:pb-[calc(var(--prompt-height,10rem)+32px)]": true,
                           }}
-                          style={{ "padding-bottom": layout.zen.opened() ? "calc(var(--sab) + 1rem)" : undefined }}
                         >
                           <Show when={store.turnStart > 0}>
                             <div class="w-full flex justify-center">
@@ -2512,7 +2509,7 @@ export default function Page() {
                                     lastUserMessageID={lastUserMessage()?.id}
                                     footer={(m) => <MessageFooter message={m} />}
                                     stepsExpanded={store.expanded[message.id] ?? true}
-                                    collapsePrompt={layout.zen.opened() && message.id === lastUserMessage()?.id}
+                                    collapsePrompt={layout.zen.opened()}
                                     onStepsExpandedToggle={() =>
                                       setStore("expanded", message.id, (open: boolean | undefined) => !open)
                                     }
@@ -2527,27 +2524,6 @@ export default function Page() {
                               )
                             }}
                           </For>
-                          {/* Zen hides the dock working indicator, so in zen the
-                              only busy cue is this bar trailing the last message.
-                              px-3 (12px) matches the tool streaming bar's left
-                              inset so this bar lines up vertically with the tools'
-                              busy bars. Reuses the tool streaming bar's traveling
-                              band; tint mirrors the dock indicator: agent color,
-                              plus a task-accent band that cross-fades in while a
-                              subtask runs so the color oscillates the same way. */}
-                          <Show when={layout.zen.opened() && titleWorking()}>
-                            <div class="w-full px-3">
-                              <div
-                                class="zen-working-bar"
-                                style={{ "--stream-accent": workingTint() ?? "var(--icon-interactive-base)" }}
-                              >
-                                <span class="zen-working-bar-fill" />
-                                <Show when={subtaskWorking()}>
-                                  <span class="zen-working-bar-fill zen-working-bar-fill-task" />
-                                </Show>
-                              </div>
-                            </div>
-                          </Show>
                         </div>
                       </div>
                     </div>
@@ -2584,7 +2560,11 @@ export default function Page() {
             data-slot="prompt-dock"
             classList={{
               "absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
-              hidden: layout.zen.opened() || mobileChanges(),
+              // Zen keeps a slimmed dock (input + attach + submit + question/permission
+              // prompts) rather than hiding it, so questions stay answerable in zen.
+              // PromptInput drops its own chrome via useLayout().zen. Only the mobile
+              // Changes tab hides the dock outright.
+              hidden: mobileChanges(),
             }}
           >
             <div
@@ -2593,6 +2573,22 @@ export default function Page() {
                 "md:max-w-[95%] md:mx-auto": centered(),
               }}
             >
+              {/* Zen busy bar sits at the top of the dock, in the gap between the
+                  message boxes and the input. Zen hides the dock's own working
+                  spinner (dock-line1), so this is the busy cue in zen. */}
+              <Show when={layout.zen.opened() && titleWorking()}>
+                <div class="w-full px-3 mb-2">
+                  <div
+                    class="zen-working-bar"
+                    style={{ "--stream-accent": workingTint() ?? "var(--icon-interactive-base)" }}
+                  >
+                    <span class="zen-working-bar-fill" />
+                    <Show when={subtaskWorking()}>
+                      <span class="zen-working-bar-fill zen-working-bar-fill-task" />
+                    </Show>
+                  </div>
+                </div>
+              </Show>
               <Show when={revertMessageID()}>
                 <button
                   type="button"
