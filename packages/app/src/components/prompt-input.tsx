@@ -1146,6 +1146,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
+    // Ctrl+C clears the input, matching the TUI. A non-collapsed selection means
+    // the user is copying, so let the browser handle it and clear nothing.
+    if (ctrl && event.code === "KeyC") {
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) return
+      prompt.reset()
+      setStore("mode", "normal")
+      setStore("popover", null)
+      event.preventDefault()
+      return
+    }
+
     // Prompt history is explicit: ctrl+shift+up / ctrl+shift+down. Plain up/down
     // stay native caret movement, so they always move within the text (including
     // wrapped rows) and never surprise-jump to a previous prompt. Ctrl+Shift is
