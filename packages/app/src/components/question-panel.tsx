@@ -10,6 +10,7 @@ import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useQuestion } from "@/context/question"
 import { useLocal } from "@/context/local"
+import { useLayout } from "@/context/layout"
 import { agentColor } from "@/utils/agent"
 
 // Pinned question prompt. Mirrors the TUI QuestionPrompt
@@ -26,6 +27,7 @@ export function QuestionPanel(props: { onClose?: () => void }) {
   const language = useLanguage()
   const question = useQuestion()
   const local = useLocal()
+  const layout = useLayout()
 
   // Agent-tinted accent, same as the expanded panel's focused border. The
   // collapsed bar keeps this thin accent even while unfocused so it stays
@@ -35,13 +37,16 @@ export function QuestionPanel(props: { onClose?: () => void }) {
     return (a && agentColor(a.name, a.color)) ?? "var(--icon-interactive-base)"
   })
 
-  // A newly-arrived question pops the panel back open even if the user had
-  // collapsed a previous one — a question demands attention.
+  // A newly-arrived question pops the panel open, except in zen where every
+  // prompt is collapsed by default: there it seeds the one-line bar instead, so
+  // the question is present but not expanded until the user opens it.
   createEffect(
     on(
       () => question.pending().length,
       (len, prev) => {
-        if (len > (prev ?? 0)) question.expand()
+        if (len <= (prev ?? 0)) return
+        if (layout.zen.opened()) question.collapse()
+        else question.expand()
       },
     ),
   )
@@ -124,6 +129,7 @@ function Panel(props: {
 }) {
   const sdk = useSDK()
   const local = useLocal()
+  const language = useLanguage()
 
   // Focus-highlight accent = the current session agent's color (same color the
   // dock/agent indicator uses), so the panel's focus cue matches whoever's
@@ -136,6 +142,9 @@ function Panel(props: {
   const [requestIndex, setRequestIndex] = createSignal(0)
   const request = createMemo(() => props.requests[requestIndex()] ?? props.requests[0])
   const multiRequest = createMemo(() => props.requests.length > 1)
+  // Total question count across all pending requests, for the header label
+  // (same string the collapsed bar uses).
+  const questionCount = createMemo(() => props.requests.reduce((n, r) => n + r.questions.length, 0))
 
   const questions = createMemo(() => request()?.questions ?? [])
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
@@ -447,7 +456,7 @@ function Panel(props: {
       // #root's h-dvh; 16rem leaves room for the dock's pt-12, the prompt input
       // below, and the bottom safe-area. The content div scrolls; the collapse
       // control and actions row stay pinned.
-      class="relative mb-3 flex max-h-[calc(100dvh-16rem)] flex-col rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
+      class="relative mb-3 flex max-h-[calc(100dvh-16rem)] flex-col overflow-hidden rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
       classList={{ "border-border-base cursor-default": !focused() }}
       style={
         focused()
@@ -461,23 +470,30 @@ function Panel(props: {
       }
       data-component="question-panel"
     >
-      {/* Collapse control — floats top-right over the panel so it takes no row
-          from the content (the tabs/question heading stay put). The whole
-          control (asked-at time + native grabber chevron) is clickable. Collapse
-          keeps the question live (server-side) and returns focus to the dock.
-          data-question-collapse exempts it from the defocused-press guard so the
-          first click always collapses. */}
+      {/* Full-width clickable header, matching the collapsible boxes in the
+          transcript: the whole bar toggles (here: collapses). Mirrors the
+          collapsed one-line bar's layout (help icon, label, asked-at, grabber)
+          so expanding/collapsing looks identical. data-question-collapse exempts
+          it from the defocused-press guard so the first click always collapses. */}
       <button
         type="button"
         data-question-collapse
-        class="absolute right-2 top-2 flex flex-row items-center gap-1.5 rounded px-1 hover:bg-surface-raised-base"
+        class="flex w-full flex-row items-center gap-2 px-4 py-2 text-left border-b border-border-weak-base hover:bg-surface-raised-base"
         title="Collapse"
         onClick={() => props.onCollapse()}
       >
+        <Icon name="help" class="text-text-weak" />
+        <span class="text-13-regular text-text-base">
+          {language.t("question.collapsed", { count: questionCount() })}
+        </span>
         <Show when={props.asked}>
-          <span class="text-11-regular text-text-weak tabular-nums">{clock(props.asked!)}</span>
+          <span class="ml-auto text-11-regular text-text-weak tabular-nums">{clock(props.asked!)}</span>
         </Show>
-        <div data-slot="collapsible-arrow" class="flex h-6 w-6 shrink-0 items-center justify-center text-text-weak">
+        <div
+          data-slot="collapsible-arrow"
+          class="flex h-6 w-6 shrink-0 items-center justify-center text-text-weak"
+          classList={{ "ml-auto": !props.asked }}
+        >
           <Icon name="chevron-grabber-vertical" size="small" />
         </div>
       </button>
