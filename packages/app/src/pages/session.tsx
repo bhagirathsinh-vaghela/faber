@@ -2649,22 +2649,6 @@ export default function Page() {
                 "md:max-w-[95%] md:mx-auto": centered(),
               }}
             >
-              {/* Zen busy bar sits at the top of the dock, in the gap between the
-                  message boxes and the input. Zen hides the dock's own working
-                  spinner (dock-line1), so this is the busy cue in zen. */}
-              <Show when={layout.zen.opened() && titleWorking()}>
-                <div class="w-full px-3 mb-2">
-                  <div
-                    class="zen-working-bar"
-                    style={{ "--stream-accent": workingTint() ?? "var(--icon-interactive-base)" }}
-                  >
-                    <span class="zen-working-bar-fill" />
-                    <Show when={subtaskWorking()}>
-                      <span class="zen-working-bar-fill zen-working-bar-fill-task" />
-                    </Show>
-                  </div>
-                </div>
-              </Show>
               <Show when={revertMessageID()}>
                 <button
                   type="button"
@@ -2681,6 +2665,23 @@ export default function Page() {
               </Show>
 
               <QuestionPanel onClose={() => command.trigger("prompt.focus")} />
+
+              {/* Zen busy bar sits below the question block, in the gap between the
+                  message boxes and the input. Zen hides the dock's own working
+                  spinner (dock-line1), so this is the busy cue in zen. */}
+              <Show when={layout.zen.opened() && titleWorking()}>
+                <div class="w-full px-3 mb-2">
+                  <div
+                    class="zen-working-bar"
+                    style={{ "--stream-accent": workingTint() ?? "var(--icon-interactive-base)" }}
+                  >
+                    <span class="zen-working-bar-fill" />
+                    <Show when={subtaskWorking()}>
+                      <span class="zen-working-bar-fill zen-working-bar-fill-task" />
+                    </Show>
+                  </div>
+                </div>
+              </Show>
 
               <Show when={request()} keyed>
                 {(perm) => (
