@@ -155,7 +155,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }),
           )
         },
-        async sync(sessionID: string) {
+        async sync(sessionID: string, force = false) {
           const directory = sdk.directory
           const client = sdk.client
           const [store, setStore] = globalSync.child(directory)
@@ -175,6 +175,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // skips the fetch when the session is already in the store. Without
           // this, reopening an already-loaded recent session never re-armed.
           void client.session.get({ sessionID }).catch(() => {})
+
+          // force re-fetch re-hydrates messages+parts at the loaded limit after
+          // a reconnect: the server has no SSE replay, so a message (or a part
+          // completed) during the disconnect window is missing from the store
+          // and reconcile heals it. Skip only the early-return; keep the same
+          // load path so the reconcile-by-id below dedupes.
+          if (force && hydrated) {
+            return loadMessages({ directory, client, setStore, sessionID, limit: meta.limit[key]! })
+          }
 
           if (hasSession && hasMessages && hydrated) return
           const pending = inflight.get(key)
@@ -348,6 +357,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
       },
       absolute,
+      reconnect: globalSync.reconnect,
       get directory() {
         return current()[0].path.directory
       },

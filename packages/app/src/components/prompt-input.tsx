@@ -1663,6 +1663,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     void send().catch((err) => {
       pending.delete(session.id)
+      // Transport failures reject with an Error subclass — TypeError for a
+      // network/connection drop (server restart mid-turn) per the WHATWG fetch
+      // spec, DOMException for an abort. HTTP error responses (validation 400,
+      // session 404) reject with the server's parsed error body, a plain value,
+      // NOT an Error instance (the hey-api client throws the parsed body). Only
+      // the latter means the message was never created and the input should be
+      // restored. A transport drop leaves the already-persisted message and its
+      // real turn error on the assistant message for reconnect/SSE to heal, so
+      // restoring input or deleting the message here would clobber both.
+      if (err instanceof Error) return
       if (sessionDirectory === projectDirectory) {
         sync.set("session_status", session.id, { type: "idle" })
       }

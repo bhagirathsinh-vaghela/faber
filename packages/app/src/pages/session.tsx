@@ -606,6 +606,15 @@ export default function Page() {
     sync.session.sync(params.id)
   })
 
+  // On reconnect, re-hydrate the open session so a message/part the server
+  // published while the stream was down (no replay) heals without a reload.
+  createEffect(
+    on(sync.reconnect, () => {
+      if (!params.id) return
+      void sync.session.sync(params.id, true)
+    }, { defer: true }),
+  )
+
   createEffect(() => {
     if (!view().terminal.opened()) {
       setUi("autoCreated", false)

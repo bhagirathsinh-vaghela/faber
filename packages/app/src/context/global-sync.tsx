@@ -30,6 +30,7 @@ import {
   batch,
   createContext,
   createEffect,
+  createSignal,
   untrack,
   getOwner,
   runWithOwner,
@@ -227,6 +228,10 @@ function createGlobalSync() {
     reload: undefined,
     recent_hub: [],
   })
+
+  // Bumped on every (re)attach of the event stream. Open sessions subscribe to
+  // heal messages/parts that arrived during the disconnect window (no SSE replay).
+  const [reconnect, setReconnect] = createSignal(0)
 
   const queued = new Set<string>()
   let root = false
@@ -710,6 +715,10 @@ function createGlobalSync() {
           // reconnected client redraws current state instead of showing the
           // stale snapshot it had when the stream dropped (tmux reattach).
           refresh()
+          // Wake open sessions so they re-fetch messages/parts the server
+          // published while the stream was down (no replay). Harmless on the
+          // first connect: the force path no-ops until the session is hydrated.
+          setReconnect((n) => n + 1)
           return
         }
         case "global.disposed": {
@@ -1181,6 +1190,7 @@ function createGlobalSync() {
     get error() {
       return globalStore.error
     },
+    reconnect,
     child,
     bootstrap,
     updateConfig: (config: Config) => {
