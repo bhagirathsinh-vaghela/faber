@@ -4,7 +4,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { useTheme } from "@opencode-ai/ui/theme"
 import { useLanguage } from "@/context/language"
-import { useSettings, monoFontFamily } from "@/context/settings"
+import { useSettings, monoFontFamily, fontWeights, clampWeight } from "@/context/settings"
 import { THEME_CATALOG, FONT_OPTIONS, CODE_THEME_OPTIONS, type TokenEntry } from "@/utils/theme-catalog"
 import { SettingsRow } from "./settings-row"
 
@@ -132,6 +132,93 @@ const ColorEditor: Component<{ entry: TokenEntry; value: string | undefined; onC
   )
 }
 
+// Weight editor bound to a font: a discrete font (only static faces) renders a
+// picker of its real weights; a variable font renders a numeric input clamped to
+// its axis with a range hint. Either way the user cannot land on a weight the
+// font can't render, so nothing snaps.
+const WeightControl: Component<{ font: string; value: number; onChange: (v: number) => void; compact?: boolean }> = (
+  props,
+) => {
+  const caps = createMemo(() => fontWeights(props.font))
+  return (
+    <Show
+      when={"list" in caps() ? (caps() as { list: number[] }) : false}
+      fallback={
+        <div class="flex items-center gap-2">
+          <input
+            type="number"
+            min={(caps() as { min: number }).min}
+            max={(caps() as { max: number }).max}
+            step={(caps() as { step: number }).step}
+            class="w-20 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+            value={props.value}
+            onChange={(e) =>
+              e.currentTarget.value && props.onChange(clampWeight(props.font, Number(e.currentTarget.value)))
+            }
+          />
+          <Show when={!props.compact}>
+            <span class="text-11-regular text-text-weak">
+              {(caps() as { min: number }).min}–{(caps() as { max: number }).max}, step{" "}
+              {(caps() as { step: number }).step}
+            </span>
+          </Show>
+        </div>
+      }
+    >
+      {(list) => (
+        <Select
+          options={list().list}
+          current={list().list.find((w) => w === props.value) ?? clampWeight(props.font, props.value)}
+          value={(w) => String(w)}
+          label={(w) => String(w)}
+          onSelect={(w) => w && props.onChange(w)}
+          variant="secondary"
+          size="small"
+          triggerVariant="settings"
+          triggerStyle={{ "min-width": "88px" }}
+        >
+          {(w) => <span style={{ "font-weight": w ?? 400 }}>{w ?? ""}</span>}
+        </Select>
+      )}
+    </Show>
+  )
+}
+
+const SizeInput: Component<{ value: number; onChange: (v: number) => void }> = (props) => (
+  <div class="flex items-center gap-1">
+    <input
+      type="number"
+      min={8}
+      max={48}
+      step={0.5}
+      class="w-20 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
+      value={props.value}
+      onInput={(e) => e.currentTarget.value && props.onChange(Number(e.currentTarget.value))}
+    />
+    <span class="text-11-regular text-text-weak">px</span>
+  </div>
+)
+
+const FontSelect: Component<{
+  value: string
+  onChange: (v: string) => void
+  label: (o: (typeof FONT_OPTIONS)[number]) => string
+}> = (props) => (
+  <Select
+    options={[...FONT_OPTIONS]}
+    current={FONT_OPTIONS.find((o) => o.value === props.value)}
+    value={(o) => o.value}
+    label={(o) => props.label(o)}
+    onSelect={(o) => o && props.onChange(o.value)}
+    variant="secondary"
+    size="small"
+    triggerVariant="settings"
+    triggerStyle={{ "font-family": monoFontFamily(props.value), "min-width": "160px" }}
+  >
+    {(o) => <span style={{ "font-family": monoFontFamily(o?.value) }}>{o ? props.label(o) : ""}</span>}
+  </Select>
+)
+
 export const SettingsCustomization: Component = () => {
   const settings = useSettings()
   const theme = useTheme()
@@ -161,15 +248,6 @@ export const SettingsCustomization: Component = () => {
 
   const mode = () => theme.mode()
 
-  const fontOptions = [...FONT_OPTIONS]
-
-  // Family override stores the resolved CSS family stack. Match the current
-  // picker selection by comparing each option's resolved stack to the override.
-  const currentFont = (token: string) => {
-    const value = settings.overrides.get(mode(), token)
-    return fontOptions.find((o) => monoFontFamily(o.value) === value)
-  }
-
   const groups = createMemo(() => {
     const q = query().toLowerCase().trim()
     if (!q) return THEME_CATALOG
@@ -181,15 +259,14 @@ export const SettingsCustomization: Component = () => {
     })).filter((g) => g.entries.length > 0)
   })
 
-  const setNum = (entry: TokenEntry, num: number) => {
-    const suffix = entry.type === "size" ? "px" : ""
-    settings.overrides.set(mode(), entry.token, `${num}${suffix}`)
-  }
-
-  const currentNum = (entry: TokenEntry): number => {
-    const raw = settings.overrides.get(mode(), entry.token) ?? computed(entry.token)
-    return parseFloat(raw) || (entry.type === "size" ? 14 : 400)
-  }
+  // Token-backed reads/writes for the Fonts pane. Heading + inline-code sizes and
+  // the inline-code weight are override tokens (unlike body size/weight, which are
+  // appearance fields). Size tokens carry a px unit; weight tokens are unitless.
+  const tokenNum = (token: string, fallback: number): number =>
+    parseFloat(settings.overrides.get(mode(), token) ?? computed(token)) || fallback
+  const tokenSize = (token: string) => tokenNum(token, 14)
+  const setTokenSize = (token: string, px: number) => settings.overrides.set(mode(), token, `${px}px`)
+  const setTokenWeight = (token: string, weight: number) => settings.overrides.set(mode(), token, `${weight}`)
 
   return (
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
@@ -322,49 +399,107 @@ export const SettingsCustomization: Component = () => {
         <Show when={!query().trim()}>
           <div class="flex flex-col gap-1">
             <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.fonts.title")}</h3>
+            <div class="bg-surface-raised-base px-4 rounded-lg divide-y divide-border-weak-base">
+              <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-6 pb-2 pt-3 text-11-regular text-text-weak">
+                <span />
+                <span class="w-40 text-left">{language.t("settings.fonts.col.font")}</span>
+                <span class="w-24 text-left">{language.t("settings.fonts.col.size")}</span>
+                <span class="w-24 text-left">{language.t("settings.fonts.col.weight")}</span>
+              </div>
+
+              <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-6 py-3">
+                <span class="text-14-medium text-text-strong">{language.t("settings.fonts.body")}</span>
+                <div class="w-40">
+                  <FontSelect
+                    value={settings.appearance.font()}
+                    onChange={(v) => settings.appearance.setFont(v)}
+                    label={(o) => language.t(o.label)}
+                  />
+                </div>
+                <div class="w-24">
+                  <SizeInput value={settings.appearance.fontSize()} onChange={(v) => settings.appearance.setFontSize(v)} />
+                </div>
+                <div class="w-24">
+                  <WeightControl
+                    font={settings.appearance.font()}
+                    value={settings.appearance.fontWeight()}
+                    onChange={(v) => settings.appearance.setFontWeight(v)}
+                    compact
+                  />
+                </div>
+              </div>
+
+              <For each={[1, 2, 3, 4, 5, 6]}>
+                {(level) => (
+                  <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-6 py-3">
+                    <span class="text-14-medium text-text-strong">{`H${level}`}</span>
+                    <span
+                      class="w-40 text-11-regular text-text-weaker italic"
+                      style={{ "font-family": monoFontFamily(settings.appearance.font()) }}
+                    >
+                      {language.t("settings.fonts.inheritsBody")}
+                    </span>
+                    <div class="w-24">
+                      <SizeInput
+                        value={tokenSize(`--markdown-heading-${level}-size`)}
+                        onChange={(v) => setTokenSize(`--markdown-heading-${level}-size`, v)}
+                      />
+                    </div>
+                    <div class="w-24">
+                      <WeightControl
+                        font={settings.appearance.font()}
+                        value={settings.appearance.headingWeight(level)}
+                        onChange={(v) => settings.appearance.setHeadingWeight(level, v)}
+                        compact
+                      />
+                    </div>
+                  </div>
+                )}
+              </For>
+
+              <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-6 py-3">
+                <span class="text-14-medium text-text-strong">{language.t("settings.fonts.codeBlock")}</span>
+                <div class="w-40">
+                  <FontSelect
+                    value={settings.appearance.codeBlockFont()}
+                    onChange={(v) => settings.appearance.setCodeBlockFont(v)}
+                    label={(o) => language.t(o.label)}
+                  />
+                </div>
+                <span class="w-24 text-11-regular text-text-weaker italic">
+                  {language.t("settings.fonts.fromCodeTheme")}
+                </span>
+                <span class="w-24" />
+              </div>
+
+              <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-6 py-3">
+                <span class="text-14-medium text-text-strong">{language.t("settings.fonts.inlineCode")}</span>
+                <div class="w-40">
+                  <FontSelect
+                    value={settings.appearance.inlineCodeFont()}
+                    onChange={(v) => settings.appearance.setInlineCodeFont(v)}
+                    label={(o) => language.t(o.label)}
+                  />
+                </div>
+                <div class="w-24">
+                  <SizeInput
+                    value={tokenSize("--markdown-inline-code-size")}
+                    onChange={(v) => setTokenSize("--markdown-inline-code-size", v)}
+                  />
+                </div>
+                <div class="w-24">
+                  <WeightControl
+                    font={settings.appearance.inlineCodeFont()}
+                    value={tokenNum("--markdown-inline-code-weight", 500)}
+                    onChange={(v) => setTokenWeight("--markdown-inline-code-weight", v)}
+                    compact
+                  />
+                </div>
+              </div>
+            </div>
+
+            <h3 class="text-14-medium text-text-strong pb-2 pt-4">{language.t("settings.fonts.codeTheme.title")}</h3>
             <div class="bg-surface-raised-base px-4 rounded-lg">
-              <SettingsRow
-                title={language.t("settings.general.row.font.title")}
-                description={language.t("settings.general.row.font.description")}
-              >
-                <Select
-                  options={fontOptions}
-                  current={fontOptions.find((o) => o.value === settings.appearance.font())}
-                  value={(o) => o.value}
-                  label={(o) => language.t(o.label)}
-                  onSelect={(o) => o && settings.appearance.setFont(o.value)}
-                  variant="secondary"
-                  size="small"
-                  triggerVariant="settings"
-                  triggerStyle={{ "font-family": monoFontFamily(settings.appearance.font()), "min-width": "180px" }}
-                >
-                  {(o) => (
-                    <span style={{ "font-family": monoFontFamily(o?.value) }}>{o ? language.t(o.label) : ""}</span>
-                  )}
-                </Select>
-              </SettingsRow>
-
-              <SettingsRow
-                title={language.t("settings.fonts.codeFont.title")}
-                description={language.t("settings.fonts.codeFont.description")}
-              >
-                <Select
-                  options={fontOptions}
-                  current={fontOptions.find((o) => o.value === settings.appearance.codeFont())}
-                  value={(o) => o.value}
-                  label={(o) => language.t(o.label)}
-                  onSelect={(o) => o && settings.appearance.setCodeFont(o.value)}
-                  variant="secondary"
-                  size="small"
-                  triggerVariant="settings"
-                  triggerStyle={{ "font-family": monoFontFamily(settings.appearance.codeFont()), "min-width": "180px" }}
-                >
-                  {(o) => (
-                    <span style={{ "font-family": monoFontFamily(o?.value) }}>{o ? language.t(o.label) : ""}</span>
-                  )}
-                </Select>
-              </SettingsRow>
-
               <SettingsRow
                 title={language.t("settings.fonts.codeTheme.title")}
                 description={language.t("settings.fonts.codeTheme.description")}
@@ -402,62 +537,6 @@ export const SettingsCustomization: Component = () => {
                   {(o) => <span>{o?.label ?? ""}</span>}
                 </Select>
               </SettingsRow>
-
-              <SettingsRow
-                title={language.t("settings.general.row.fontSize.title")}
-                description={language.t("settings.general.row.fontSize.description")}
-              >
-                <div class="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min={8}
-                    max={32}
-                    step={0.5}
-                    class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
-                    value={settings.appearance.fontSize()}
-                    onInput={(e) =>
-                      e.currentTarget.value && settings.appearance.setFontSize(Number(e.currentTarget.value))
-                    }
-                  />
-                  <span class="text-12-regular text-text-weak">px</span>
-                </div>
-              </SettingsRow>
-
-              <SettingsRow
-                title={language.t("settings.fonts.bodyWeight.title")}
-                description={language.t("settings.fonts.bodyWeight.description")}
-              >
-                <input
-                  type="number"
-                  min={100}
-                  max={900}
-                  step={10}
-                  class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
-                  value={settings.appearance.fontWeight()}
-                  onInput={(e) =>
-                    e.currentTarget.value && settings.appearance.setFontWeight(Number(e.currentTarget.value))
-                  }
-                />
-              </SettingsRow>
-
-              <For each={[1, 2, 3, 4, 5, 6]}>
-                {(level) => (
-                  <SettingsRow title={`H${level} weight`} description={`Thickness of level ${level} headings`}>
-                    <input
-                      type="number"
-                      min={100}
-                      max={900}
-                      step={10}
-                      class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
-                      value={settings.appearance.headingWeight(level)}
-                      onInput={(e) =>
-                        e.currentTarget.value &&
-                        settings.appearance.setHeadingWeight(level, Number(e.currentTarget.value))
-                      }
-                    />
-                  </SettingsRow>
-                )}
-              </For>
             </div>
           </div>
         </Show>
@@ -482,59 +561,11 @@ export const SettingsCustomization: Component = () => {
                           </Show>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0">
-                          <Show when={entry.type === "color"}>
-                            <ColorEditor
-                              entry={entry}
-                              value={override()}
-                              onChange={(v) => settings.overrides.set(mode(), entry.token, v)}
-                            />
-                          </Show>
-                          <Show when={entry.type === "weight"}>
-                            <input
-                              type="number"
-                              min={100}
-                              max={900}
-                              step={10}
-                              class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
-                              value={currentNum(entry)}
-                              onInput={(e) => e.currentTarget.value && setNum(entry, Number(e.currentTarget.value))}
-                            />
-                          </Show>
-                          <Show when={entry.type === "size"}>
-                            <div class="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min={8}
-                                max={32}
-                                step={0.5}
-                                class="w-24 px-2 py-1 text-13-regular rounded-md bg-surface-base border border-border-weak-base text-text-strong"
-                                value={currentNum(entry)}
-                                onInput={(e) => e.currentTarget.value && setNum(entry, Number(e.currentTarget.value))}
-                              />
-                              <span class="text-12-regular text-text-weak">px</span>
-                            </div>
-                          </Show>
-                          <Show when={entry.type === "family"}>
-                            <Select
-                              options={fontOptions}
-                              current={currentFont(entry.token)}
-                              value={(o) => o.value}
-                              label={(o) => language.t(o.label)}
-                              onSelect={(o) =>
-                                o && settings.overrides.set(mode(), entry.token, monoFontFamily(o.value))
-                              }
-                              variant="secondary"
-                              size="small"
-                              triggerVariant="settings"
-                              triggerStyle={{ "min-width": "160px" }}
-                            >
-                              {(o) => (
-                                <span style={{ "font-family": monoFontFamily(o?.value) }}>
-                                  {o ? language.t(o.label) : ""}
-                                </span>
-                              )}
-                            </Select>
-                          </Show>
+                          <ColorEditor
+                            entry={entry}
+                            value={override()}
+                            onChange={(v) => settings.overrides.set(mode(), entry.token, v)}
+                          />
                           <Show when={override() !== undefined}>
                             <Button
                               variant="ghost"

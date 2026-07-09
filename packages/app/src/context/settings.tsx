@@ -4,6 +4,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useTheme } from "@opencode-ai/ui/theme"
 import { persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { FONT_WEIGHTS, type FontWeights } from "@opencode-ai/ui/font"
 
 export interface NotificationSettings {
   agent: boolean
@@ -99,13 +100,28 @@ export function monoFontFamily(font: string | undefined) {
   return monoFonts[font ?? "jetbrains-mono"] ?? monoFonts["jetbrains-mono"]
 }
 
+// The weights the given font can actually render (see FONT_WEIGHTS).
+export function fontWeights(font: string | undefined): FontWeights {
+  return FONT_WEIGHTS[font ?? "jetbrains-mono"] ?? FONT_WEIGHTS["jetbrains-mono"]
+}
+
+// Coerce a weight into what the font supports: nearest listed face for a
+// discrete font, or the clamped range bound for a variable font. Keeps a stored
+// weight from ever being a value the font can't paint (e.g. after a font switch).
+export function clampWeight(font: string | undefined, weight: number): number {
+  const w = fontWeights(font)
+  if ("list" in w) return w.list.reduce((a, b) => (Math.abs(b - weight) < Math.abs(a - weight) ? b : a))
+  return Math.min(w.max, Math.max(w.min, weight))
+}
+
 // The appearance slice is server-persisted (survives restart, is shared by
 // every client of the server), NOT localStorage. Shape mirrors the
 // server's AppearancePreference.Info.
 export interface Appearance {
   fontSize: number
   font: string
-  codeFont: string
+  codeBlockFont: string
+  inlineCodeFont: string
   codeTheme: string
   diffTheme: string
   fontWeight: number
@@ -130,7 +146,8 @@ function hasCustomizations(a: Appearance): boolean {
   return (
     a.fontSize !== d.fontSize ||
     a.font !== d.font ||
-    a.codeFont !== d.codeFont ||
+    a.codeBlockFont !== d.codeBlockFont ||
+    a.inlineCodeFont !== d.inlineCodeFont ||
     a.codeTheme !== d.codeTheme ||
     a.diffTheme !== d.diffTheme ||
     a.fontWeight !== d.fontWeight
@@ -140,12 +157,26 @@ function hasCustomizations(a: Appearance): boolean {
 const defaultAppearance: Appearance = {
   fontSize: 13,
   font: "jetbrains-mono",
-  codeFont: "jetbrains-mono",
+  codeBlockFont: "jetbrains-mono",
+  inlineCodeFont: "jetbrains-mono",
   codeTheme: "github-dark",
   diffTheme: "github-dark",
   fontWeight: 400,
   headingWeight: { 1: 700, 2: 700, 3: 700, 4: 700, 5: 700, 6: 700 },
   overrides: { light: {}, dark: {} },
+}
+
+// Normalize a persisted appearance onto the current shape. Records saved before
+// the code-font split carry a single `codeFont`; seed both the block and inline
+// fields from it so an older theme keeps its chosen code font on both surfaces.
+function migrate(a: Partial<Appearance> & { codeFont?: string }): Appearance {
+  const legacy = a.codeFont
+  return {
+    ...structuredClone(defaultAppearance),
+    ...a,
+    codeBlockFont: a.codeBlockFont ?? legacy ?? defaultAppearance.codeBlockFont,
+    inlineCodeFont: a.inlineCodeFont ?? legacy ?? defaultAppearance.inlineCodeFont,
+  }
 }
 
 export const { use: useSettings, provider: SettingsProvider } = createSimpleContext({
@@ -221,7 +252,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     // `work`, mark it active and saved (a freshly-loaded theme is not dirty).
     const applyTheme = (t: UserTheme) => {
       if (theme.themeId() !== t.baseId) theme.setTheme(t.baseId)
-      const appearance: Appearance = { ...structuredClone(defaultAppearance), ...t }
+      const appearance = migrate(t)
       setWork(reconcile(appearance))
       setSaved(structuredClone(appearance))
       setActiveThemeID(t.id)
@@ -336,8 +367,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           // Turn the legacy appearance into a named theme so it becomes selectable.
           if (themeList.length === 0 && appearance && hasCustomizations(appearance)) {
             const migrated: UserTheme = {
-              ...structuredClone(defaultAppearance),
-              ...appearance,
+              ...migrate(appearance),
               id: crypto.randomUUID(),
               name: "Custom",
               baseId: theme.themeId(),
@@ -357,7 +387,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           // No active user theme: seed work from the legacy appearance so the
           // customization editor still reflects saved overrides.
           if (appearance) {
-            setWork(reconcile({ ...structuredClone(defaultAppearance), ...appearance }))
+            setWork(reconcile(migrate(appearance)))
             setSaved(structuredClone(unwrap(work)))
           }
         })
@@ -370,7 +400,8 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
       const root = document.documentElement.style
       root.setProperty("--font-family-mono", monoFontFamily(work.font))
       root.setProperty("--font-family-sans", monoFontFamily(work.font))
-      root.setProperty("--markdown-code-block-family", monoFontFamily(work.codeFont))
+      root.setProperty("--markdown-code-block-family", monoFontFamily(work.codeBlockFont))
+      root.setProperty("--markdown-inline-code-family", monoFontFamily(work.inlineCodeFont))
       root.setProperty("--font-size-base", `${work.fontSize}px`)
       root.setProperty("--text-base-weight", `${work.fontWeight}`)
       for (const level of [1, 2, 3, 4, 5, 6]) {
@@ -431,11 +462,23 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setFont(value: string) {
           deriveIfNeeded()
           setWork("font", value)
+          setWork("fontWeight", clampWeight(value, work.fontWeight))
+          for (const level of [1, 2, 3, 4, 5, 6]) {
+            setWork("headingWeight", level, clampWeight(value, work.headingWeight[level] ?? 700))
+          }
         },
-        codeFont: () => work.codeFont,
-        setCodeFont(value: string) {
+        codeBlockFont: () => work.codeBlockFont,
+        setCodeBlockFont(value: string) {
           deriveIfNeeded()
-          setWork("codeFont", value)
+          setWork("codeBlockFont", value)
+        },
+        inlineCodeFont: () => work.inlineCodeFont,
+        setInlineCodeFont(value: string) {
+          deriveIfNeeded()
+          setWork("inlineCodeFont", value)
+          const weight = work.overrides[theme.mode()]?.["--markdown-inline-code-weight"]
+          if (weight)
+            setWork("overrides", theme.mode(), "--markdown-inline-code-weight", `${clampWeight(value, parseFloat(weight))}`)
         },
         codeTheme: () => work.codeTheme ?? defaultAppearance.codeTheme,
         setCodeTheme(value: string) {
@@ -457,6 +500,8 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           deriveIfNeeded()
           setWork("headingWeight", level, value)
         },
+        // Weight capability of a font id — drives the weight picker's shape.
+        weights: (font: string) => fontWeights(font),
         dirty,
         discard,
       },

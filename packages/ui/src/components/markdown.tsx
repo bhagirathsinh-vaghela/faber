@@ -195,8 +195,8 @@ export function Markdown(
     themeColors(name)
       .then((c) => {
         if (!c || theme() !== name) return
-        container.style.setProperty("--markdown-inline-bg", c.bg)
-        container.style.setProperty("--markdown-inline-fg", c.fg)
+        container.style.setProperty("--markdown-inline-code-syntax-bg", c.bg)
+        container.style.setProperty("--markdown-inline-code-syntax-color", c.fg)
       })
       .catch(() => {})
   })

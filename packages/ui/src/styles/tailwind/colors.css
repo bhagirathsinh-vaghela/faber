@@ -218,7 +218,7 @@
   --color-markdown-text: var(--markdown-text);
   --color-markdown-link: var(--markdown-link);
   --color-markdown-link-text: var(--markdown-link-text);
-  --color-markdown-code: var(--markdown-code);
+  --color-markdown-inline-code: var(--markdown-inline-code-color);
   --color-markdown-block-quote: var(--markdown-block-quote);
   --color-markdown-emph: var(--markdown-emph);
   --color-markdown-strong: var(--markdown-strong);
@@ -227,7 +227,6 @@
   --color-markdown-list-enumeration: var(--markdown-list-enumeration);
   --color-markdown-image: var(--markdown-image);
   --color-markdown-image-text: var(--markdown-image-text);
-  --color-markdown-code-block: var(--markdown-code-block);
   --color-border-color: var(--border-color);
   --color-border-weaker-base: var(--border-weaker-base);
   --color-border-weaker-hover: var(--border-weaker-hover);

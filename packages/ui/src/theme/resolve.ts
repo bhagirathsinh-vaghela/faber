@@ -274,7 +274,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["markdown-text"] = isDark ? "#eeeeee" : "#1a1a1a"
   tokens["markdown-link"] = isDark ? "#fab283" : "#3b7dd8"
   tokens["markdown-link-text"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-code"] = isDark ? "#7fd88f" : "#3d9a57"
+  tokens["markdown-inline-code-color"] = isDark ? "#7fd88f" : "#3d9a57"
   tokens["markdown-block-quote"] = isDark ? "#e5c07b" : "#b0851f"
   tokens["markdown-emph"] = isDark ? "#e5c07b" : "#b0851f"
   tokens["markdown-strong"] = isDark ? "#f5a742" : "#d68c27"
@@ -283,7 +283,6 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["markdown-list-enumeration"] = isDark ? "#56b6c2" : "#318795"
   tokens["markdown-image"] = isDark ? "#fab283" : "#3b7dd8"
   tokens["markdown-image-text"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-code-block"] = isDark ? "#eeeeee" : "#1a1a1a"
 
   tokens["avatar-background-pink"] = isDark ? "#501b3f" : "#feeef8"
   tokens["avatar-background-mint"] = isDark ? "#033a34" : "#e1fbf4"

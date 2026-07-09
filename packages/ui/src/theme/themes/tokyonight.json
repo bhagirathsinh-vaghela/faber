@@ -53,7 +53,7 @@
       "markdown-text": "#273153",
       "markdown-link": "#2e7de9",
       "markdown-link-text": "#007197",
-      "markdown-code": "#587539",
+      "markdown-inline-code-color": "#587539",
       "markdown-block-quote": "#8c6c3e",
       "markdown-emph": "#8c6c3e",
       "markdown-strong": "#b15c00",
@@ -61,8 +61,7 @@
       "markdown-list-item": "#2e7de9",
       "markdown-list-enumeration": "#007197",
       "markdown-image": "#2e7de9",
-      "markdown-image-text": "#007197",
-      "markdown-code-block": "#3760bf"
+      "markdown-image-text": "#007197"
     }
   },
   "dark": {
@@ -140,7 +139,7 @@
       "markdown-text": "#c0caf5",
       "markdown-link": "#7aa2f7",
       "markdown-link-text": "#7dcfff",
-      "markdown-code": "#9ece6a",
+      "markdown-inline-code-color": "#9ece6a",
       "markdown-block-quote": "#e0af68",
       "markdown-emph": "#e0af68",
       "markdown-strong": "#ff9e64",
@@ -148,8 +147,7 @@
       "markdown-list-item": "#7aa2f7",
       "markdown-list-enumeration": "#7dcfff",
       "markdown-image": "#7aa2f7",
-      "markdown-image-text": "#7dcfff",
-      "markdown-code-block": "#c0caf5"
+      "markdown-image-text": "#7dcfff"
     }
   }
 }

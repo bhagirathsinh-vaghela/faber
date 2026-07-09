@@ -28,9 +28,9 @@
 
   /* Inline code type (themable independently of body/code-block). Default to
      the shared mono family/medium weight so nothing changes until customized. */
-  --markdown-code-family: var(--font-family-mono);
-  --markdown-code-weight: var(--font-weight-medium);
-  --markdown-code-size: var(--font-size-base);
+  --markdown-inline-code-family: var(--font-family-mono);
+  --markdown-inline-code-weight: var(--font-weight-medium);
+  --markdown-inline-code-size: var(--font-size-base);
 
   /* Code block (fenced/Shiki) font, independent of body + inline code. Default
      to the shared mono family so nothing changes until a code font is picked. */
@@ -375,7 +375,7 @@
   --markdown-text: #1a1a1a;
   --markdown-link: #3b7dd8;
   --markdown-link-text: #318795;
-  --markdown-code: #3d9a57;
+  --markdown-inline-code-color: #3d9a57;
   --markdown-block-quote: #b0851f;
   --markdown-emph: #b0851f;
   --markdown-strong: #d68c27;
@@ -384,7 +384,6 @@
   --markdown-list-enumeration: #318795;
   --markdown-image: #3b7dd8;
   --markdown-image-text: #318795;
-  --markdown-code-block: #1a1a1a;
   --border-color: #ffffff;
   --border-weaker-base: var(--smoke-light-alpha-3);
   --border-weaker-hover: var(--smoke-light-alpha-4);
@@ -635,7 +634,7 @@
     --markdown-text: #eeeeee;
     --markdown-link: #fab283;
     --markdown-link-text: #56b6c2;
-    --markdown-code: #7fd88f;
+    --markdown-inline-code-color: #7fd88f;
     --markdown-block-quote: #e5c07b;
     --markdown-emph: #e5c07b;
     --markdown-strong: #f5a742;
@@ -644,7 +643,6 @@
     --markdown-list-enumeration: #56b6c2;
     --markdown-image: #fab283;
     --markdown-image-text: #56b6c2;
-    --markdown-code-block: #eeeeee;
     --border-color: #ffffff;
     --border-weaker-base: var(--smoke-dark-alpha-3);
     --border-weaker-hover: var(--smoke-dark-alpha-4);

@@ -128,6 +128,33 @@ export const MONO_NERD_FONTS = [
   },
 ] satisfies MonoFont[]
 
+// The real weights each bundled font can render, keyed by the settings font id
+// (FONT_OPTIONS value). A font's @font-face set below registers exactly these
+// faces, so the weight picker must offer only these values — anything else the
+// browser snaps to the nearest face. `list` = discrete static weights.
+// Fonts gain a continuous `{ min, max, step }` range here once a variable
+// woff2 is bundled for them.
+export type FontWeights = { list: number[] } | { min: number; max: number; step: number }
+
+export const FONT_WEIGHTS: Record<string, FontWeights> = {
+  "ibm-plex-mono": { list: [400, 500, 700] },
+  "jetbrains-mono": { list: [400, 700] },
+  "monaspace-neon": { list: [400, 700] },
+  "geist-mono": { list: [400, 700] },
+  "commit-mono": { list: [400, 700] },
+  "maple-mono": { list: [400, 700] },
+  "fira-code": { list: [400, 700] },
+  "cascadia-code": { list: [400, 700] },
+  hack: { list: [400, 700] },
+  "source-code-pro": { list: [400, 700] },
+  inconsolata: { list: [400, 700] },
+  "intel-one-mono": { list: [400, 700] },
+  iosevka: { list: [400, 700] },
+  "meslo-lgs": { list: [400, 700] },
+  "roboto-mono": { list: [400, 700] },
+  "ubuntu-mono": { list: [400, 700] },
+}
+
 const monoNerdCss = MONO_NERD_FONTS.map(
   (font) => `
         @font-face {
