@@ -85,14 +85,14 @@ const monoFonts: Record<string, string> = {
   inconsolata: `"Inconsolata Nerd Font", "Inconsolata Nerd Font Mono","IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   "intel-one-mono": `"Intel One Mono Nerd Font", "IntoneMono Nerd Font", "IntoneMono Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   iosevka: `"Iosevka Nerd Font", "Iosevka Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "jetbrains-mono": `"JetBrainsMono Nerd Font", "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "JetBrainsMonoNL Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "geist-mono": `"Geist Mono", "GeistMono Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
+  "jetbrains-mono": `"JetBrains Mono Variable", "JetBrainsMono Nerd Font", "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "JetBrainsMonoNL Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
+  "geist-mono": `"Geist Mono Variable", "Geist Mono", "GeistMono Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   "monaspace-neon": `"Monaspace Neon", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   "commit-mono": `"Commit Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   "maple-mono": `"Maple Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   "meslo-lgs": `"Meslo LGS Nerd Font", "MesloLGS Nerd Font", "MesloLGM Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   "roboto-mono": `"Roboto Mono Nerd Font", "RobotoMono Nerd Font", "RobotoMono Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "source-code-pro": `"Source Code Pro Nerd Font", "SauceCodePro Nerd Font", "SauceCodePro Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
+  "source-code-pro": `"Source Code Pro Variable", "Source Code Pro Nerd Font", "SauceCodePro Nerd Font", "SauceCodePro Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
   "ubuntu-mono": `"Ubuntu Mono Nerd Font", "UbuntuMono Nerd Font", "UbuntuMono Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
 }
 

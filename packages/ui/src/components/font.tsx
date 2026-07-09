@@ -4,6 +4,10 @@ import ibmPlexMonoRegular from "../assets/fonts/ibm-plex-mono.woff2"
 import ibmPlexMonoMedium from "../assets/fonts/ibm-plex-mono-medium.woff2"
 import ibmPlexMonoBold from "../assets/fonts/ibm-plex-mono-bold.woff2"
 
+import jetbrainsMonoVariable from "../assets/fonts/jetbrains-mono-variable.woff2"
+import sourceCodeProVariable from "../assets/fonts/source-code-pro-variable.woff2"
+import geistMonoVariable from "../assets/fonts/geist-mono-variable.woff2"
+
 import cascadiaCode from "../assets/fonts/cascadia-code-nerd-font.woff2"
 import cascadiaCodeBold from "../assets/fonts/cascadia-code-nerd-font-bold.woff2"
 import firaCode from "../assets/fonts/fira-code-nerd-font.woff2"
@@ -138,15 +142,15 @@ export type FontWeights = { list: number[] } | { min: number; max: number; step:
 
 export const FONT_WEIGHTS: Record<string, FontWeights> = {
   "ibm-plex-mono": { list: [400, 500, 700] },
-  "jetbrains-mono": { list: [400, 700] },
+  "jetbrains-mono": { min: 100, max: 800, step: 10 },
   "monaspace-neon": { list: [400, 700] },
-  "geist-mono": { list: [400, 700] },
+  "geist-mono": { min: 100, max: 900, step: 10 },
   "commit-mono": { list: [400, 700] },
   "maple-mono": { list: [400, 700] },
   "fira-code": { list: [400, 700] },
   "cascadia-code": { list: [400, 700] },
   hack: { list: [400, 700] },
-  "source-code-pro": { list: [400, 700] },
+  "source-code-pro": { min: 200, max: 900, step: 10 },
   inconsolata: { list: [400, 700] },
   "intel-one-mono": { list: [400, 700] },
   iosevka: { list: [400, 700] },
@@ -193,6 +197,27 @@ export const Font = () => {
           line-gap-override: 1%;
         }
         @font-face {
+          font-family: "JetBrains Mono Variable";
+          src: url("${jetbrainsMonoVariable}") format("woff2-variations");
+          font-display: swap;
+          font-style: normal;
+          font-weight: 100 800;
+        }
+        @font-face {
+          font-family: "Source Code Pro Variable";
+          src: url("${sourceCodeProVariable}") format("woff2-variations");
+          font-display: swap;
+          font-style: normal;
+          font-weight: 200 900;
+        }
+        @font-face {
+          font-family: "Geist Mono Variable";
+          src: url("${geistMonoVariable}") format("woff2-variations");
+          font-display: swap;
+          font-style: normal;
+          font-weight: 100 900;
+        }
+        @font-face {
           font-family: "IBM Plex Mono";
           src: url("${ibmPlexMonoRegular}") format("woff2");
           font-display: swap;
@@ -225,6 +250,7 @@ ${monoNerdCss}
       `}</Style>
       <Link rel="preload" href={inter} as="font" type="font/woff2" crossorigin="anonymous" />
       <Link rel="preload" href={ibmPlexMonoRegular} as="font" type="font/woff2" crossorigin="anonymous" />
+      <Link rel="preload" href={jetbrainsMonoVariable} as="font" type="font/woff2" crossorigin="anonymous" />
     </>
   )
 }
