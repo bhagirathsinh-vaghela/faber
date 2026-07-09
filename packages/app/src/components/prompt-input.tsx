@@ -1917,14 +1917,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
-              "w-full px-2 pt-2 pb-0 pr-12 text-13-semibold md:p-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              "w-full px-2 pr-12 text-13-semibold md:px-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              // Normal: top-pad the text so the button row hugs beneath it. Zen:
+              // no button row below, so pad both sides equally to vertically
+              // center a single line against the right-edge buttons.
+              "pt-2 pb-0 md:py-3": !zen(),
+              "py-2 md:py-2.5": zen(),
               "[&_[data-type=file]]:text-syntax-property": true,
               "[&_[data-type=agent]]:text-syntax-type": true,
               "font-mono!": store.mode === "shell",
             }}
           />
           <Show when={!prompt.dirty()}>
-            <div class="absolute top-0 inset-x-0 p-2 pr-12 text-13-regular md:p-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
+            <div
+              classList={{
+                "absolute top-0 inset-x-0 px-2 pr-12 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate":
+                  true,
+                // Mirror the editor's vertical padding so the placeholder sits
+                // exactly where typed text will appear.
+                "pt-2 pb-0 md:py-3": !zen(),
+                "py-2 md:py-2.5": zen(),
+              }}
+            >
               {store.mode === "shell"
                 ? language.t("prompt.placeholder.shell")
                 : commentCount() > 1
@@ -1939,10 +1953,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           classList={{
             "flex items-center justify-between gap-2": true,
             // Normal: the button row sits below the input. Zen: the model/agent
-            // chrome is gone, so pin attach+submit to the input's bottom-right as
-            // a hard boundary and let text wrap to their left (input keeps pr-12).
+            // chrome is gone, so pin attach+submit to the input's right edge,
+            // vertically centered against the text, and let text wrap to their
+            // left (input keeps pr-12).
             "relative px-3 pt-0 pb-0.5 md:py-1.5": !zen(),
-            "absolute bottom-0 right-0 px-2 pb-1.5": zen(),
+            "absolute inset-y-0 right-0 px-2": zen(),
           }}
         >
           <div
