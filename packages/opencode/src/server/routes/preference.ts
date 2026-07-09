@@ -3,6 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { ModelPreference } from "@/preference/model"
 import { AppearancePreference } from "@/preference/appearance"
+import { BoxPreference } from "@/preference/boxes"
 import { ThemePreference } from "@/preference/theme"
 import { Stash } from "@/preference/stash"
 import { errors } from "../error"
@@ -97,6 +98,51 @@ export const PreferenceRoutes = lazy(() =>
       validator("json", AppearancePreference.Info),
       async (c) => {
         await AppearancePreference.set(c.req.valid("json"))
+        return c.json(true)
+      },
+    )
+    .get(
+      "/boxes",
+      describeRoute({
+        summary: "Get box collapse preferences",
+        description: "Get the server-owned per-box-type collapse defaults (per normal/zen mode).",
+        operationId: "preference.boxes.get",
+        responses: {
+          200: {
+            description: "Box preferences",
+            content: {
+              "application/json": {
+                schema: resolver(BoxPreference.Info),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await BoxPreference.get())
+      },
+    )
+    .put(
+      "/boxes",
+      describeRoute({
+        summary: "Set box collapse preferences",
+        description: "Replace the server-owned per-box-type collapse defaults.",
+        operationId: "preference.boxes.set",
+        responses: {
+          200: {
+            description: "Box preferences updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", BoxPreference.Info),
+      async (c) => {
+        await BoxPreference.set(c.req.valid("json"))
         return c.json(true)
       },
     )

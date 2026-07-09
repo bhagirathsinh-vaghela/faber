@@ -1293,6 +1293,7 @@ ToolRegistry.register({
                 fallback={
                   <BasicTool
                     icon="task"
+                    tool="task"
                     defaultOpen={true}
                     trigger={{
                       title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
@@ -1745,8 +1746,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen={completed()}
-        forceOpen={completed()}
         icon="bubble-5"
         trigger={{
           title: i18n.t("ui.tool.questions"),

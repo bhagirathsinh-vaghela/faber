@@ -10,6 +10,7 @@ import {
 } from "@opencode-ai/sdk/v2/client"
 import { type FileDiff } from "@opencode-ai/sdk/v2"
 import { useData } from "../context"
+import { useBoxDefaults } from "../context/box-defaults"
 import { useDiffComponent } from "../context/diff"
 import { type UiI18nKey, type UiI18nParams, useI18n } from "../context/i18n"
 import { findLast } from "@opencode-ai/util/array"
@@ -129,7 +130,6 @@ export function SessionTurn(
     messageID: string
     lastUserMessageID?: string
     stepsExpanded?: boolean
-    collapsePrompt?: boolean
     onStepsExpandedToggle?: () => void
     onUserInteracted?: () => void
     onJump?: () => void
@@ -425,23 +425,25 @@ export function SessionTurn(
   // scroll-driven: an earlier IntersectionObserver + ResizeObserver flipped it on
   // and off as the box resized, which fed back into its own resize and flickered
   // every frame. A constant cannot flicker.
-  // Default to EXPANDED: prompts are usually short, so show them in full on load;
-  // clicking collapses to the one-line bar, clicking again expands.
-  const [stuckExpanded, setStuckExpanded] = createSignal(true)
+  // User prompt box open state is driven entirely by the client's per-mode
+  // collapse checkbox (box type "user"): ticked = collapsed. `manual` is the
+  // chevron override since the last mode switch (undefined = follow the
+  // setting); it resets on mode change so re-entering a mode re-applies the
+  // configured default.
+  const boxDefaults = useBoxDefaults()
   const collapsed = () => true
-  const stuckOpen = () => stuckExpanded()
-
-  // Entering zen (collapsePrompt true) seeds the one-line bar once; the chevron
-  // then drives stuckExpanded freely, so it can expand inside zen. A permanent
-  // override here would pin it collapsed and dead-toggle the chevron.
-  createEffect(
-    on(
-      () => props.collapsePrompt,
-      (collapse) => {
-        if (collapse) setStuckExpanded(false)
-      },
-    ),
-  )
+  const [stuckManual, setStuckManual] = createSignal<boolean | undefined>(undefined)
+  if (boxDefaults) createEffect(on(boxDefaults.mode, () => setStuckManual(undefined), { defer: true }))
+  // An injected TASK RESULT message is user-role but its own box type, so it
+  // collapses independently of typed user prompts.
+  const boxKey = () =>
+    stickyParts().some((part) => part?.type === "text" && (part as TextPart).backgroundTaskResult)
+      ? "task_result"
+      : "user"
+  const configuredOpen = () => (boxDefaults ? !boxDefaults.collapsed(boxKey(), boxDefaults.mode()) : true)
+  const stuckOpen = () => stuckManual() ?? configuredOpen()
+  const setStuckExpanded = (next: boolean | ((v: boolean) => boolean)) =>
+    setStuckManual((prev) => (typeof next === "function" ? next(prev ?? configuredOpen()) : next))
 
   const updateStickyHeight = (height: number) => {
     const root = rootRef()

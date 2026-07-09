@@ -21,6 +21,7 @@ export interface Settings {
   general: {
     autoSave: boolean
     releaseNotes: boolean
+    zenDefault: boolean
   }
   updates: {
     startup: boolean
@@ -36,10 +37,19 @@ export interface Settings {
   sounds: SoundSettings
 }
 
+export type BoxMode = "normal" | "zen"
+
+// Per-box-type collapse defaults, keyed by tool/box name. Each mode flag is
+// `true` = collapsed by default, absent/`false` = expanded. Server-persisted
+// (mirrors AppearancePreference) so it syncs across clients, unlike the
+// localStorage Settings above.
+export type BoxDefaults = Record<string, { normal?: boolean; zen?: boolean }>
+
 const defaultSettings: Settings = {
   general: {
     autoSave: true,
     releaseNotes: true,
+    zenDefault: false,
   },
   updates: {
     startup: true,
@@ -169,6 +179,21 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     const [workingID, setWorkingID] = createSignal<string | null>(null)
     const [workingName, setWorkingName] = createSignal<string | null>(null)
 
+    // Per-box collapse defaults — server-persisted (mirrors appearance/themes),
+    // so ticks survive across clients. Edit-then-Save like appearance: checkbox
+    // clicks mutate the working `boxes` store only; `boxesSaved` is the last
+    // server snapshot; Save pushes, Discard reverts. This keeps the network PUT
+    // off the click path entirely.
+    const [boxes, setBoxes] = createStore<BoxDefaults>({})
+    const [boxesSaved, setBoxesSaved] = createSignal<BoxDefaults>({})
+    const boxesDirty = createMemo(() => JSON.stringify(boxes) !== JSON.stringify(boxesSaved()))
+    const discardBoxes = () => setBoxes(reconcile(structuredClone(boxesSaved())))
+    const saveBoxes = () => {
+      const snapshot = structuredClone(unwrap(boxes))
+      setBoxesSaved(snapshot)
+      return globalSDK.client.preference.boxes.set({ boxPreference: snapshot as any }).catch(() => undefined)
+    }
+
     const activeName = createMemo(() => {
       const id = activeThemeID()
       const t = id ? themes.find((x) => x.id === id) : undefined
@@ -284,6 +309,19 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     }
 
     onMount(() => {
+      // Load server-persisted box collapse defaults (independent of the theme
+      // chain below so one failing doesn't block the other).
+      globalSDK.client.preference.boxes
+        .get()
+        .then((r) => ((r as any).data ?? r) as BoxDefaults | null)
+        .then((loaded) => {
+          if (loaded && typeof loaded === "object") {
+            setBoxes(reconcile(loaded))
+            setBoxesSaved(structuredClone(loaded))
+          }
+        })
+        .catch(() => undefined)
+
       // Load themes + active pointer, then fall back to (or migrate) the legacy
       // single appearance blob so nothing a user tuned before named themes is lost.
       Promise.all([
@@ -368,6 +406,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         releaseNotes: createMemo(() => store.general?.releaseNotes ?? defaultSettings.general.releaseNotes),
         setReleaseNotes(value: boolean) {
           setStore("general", "releaseNotes", value)
+        },
+        zenDefault: createMemo(() => store.general?.zenDefault ?? defaultSettings.general.zenDefault),
+        setZenDefault(value: boolean) {
+          setStore("general", "zenDefault", value)
         },
       },
       updates: {
@@ -474,6 +516,20 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setCompress(value: boolean) {
           setStore("attachments", "compress", value)
         },
+      },
+      boxes: {
+        // `true` = collapsed by default in that mode; absent = expanded. Reads
+        // the SAVED snapshot so the transcript reflects only persisted choices,
+        // not unsaved edits open in the settings panel.
+        collapsed: (type: string, mode: BoxMode) => boxesSaved()[type]?.[mode] ?? false,
+        // Working value shown in the settings matrix (may be unsaved).
+        draft: (type: string, mode: BoxMode) => boxes[type]?.[mode] ?? false,
+        setCollapsed(type: string, mode: BoxMode, value: boolean) {
+          setBoxes(type, (prev) => ({ ...prev, [mode]: value }))
+        },
+        dirty: boxesDirty,
+        save: saveBoxes,
+        discard: discardBoxes,
       },
       notifications: {
         agent: createMemo(() => store.notifications?.agent ?? defaultSettings.notifications.agent),

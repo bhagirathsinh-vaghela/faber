@@ -14,7 +14,8 @@ import { Code } from "@opencode-ai/ui/code"
 import { ThemeProvider } from "@opencode-ai/ui/theme"
 import { GlobalSyncProvider } from "@/context/global-sync"
 import { PermissionProvider } from "@/context/permission"
-import { LayoutProvider } from "@/context/layout"
+import { LayoutProvider, useLayout } from "@/context/layout"
+import { BoxDefaultsProvider } from "@opencode-ai/ui/context/box-defaults"
 import { GlobalSDKProvider } from "@/context/global-sdk"
 import { normalizeServerUrl, ServerProvider, useServer } from "@/context/server"
 import { SettingsProvider, useSettings } from "@/context/settings"
@@ -62,6 +63,22 @@ function CodeThemeBridge(props: ParentProps) {
 function DiffThemeBridge(props: ParentProps) {
   const settings = useSettings()
   return <DiffThemeProvider value={settings.appearance.diffTheme}>{props.children}</DiffThemeProvider>
+}
+
+// Feeds the per-box collapse defaults + current view mode into the ui package's
+// BoxDefaults context, so transcript boxes pick their default open state per
+// mode. Must sit inside both SettingsProvider and LayoutProvider.
+function BoxDefaultsBridge(props: ParentProps) {
+  const settings = useSettings()
+  const layout = useLayout()
+  return (
+    <BoxDefaultsProvider
+      mode={() => (layout.zen.opened() ? "zen" : "normal")}
+      collapsed={settings.boxes.collapsed}
+    >
+      {props.children}
+    </BoxDefaultsProvider>
+  )
 }
 
 declare global {
@@ -140,17 +157,19 @@ export function AppInterface(props: { defaultUrl?: string }) {
                     <DiffThemeBridge>
                       <PermissionProvider>
                         <LayoutProvider>
-                          <NotificationProvider>
-                            <ModelsProvider>
-                              <CommandProvider>
-                                <HighlightsProvider>
-                                  <RecentProvider>
-                                    <Layout>{props.children}</Layout>
-                                  </RecentProvider>
-                                </HighlightsProvider>
-                              </CommandProvider>
-                            </ModelsProvider>
-                          </NotificationProvider>
+                          <BoxDefaultsBridge>
+                            <NotificationProvider>
+                              <ModelsProvider>
+                                <CommandProvider>
+                                  <HighlightsProvider>
+                                    <RecentProvider>
+                                      <Layout>{props.children}</Layout>
+                                    </RecentProvider>
+                                  </HighlightsProvider>
+                                </CommandProvider>
+                              </ModelsProvider>
+                            </NotificationProvider>
+                          </BoxDefaultsBridge>
                         </LayoutProvider>
                       </PermissionProvider>
                     </DiffThemeBridge>

@@ -1,7 +1,8 @@
-import { children, createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { children, createEffect, createMemo, createSignal, For, Match, on, Show, Switch, type JSX } from "solid-js"
 import { Collapsible } from "./collapsible"
 import { Icon, IconProps } from "./icon"
 import { CopyButton } from "./copy-button"
+import { useBoxDefaults } from "../context/box-defaults"
 
 export type TriggerTitle = {
   title: string
@@ -25,6 +26,12 @@ export interface BasicToolProps {
   children?: JSX.Element
   hideDetails?: boolean
   defaultOpen?: boolean
+  // Box-type key (the tool name) used to look up the client-configured per-mode
+  // collapse default. Auto-threaded from ToolProps via `{...props}`. When set
+  // and a BoxDefaults provider is present, the configured default drives initial
+  // open state and re-applies on mode switch; otherwise falls back to
+  // `defaultOpen`.
+  tool?: string
   forceOpen?: boolean
   locked?: boolean
   onSubtitleClick?: () => void
@@ -36,7 +43,30 @@ export interface BasicToolProps {
 }
 
 export function BasicTool(props: BasicToolProps) {
-  const [open, setOpen] = createSignal(props.defaultOpen ?? false)
+  const defaults = useBoxDefaults()
+
+  // The default open state for this box in the active mode, driven ENTIRELY by
+  // the client's per-mode collapse checkboxes: ticked = collapsed, so
+  // open = !collapsed. No hardcoded per-tool default — the setting is the only
+  // source of truth. `defaultOpen` remains only for non-tool callers (MessageBox
+  // etc.) and tests with no provider/type wired.
+  const configured = createMemo(() => {
+    if (defaults && props.tool) return !defaults.collapsed(props.tool, defaults.mode())
+    return props.defaultOpen ?? false
+  })
+
+  // `manual` = the user's expand/collapse since the last mode switch; undefined
+  // means untouched (follow the configured default). It resets on every mode
+  // change so re-entering a mode re-applies that mode's default and discards
+  // any manual override, per the design.
+  const [manual, setManual] = createSignal<boolean | undefined>(undefined)
+  if (defaults) createEffect(on(defaults.mode, () => setManual(undefined), { defer: true }))
+
+  const open = createMemo(() => {
+    if (props.forceOpen) return true
+    return manual() ?? configured()
+  })
+
   // Resolve children once into a stable accessor. Gating Collapsible.Content on
   // `props.children` truthiness via <Show> memoizes the resolved element and
   // freezes streaming updates inside it (e.g. bash output that grows over time).
@@ -44,13 +74,9 @@ export function BasicTool(props: BasicToolProps) {
   // check whether a body exists.
   const body = children(() => props.children)
 
-  createEffect(() => {
-    if (props.forceOpen) setOpen(true)
-  })
-
   const handleOpenChange = (value: boolean) => {
     if (props.locked && !value) return
-    setOpen(value)
+    setManual(value)
   }
 
   return (

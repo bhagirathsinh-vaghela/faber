@@ -3,6 +3,9 @@
   align-items: center;
   gap: 12px;
   cursor: default;
+  /* Containing block for the hidden abspos input — otherwise it anchors to a
+     distant positioned ancestor and focusing it on click scrolls the container. */
+  position: relative;
 
   [data-slot="checkbox-checkbox-input"] {
     position: absolute;

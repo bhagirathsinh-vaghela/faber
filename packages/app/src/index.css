@@ -10,6 +10,19 @@
   --sal: env(safe-area-inset-left);
 }
 
+/* Box-defaults matrix: the shared Checkbox's checked state (faint --surface-weak
+   fill + muted --icon-base tick) is too low-contrast in this dense dark grid.
+   Scope a stronger checked look here only — a solid accent fill with an inverted
+   checkmark — without touching the shared component used elsewhere. */
+.box-matrix [data-component="checkbox"][data-checked] [data-slot="checkbox-checkbox-control"] {
+  border-color: var(--icon-strong-base);
+  background-color: var(--icon-strong-base);
+}
+
+.box-matrix [data-component="checkbox"][data-checked] [data-slot="checkbox-checkbox-indicator"] {
+  color: var(--icon-invert-base);
+}
+
 /* Question panel renders the question text and option descriptions through the
    shared Markdown component so they inherit the same strong/em/code/heading
    theme tokens the chat uses (and any appearance customization the user sets).

@@ -123,13 +123,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // persisted, so it always starts off on a fresh load/reload.
     const [zenOpened, setZenOpened] = createSignal(false)
 
-    // Entering zen hides the chrome that holds the focused element (dock,
-    // titlebar), which blurs it. Snapshot it so exit hands focus back to
-    // exactly where it was stolen from, not a hardcoded target.
+    // Toggling zen re-lays-out the chrome around the prompt (the slim zen dock
+    // drops the model/agent cluster and action row), which blurs a focused
+    // input. Snapshot focus before the flip and restore it after, in BOTH
+    // directions — so a cursor in the input survives the toggle. Exit also uses
+    // the snapshot to hand focus back to whatever held it when zen opened.
     let zenFocus: (() => boolean) | undefined
     const enterZen = () => {
-      zenFocus = captureFocus()
+      const restore = captureFocus()
+      zenFocus = restore
       setZenOpened(true)
+      restore()
     }
     const exitZen = () => {
       const restore = zenFocus

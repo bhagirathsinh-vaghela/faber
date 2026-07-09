@@ -6,6 +6,7 @@ import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { SettingsGeneral } from "./settings-general"
 import { SettingsCustomization } from "./settings-customization"
+import { SettingsLayout } from "./settings-layout"
 import { SettingsKeybinds } from "./settings-keybinds"
 import { SettingsProviders } from "./settings-providers"
 import { SettingsModels } from "./settings-models"
@@ -31,6 +32,10 @@ export const DialogSettings: Component = () => {
                     <Tabs.Trigger value="customization">
                       <Icon name="sliders" />
                       {language.t("settings.tab.customization")}
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="layout">
+                      <Icon name="layout-left" />
+                      {language.t("settings.tab.layout")}
                     </Tabs.Trigger>
                     <Tabs.Trigger value="shortcuts">
                       <Icon name="keyboard" />
@@ -65,6 +70,9 @@ export const DialogSettings: Component = () => {
         </Tabs.Content>
         <Tabs.Content value="customization" class="no-scrollbar">
           <SettingsCustomization />
+        </Tabs.Content>
+        <Tabs.Content value="layout" class="no-scrollbar">
+          <SettingsLayout />
         </Tabs.Content>
         <Tabs.Content value="shortcuts" class="no-scrollbar">
           <SettingsKeybinds />

@@ -11,6 +11,7 @@ import { useLanguage } from "@/context/language"
 import { useQuestion } from "@/context/question"
 import { useLocal } from "@/context/local"
 import { useLayout } from "@/context/layout"
+import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
 
 // Pinned question prompt. Mirrors the TUI QuestionPrompt
@@ -28,6 +29,7 @@ export function QuestionPanel(props: { onClose?: () => void }) {
   const question = useQuestion()
   const local = useLocal()
   const layout = useLayout()
+  const settings = useSettings()
 
   // Agent-tinted accent, same as the expanded panel's focused border. The
   // collapsed bar keeps this thin accent even while unfocused so it stays
@@ -37,17 +39,31 @@ export function QuestionPanel(props: { onClose?: () => void }) {
     return (a && agentColor(a.name, a.color)) ?? "var(--icon-interactive-base)"
   })
 
-  // A newly-arrived question pops the panel open, except in zen where every
-  // prompt is collapsed by default: there it seeds the one-line bar instead, so
-  // the question is present but not expanded until the user opens it.
+  // A newly-arrived question pops the panel open or seeds the one-line bar,
+  // driven by the "question" row of the box-defaults matrix for the current
+  // mode (ticked = collapsed).
+  const applyDefault = () => {
+    const mode = layout.zen.opened() ? "zen" : "normal"
+    if (settings.boxes.collapsed("question", mode)) question.collapse()
+    else question.expand()
+  }
   createEffect(
     on(
       () => question.pending().length,
       (len, prev) => {
-        if (len <= (prev ?? 0)) return
-        if (layout.zen.opened()) question.collapse()
-        else question.expand()
+        if (len > (prev ?? 0)) applyDefault()
       },
+    ),
+  )
+  // Mode switch re-applies the target mode's default to a pending panel — same
+  // contract as the transcript boxes, whose manual state resets on mode change.
+  createEffect(
+    on(
+      () => layout.zen.opened(),
+      () => {
+        if (question.count > 0) applyDefault()
+      },
+      { defer: true },
     ),
   )
 

@@ -1137,6 +1137,18 @@ export type EventAppearancePreferenceUpdated = {
   properties: AppearancePreference
 }
 
+export type BoxPreference = {
+  [key: string]: {
+    normal?: boolean
+    zen?: boolean
+  }
+}
+
+export type EventBoxesPreferenceUpdated = {
+  type: "boxes.preference.updated"
+  properties: BoxPreference
+}
+
 export type UserTheme = {
   id: string
   name: string
@@ -1240,6 +1252,7 @@ export type Event =
   | EventWorktreeFailed
   | EventModelPreferenceUpdated
   | EventAppearancePreferenceUpdated
+  | EventBoxesPreferenceUpdated
   | EventThemePreferenceUpdated
   | EventThemePreferenceActiveUpdated
   | EventStashUpdated
@@ -4698,6 +4711,51 @@ export type PreferenceAppearanceSetResponses = {
 }
 
 export type PreferenceAppearanceSetResponse = PreferenceAppearanceSetResponses[keyof PreferenceAppearanceSetResponses]
+
+export type PreferenceBoxesGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/boxes"
+}
+
+export type PreferenceBoxesGetResponses = {
+  /**
+   * Box preferences
+   */
+  200: BoxPreference
+}
+
+export type PreferenceBoxesGetResponse = PreferenceBoxesGetResponses[keyof PreferenceBoxesGetResponses]
+
+export type PreferenceBoxesSetData = {
+  body?: BoxPreference
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/boxes"
+}
+
+export type PreferenceBoxesSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceBoxesSetError = PreferenceBoxesSetErrors[keyof PreferenceBoxesSetErrors]
+
+export type PreferenceBoxesSetResponses = {
+  /**
+   * Box preferences updated
+   */
+  200: boolean
+}
+
+export type PreferenceBoxesSetResponse = PreferenceBoxesSetResponses[keyof PreferenceBoxesSetResponses]
 
 export type PreferenceThemeListData = {
   body?: never

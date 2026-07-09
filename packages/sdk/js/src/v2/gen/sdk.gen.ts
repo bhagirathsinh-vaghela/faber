@@ -31,6 +31,7 @@ import type {
   BackgroundSetAutoInjectResponses,
   BackgroundToggleAutoInjectDefaultResponses,
   BackgroundToggleAutoInjectResponses,
+  BoxPreference,
   CommandListResponses,
   Config as Config3,
   ConfigGetResponses,
@@ -99,6 +100,9 @@ import type {
   PreferenceAppearanceGetResponses,
   PreferenceAppearanceSetErrors,
   PreferenceAppearanceSetResponses,
+  PreferenceBoxesGetResponses,
+  PreferenceBoxesSetErrors,
+  PreferenceBoxesSetResponses,
   PreferenceModelGetResponses,
   PreferenceModelSetErrors,
   PreferenceModelSetResponses,
@@ -2343,6 +2347,62 @@ export class Appearance extends HeyApiClient {
   }
 }
 
+export class Boxes extends HeyApiClient {
+  /**
+   * Get box collapse preferences
+   *
+   * Get the server-owned per-box-type collapse defaults (per normal/zen mode).
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PreferenceBoxesGetResponses, unknown, ThrowOnError>({
+      url: "/preference/boxes",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set box collapse preferences
+   *
+   * Replace the server-owned per-box-type collapse defaults.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      boxPreference?: BoxPreference
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "boxPreference", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<PreferenceBoxesSetResponses, PreferenceBoxesSetErrors, ThrowOnError>({
+      url: "/preference/boxes",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Theme extends HeyApiClient {
   /**
    * List user themes
@@ -2592,6 +2652,11 @@ export class Preference extends HeyApiClient {
   private _appearance?: Appearance
   get appearance(): Appearance {
     return (this._appearance ??= new Appearance({ client: this.client }))
+  }
+
+  private _boxes?: Boxes
+  get boxes(): Boxes {
+    return (this._boxes ??= new Boxes({ client: this.client }))
   }
 
   private _theme?: Theme

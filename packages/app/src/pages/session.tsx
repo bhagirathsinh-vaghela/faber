@@ -43,6 +43,7 @@ import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { useSync } from "@/context/sync"
 import { useTerminal, type LocalPTY } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
+import { useSettings } from "@/context/settings"
 import { Terminal } from "@/components/terminal"
 import { checksum, base64Encode } from "@opencode-ai/util/encode"
 import { findLast } from "@opencode-ai/util/array"
@@ -238,6 +239,7 @@ function SessionReviewTab(props: SessionReviewTabProps) {
 
 export default function Page() {
   const layout = useLayout()
+  const settings = useSettings()
   const local = useLocal()
   const file = useFile()
   const sync = useSync()
@@ -581,6 +583,7 @@ export default function Page() {
   const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
+  let promptInner: HTMLDivElement | undefined
   let scroller: HTMLDivElement | undefined
   let contentEl: HTMLDivElement | undefined
 
@@ -719,6 +722,23 @@ export default function Page() {
         if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return
         focusedFor = id
         requestAnimationFrame(() => command.trigger("prompt.focus"))
+      },
+    ),
+  )
+
+  // Apply the persisted zen-default once per session id: opening or switching to
+  // a session enters zen when the setting is on, else leaves it. Guarded so a
+  // manual toggle within the same session isn't reverted by later re-renders;
+  // switching sessions re-applies the default.
+  let zenAppliedFor: string | undefined
+  createEffect(
+    on(
+      () => params.id,
+      (id) => {
+        if (!id || zenAppliedFor === id) return
+        zenAppliedFor = id
+        if (settings.general.zenDefault()) layout.zen.enter()
+        else layout.zen.exit()
       },
     ),
   )
@@ -2052,6 +2072,33 @@ export default function Page() {
     const h = store.promptHeight
     if (h > 0) setDockHeight(h)
   })
+
+  // Desktop pill hugs the top-right corner of the visible input box, so it
+  // never floats over the input or lands in the centered layout's side gutter.
+  // Track that box's viewport rect; the corner anchor is derived from it. In
+  // zen the dock height changes but the box keeps its last rect, so the pill
+  // stays put. Re-measured on dock resize, zen toggle, file-tree/centering
+  // changes, and window resize.
+  const [dockRect, setDockRect] = createSignal<{ right: number; top: number } | null>(null)
+  const measureDock = () => {
+    const el = promptInner
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    if (r.width === 0) return
+    setDockRect({ right: r.right, top: r.top })
+  }
+  createEffect(() => {
+    // Depend on the triggers that move the box, then measure post-layout.
+    void store.promptHeight
+    void layout.zen.opened()
+    void centered()
+    requestAnimationFrame(measureDock)
+  })
+  onMount(() => {
+    window.addEventListener("resize", measureDock)
+    onCleanup(() => window.removeEventListener("resize", measureDock))
+  })
+
   const pillSize = () => (isDesktop() ? 40 : 52)
   const PILL_MARGIN = 16
   const DRAG_THRESHOLD = 6
@@ -2072,9 +2119,27 @@ export default function Page() {
   })
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
-  // Explicit coords apply only on mobile after a drag; otherwise null = anchor
-  // to the bottom-right corner via CSS.
-  const pillCoords = createMemo(() => (isDesktop() ? null : (drag() ?? pos())))
+  // Gap between the pill and the input box's top edge — the pill hovers fully
+  // above the border, never overlapping it.
+  const PILL_GAP = 6
+  // Nudge the pill's right edge past the box's right edge into the gutter, so it
+  // sits at the true screen corner rather than leaving a gap. Clamped to the
+  // viewport so it can't run off-screen.
+  const PILL_NUDGE = 12
+  // Anchor priority: a mobile drag override wins; otherwise both platforms pin
+  // to the input box's top-right corner, hovering just above the top edge.
+  // Null only until the first measurement lands.
+  const pillCoords = createMemo(() => {
+    const dragged = drag() ?? pos()
+    if (dragged) return dragged
+    const rect = dockRect()
+    if (!rect) return null
+    const maxX = window.innerWidth - pillSize() - PILL_MARGIN
+    return {
+      x: Math.min(rect.right - pillSize() + PILL_NUDGE, maxX),
+      y: rect.top - pillSize() - PILL_GAP,
+    }
+  })
 
   function startPillDrag(e: PointerEvent) {
     // Desktop: no drag — the pill is pinned, so a press just toggles zen.
@@ -2122,9 +2187,9 @@ export default function Page() {
           class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing md:cursor-pointer md:active:cursor-pointer hover:bg-surface-raised-base-hover"
           classList={{ "transition-none": drag() !== null }}
           style={{
-            // Default anchor: right edge, just above the dock. The safe-area
-            // insets keep it clear of the status bar / home indicator in a
-            // standalone PWA (0 in a normal browser, so a no-op there).
+            // Measured top-right corner anchor (both platforms + mobile drag).
+            // The right/bottom fallback only applies before the first measure;
+            // its safe-area insets keep it clear of the status bar in a PWA.
             ...(pillCoords()
               ? { left: `${pillCoords()!.x}px`, top: `${pillCoords()!.y}px` }
               : {
@@ -2135,7 +2200,9 @@ export default function Page() {
             height: `${pillSize()}px`,
           }}
         >
-          <Icon name={layout.zen.opened() ? "eye" : "glasses"} class="size-7 md:size-5" />
+          <span class="text-2xl md:text-lg leading-none select-none" aria-hidden="true">
+            {layout.zen.opened() ? "🌐" : "🧘"}
+          </span>
         </button>
       </Portal>
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
@@ -2518,7 +2585,6 @@ export default function Page() {
                                     lastUserMessageID={lastUserMessage()?.id}
                                     footer={(m) => <MessageFooter message={m} />}
                                     stepsExpanded={store.expanded[message.id] ?? true}
-                                    collapsePrompt={layout.zen.opened()}
                                     onStepsExpandedToggle={() =>
                                       setStore("expanded", message.id, (open: boolean | undefined) => !open)
                                     }
@@ -2577,6 +2643,7 @@ export default function Page() {
             }}
           >
             <div
+              ref={(el) => (promptInner = el)}
               classList={{
                 "w-full pointer-events-auto": true,
                 "md:max-w-[95%] md:mx-auto": centered(),
