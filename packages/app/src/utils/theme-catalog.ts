@@ -86,24 +86,6 @@ export const THEME_CATALOG: TokenGroup[] = [
       { token: "--markdown-list-enumeration", label: "Number color", type: "color" },
     ],
   },
-  {
-    // All code coloring together: the flat inline-code accent, then the
-    // per-token syntax colors that paint fenced blocks + tool boxes (via Shiki).
-    group: "Code",
-    entries: [
-      { token: "--markdown-inline-code-color", label: "Inline code color", type: "color" },
-      { token: "--syntax-keyword", label: "Keyword", type: "color" },
-      { token: "--syntax-string", label: "String", type: "color" },
-      { token: "--syntax-primitive", label: "Number / primitive", type: "color" },
-      { token: "--syntax-property", label: "Property", type: "color" },
-      { token: "--syntax-type", label: "Type", type: "color" },
-      { token: "--syntax-constant", label: "Constant", type: "color" },
-      { token: "--syntax-variable", label: "Variable", type: "color" },
-      { token: "--syntax-operator", label: "Operator", type: "color" },
-      { token: "--syntax-punctuation", label: "Punctuation", type: "color" },
-      { token: "--syntax-comment", label: "Comment", type: "color" },
-    ],
-  },
 ]
 
 // Selectable mono fonts (value = settings key resolved to a CSS family stack via

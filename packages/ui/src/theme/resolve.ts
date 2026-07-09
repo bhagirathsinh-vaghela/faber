@@ -253,14 +253,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["syntax-comment"] = "var(--text-weak)"
   tokens["syntax-regexp"] = "var(--text-base)"
   tokens["syntax-string"] = isDark ? "#00ceb9" : "#006656"
-  tokens["syntax-keyword"] = "var(--text-weak)"
   tokens["syntax-primitive"] = isDark ? "#ffba92" : "#fb4804"
-  tokens["syntax-operator"] = isDark ? "var(--text-weak)" : "var(--text-base)"
-  tokens["syntax-variable"] = "var(--text-strong)"
   tokens["syntax-property"] = isDark ? "#ff9ae2" : "#ed6dc8"
   tokens["syntax-type"] = isDark ? "#ecf58c" : "#596600"
   tokens["syntax-constant"] = isDark ? "#93e9f6" : "#007b80"
-  tokens["syntax-punctuation"] = isDark ? "var(--text-weak)" : "var(--text-base)"
   tokens["syntax-object"] = "var(--text-strong)"
   tokens["syntax-success"] = success[9]
   tokens["syntax-warning"] = warning[9]
