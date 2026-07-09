@@ -51,6 +51,16 @@ function applyThemeCss(theme: DesktopTheme, themeId: string, mode: "light" | "da
   ensureThemeStyleElement().textContent = fullCss
   document.documentElement.dataset.theme = themeId
   document.documentElement.dataset.colorScheme = mode
+  syncThemeColor()
+}
+
+// Keep the PWA title-strip color (theme-color) matching the app's actual
+// resolved background, so it tracks custom themes and OS-independent schemes.
+function syncThemeColor() {
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (!meta) return
+  const base = getComputedStyle(document.documentElement).getPropertyValue("--background-base").trim()
+  if (base) meta.setAttribute("content", base)
 }
 
 function cacheThemeVariants(theme: DesktopTheme, themeId: string) {

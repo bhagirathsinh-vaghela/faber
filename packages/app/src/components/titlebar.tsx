@@ -1,4 +1,4 @@
-import { createEffect, createMemo, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocation, useNavigate } from "@solidjs/router"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -40,6 +40,25 @@ export function Titlebar() {
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
   const zoom = () => platform.webviewZoom?.() ?? 1
   const minHeight = () => (mac() ? `${40 / zoom()}px` : undefined)
+
+  // In an installed browser PWA the window-controls-overlay hands the native
+  // title strip to the app. Track its visibility so we paint into that strip
+  // instead of leaving Chrome's opaque title bar above our content.
+  const wcoApi = (
+    navigator as unknown as {
+      windowControlsOverlay?: {
+        visible: boolean
+        addEventListener(type: "geometrychange", cb: () => void): void
+        removeEventListener(type: "geometrychange", cb: () => void): void
+      }
+    }
+  ).windowControlsOverlay
+  const [overlay, setOverlay] = createSignal(wcoApi?.visible ?? false)
+  if (wcoApi) {
+    const onGeometry = () => setOverlay(wcoApi.visible)
+    wcoApi.addEventListener("geometrychange", onGeometry)
+    onCleanup(() => wcoApi.removeEventListener("geometrychange", onGeometry))
+  }
 
   const [history, setHistory] = createStore({
     stack: [] as string[],
@@ -155,9 +174,20 @@ export function Titlebar() {
     // reload. Keeping the element mounted preserves those targets.
     <header
       data-slot="titlebar"
+      data-wco={overlay() ? "" : undefined}
       class="h-8 md:h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
       classList={{ hidden: layout.zen.opened() }}
-      style={{ "min-height": minHeight() }}
+      style={{
+        "min-height": minHeight(),
+        ...(overlay()
+          ? {
+              "margin-left": "env(titlebar-area-x, 0)",
+              width: "env(titlebar-area-width, 100%)",
+              height: "env(titlebar-area-height, auto)",
+              "-webkit-app-region": "drag",
+            }
+          : {}),
+      }}
     >
       <div
         classList={{
