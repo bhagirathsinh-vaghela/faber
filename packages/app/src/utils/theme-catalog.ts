@@ -84,6 +84,7 @@ export const THEME_CATALOG: TokenGroup[] = [
       { token: "--markdown-link", label: "Link color", type: "color" },
       { token: "--markdown-list-item", label: "Bullet color", type: "color" },
       { token: "--markdown-list-enumeration", label: "Number color", type: "color" },
+      { token: "--markdown-inline-code-color", label: "Inline code color", type: "color" },
     ],
   },
 ]

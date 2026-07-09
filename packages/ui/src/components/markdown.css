@@ -212,17 +212,16 @@
     }
   }
 
-  /* Inline code: a GitHub-style pill whose background + text derive from the
-     chosen code-syntax theme (--markdown-inline-code-syntax-bg /
-     --markdown-inline-code-syntax-color, set by the Markdown component). Falls
-     back to the prose accent + surface when the theme colors haven't resolved
-     yet. */
+  /* Inline code: a GitHub-style pill. The background derives from the chosen
+     code-syntax theme (--markdown-inline-code-syntax-bg, set by the Markdown
+     component). The text color is --markdown-inline-code-color, which every
+     theme defines and the user can override in customization. */
   [data-slot="inline-code"],
   :not(pre) > code {
     position: relative;
     font-family: var(--markdown-inline-code-family);
     font-feature-settings: var(--font-family-mono--font-feature-settings);
-    color: var(--markdown-inline-code-syntax-color, var(--markdown-inline-code-color));
+    color: var(--markdown-inline-code-color);
     /* Fallback background is transparent (not a surface color): until the
        theme's --markdown-inline-code-syntax-bg resolves, the pill shows no box
        and the accent text stays readable — so there is never a

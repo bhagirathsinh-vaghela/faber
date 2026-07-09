@@ -184,10 +184,13 @@ export function Markdown(
     if (copyCleanup) copyCleanup()
   })
 
-  // Derive inline-code colors from the chosen code-block theme, so `inline`
-  // code shares the theme's pill background + text color (github-dark -> the
-  // GitHub look). Re-runs when the theme changes; a stale-guard drops results
-  // that resolve after the theme moved on.
+  // Derive the inline-code pill BACKGROUND from the chosen code-block theme, so
+  // `inline` code sits in the theme's pill (github-dark -> the GitHub look).
+  // Only the background is theme-derived; there is no per-theme token for it.
+  // The TEXT color comes from --markdown-inline-code-color, which every theme
+  // already defines and the user can override, so it is not set here and the
+  // override always wins with no JS race. Re-runs when the theme changes; a
+  // stale-guard drops results that resolve after the theme moved on.
   createEffect(() => {
     const container = root()
     const name = theme()
@@ -196,7 +199,6 @@ export function Markdown(
       .then((c) => {
         if (!c || theme() !== name) return
         container.style.setProperty("--markdown-inline-code-syntax-bg", c.bg)
-        container.style.setProperty("--markdown-inline-code-syntax-color", c.fg)
       })
       .catch(() => {})
   })
