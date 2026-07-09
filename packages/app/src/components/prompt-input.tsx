@@ -84,34 +84,6 @@ interface PromptInputProps {
   onSubmit?: () => void
 }
 
-const EXAMPLES = [
-  "prompt.example.1",
-  "prompt.example.2",
-  "prompt.example.3",
-  "prompt.example.4",
-  "prompt.example.5",
-  "prompt.example.6",
-  "prompt.example.7",
-  "prompt.example.8",
-  "prompt.example.9",
-  "prompt.example.10",
-  "prompt.example.11",
-  "prompt.example.12",
-  "prompt.example.13",
-  "prompt.example.14",
-  "prompt.example.15",
-  "prompt.example.16",
-  "prompt.example.17",
-  "prompt.example.18",
-  "prompt.example.19",
-  "prompt.example.20",
-  "prompt.example.21",
-  "prompt.example.22",
-  "prompt.example.23",
-  "prompt.example.24",
-  "prompt.example.25",
-] as const
-
 interface SlashCommand {
   id: string
   trigger: string
@@ -265,7 +237,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     popover: "at" | "slash" | null
     historyIndex: number
     savedPrompt: Prompt | null
-    placeholder: number
     dragging: boolean
     mode: "normal" | "shell"
     applyingHistory: boolean
@@ -273,7 +244,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     popover: null,
     historyIndex: -1,
     savedPrompt: null,
-    placeholder: Math.floor(Math.random() * EXAMPLES.length),
     dragging: false,
     mode: "normal",
     applyingHistory: false,
@@ -341,15 +311,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const isFocused = createFocusSignal(() => editorRef)
-
-  createEffect(() => {
-    params.id
-    if (params.id) return
-    const interval = setInterval(() => {
-      setStore("placeholder", (prev) => (prev + 1) % EXAMPLES.length)
-    }, 6500)
-    onCleanup(() => clearInterval(interval))
-  })
 
   const [composing, setComposing] = createSignal(false)
   const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
@@ -1946,7 +1907,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   ? language.t("prompt.placeholder.summarizeComments")
                   : commentCount() === 1
                     ? language.t("prompt.placeholder.summarizeComment")
-                    : language.t("prompt.placeholder.normal", { example: language.t(EXAMPLES[store.placeholder]) })
+                    : language.t("prompt.placeholder.normal")
             }
             contenteditable="true"
             onInput={handleInput}
@@ -1970,7 +1931,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   ? language.t("prompt.placeholder.summarizeComments")
                   : commentCount() === 1
                     ? language.t("prompt.placeholder.summarizeComment")
-                    : language.t("prompt.placeholder.normal", { example: language.t(EXAMPLES[store.placeholder]) })}
+                    : language.t("prompt.placeholder.normal")}
             </div>
           </Show>
         </div>
