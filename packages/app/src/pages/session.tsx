@@ -512,6 +512,16 @@ export default function Page() {
     },
   )
 
+  // The most recent turns render with their steps expanded by default; older
+  // turns collapse to keep the transcript's DOM bounded on long sessions. An
+  // explicit per-turn toggle (store.expanded) always overrides this default.
+  const recentTurns = 3
+  const recentTurnIds = createMemo(() => {
+    const msgs = visibleUserMessages()
+    return new Set(msgs.slice(-recentTurns).map((m) => m.id))
+  })
+  const stepsExpandedDefault = (messageID: string) => store.expanded[messageID] ?? recentTurnIds().has(messageID)
+
   const newSessionWorktree = createMemo(() => {
     if (store.newSessionWorktree === "create") return "create"
     const project = sync.project
@@ -2613,7 +2623,7 @@ export default function Page() {
                                     messageID={message.id}
                                     lastUserMessageID={lastUserMessage()?.id}
                                     footer={(m) => <MessageFooter message={m} />}
-                                    stepsExpanded={store.expanded[message.id] ?? true}
+                                    stepsExpanded={stepsExpandedDefault(message.id)}
                                     onStepsExpandedToggle={() =>
                                       setStore("expanded", message.id, (open: boolean | undefined) => !open)
                                     }
