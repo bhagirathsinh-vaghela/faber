@@ -2857,7 +2857,9 @@ export type GlobalProjectsCloseResponse = GlobalProjectsCloseResponses[keyof Glo
 export type GlobalEventData = {
   body?: never
   path?: never
-  query?: never
+  query?: {
+    connectionID?: string
+  }
   url: "/global/event"
 }
 

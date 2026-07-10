@@ -728,6 +728,59 @@ function createGlobalSync() {
     return !!session?.parentID && live.has(session.parentID)
   }
 
+  // Per-connection event scoping. The set of sessions this client
+  // wants message-level events for: the open session plus the attention/live
+  // sessions the user juggles (liveSessions already includes any actively-
+  // working subagent, since a busy child has its own recent_hub entry). The
+  // server drops every other session's streaming firehose for this connection.
+  // An idle subagent streams nothing, so not listing it drops no event.
+  const [openSession, rawSetOpenSession] = createSignal<string | undefined>()
+
+  function interestSet() {
+    const live = liveSessions()
+    const open = openSession()
+    if (open) live.add(open)
+    return [...live]
+  }
+
+  // Set the open session and push interest SYNCHRONOUSLY (not via the reactive
+  // effect below). subscribe-before-snapshot must hold: a deferred effect could
+  // push AFTER the fetch starts, leaving a window where the server (on the
+  // previous narrow set) drops the new session's live events and the snapshot
+  // misses them too. Pushing here closes that window. The effect still covers
+  // liveness changes.
+  function setOpenSession(id: string | undefined) {
+    rawSetOpenSession(id)
+    return globalSDK.subscribe(interestSet())
+  }
+
+  // Guarantee a session is in our interest set on the SERVER before the caller
+  // reads its snapshot, so subscribe-before-snapshot holds. sync()
+  // awaits this right before loadMessages. Returns the subscribe POST promise.
+  //
+  // INVARIANT: sync() is the "heal the OPEN session" primitive — it is only ever
+  // called for the session on screen (navigation, reconnect re-hydrate, and the
+  // early tail-fetch all derive the id from the route/URL). Background sessions
+  // are deliberately never sync()-ed: the store does not hold them (see the
+  // eviction design, "evict idle session transcripts") and prefetch uses
+  // client.session.messages directly, not sync(). So marking sessionID as the
+  // open session here is correct by contract, not coincidence.
+  //
+  // If a future caller ever sync()s a NON-open session (a real prefetch through
+  // sync, say), this line would wrongly reassign openSession and could drop the
+  // viewed session's events. That caller would be the bug — route the transient
+  // membership separately then, do not sync() a background session.
+  function ensureInterest(sessionID: string) {
+    if (openSession() !== sessionID) rawSetOpenSession(sessionID)
+    return globalSDK.subscribe(interestSet())
+  }
+
+  // Re-push when liveness (recent_hub) changes while the open session is steady:
+  // a background session going busy joins the interest set, an idle one leaves.
+  createEffect(() => {
+    globalSDK.subscribe(interestSet())
+  })
+
   // Evict a session's cached transcript unless it is live, a child of a live
   // session, or explicitly kept (the currently-viewed session). Bodies drop from
   // the store; a reopen re-fetches tail-first, cheap against the local server.
@@ -1054,7 +1107,10 @@ function createGlobalSync() {
         // First chunk of a new part on a message that already holds parts: the
         // server blanked text, so the delta is the text so far. Insert with it,
         // else the first chunk is lost and streaming starts one delta short.
-        const inserted = textDelta !== undefined && (part.type === "text" || part.type === "reasoning") ? { ...part, text: textDelta } : part
+        const inserted =
+          textDelta !== undefined && (part.type === "text" || part.type === "reasoning")
+            ? { ...part, text: textDelta }
+            : part
         setStore(
           "part",
           part.messageID,
@@ -1315,6 +1371,8 @@ function createGlobalSync() {
     disposeChild,
     evictSession,
     attentionSession,
+    setOpenSession,
+    ensureInterest,
     bootstrap,
     updateConfig: (config: Config) => {
       setGlobalStore("reload", "pending")

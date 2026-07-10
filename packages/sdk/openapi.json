@@ -320,6 +320,15 @@
             }
           }
         },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "connectionID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "x-codeSamples": [
           {
             "lang": "js",

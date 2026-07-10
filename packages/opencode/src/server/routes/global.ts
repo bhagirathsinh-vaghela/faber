@@ -258,11 +258,12 @@ export const GlobalRoutes = lazy(() =>
           },
         },
       }),
+      validator("query", z.object({ connectionID: z.string().optional() })),
       async (c) => {
         // The client passes a stable connectionID so it can later scope this
         // stream to the sessions its screen needs (POST /global/subscribe).
         // Absent/unregistered = fail-open (receives everything).
-        const connectionID = c.req.query("connectionID")
+        const connectionID = c.req.valid("query").connectionID
         log.info("global event connected", { connectionID })
         return streamSSE(c, async (stream) => {
           let heartbeat: ReturnType<typeof setInterval> | undefined

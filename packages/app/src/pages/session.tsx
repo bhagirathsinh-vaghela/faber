@@ -623,10 +623,14 @@ export default function Page() {
         // an active session being juggled survives; only idle scrollback drops.
         if (prev && prev !== id) sync.session.evict(prev, id)
         if (!id) return
-        sync.session.sync(id)
+        // sync() scopes our event stream to this session and
+        // awaits that subscribe before reading the snapshot, so no event is
+        // dropped in the open-while-busy race. See sync.session.sync.
+        void sync.session.sync(id)
       },
     ),
   )
+  onCleanup(() => sync.setOpenSession(undefined))
 
   // On reconnect, re-hydrate the open session so a message/part the server
   // published while the stream was down (no replay) heals without a reload.

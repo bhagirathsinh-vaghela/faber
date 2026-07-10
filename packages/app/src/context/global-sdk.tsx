@@ -17,6 +17,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       signal: abort.signal,
       fetch: platform.fetch,
     })
+
+    // Per-connection event scoping. A stable id ties this client's
+    // SSE stream to its declared interest set on the server; the server drops
+    // other sessions' streaming events for us. Generated once per app load and
+    // reused across reconnects so the server keeps our set.
+    const connectionID = crypto.randomUUID()
+    let interest: string[] = []
     const emitter = createGlobalEmitter<{
       [key: string]: Event
     }>()
@@ -67,6 +74,18 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       timer = setTimeout(flush, Math.max(0, 16 - elapsed))
     }
 
+    // Declare (or re-declare) which sessions this connection wants. Fire-and-
+    // forget: on failure the server just keeps our previous set (or fail-open if
+    // none), so a dropped subscribe over-sends but never drops events.
+    const pushInterest = () => eventSdk.global.subscribe({ connectionID, sessions: interest }).catch(() => {})
+
+    // Update the interest set and push it. Called by global-sync as the set of
+    // sessions the client keeps mounted changes (open session + live sessions).
+    const subscribe = (sessions: string[]) => {
+      interest = sessions
+      return pushInterest()
+    }
+
     // Thin-client streaming model (like tmux reattach): the stream must run
     // forever. When it drops (server restart, sleep, network blip) reconnect
     // with backoff. The server emits server.connected on every (re)attach, so
@@ -75,8 +94,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       let backoff = 250
       while (!abort.signal.aborted) {
         try {
-          const events = await eventSdk.global.event()
+          const events = await eventSdk.global.event({ connectionID })
           backoff = 250
+          // Re-declare interest on every (re)attach: the server registry is
+          // per-process, so a restart wiped our set and would otherwise fail-open
+          // (harmless over-send) until we re-push. Snapshot heals any gap via
+          // reconcile-by-id, so order here is not load-bearing.
+          void pushInterest()
           let yielded = Date.now()
           for await (const event of events.stream) {
             const directory = event.directory ?? "global"
@@ -117,6 +141,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       throwOnError: true,
     })
 
-    return { url: server.url, client: sdk, event: emitter }
+    return { url: server.url, client: sdk, event: emitter, subscribe }
   },
 })

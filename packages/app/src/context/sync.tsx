@@ -171,6 +171,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }),
           )
         },
+        // Heal the OPEN session's transcript. CONTRACT: only call this for the
+        // session currently on screen — it marks sessionID as the open session
+        // for event scoping (see ensureInterest below). Background/prefetch loads
+        // must use client.session.messages directly, never sync().
         async sync(sessionID: string, force = false) {
           const directory = sdk.directory
           const client = sdk.client
@@ -191,6 +195,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // skips the fetch when the session is already in the store. Without
           // this, reopening an already-loaded recent session never re-armed.
           void client.session.get({ sessionID }).catch(() => {})
+
+          // Subscribe-before-snapshot: make sure the server has
+          // this session in our event-interest set BEFORE we read its snapshot,
+          // so any event fired after the snapshot arrives live and reconciles by
+          // id instead of being dropped. Awaited here (not in the caller) so the
+          // ordering holds no matter which path triggered the sync. Fail-open on
+          // the server means a slow/failed subscribe over-sends, never drops.
+          await globalSync.ensureInterest(sessionID)
 
           // force re-fetch re-hydrates messages+parts at the loaded limit after
           // a reconnect: the server has no SSE replay, so a message (or a part
@@ -394,6 +406,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       absolute,
       reconnect: globalSync.reconnect,
+      setOpenSession: globalSync.setOpenSession,
       get directory() {
         return current()[0].path.directory
       },
