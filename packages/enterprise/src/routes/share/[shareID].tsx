@@ -220,7 +220,13 @@ export default function () {
               <ClientOnlyWorkerPoolProvider>
                 <DiffComponentProvider component={ClientOnlyDiff}>
                   <CodeComponentProvider component={ClientOnlyCode}>
-                    <DataProvider data={data()} directory={info().directory}>
+                    <DataProvider
+                      data={data()}
+                      directory={info().directory}
+                      // Shares have no live server; serve bodies from the synced
+                      // session-level diff (full tier) already in the store.
+                      onFetchMessageDiff={async () => data().session_diff[data().sessionID]}
+                    >
                       {iife(() => {
                         const [store, setStore] = createStore({
                           messageId: undefined as string | undefined,

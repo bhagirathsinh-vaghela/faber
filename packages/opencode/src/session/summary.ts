@@ -129,7 +129,10 @@ export namespace SessionSummary {
     const diffs = await computeDiff({ messages })
     userMsg.summary = {
       ...userMsg.summary,
-      diffs,
+      // Bodyless: before/after are whole file bodies, and this summary rides
+      // every message.updated broadcast and message-list response. Bodies are
+      // recomputed on demand by the diff route's messageID path.
+      diffs: diffs.map(({ before, after, ...rest }) => rest),
     }
     await Session.updateMessage(userMsg)
 
@@ -169,6 +172,14 @@ export namespace SessionSummary {
     }
   }
 
+  async function messageDiff(input: { sessionID: string; messageID: string }) {
+    const all = await Session.messages({ sessionID: input.sessionID })
+    const messages = all.filter(
+      (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
+    )
+    return computeDiff({ messages })
+  }
+
   export const diff = fn(
     z.object({
       sessionID: Identifier.schema("session"),
@@ -179,7 +190,12 @@ export namespace SessionSummary {
       summary: z.boolean().optional(),
     }),
     async (input) => {
-      const diffs = await Storage.read<Snapshot.FileDiff[]>(["session_diff", input.sessionID]).catch(() => [])
+      // The per-message tier recomputes from snapshots (bodies included):
+      // message summaries persist bodyless, so this is the on-demand body
+      // source for a turn's diff panel.
+      const diffs: Snapshot.FileDiff[] = input.messageID
+        ? await messageDiff({ sessionID: input.sessionID, messageID: input.messageID })
+        : await Storage.read<Snapshot.FileDiff[]>(["session_diff", input.sessionID]).catch(() => [])
       const next = diffs.map((item) => {
         const file = unquoteGitPath(item.file)
         if (file === item.file) return item
@@ -189,7 +205,9 @@ export namespace SessionSummary {
         }
       })
       const changed = next.some((item, i) => item.file !== diffs[i]?.file)
-      if (changed) Storage.write(["session_diff", input.sessionID], next).catch(() => {})
+      // The stored session_diff only holds the session-level tier; a
+      // per-message recompute must not overwrite it.
+      if (changed && !input.messageID) Storage.write(["session_diff", input.sessionID], next).catch(() => {})
       if (input.file) return next.filter((item) => item.file === input.file)
       if (input.summary) return next.map(({ before, after, ...rest }) => rest)
       return next

@@ -61,6 +61,9 @@ export default function Layout(props: ParentProps) {
               navigate(`/${params.dir}/session/${sessionID}`)
             }
 
+            const fetchMessageDiff = (input: { sessionID: string; messageID: string }) =>
+              sdk.client.session.diff(input).then((r) => r.data)
+
             // Cache-safe revert: prime the cache at the prior assistant via a
             // ping probe before reverting, so the conversation cache survives.
             const revertMessage = async (input: { sessionID: string; messageID: string }) => {
@@ -82,6 +85,7 @@ export default function Layout(props: ParentProps) {
                 onQuestionReject={rejectQuestion}
                 onNavigateToSession={navigateToSession}
                 onRevertMessage={revertMessage}
+                onFetchMessageDiff={fetchMessageDiff}
               >
                 <LocalProvider>
                   <QuestionProvider>{props.children}</QuestionProvider>

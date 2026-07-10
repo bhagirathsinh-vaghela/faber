@@ -414,8 +414,39 @@ export function SessionTurn(
   })
 
   const response = createMemo(() => lastTextPart()?.text)
-  const messageDiffs = createMemo(() => message()?.summary?.diffs ?? emptyDiffs)
+  // Stats tier (file, additions, deletions) rides the message summary; bodies
+  // are stripped server-side and lazy-fetched when the section opens. Old
+  // messages persisted with inline bodies render from them directly.
+  const [fetchedDiffs, setFetchedDiffs] = createSignal<FileDiff[] | undefined>()
+  const messageDiffs = createMemo(() => {
+    const stats = message()?.summary?.diffs ?? emptyDiffs
+    const bodies = fetchedDiffs()
+    if (!bodies) return stats
+    return stats.map((d) => {
+      if (typeof d.before === "string" || typeof d.after === "string") return d
+      const full = bodies.find((b) => b.file === d.file)
+      return full ? { ...d, before: full.before, after: full.after } : d
+    })
+  })
   const hasDiffs = createMemo(() => messageDiffs().length > 0)
+  let diffFetchFor: string | undefined
+  function loadDiffBodies() {
+    const info = message()
+    if (!info || diffFetchFor === info.id) return
+    const missing = (info.summary?.diffs ?? emptyDiffs).some(
+      (d) => typeof d.before !== "string" && typeof d.after !== "string",
+    )
+    if (!missing) return
+    diffFetchFor = info.id
+    data
+      .fetchMessageDiff?.({ sessionID: props.sessionID, messageID: info.id })
+      .then((diffs) => {
+        if (diffs) setFetchedDiffs(diffs)
+      })
+      .catch(() => {
+        diffFetchFor = undefined
+      })
+  }
 
   const [rootRef, setRootRef] = createSignal<HTMLDivElement | undefined>()
   const [stickyRef, setStickyRef] = createSignal<HTMLDivElement | undefined>()
@@ -516,6 +547,8 @@ export function SessionTurn(
         setStore("diffsSectionOpen", false)
         setStore("diffsOpen", [])
         setStore("diffLimit", diffInit)
+        setFetchedDiffs(undefined)
+        diffFetchFor = undefined
       },
       { defer: true },
     ),
@@ -811,7 +844,10 @@ export function SessionTurn(
                           data-slot="session-turn-summary-header"
                           data-open={store.diffsSectionOpen}
                           aria-expanded={store.diffsSectionOpen}
-                          onClick={() => setStore("diffsSectionOpen", (open) => !open)}
+                          onClick={() => {
+                            loadDiffBodies()
+                            setStore("diffsSectionOpen", (open) => !open)
+                          }}
                         >
                           <Icon name="chevron-down" size="small" data-slot="session-turn-summary-chevron" />
                           <h2 data-slot="session-turn-summary-title">
@@ -857,16 +893,21 @@ export function SessionTurn(
                                     </Accordion.Trigger>
                                   </StickyAccordionHeader>
                                   <Accordion.Content data-slot="session-turn-accordion-content">
-                                    <Show when={store.diffsOpen.includes(diff.file!)}>
+                                    <Show
+                                      when={
+                                        store.diffsOpen.includes(diff.file!) &&
+                                        (typeof diff.before === "string" || typeof diff.after === "string")
+                                      }
+                                    >
                                       <Dynamic
                                         component={diffComponent}
                                         before={{
                                           name: diff.file!,
-                                          contents: diff.before!,
+                                          contents: diff.before ?? "",
                                         }}
                                         after={{
                                           name: diff.file!,
-                                          contents: diff.after!,
+                                          contents: diff.after ?? "",
                                         }}
                                       />
                                     </Show>

@@ -51,6 +51,8 @@ export type NavigateToSessionFn = (sessionID: string) => void
 
 export type RevertMessageFn = (input: { sessionID: string; messageID: string }) => void
 
+export type FetchMessageDiffFn = (input: { sessionID: string; messageID: string }) => Promise<FileDiff[] | undefined>
+
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
@@ -61,6 +63,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     onQuestionReject?: QuestionRejectFn
     onNavigateToSession?: NavigateToSessionFn
     onRevertMessage?: RevertMessageFn
+    onFetchMessageDiff?: FetchMessageDiffFn
   }) => {
     const numbers = createMemo(() => {
       const result: Record<string, Map<string, number>> = {}
@@ -99,6 +102,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       rejectQuestion: props.onQuestionReject,
       navigateToSession: props.onNavigateToSession,
       revertMessage: props.onRevertMessage,
+      fetchMessageDiff: props.onFetchMessageDiff,
     }
   },
 })
