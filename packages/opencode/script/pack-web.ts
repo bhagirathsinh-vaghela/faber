@@ -41,9 +41,15 @@ if (!fs.existsSync(path.join(distDir, "index.html")))
   throw new Error(`pack-web: app build produced no index.html at ${distDir}`)
 
 // Text assets shrink 3-20x; pre-compressed formats (png/woff2/wasm) don't, so
-// storing variants for them just bloats the embed. Brotli at max quality — this
-// runs offline at pack time, so compression cost is free and served forever.
+// storing variants for them just bloats the embed.
 const compressible = new Set([".html", ".js", ".mjs", ".css", ".json", ".webmanifest", ".svg", ".map", ".txt"])
+
+// Brotli quality is the single biggest cost in this script. q11 (max) buys ~2
+// extra points of ratio over q5 but costs ~14s vs ~0.2s over the whole bundle.
+// q5 is the default for every build (local dev loop, plain bun run build); only
+// the CI release path (OPENCODE_RELEASE set, same signal as Script.release) pays
+// q11 for the smallest shipped binary.
+const brotliQuality = process.env.OPENCODE_RELEASE ? 11 : 5
 
 const assets: Record<string, { type: string; body: string; br?: string; gzip?: string }> = {}
 const glob = new Bun.Glob("**/*")
@@ -57,7 +63,7 @@ for (const rel of glob.scanSync({ cwd: distDir, onlyFiles: true })) {
   }
   if (compressible.has(ext)) {
     asset.br = zlib
-      .brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } })
+      .brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: brotliQuality } })
       .toString("base64")
     asset.gzip = zlib.gzipSync(raw, { level: 9 }).toString("base64")
   }
