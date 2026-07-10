@@ -1754,6 +1754,10 @@ export default function Page() {
   }
 
   const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
+    // Jumping to a message is a deliberate move away from the tail, so stop
+    // auto-follow first. Without this, a click while the session streams
+    // scrolls up and then the resize re-pin drags the view back to the bottom.
+    autoScroll.pause()
     setActiveMessage(message)
 
     const msgs = visibleUserMessages()
