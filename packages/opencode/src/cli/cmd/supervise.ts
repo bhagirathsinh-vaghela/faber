@@ -106,28 +106,44 @@ export const SuperviseCommand = cmd({
       return pids
     }
 
-    // PIDs LISTENING on the port, excluding this supervisor. ss is standard on
-    // Linux (and some containers have no lsof); lsof is the macOS path.
+    // PIDs LISTENING on the port, excluding this supervisor. Pick the probe by
+    // platform, not by `command -v ss`: macOS can carry an iproute2mac ss shim
+    // that ignores -p and emits no pids, which reads as "nothing listening"
+    // and silently disables reaping and ownership checks. ss is the Linux path
+    // (some containers have no lsof); lsof everywhere else.
     async function listeners(port: number) {
-      const which = await run(["sh", "-c", "command -v ss || true"])
-      const found = which.trim() ? await listenersSs(port) : await listenersLsof(port)
+      const found = process.platform === "linux" ? await listenersSs(port) : await listenersLsof(port)
       return [...new Set(found.filter((pid) => pid !== String(process.pid)))]
     }
 
-    // Only used at bind time to reap an orphan left by a PRIOR supervisor that
-    // was killed without cleaning up — the owned-handle path can't see a process
-    // it did not spawn.
+    // Reap whatever LISTENS on the port — an orphan from a prior supervisor,
+    // or a killed server whose socket release is racing our relaunch. Gate on
+    // the listen socket, not health: a wedged holder that never answers
+    // /global/health still blocks the bind. Returns whether the port came
+    // free; SIGTERM first, SIGKILL after 5s, give up after 10s.
     async function reapOrphan(port: number) {
-      if (!(await health(port))) return
-      const pids = await listeners(port)
+      let pids = await listeners(port)
+      if (!pids.length) return true
       for (const pid of pids) spawn(["kill", pid])
-      if (pids.length) await Bun.sleep(500)
+      for (let i = 1; i <= 20; i++) {
+        await Bun.sleep(500)
+        pids = await listeners(port)
+        if (!pids.length) return true
+        if (i === 10) for (const pid of pids) spawn(["kill", "-9", pid])
+      }
+      return false
     }
 
-    async function waitHealthy(port: number, tries = 40) {
+    // Health-poll a server WE spawned. A health answer on the port is not
+    // proof of success: when the child loses the bind race and dies, the
+    // orphan still holding the port answers health and a FAILED relaunch
+    // reports ok — the browser then talks to stale bits. Require the child
+    // alive AND holding the listen socket.
+    async function waitOwned(proc: Subprocess, port: number, tries = 40) {
       for (let i = 0; i < tries; i++) {
+        if (proc.exitCode !== null || proc.signalCode !== null) return null
         const info = await health(port)
-        if (info) return info
+        if (info && (await listeners(port)).includes(String(proc.pid))) return info
         await Bun.sleep(500)
       }
       return null
@@ -202,9 +218,10 @@ export const SuperviseCommand = cmd({
     async function restart() {
       // Stage on the alt port and prove it healthy before touching the live
       // server.
-      await reapOrphan(ALT_PORT)
+      if (!(await reapOrphan(ALT_PORT)))
+        return { ok: false, step: "stage", detail: `port ${ALT_PORT} is held by a process that won't die` }
       const stage = launch(ALT_PORT)
-      const staged = await waitHealthy(ALT_PORT)
+      const staged = await waitOwned(stage, ALT_PORT)
       if (!staged) {
         await stop(stage)
         return { ok: false, step: "stage", detail: `staged build never became healthy on ${ALT_PORT}` }
@@ -218,9 +235,13 @@ export const SuperviseCommand = cmd({
       await stop(stage)
       await stop(current)
       current = null
-      await reapOrphan(PORT)
+      // The kill above releases the socket asynchronously; reapOrphan also
+      // clears any unowned holder AND confirms the port is actually free, so
+      // the relaunch can't lose the bind race and leave stale bits serving.
+      if (!(await reapOrphan(PORT)))
+        return { ok: false, step: "cutover", detail: `port ${PORT} is held by a process that won't die` }
       current = launch(PORT)
-      const live = await waitHealthy(PORT)
+      const live = await waitOwned(current, PORT)
       if (!live) {
         await stop(current)
         current = null
