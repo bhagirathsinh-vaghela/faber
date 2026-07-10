@@ -236,6 +236,9 @@ export const dict = {
   "prompt.action.dictate": "Dictate",
   "prompt.action.dictateStop": "Stop dictation",
   "prompt.toast.dictationFailed.title": "Dictation failed",
+  "dictation.listening": "Listening",
+  "dictation.accept": "accept",
+  "dictation.discard": "discard",
 
   "prompt.toast.pasteUnsupported.title": "Unsupported paste",
   "prompt.toast.pasteUnsupported.description": "Only images or PDFs can be pasted here.",

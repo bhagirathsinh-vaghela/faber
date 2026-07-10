@@ -42,14 +42,21 @@ function encode(samples: Float32Array) {
 
 let active: (() => void) | undefined
 
-export function createDictation(opts: {
-  url: () => string
-  onFinal: (text: string) => void
-  onError?: (message: string) => void
-}) {
-  const [store, setStore] = createStore({ active: false, interim: "" })
+// Transcript accumulates in the store (finals append to committed, interims
+// replace) and is only handed to the host on an explicit accept; stop()
+// discards. The host renders committed/interim live and decides.
+const LEVEL_BARS = 24
+
+export function createDictation(opts: { url: () => string; onError?: (message: string) => void }) {
+  const [store, setStore] = createStore({
+    active: false,
+    committed: "",
+    interim: "",
+    levels: Array.from({ length: LEVEL_BARS }, () => 0),
+  })
 
   let session: { socket: WebSocket; context: AudioContext; stream: MediaStream } | undefined
+  let raf = 0
 
   const supported = () => !!navigator.mediaDevices?.getUserMedia
 
@@ -58,20 +65,17 @@ export function createDictation(opts: {
     const { socket, context, stream } = session
     session = undefined
     if (active === stop) active = undefined
-    setStore({ active: false, interim: "" })
+    cancelAnimationFrame(raf)
+    setStore({ active: false, levels: store.levels.map(() => 0) })
     for (const track of stream.getTracks()) track.stop()
     context.close()
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "stop" }))
-      // Deepgram flushes tail finals after CloseStream; keep the socket up
-      // briefly so they still reach onFinal.
-      setTimeout(() => socket.close(), 1500)
-      return
-    }
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }))
     socket.close()
   }
 
   const stop = () => teardown()
+
+  const text = () => [store.committed, store.interim].filter(Boolean).join(" ")
 
   const start = async () => {
     if (session) return
@@ -97,7 +101,7 @@ export function createDictation(opts: {
       const socket = new WebSocket(url)
       socket.binaryType = "arraybuffer"
       session = { socket, context, stream }
-      setStore({ active: true, interim: "" })
+      setStore({ active: true, committed: "", interim: "" })
 
       const pending: ArrayBuffer[] = []
       const worklet = new AudioWorkletNode(context, "dictation-capture")
@@ -109,7 +113,26 @@ export function createDictation(opts: {
         }
         if (socket.readyState === WebSocket.CONNECTING) pending.push(frame)
       }
-      context.createMediaStreamSource(stream).connect(worklet)
+      const source = context.createMediaStreamSource(stream)
+      source.connect(worklet)
+
+      // Speech indicator: sample the analyser each frame into a scrolling bar
+      // strip (newest level enters on the right).
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.6
+      source.connect(analyser)
+      const samples = new Float32Array(analyser.fftSize)
+      const pump = () => {
+        if (!session) return
+        analyser.getFloatTimeDomainData(samples)
+        let sum = 0
+        for (const sample of samples) sum += sample * sample
+        const level = Math.min(1, Math.sqrt(sum / samples.length) * 6)
+        setStore("levels", [...store.levels.slice(1), level])
+        raf = requestAnimationFrame(pump)
+      }
+      raf = requestAnimationFrame(pump)
 
       socket.onopen = () => {
         for (const frame of pending) socket.send(frame)
@@ -119,8 +142,10 @@ export function createDictation(opts: {
         const message = JSON.parse(String(event.data))
         if (message.type === "transcript") {
           if (message.final) {
-            setStore("interim", "")
-            opts.onFinal(message.text)
+            setStore({
+              committed: store.committed ? store.committed + " " + message.text : message.text,
+              interim: "",
+            })
             return
           }
           setStore("interim", message.text)
@@ -136,7 +161,7 @@ export function createDictation(opts: {
       }
     } catch (error) {
       if (active === stop) active = undefined
-      setStore({ active: false, interim: "" })
+      setStore("active", false)
       opts.onError?.(error instanceof Error ? error.message : String(error))
     }
   }
@@ -146,7 +171,10 @@ export function createDictation(opts: {
   return {
     supported,
     active: () => store.active,
+    committed: () => store.committed,
     interim: () => store.interim,
+    levels: () => store.levels,
+    text,
     start,
     stop,
   }

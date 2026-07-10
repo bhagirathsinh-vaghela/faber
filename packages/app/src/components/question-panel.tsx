@@ -14,6 +14,8 @@ import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
 import { createDictation } from "@/utils/dictation"
+import { DictationOverlay } from "@/components/dictation-overlay"
+import { clonePrompt, usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
 
 // Pinned question prompt. Mirrors the TUI QuestionPrompt
@@ -178,19 +180,31 @@ function Panel(props: {
 
   let input: HTMLTextAreaElement | undefined
 
+  const promptDraft = usePrompt()
+  const [dictating, setDictating] = createSignal(false)
   const dictation = createDictation({
     url: () => sdk.url,
-    onFinal: (text) => {
-      if (!input) return
-      input.value = (input.value ? input.value + " " : "") + text
-      input.focus()
-    },
-    onError: (message) =>
+    onError: (message) => {
+      setDictating(false)
       showToast({
         title: language.t("prompt.toast.dictationFailed.title"),
         description: message,
-      }),
+      })
+    },
   })
+  const acceptDictation = (text: string) => {
+    // Textarea gone (question answered/panel closed mid-dictation): stash into
+    // the prompt draft, which outlives this panel, so the transcript survives.
+    if (!input?.isConnected) {
+      promptDraft.set([
+        ...clonePrompt(promptDraft.current()),
+        { type: "text", content: " " + text + " ", start: 0, end: 0 },
+      ])
+      return
+    }
+    input.value = (input.value ? input.value + " " : "") + text
+    input.focus()
+  }
 
   // Whether keyboard focus is currently within the panel. Drives the panel
   // border color and gates hover/selection highlighting so the user can tell
@@ -296,7 +310,6 @@ function Panel(props: {
   }
 
   function submitCustom() {
-    if (dictation.active()) dictation.stop()
     const text = input?.value.trim() ?? ""
     if (!text) {
       setStore("editing", false)
@@ -701,7 +714,6 @@ function Panel(props: {
                           submitCustom()
                         }
                         if (e.key === "Escape") {
-                          if (dictation.active()) dictation.stop()
                           setStore("editing", false)
                           panel?.focus()
                         }
@@ -712,18 +724,28 @@ function Panel(props: {
                         type="button"
                         variant="ghost"
                         class="size-6 px-1"
-                        onClick={() => (dictation.active() ? dictation.stop() : dictation.start())}
+                        onClick={() => {
+                          if (dictating()) {
+                            dictation.stop()
+                            setDictating(false)
+                            return
+                          }
+                          setDictating(true)
+                          // Keep focus on the textarea so the panel's global
+                          // key handler (which yields to editable elements)
+                          // stays out of the way and accepted text lands here.
+                          input?.focus()
+                          dictation.start()
+                        }}
                         aria-label={
-                          dictation.active()
-                            ? language.t("prompt.action.dictateStop")
-                            : language.t("prompt.action.dictate")
+                          dictating() ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                         }
-                        aria-pressed={dictation.active()}
+                        aria-pressed={dictating()}
                       >
                         <Icon
                           name="mic"
                           class="size-4.5"
-                          classList={{ "text-icon-critical-base animate-pulse": dictation.active() }}
+                          classList={{ "text-icon-critical-base animate-pulse": dictating() }}
                         />
                       </Button>
                     </Show>
@@ -731,9 +753,13 @@ function Panel(props: {
                       {multi() ? "Add" : "Submit"}
                     </Button>
                   </form>
-                  <Show when={dictation.interim()}>
-                    <div class="pl-4 text-11-regular text-text-weak truncate" aria-live="polite">
-                      {dictation.interim()}
+                  <Show when={dictating()}>
+                    <div class="relative">
+                      <DictationOverlay
+                        dictation={dictation}
+                        onAccept={acceptDictation}
+                        onClose={() => setDictating(false)}
+                      />
                     </div>
                   </Show>
                 </Show>

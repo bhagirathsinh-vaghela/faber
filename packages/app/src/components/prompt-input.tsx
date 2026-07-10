@@ -19,6 +19,7 @@ import { useFile, type FileSelection } from "@/context/file"
 import {
   ContentPart,
   DEFAULT_PROMPT,
+  clonePrompt,
   isPromptEqual,
   Prompt,
   usePrompt,
@@ -55,6 +56,7 @@ import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { createDictation } from "@/utils/dictation"
+import { DictationOverlay } from "@/components/dictation-overlay"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
 import { PromptActionBar } from "@/components/prompt-actionbar"
@@ -241,6 +243,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     dragging: boolean
     mode: "normal" | "shell"
     applyingHistory: boolean
+    dictating: boolean
   }>({
     popover: null,
     historyIndex: -1,
@@ -248,6 +251,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     dragging: false,
     mode: "normal",
     applyingHistory: false,
+    dictating: false,
   })
 
   const MAX_HISTORY = 100
@@ -920,16 +924,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   }
 
-  // Finals arriving mid-IME-composition would corrupt the composition buffer;
-  // hold them until compositionend.
-  let heldDictation = ""
   const insertDictation = (text: string) => {
-    if (composing()) {
-      heldDictation += text + " "
+    // Editor unmounted (navigation mid-dictation): stash into the prompt draft
+    // state, which outlives this component, so the transcript never vanishes.
+    if (!editorRef?.isConnected) {
+      prompt.set([...clonePrompt(prompt.current()), { type: "text", content: " " + text + " ", start: 0, end: 0 }])
       return
     }
-    // The mic button holds focus; restore the caret to the prompt before
-    // addPart, which inserts at the current selection.
+    // The overlay held focus; restore the caret to the prompt before addPart,
+    // which inserts at the current selection.
     editorRef.focus()
     requestAnimationFrame(() => {
       const cursor = prompt.cursor() ?? promptLength(prompt.current())
@@ -937,20 +940,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       addPart({ type: "text", content: text + " ", start: 0, end: 0 })
     })
   }
-  const flushDictation = () => {
-    if (!heldDictation) return
-    const held = heldDictation
-    heldDictation = ""
-    insertDictation(held.trimEnd())
-  }
   const dictation = createDictation({
     url: () => sdk.url,
-    onFinal: insertDictation,
-    onError: (message) =>
+    onError: (message) => {
+      setStore("dictating", false)
       showToast({
         title: language.t("prompt.toast.dictationFailed.title"),
         description: message,
-      }),
+      })
+    },
   })
 
   command.register(() => [
@@ -1190,7 +1188,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const handleSubmit = async (event: Event) => {
     event.preventDefault()
 
-    if (dictation.active()) dictation.stop()
+    // Mouse-submit while dictating: unmounting the overlay stashes the
+    // transcript into the (fresh) draft via its cleanup, so nothing vanishes.
+    if (store.dictating) setStore("dictating", false)
 
     const currentPrompt = prompt.current()
     const text = currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
@@ -1809,6 +1809,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           [props.class ?? ""]: !!props.class,
         }}
       >
+        <Show when={store.dictating}>
+          <DictationOverlay
+            dictation={dictation}
+            onAccept={insertDictation}
+            onClose={() => setStore("dictating", false)}
+          />
+        </Show>
         <Show when={store.dragging}>
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
             <div class="flex flex-col items-center gap-2 text-text-weak">
@@ -1949,10 +1956,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onInput={handleInput}
             onPaste={handlePaste}
             onCompositionStart={() => setComposing(true)}
-            onCompositionEnd={() => {
-              setComposing(false)
-              flushDictation()
-            }}
+            onCompositionEnd={() => setComposing(false)}
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
@@ -2230,33 +2234,38 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             />
             <div class="flex items-center gap-1 mr-1">
               <Show when={store.mode === "normal" && dictation.supported()}>
-                <Show when={dictation.interim()}>
-                  <span class="text-12-regular text-text-weak max-w-40 truncate" aria-live="polite">
-                    {dictation.interim()}
-                  </span>
-                </Show>
                 <Tooltip
                   placement="top"
                   value={
-                    dictation.active() ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
+                    store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                   }
                 >
                   <Button
                     type="button"
                     variant="ghost"
                     class="size-6 px-1"
-                    onClick={() => (dictation.active() ? dictation.stop() : dictation.start())}
+                    onClick={() => {
+                      if (store.dictating) {
+                        dictation.stop()
+                        setStore("dictating", false)
+                        return
+                      }
+                      setStore("dictating", true)
+                      // Keep focus in the editor: the caret stays where the
+                      // accepted text will land, and the question panel's
+                      // global key handler yields to editable elements.
+                      editorRef.focus()
+                      dictation.start()
+                    }}
                     aria-label={
-                      dictation.active()
-                        ? language.t("prompt.action.dictateStop")
-                        : language.t("prompt.action.dictate")
+                      store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                     }
-                    aria-pressed={dictation.active()}
+                    aria-pressed={store.dictating}
                   >
                     <Icon
                       name="mic"
                       class="size-4.5"
-                      classList={{ "text-icon-critical-base animate-pulse": dictation.active() }}
+                      classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
                     />
                   </Button>
                 </Tooltip>

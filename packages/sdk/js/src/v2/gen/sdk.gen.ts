@@ -38,6 +38,7 @@ import type {
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  DictationConnectResponses,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -487,6 +488,20 @@ export class Global extends HeyApiClient {
   private _web?: Web
   get web(): Web {
     return (this._web ??= new Web({ client: this.client }))
+  }
+}
+
+export class Dictation extends HeyApiClient {
+  /**
+   * Connect dictation stream
+   *
+   * Establish a WebSocket connection that proxies microphone audio to Deepgram and streams transcript text back.
+   */
+  public connect<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<DictationConnectResponses, unknown, ThrowOnError>({
+      url: "/dictation/connect",
+      ...options,
+    })
   }
 }
 
@@ -4466,6 +4481,11 @@ export class OpencodeClient extends HeyApiClient {
   private _global?: Global
   get global(): Global {
     return (this._global ??= new Global({ client: this.client }))
+  }
+
+  private _dictation?: Dictation
+  get dictation(): Dictation {
+    return (this._dictation ??= new Dictation({ client: this.client }))
   }
 
   private _auth?: Auth

@@ -2945,6 +2945,22 @@ export type GlobalWebReloadResponses = {
 
 export type GlobalWebReloadResponse = GlobalWebReloadResponses[keyof GlobalWebReloadResponses]
 
+export type DictationConnectData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/dictation/connect"
+}
+
+export type DictationConnectResponses = {
+  /**
+   * Connected
+   */
+  200: boolean
+}
+
+export type DictationConnectResponse = DictationConnectResponses[keyof DictationConnectResponses]
+
 export type AuthRemoveData = {
   body?: never
   path: {
