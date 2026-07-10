@@ -1,4 +1,4 @@
-import { createEffect, createMemo, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
@@ -6,10 +6,11 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
 import { CountdownRing } from "@opencode-ai/ui/countdown-ring"
 import { Dialog } from "@opencode-ai/ui/dialog"
-import { List } from "@opencode-ai/ui/list"
+import { List, type ListRef } from "@opencode-ai/ui/list"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DateTime } from "luxon"
 import { useRecent, type OverviewRow } from "@/context/recent"
+import { useMru } from "@/context/mru"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { CACHE_TTL } from "@/utils/cache-countdown"
 import { useLanguage } from "@/context/language"
@@ -134,19 +135,74 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
 // Both the home page (`/`) and DialogOverview render this body inside their
 // own frame, so any change to what the overview shows lands in both views. The
 // search input holds focus so the arrow keys drive the list and typing filters.
-export function Overview(props: { onOpen?: () => void }) {
+export function Overview(props: { onOpen?: () => void; attention?: boolean; advance?: boolean }) {
   const frozen = useFrozen()
   const sdk = useGlobalSDK()
   const navigate = useNavigate()
   const language = useLanguage()
+  const mru = useMru()
 
-  const items = createMemo(() => [...frozen.attention(), ...frozen.recent()])
+  const live = createMemo(() => [...frozen.attention(), ...frozen.recent()])
+
+  // Drop stale MRU ids (session archived or deleted) whenever the live set
+  // changes. prune guards against a transient empty list so mid-load churn can't
+  // wipe the MRU. Kept out of the ordering memo so it never writes during a read.
+  createEffect(() => mru.prune(new Set(live().map((r) => r.sessionID))))
+
+  // Both the home page and the switcher dialog order by MRU: sessions this client
+  // has viewed lead in most-recently-viewed order (so the current session sits at
+  // position 0), and sessions never viewed follow in their normal order.
+  const items = createMemo(() => {
+    const all = live()
+    const rank = new Map(mru.order().map((id, i) => [id, i]))
+    const seen = all
+      .filter((r) => rank.has(r.sessionID))
+      .sort((a, b) => rank.get(a.sessionID)! - rank.get(b.sessionID)!)
+    const rest = all.filter((r) => !rank.has(r.sessionID))
+    return [...seen, ...rest]
+  })
   const empty = () => items().length === 0
+  // Ctrl+Tab advances one step on the opening press (highlight the next session,
+  // position 1), so two live sessions flip with a single tap. Ctrl+Shift+Tab and
+  // the home page rest on the current session (position 0). Further taps cycle.
+  const initial = !props.attention ? undefined : props.advance ? items()[1] ?? items()[0] : items()[0]
 
   const open = (row: OverviewRow) => {
     void sdk.client.session.seen({ directory: row.directory, sessionID: row.sessionID })
     navigate(`/${base64Encode(row.directory)}/session/${row.sessionID}`)
     props.onOpen?.()
+  }
+
+  // Ctrl+Tab switcher: only armed when the overview was opened via the
+  // attention keybind. Holding Ctrl and tapping Tab advances the highlight
+  // (Ctrl+Shift+Tab retreats); releasing Ctrl commits the highlighted session,
+  // matching OS-style Alt+Tab. Cycling spans the whole list — it starts on the
+  // first attention session but flows into the recent sessions past the end.
+  // Opened any other way, releasing Ctrl does nothing — a stray modifier must
+  // never navigate.
+  let ref: ListRef | undefined
+  const [highlight, setHighlight] = createSignal(initial)
+
+  if (props.attention) {
+    const cycle = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey && event.key === "Tab")) return
+      event.preventDefault()
+      event.stopPropagation()
+      ref?.onKeyDown(new KeyboardEvent("keydown", { key: event.shiftKey ? "ArrowUp" : "ArrowDown", bubbles: true }))
+    }
+    const commit = (event: KeyboardEvent) => {
+      if (event.key !== "Control") return
+      const row = highlight()
+      if (row) open(row)
+    }
+    onMount(() => {
+      window.addEventListener("keydown", cycle, true)
+      window.addEventListener("keyup", commit, true)
+    })
+    onCleanup(() => {
+      window.removeEventListener("keydown", cycle, true)
+      window.removeEventListener("keyup", commit, true)
+    })
   }
 
   return (
@@ -155,7 +211,10 @@ export function Overview(props: { onOpen?: () => void }) {
       fallback={<div class="px-3 py-6 text-14-regular text-text-weak">{language.t("home.empty.description")}</div>}
     >
       <List
+        ref={(r) => (ref = r)}
         preserveActive
+        initial={initial}
+        onMove={setHighlight}
         search={{ placeholder: language.t("common.search.placeholder"), autofocus: true }}
         items={items}
         key={(row) => row.sessionID}
@@ -174,13 +233,13 @@ export function Overview(props: { onOpen?: () => void }) {
   )
 }
 
-export function DialogOverview() {
+export function DialogOverview(props: { advance?: boolean }) {
   const dialog = useDialog()
   const language = useLanguage()
 
   return (
     <Dialog size="large" title={language.t("home.title")} transition>
-      <Overview onOpen={() => dialog.close()} />
+      <Overview attention advance={props.advance} onOpen={() => dialog.close()} />
     </Dialog>
   )
 }

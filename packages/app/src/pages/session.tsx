@@ -41,6 +41,7 @@ import { agentColor } from "@/utils/agent"
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { useSync } from "@/context/sync"
+import { useMru } from "@/context/mru"
 import { useTerminal, type LocalPTY } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
@@ -243,6 +244,7 @@ export default function Page() {
   const local = useLocal()
   const file = useFile()
   const sync = useSync()
+  const mru = useMru()
   const terminal = useTerminal()
   const dialog = useDialog()
   const codeComponent = useCodeComponent()
@@ -623,6 +625,7 @@ export default function Page() {
         // an active session being juggled survives; only idle scrollback drops.
         if (prev && prev !== id) sync.session.evict(prev, id)
         if (!id) return
+        mru.touch(id)
         // sync() scopes our event stream to this session and
         // awaits that subscribe before reading the snapshot, so no event is
         // dropped in the open-while-busy race. See sync.session.sync.
@@ -855,6 +858,20 @@ export default function Page() {
       title: language.t("command.overview.open"),
       category: language.t("command.category.session"),
       keybind: "mod+k",
+      onSelect: () => dialog.show(() => <DialogOverview />),
+    },
+    {
+      id: "overview.attention",
+      title: language.t("command.overview.attention"),
+      category: language.t("command.category.session"),
+      keybind: "ctrl+tab",
+      onSelect: () => dialog.show(() => <DialogOverview advance />),
+    },
+    {
+      id: "overview.attention.reverse",
+      title: language.t("command.overview.attention.reverse"),
+      category: language.t("command.category.session"),
+      keybind: "ctrl+shift+tab",
       onSelect: () => dialog.show(() => <DialogOverview />),
     },
     {

@@ -9,6 +9,7 @@ export interface FilteredListProps<T> {
   key: (item: T) => string
   filterKeys?: string[]
   current?: T
+  initial?: T
   groupBy?: (x: T) => string
   sortBy?: (a: T, b: T) => number
   sortGroupsBy?: (a: { category: string; items: T[] }, b: { category: string; items: T[] }) => number
@@ -60,6 +61,7 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
 
   function initialActive() {
     if (props.noInitialSelection) return ""
+    if (props.initial) return props.key(props.initial)
     if (props.current) return props.key(props.current)
 
     const items = flat()

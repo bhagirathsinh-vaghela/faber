@@ -27,6 +27,7 @@ import { CommentsProvider } from "@/context/comments"
 import { NotificationProvider } from "@/context/notification"
 import { ModelsProvider } from "@/context/models"
 import { RecentProvider } from "@/context/recent"
+import { MruProvider } from "@/context/mru"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
 import { LanguageProvider, useLanguage } from "@/context/language"
@@ -159,9 +160,11 @@ export function AppInterface(props: { defaultUrl?: string }) {
                               <ModelsProvider>
                                 <CommandProvider>
                                   <HighlightsProvider>
-                                    <RecentProvider>
-                                      <Layout>{props.children}</Layout>
-                                    </RecentProvider>
+                                    <MruProvider>
+                                      <RecentProvider>
+                                        <Layout>{props.children}</Layout>
+                                      </RecentProvider>
+                                    </MruProvider>
                                   </HighlightsProvider>
                                 </CommandProvider>
                               </ModelsProvider>
