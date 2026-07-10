@@ -649,6 +649,15 @@ export default function Layout(props: ParentProps) {
     const directory = session.directory
     if (!directory) return
 
+    // Never prefetch a live session: its transcript is arriving over SSE, and a
+    // full-window refetch reconciles the parts store, clobbering deltas already
+    // applied (the streamed first chunk vanishes until the turn's final full-part
+    // event heals it). Let SSE own a streaming session's transcript.
+    const live = untrack(() =>
+      globalSync.data.recent_hub.some((e) => e.sessionID === session.id && globalSync.attentionSession(e)),
+    )
+    if (live) return
+
     const [store] = globalSync.child(directory, { bootstrap: false })
     const cached = untrack(() => store.message[session.id] !== undefined)
     if (cached) return
@@ -675,27 +684,27 @@ export default function Layout(props: ParentProps) {
     pumpPrefetch(directory)
   }
 
+  // The sessions to prefetch (list-view neighbors, or the top two on the overview),
+  // keyed by identity so this only recomputes when the actual neighbor IDS change.
+  // currentSessions churns on every session.updated during a turn (time.updated,
+  // cost, title), and prefetching off it re-pulled full 200-message transcripts on
+  // that churn. Deriving stable neighbor ids collapses that to one run per real
+  // neighbor change.
+  const prefetchNeighbors = createMemo(
+    () => {
+      const sessions = currentSessions()
+      const id = params.id
+      if (!id) return [sessions[0], sessions[1]].filter((s): s is Session => !!s)
+      const index = sessions.findIndex((s) => s.id === id)
+      if (index === -1) return [] as Session[]
+      return [sessions[index + 1], sessions[index - 1]].filter((s): s is Session => !!s)
+    },
+    [] as Session[],
+    { equals: (a, b) => a.length === b.length && a.every((s, i) => s.id === b[i].id) },
+  )
+
   createEffect(() => {
-    const sessions = currentSessions()
-    const id = params.id
-
-    if (!id) {
-      const first = sessions[0]
-      if (first) prefetchSession(first)
-
-      const second = sessions[1]
-      if (second) prefetchSession(second)
-      return
-    }
-
-    const index = sessions.findIndex((s) => s.id === id)
-    if (index === -1) return
-
-    const next = sessions[index + 1]
-    if (next) prefetchSession(next)
-
-    const prev = sessions[index - 1]
-    if (prev) prefetchSession(prev)
+    for (const session of prefetchNeighbors()) prefetchSession(session)
   })
 
   function navigateSessionByOffset(offset: number) {
