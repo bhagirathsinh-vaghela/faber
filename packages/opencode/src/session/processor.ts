@@ -91,11 +91,34 @@ export namespace SessionProcessor {
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
         needsCompaction = false
-        const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+        const cfg = await Config.get()
+        const shouldBreak = cfg.experimental?.continue_loop_on_deny !== true
+        // Coalesce streaming text deltas: instead of one SSE part event per token,
+        // buffer deltas and publish a combined one every flushMs. The client appends
+        // the combined delta identically to many small ones. 0 disables (publish per
+        // delta). Default 80ms is ~12 flushes/sec, imperceptible while cutting the
+        // per-token event envelope by the batch factor.
+        const flushMs = cfg.experimental?.stream_flush_ms ?? 80
         while (true) {
+          // Per-iteration streaming state, hoisted above the try so the catch can
+          // tear down a pending flush timer after an abort/error.
+          let currentText: MessageV2.TextPart | undefined
+          let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
+          // Pending (un-published) delta text for the active text part, and the
+          // scheduled flush. flushText publishes the buffer as one combined delta.
+          let pendingDelta = ""
+          let flushTimer: ReturnType<typeof setTimeout> | undefined
+          const flushText = async () => {
+            if (flushTimer) {
+              clearTimeout(flushTimer)
+              flushTimer = undefined
+            }
+            if (!currentText || !pendingDelta) return
+            const delta = pendingDelta
+            pendingDelta = ""
+            await Session.updatePart({ part: currentText, delta })
+          }
           try {
-            let currentText: MessageV2.TextPart | undefined
-            let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const { stream, cacheMarkers, systemBlockCount } = await LLM.stream(streamInput)
 
             // Store cache markers and system block count on session for TUI display.
@@ -380,16 +403,22 @@ export namespace SessionProcessor {
                   if (currentText) {
                     currentText.text += value.text
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                    if (currentText.text)
-                      await Session.updatePart({
-                        part: currentText,
-                        delta: value.text,
-                      })
+                    if (!currentText.text) break
+                    if (flushMs <= 0) {
+                      await Session.updatePart({ part: currentText, delta: value.text })
+                      break
+                    }
+                    pendingDelta += value.text
+                    if (!flushTimer) flushTimer = setTimeout(() => void flushText(), flushMs)
                   }
                   break
 
                 case "text-end":
                   if (currentText) {
+                    // Drain any buffered deltas before the final full-part publish,
+                    // so nothing streamed is dropped and the client's appended text
+                    // matches the finalized part.
+                    await flushText()
                     currentText.text = currentText.text.trimEnd()
                     const textOutput = await Plugin.trigger(
                       "experimental.text.complete",
@@ -422,7 +451,17 @@ export namespace SessionProcessor {
               }
               if (needsCompaction) break
             }
+            // Drain any deltas buffered when the stream ended without a text-end
+            // (finish event, or a break on compaction), so the tail isn't stranded.
+            await flushText()
           } catch (e: any) {
+            // A throw (abort included) skips the post-loop drain; kill the pending
+            // timer so it can't fire a stale delta against a part that's ending.
+            if (flushTimer) {
+              clearTimeout(flushTimer)
+              flushTimer = undefined
+            }
+            pendingDelta = ""
             log.error("process", {
               error: e,
               stack: JSON.stringify(e.stack),

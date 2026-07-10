@@ -2344,6 +2344,10 @@ export type Config = {
      * Override the path for the MCP OAuth callback endpoint. Defaults to "/mcp/oauth/callback".
      */
     mcp_oauth_path?: string
+    /**
+     * Coalesce streaming text deltas into one event per this many milliseconds, cutting per-token event overhead on the wire. Default 80. Set 0 to publish every delta immediately.
+     */
+    stream_flush_ms?: number
   }
 }
 
