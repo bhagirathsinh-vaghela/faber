@@ -4,7 +4,7 @@ import { streamSSE } from "hono/streaming"
 import z from "zod"
 import os from "os"
 import { BusEvent } from "@/bus/bus-event"
-import { GlobalBus } from "@/bus/global"
+import { GlobalBus, GlobalInterest } from "@/bus/global"
 import { Instance } from "../../project/instance"
 import { Project } from "../../project/project"
 import { OpenProjects } from "../../project/open"
@@ -259,7 +259,11 @@ export const GlobalRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        log.info("global event connected")
+        // The client passes a stable connectionID so it can later scope this
+        // stream to the sessions its screen needs (POST /global/subscribe).
+        // Absent/unregistered = fail-open (receives everything).
+        const connectionID = c.req.query("connectionID")
+        log.info("global event connected", { connectionID })
         return streamSSE(c, async (stream) => {
           let heartbeat: ReturnType<typeof setInterval> | undefined
           let finish: (() => void) | undefined
@@ -269,6 +273,7 @@ export const GlobalRoutes = lazy(() =>
             torn = true
             if (heartbeat) clearInterval(heartbeat)
             GlobalBus.off("event", handler)
+            if (connectionID) GlobalInterest.clear(connectionID)
             finish?.()
             stream.close().catch(() => {})
           }
@@ -294,6 +299,9 @@ export const GlobalRoutes = lazy(() =>
           }
 
           async function handler(event: any) {
+            // Drop events this connection has scoped itself away from. No
+            // connectionID, or one that never subscribed, passes everything.
+            if (connectionID && !GlobalInterest.wants(connectionID, event.payload)) return
             await send(event)
           }
           GlobalBus.on("event", handler)
@@ -313,6 +321,39 @@ export const GlobalRoutes = lazy(() =>
             })
           })
         })
+      },
+    )
+    .post(
+      "/subscribe",
+      describeRoute({
+        summary: "Scope an event connection",
+        description:
+          "Declare which sessions a /global/event connection cares about, so the server drops the streaming firehose of other sessions for it. Idempotent: each call replaces the connection's interest set. A connection that never subscribes receives every event (fail-open).",
+        operationId: "global.subscribe",
+        responses: {
+          200: {
+            description: "Subscription updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          connectionID: z.string(),
+          directory: z.string().nullish(),
+          sessions: z.array(z.string()),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        GlobalInterest.set(body.connectionID, body.directory ?? undefined, body.sessions)
+        return c.json(true)
       },
     )
     .get(

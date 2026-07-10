@@ -2870,6 +2870,35 @@ export type GlobalEventResponses = {
 
 export type GlobalEventResponse = GlobalEventResponses[keyof GlobalEventResponses]
 
+export type GlobalSubscribeData = {
+  body?: {
+    connectionID: string
+    directory?: string | null
+    sessions: Array<string>
+  }
+  path?: never
+  query?: never
+  url: "/global/subscribe"
+}
+
+export type GlobalSubscribeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalSubscribeError = GlobalSubscribeErrors[keyof GlobalSubscribeErrors]
+
+export type GlobalSubscribeResponses = {
+  /**
+   * Subscription updated
+   */
+  200: boolean
+}
+
+export type GlobalSubscribeResponse = GlobalSubscribeResponses[keyof GlobalSubscribeResponses]
+
 export type GlobalConfigGetData = {
   body?: never
   path?: never

@@ -69,6 +69,8 @@ import type {
   GlobalProjectsOpenResponses,
   GlobalRecentErrors,
   GlobalRecentResponses,
+  GlobalSubscribeErrors,
+  GlobalSubscribeResponses,
   GlobalWebReloadResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
@@ -460,6 +462,43 @@ export class Global extends HeyApiClient {
     return (options?.client ?? this.client).sse.get<GlobalEventResponses, unknown, ThrowOnError>({
       url: "/global/event",
       ...options,
+    })
+  }
+
+  /**
+   * Scope an event connection
+   *
+   * Declare which sessions a /global/event connection cares about, so the server drops the streaming firehose of other sessions for it. Idempotent: each call replaces the connection's interest set. A connection that never subscribes receives every event (fail-open).
+   */
+  public subscribe<ThrowOnError extends boolean = false>(
+    parameters?: {
+      connectionID?: string
+      directory?: string | null
+      sessions?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "connectionID" },
+            { in: "body", key: "directory" },
+            { in: "body", key: "sessions" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<GlobalSubscribeResponses, GlobalSubscribeErrors, ThrowOnError>({
+      url: "/global/subscribe",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

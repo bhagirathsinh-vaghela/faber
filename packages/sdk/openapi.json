@@ -328,6 +328,72 @@
         ]
       }
     },
+    "/global/subscribe": {
+      "post": {
+        "operationId": "global.subscribe",
+        "summary": "Scope an event connection",
+        "description": "Declare which sessions a /global/event connection cares about, so the server drops the streaming firehose of other sessions for it. Idempotent: each call replaces the connection's interest set. A connection that never subscribes receives every event (fail-open).",
+        "responses": {
+          "200": {
+            "description": "Subscription updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "connectionID": {
+                    "type": "string"
+                  },
+                  "directory": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sessions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["connectionID", "sessions"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.subscribe({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/config": {
       "get": {
         "operationId": "global.config.get",
@@ -449,6 +515,31 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.web.reload({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/dictation/connect": {
+      "get": {
+        "operationId": "dictation.connect",
+        "summary": "Connect dictation stream",
+        "description": "Establish a WebSocket connection that proxies microphone audio to Deepgram and streams transcript text back.",
+        "responses": {
+          "200": {
+            "description": "Connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.connect({\n  ...\n})"
           }
         ]
       }
@@ -14414,6 +14505,12 @@
               "mcp_oauth_path": {
                 "description": "Override the path for the MCP OAuth callback endpoint. Defaults to \"/mcp/oauth/callback\".",
                 "type": "string"
+              },
+              "stream_flush_ms": {
+                "description": "Coalesce streaming text deltas into one event per this many milliseconds, cutting per-token event overhead on the wire. Default 80. Set 0 to publish every delta immediately.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             }
           }
