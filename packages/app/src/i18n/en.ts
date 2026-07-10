@@ -824,6 +824,7 @@ export const dict = {
   "project.close.confirm": 'Close project "{{name}}"?',
   "project.close.live": "{{count}} session(s) still live — they will be stopped and become recent sessions.",
   "project.close.button": "Close project",
+  "project.close.failed.title": "Failed to close project",
   "workspace.reset.title": "Reset workspace",
   "workspace.reset.confirm": 'Reset workspace "{{name}}"?',
   "workspace.reset.button": "Reset workspace",

@@ -199,12 +199,16 @@ export const GlobalRoutes = lazy(() =>
 
         if (unique.length && !body.force) return c.json({ closed: false, live: unique })
 
-        // Disarm the ping and drop the pin for every live session (both are
-        // context-free module state, so stop them unconditionally — the daemon
-        // must die even if its instance was already evicted).
+        // Disarm the ping, drop the pin, and clear the busy flag for every live
+        // session (all three are context-free module state, so run them
+        // unconditionally — they must settle even if the instance was already
+        // evicted). Clearing busy here covers the evicted-but-busy case: the
+        // in-context SessionPrompt.cancel below only fires for a cached instance,
+        // so a session left busy after eviction would otherwise stay flagged live.
         for (const entry of unique) {
           SessionPing.stop(entry.sessionID)
           SessionPin.drop(entry.sessionID)
+          await SessionRecent.setBusy(entry.sessionID, false)
         }
         // Identity is the directory, so the worktree must NOT be disposed here:
         // subfolder projects share the repo root as worktree, and disposing it

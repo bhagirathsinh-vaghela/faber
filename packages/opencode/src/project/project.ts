@@ -120,10 +120,15 @@ export namespace Project {
     if (input.vcs !== "git") return
     if (input.icon?.override) return
     if (input.icon?.url) return
+    // Scan the project directory itself, not the worktree. Identity is the
+    // directory, so a subfolder project's worktree is the whole repo root; a
+    // recursive glob over that on every subfolder open is unbounded work for an
+    // icon the subfolder doesn't own. For a repo opened at its root id ===
+    // worktree, so root discovery is unchanged.
     const glob = new Bun.Glob("**/{favicon}.{ico,png,svg,jpg,jpeg,webp}")
     const matches = await Array.fromAsync(
       glob.scan({
-        cwd: input.worktree,
+        cwd: input.id,
         absolute: true,
         onlyFiles: true,
         followSymlinks: false,

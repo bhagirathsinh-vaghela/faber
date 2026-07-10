@@ -1304,8 +1304,18 @@ export default function Layout(props: ParentProps) {
 
   async function finishClose(directory: string, force?: boolean) {
     const index = layout.projects.list().findIndex((x) => x.worktree === directory)
-    const next = layout.projects.list()[index + 1]
-    const result = await layout.projects.close(directory, force)
+    // index === -1 means a concurrent SSE update already dropped this project; a
+    // bare index + 1 would land on list()[0], navigating to the first project
+    // instead of home. Fall through to navigate("/") in that case.
+    const next = index === -1 ? undefined : layout.projects.list()[index + 1]
+    const result = await layout.projects.close(directory, force).catch((err) => {
+      showToast({
+        title: language.t("project.close.failed.title"),
+        description: errorMessage(err),
+      })
+      return undefined
+    })
+    if (!result) return
     // Live sessions still open somewhere: don't tear anything down. Surface them
     // so the user confirms stopping them before the close proceeds.
     if (result.data && !result.data.closed) {
@@ -1371,7 +1381,21 @@ export default function Layout(props: ParentProps) {
 
     if (!result) return
 
-    layout.projects.close(directory)
+    // The worktree directory is now gone, so any session still live under it must
+    // be stopped — force the close (no confirmation dialog makes sense for a
+    // directory that no longer exists) and drop the client child store, mirroring
+    // finishClose's teardown. Without force the server refuses the close while a
+    // session is live and the sidebar entry would linger after the worktree is
+    // deleted.
+    await layout.projects
+      .close(directory, true)
+      .then(() => globalSync.disposeChild(directory))
+      .catch((err) => {
+        showToast({
+          title: language.t("project.close.failed.title"),
+          description: errorMessage(err),
+        })
+      })
     layout.projects.open(root)
 
     if (params.dir && decode64(params.dir) === directory) {

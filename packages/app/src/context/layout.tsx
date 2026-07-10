@@ -35,7 +35,7 @@ type SessionView = {
   reviewOpen?: string[]
 }
 
-export type LocalProject = Partial<Project> & { worktree: string; expanded: boolean }
+export type LocalProject = Partial<Project> & { worktree: string }
 
 export type ReviewDiffStyle = "unified" | "split"
 
@@ -95,10 +95,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           workspacesDefault: false,
         },
         // Per-client sidebar view state. Which projects are open is server-owned
-        // shared state; expand/collapse and drag-order are local view
-        // preferences, so they live here, not on the server. projectExpanded is
-        // keyed by worktree; projectOrder is a worktree list, unknowns append.
-        projectExpanded: {} as Record<string, boolean>,
+        // shared state; drag-order is a local view preference, so it lives here,
+        // not on the server. projectOrder is a worktree list; unknowns append.
         projectOrder: [] as string[],
         terminal: {
           height: 280,
@@ -281,7 +279,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return available[Math.floor(Math.random() * available.length)]
     }
 
-    function enrich(project: { worktree: string; expanded: boolean }) {
+    function enrich(project: { worktree: string }) {
       const [childStore] = globalSync.child(project.worktree, { bootstrap: false })
       const projectID = childStore.project
       const metadata = projectID
@@ -359,7 +357,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const order = store.projectOrder
       const rank = new Map(order.map((worktree, index) => [worktree, index]))
       return open
-        .map((project) => ({ worktree: project.worktree, expanded: store.projectExpanded[project.worktree] ?? false }))
+        .map((project) => ({ worktree: project.worktree }))
         .sort((a, b) => (rank.get(a.worktree) ?? order.length) - (rank.get(b.worktree) ?? order.length))
     })
 
@@ -443,13 +441,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           return globalSync.project.open(root)
         },
         close(directory: string, force?: boolean) {
-          return globalSync.project.close(directory, force)
-        },
-        expand(directory: string) {
-          setStore("projectExpanded", directory, true)
-        },
-        collapse(directory: string) {
-          setStore("projectExpanded", directory, false)
+          return globalSync.project.close(directory, force).then((result) => {
+            // Prune the closed worktree from the persisted drag-order once the
+            // close is confirmed. A refused close (live sessions, no force)
+            // returns closed:false and leaves the project open, so keep its rank.
+            if (result.data?.closed) setStore("projectOrder", (order) => order.filter((x) => x !== directory))
+            return result
+          })
         },
         move(directory: string, toIndex: number) {
           const current = ordered().map((project) => project.worktree)
