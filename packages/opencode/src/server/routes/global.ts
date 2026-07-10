@@ -261,38 +261,54 @@ export const GlobalRoutes = lazy(() =>
       async (c) => {
         log.info("global event connected")
         return streamSSE(c, async (stream) => {
-          stream.writeSSE({
-            data: JSON.stringify({
-              payload: {
-                type: "server.connected",
-                properties: {},
-              },
-            }),
-          })
-          async function handler(event: any) {
-            await stream.writeSSE({
-              data: JSON.stringify(event),
+          let heartbeat: ReturnType<typeof setInterval> | undefined
+          let finish: (() => void) | undefined
+          let torn = false
+          const teardown = () => {
+            if (torn) return
+            torn = true
+            if (heartbeat) clearInterval(heartbeat)
+            GlobalBus.off("event", handler)
+            finish?.()
+            stream.close().catch(() => {})
+          }
+
+          // A write that never settles means the client stopped draining (a
+          // backgrounded tab whose receive buffer filled). Left unbounded, its
+          // events queue in server memory until the OS finally drops the socket.
+          // Race every write against a 30s stall budget: on timeout or rejection,
+          // tear down so the buffered events are released. onAbort covers the
+          // clean-disconnect case; this covers the half-dead-socket case.
+          const send = async (payload: unknown) => {
+            let timer: ReturnType<typeof setTimeout> | undefined
+            const stall = new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error("sse write stalled")), 30000)
             })
+            try {
+              await Promise.race([stream.writeSSE({ data: JSON.stringify(payload) }), stall])
+            } catch {
+              teardown()
+            } finally {
+              if (timer) clearTimeout(timer)
+            }
+          }
+
+          async function handler(event: any) {
+            await send(event)
           }
           GlobalBus.on("event", handler)
 
           // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
-          const heartbeat = setInterval(() => {
-            stream.writeSSE({
-              data: JSON.stringify({
-                payload: {
-                  type: "server.heartbeat",
-                  properties: {},
-                },
-              }),
-            })
+          heartbeat = setInterval(() => {
+            void send({ payload: { type: "server.heartbeat", properties: {} } })
           }, 30000)
 
+          await send({ payload: { type: "server.connected", properties: {} } })
+
           await new Promise<void>((resolve) => {
+            finish = resolve
             stream.onAbort(() => {
-              clearInterval(heartbeat)
-              GlobalBus.off("event", handler)
-              resolve()
+              teardown()
               log.info("global event disconnected")
             })
           })

@@ -589,16 +589,41 @@ export namespace Server {
           async (c) => {
             log.info("event connected")
             return streamSSE(c, async (stream) => {
+              let heartbeat: ReturnType<typeof setInterval> | undefined
+              let finish: (() => void) | undefined
+              let unsub: (() => void) | undefined
+              let torn = false
+              const teardown = () => {
+                if (torn) return
+                torn = true
+                if (heartbeat) clearInterval(heartbeat)
+                unsub?.()
+                finish?.()
+                stream.close().catch(() => {})
+              }
+
               // writeSSE rejects with an AbortError when the client disconnects
               // or the server is torn down mid-write (e.g. a supervisor restart
-              // kills the process while this stream is open). That rejection is
-              // not an Error instance, so hono's streamSSE wrapper falls through
-              // to console.error and dumps the raw DOMException. Swallow it here
-              // — onAbort already handles teardown.
-              const send = (data: unknown) => stream.writeSSE({ data: JSON.stringify(data) }).catch(() => {})
+              // kills the process while this stream is open). A write that never
+              // settles instead means a half-dead client stopped draining; left
+              // alone its events queue in memory. Race each write against a 30s
+              // stall budget and tear down on failure or timeout. onAbort still
+              // covers the clean-disconnect case.
+              const send = async (data: unknown) => {
+                let timer: ReturnType<typeof setTimeout> | undefined
+                const stall = new Promise<never>((_, reject) => {
+                  timer = setTimeout(() => reject(new Error("sse write stalled")), 30000)
+                })
+                try {
+                  await Promise.race([stream.writeSSE({ data: JSON.stringify(data) }), stall])
+                } catch {
+                  teardown()
+                } finally {
+                  if (timer) clearTimeout(timer)
+                }
+              }
 
-              send({ type: "server.connected", properties: {} })
-              const unsub = Bus.subscribeAll(async (event) => {
+              unsub = Bus.subscribeAll(async (event) => {
                 await send(event)
                 if (event.type === Bus.InstanceDisposed.type) {
                   stream.close()
@@ -606,15 +631,16 @@ export namespace Server {
               })
 
               // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
-              const heartbeat = setInterval(() => {
-                send({ type: "server.heartbeat", properties: {} })
+              heartbeat = setInterval(() => {
+                void send({ type: "server.heartbeat", properties: {} })
               }, 30000)
 
+              await send({ type: "server.connected", properties: {} })
+
               await new Promise<void>((resolve) => {
+                finish = resolve
                 stream.onAbort(() => {
-                  clearInterval(heartbeat)
-                  unsub()
-                  resolve()
+                  teardown()
                   log.info("event disconnected")
                 })
               })
@@ -654,7 +680,12 @@ export namespace Server {
 
     const args = {
       hostname: opts.hostname,
-      idleTimeout: 0,
+      // Reap a connection with no traffic for 90s. SSE streams heartbeat every
+      // 30s (below), so a live client resets the timer well inside the window;
+      // a half-dead backgrounded socket (no ACKs, no RST) that the heartbeat
+      // can no longer reach gets closed instead of lingering with its buffered
+      // events pinned in memory. 90s is 3x the heartbeat and under Bun's 255s cap.
+      idleTimeout: 90,
       fetch: App().fetch,
       websocket: websocket,
     } as const
