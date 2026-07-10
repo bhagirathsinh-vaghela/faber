@@ -17,8 +17,7 @@ export function NewSessionView(props: NewSessionViewProps) {
   const sync = useSync()
   const language = useLanguage()
 
-  const sandboxes = createMemo(() => sync.project?.sandboxes ?? [])
-  const options = createMemo(() => [MAIN_WORKTREE, ...sandboxes(), CREATE_WORKTREE])
+  const options = createMemo(() => [MAIN_WORKTREE, CREATE_WORKTREE])
   const current = createMemo(() => {
     const selection = props.worktree
     if (options().includes(selection)) return selection

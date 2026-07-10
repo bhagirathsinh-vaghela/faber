@@ -49,14 +49,7 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
   const tabs = createMemo(() => layout.tabs(sessionKey))
   const state = { cleanup: undefined as (() => void) | void, committed: false }
   const [grouped, setGrouped] = createSignal(false)
-  const common = [
-    "session.new",
-    "workspace.new",
-    "session.previous",
-    "session.next",
-    "terminal.toggle",
-    "review.toggle",
-  ]
+  const common = ["session.new", "session.previous", "session.next", "terminal.toggle", "review.toggle"]
   const limit = 5
 
   const allowed = createMemo(() => {
@@ -88,29 +81,22 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
   const project = createMemo(() => {
     const directory = projectDirectory()
     if (!directory) return
-    return layout.projects.list().find((p) => p.worktree === directory || p.sandboxes?.includes(directory))
+    return layout.projects.list().find((p) => p.worktree === directory)
   })
   const workspaces = createMemo(() => {
     const directory = projectDirectory()
     const current = project()
     if (!current) return directory ? [directory] : []
-
-    const dirs = [current.worktree, ...(current.sandboxes ?? [])]
-    if (directory && !dirs.includes(directory)) return [...dirs, directory]
-    return dirs
+    if (directory && directory !== current.worktree) return [current.worktree, directory]
+    return [current.worktree]
   })
   const homedir = createMemo(() => globalSync.data.path.home)
   const label = (directory: string) => {
-    const current = project()
-    const kind =
-      current && directory === current.worktree
-        ? language.t("workspace.type.local")
-        : language.t("workspace.type.sandbox")
     const [store] = globalSync.child(directory, { bootstrap: false })
     const home = homedir()
     const path = home ? directory.replace(home, "~") : directory
     const name = store.vcs?.branch ?? getFilename(directory)
-    return `${kind} : ${name || path}`
+    return name || path
   }
 
   const sessionItem = (input: {

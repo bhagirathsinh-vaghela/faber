@@ -62,7 +62,6 @@ export type Project = {
     updated: number
     initialized?: number
   }
-  sandboxes: Array<string>
 }
 
 export type EventProjectUpdated = {
@@ -3403,24 +3402,6 @@ export type WorktreeRemoveResponses = {
 }
 
 export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
-
-export type WorktreeListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/experimental/worktree"
-}
-
-export type WorktreeListResponses = {
-  /**
-   * List of worktree directories
-   */
-  200: Array<string>
-}
-
-export type WorktreeListResponse = WorktreeListResponses[keyof WorktreeListResponses]
 
 export type WorktreeCreateData = {
   body?: WorktreeCreateInput

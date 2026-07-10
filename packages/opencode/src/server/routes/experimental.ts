@@ -3,8 +3,6 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { ToolRegistry } from "../../tool/registry"
 import { Worktree } from "../../worktree"
-import { Instance } from "../../project/instance"
-import { Project } from "../../project/project"
 import { MCP } from "../../mcp"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import { errors } from "../error"
@@ -111,28 +109,6 @@ export const ExperimentalRoutes = lazy(() =>
         return c.json(worktree)
       },
     )
-    .get(
-      "/worktree",
-      describeRoute({
-        summary: "List worktrees",
-        description: "List all sandbox worktrees for the current project.",
-        operationId: "worktree.list",
-        responses: {
-          200: {
-            description: "List of worktree directories",
-            content: {
-              "application/json": {
-                schema: resolver(z.array(z.string())),
-              },
-            },
-          },
-        },
-      }),
-      async (c) => {
-        const sandboxes = await Project.sandboxes(Instance.project.id)
-        return c.json(sandboxes)
-      },
-    )
     .delete(
       "/worktree",
       describeRoute({
@@ -155,7 +131,6 @@ export const ExperimentalRoutes = lazy(() =>
       async (c) => {
         const body = c.req.valid("json")
         await Worktree.remove(body)
-        await Project.removeSandbox(Instance.project.id, body.directory)
         return c.json(true)
       },
     )

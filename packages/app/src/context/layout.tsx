@@ -51,17 +51,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const migrate = (value: unknown) => {
       if (!isRecord(value)) return value
 
-      const sidebar = value.sidebar
-      const migratedSidebar = (() => {
-        if (!isRecord(sidebar)) return sidebar
-        if (typeof sidebar.workspaces !== "boolean") return sidebar
-        return {
-          ...sidebar,
-          workspaces: {},
-          workspacesDefault: sidebar.workspaces,
-        }
-      })()
-
       const fileTree = value.fileTree
       const migratedFileTree = (() => {
         if (!isRecord(fileTree)) return fileTree
@@ -76,10 +65,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
       })()
 
-      if (migratedSidebar === sidebar && migratedFileTree === fileTree) return value
+      if (migratedFileTree === fileTree) return value
       return {
         ...value,
-        sidebar: migratedSidebar,
         fileTree: migratedFileTree,
       }
     }
@@ -91,8 +79,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         sidebar: {
           opened: false,
           width: 344,
-          workspaces: {} as Record<string, boolean>,
-          workspacesDefault: false,
         },
         // Per-client sidebar view state. Which projects are open is server-owned
         // shared state; drag-order is a local view preference, so it lives here,
@@ -319,39 +305,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
-    const roots = createMemo(() => {
-      const map = new Map<string, string>()
-      for (const project of globalSync.data.project) {
-        const sandboxes = project.sandboxes ?? []
-        for (const sandbox of sandboxes) {
-          map.set(sandbox, project.worktree)
-        }
-      }
-      return map
-    })
-
-    const rootFor = (directory: string) => {
-      const map = roots()
-      if (map.size === 0) return directory
-
-      const visited = new Set<string>()
-      const chain = [directory]
-
-      while (chain.length) {
-        const current = chain[chain.length - 1]
-        if (!current) return directory
-
-        const next = map.get(current)
-        if (!next) return current
-
-        if (visited.has(next)) return directory
-        visited.add(next)
-        chain.push(next)
-      }
-
-      return directory
-    }
-
     const ordered = createMemo(() => {
       const open = globalSync.data.open_projects
       const order = store.projectOrder
@@ -436,9 +389,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       projects: {
         list,
         open(directory: string) {
-          const root = rootFor(directory)
-          globalSync.project.loadSessions(root)
-          return globalSync.project.open(root)
+          globalSync.project.loadSessions(directory)
+          return globalSync.project.open(directory)
         },
         close(directory: string, force?: boolean) {
           return globalSync.project.close(directory, force).then((result) => {
@@ -471,16 +423,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         width: createMemo(() => store.sidebar.width),
         resize(width: number) {
           setStore("sidebar", "width", width)
-        },
-        workspaces(directory: string) {
-          return () => store.sidebar.workspaces[directory] ?? store.sidebar.workspacesDefault ?? false
-        },
-        setWorkspaces(directory: string, value: boolean) {
-          setStore("sidebar", "workspaces", directory, value)
-        },
-        toggleWorkspaces(directory: string) {
-          const current = store.sidebar.workspaces[directory] ?? store.sidebar.workspacesDefault ?? false
-          setStore("sidebar", "workspaces", directory, !current)
         },
       },
       terminal: {

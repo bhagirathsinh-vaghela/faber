@@ -310,8 +310,6 @@ export namespace Worktree {
       throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
     }
 
-    await Project.addSandbox(Instance.project.id, info.directory).catch(() => undefined)
-
     const projectID = Instance.project.id
     const extra = input?.startCommand?.trim()
     setTimeout(() => {

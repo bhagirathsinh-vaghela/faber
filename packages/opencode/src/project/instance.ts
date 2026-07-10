@@ -24,10 +24,10 @@ export const Instance = {
     if (!existing) {
       Log.Default.info("creating instance", { directory: input.directory })
       existing = iife(async () => {
-        const { project, sandbox } = await Project.fromDirectory(input.directory)
+        const { project, worktree } = await Project.fromDirectory(input.directory)
         const ctx = {
           directory: input.directory,
-          worktree: sandbox,
+          worktree,
           project,
         }
         await context.provide(ctx, async () => {

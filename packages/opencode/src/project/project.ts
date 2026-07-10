@@ -36,7 +36,6 @@ export namespace Project {
         updated: z.number(),
         initialized: z.number().optional(),
       }),
-      sandboxes: z.array(z.string()),
     })
     .meta({
       ref: "Project",
@@ -101,7 +100,6 @@ export namespace Project {
         updated: Date.now(),
         initialized: existing?.time.initialized,
       },
-      sandboxes: [],
     }
 
     if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY) discover(result)
@@ -113,7 +111,7 @@ export namespace Project {
         properties: result,
       },
     })
-    return { project: result, sandbox: worktree }
+    return { project: result, worktree }
   }
 
   export async function discover(input: Info) {
@@ -202,16 +200,4 @@ export namespace Project {
       return result
     },
   )
-
-  // Sandboxes (git-worktree grouping) are deprecated: identity is the directory
-  // now, so each worktree/subdirectory is already its own project. The field
-  // stays on Info for schema stability, but is never populated. These helpers
-  // are inert no-ops kept only so the git-worktree feature compiles.
-  export async function sandboxes(_projectID: string): Promise<string[]> {
-    return []
-  }
-
-  export async function addSandbox(_projectID: string, _directory: string) {}
-
-  export async function removeSandbox(_projectID: string, _directory: string) {}
 }
