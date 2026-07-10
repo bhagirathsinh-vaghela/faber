@@ -233,6 +233,9 @@ export const dict = {
   "prompt.attachment.remove": "Remove attachment",
   "prompt.action.send": "Send",
   "prompt.action.stop": "Stop",
+  "prompt.action.dictate": "Dictate",
+  "prompt.action.dictateStop": "Stop dictation",
+  "prompt.toast.dictationFailed.title": "Dictation failed",
 
   "prompt.toast.pasteUnsupported.title": "Unsupported paste",
   "prompt.toast.pasteUnsupported.description": "Only images or PDFs can be pasted here.",

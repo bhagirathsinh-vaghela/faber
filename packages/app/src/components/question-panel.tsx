@@ -13,6 +13,8 @@ import { useLocal } from "@/context/local"
 import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
+import { createDictation } from "@/utils/dictation"
+import { showToast } from "@opencode-ai/ui/toast"
 
 // Pinned question prompt. Mirrors the TUI QuestionPrompt
 // (packages/opencode/src/cli/cmd/tui/routes/session/question.tsx): tabbed
@@ -176,6 +178,20 @@ function Panel(props: {
 
   let input: HTMLTextAreaElement | undefined
 
+  const dictation = createDictation({
+    url: () => sdk.url,
+    onFinal: (text) => {
+      if (!input) return
+      input.value = (input.value ? input.value + " " : "") + text
+      input.focus()
+    },
+    onError: (message) =>
+      showToast({
+        title: language.t("prompt.toast.dictationFailed.title"),
+        description: message,
+      }),
+  })
+
   // Whether keyboard focus is currently within the panel. Drives the panel
   // border color and gates hover/selection highlighting so the user can tell
   // at a glance whether their keystrokes drive the question (focused → accent
@@ -280,6 +296,7 @@ function Panel(props: {
   }
 
   function submitCustom() {
+    if (dictation.active()) dictation.stop()
     const text = input?.value.trim() ?? ""
     if (!text) {
       setStore("editing", false)
@@ -684,15 +701,41 @@ function Panel(props: {
                           submitCustom()
                         }
                         if (e.key === "Escape") {
+                          if (dictation.active()) dictation.stop()
                           setStore("editing", false)
                           panel?.focus()
                         }
                       }}
                     />
+                    <Show when={dictation.supported()}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class="size-6 px-1"
+                        onClick={() => (dictation.active() ? dictation.stop() : dictation.start())}
+                        aria-label={
+                          dictation.active()
+                            ? language.t("prompt.action.dictateStop")
+                            : language.t("prompt.action.dictate")
+                        }
+                        aria-pressed={dictation.active()}
+                      >
+                        <Icon
+                          name="mic"
+                          class="size-4.5"
+                          classList={{ "text-icon-critical-base animate-pulse": dictation.active() }}
+                        />
+                      </Button>
+                    </Show>
                     <Button type="submit" variant="primary" size="small">
                       {multi() ? "Add" : "Submit"}
                     </Button>
                   </form>
+                  <Show when={dictation.interim()}>
+                    <div class="pl-4 text-11-regular text-text-weak truncate" aria-live="polite">
+                      {dictation.interim()}
+                    </div>
+                  </Show>
                 </Show>
               </div>
             </Show>

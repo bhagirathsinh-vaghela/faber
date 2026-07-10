@@ -43,6 +43,7 @@ import { PermissionRoutes } from "./routes/permission"
 import { PreferenceRoutes } from "./routes/preference"
 import { GlobalRoutes } from "./routes/global"
 import { BackgroundRoutes } from "./routes/background"
+import { DictationRoutes } from "./routes/dictation"
 import { MDNS } from "./mdns"
 import { Web } from "./web"
 
@@ -167,6 +168,7 @@ export namespace Server {
           }),
         )
         .route("/global", GlobalRoutes())
+        .route("/dictation", DictationRoutes())
         .put(
           "/auth/:providerID",
           describeRoute({

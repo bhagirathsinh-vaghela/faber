@@ -103,6 +103,8 @@ const icons = {
   // Clock (cache-expiry countdown; Lucide `clock`). Scaled ×0.8333. No
   // stroke-width attr so the chip's CSS stroke-width wins (matches sibling icons).
   clock: `<g transform="scale(0.8333)" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></g>`,
+  // Dictation (Lucide `mic`). Scaled ×0.8333.
+  mic: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></g>`,
 }
 
 export interface IconProps extends ComponentProps<"svg"> {

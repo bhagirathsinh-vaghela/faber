@@ -54,6 +54,7 @@ import { useSettings } from "@/context/settings"
 import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
+import { createDictation } from "@/utils/dictation"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
 import { PromptActionBar } from "@/components/prompt-actionbar"
@@ -919,6 +920,39 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   }
 
+  // Finals arriving mid-IME-composition would corrupt the composition buffer;
+  // hold them until compositionend.
+  let heldDictation = ""
+  const insertDictation = (text: string) => {
+    if (composing()) {
+      heldDictation += text + " "
+      return
+    }
+    // The mic button holds focus; restore the caret to the prompt before
+    // addPart, which inserts at the current selection.
+    editorRef.focus()
+    requestAnimationFrame(() => {
+      const cursor = prompt.cursor() ?? promptLength(prompt.current())
+      setCursorPosition(editorRef, cursor)
+      addPart({ type: "text", content: text + " ", start: 0, end: 0 })
+    })
+  }
+  const flushDictation = () => {
+    if (!heldDictation) return
+    const held = heldDictation
+    heldDictation = ""
+    insertDictation(held.trimEnd())
+  }
+  const dictation = createDictation({
+    url: () => sdk.url,
+    onFinal: insertDictation,
+    onError: (message) =>
+      showToast({
+        title: language.t("prompt.toast.dictationFailed.title"),
+        description: message,
+      }),
+  })
+
   command.register(() => [
     {
       id: "prompt.skill",
@@ -1155,6 +1189,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const handleSubmit = async (event: Event) => {
     event.preventDefault()
+
+    if (dictation.active()) dictation.stop()
 
     const currentPrompt = prompt.current()
     const text = currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
@@ -1913,7 +1949,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onInput={handleInput}
             onPaste={handlePaste}
             onCompositionStart={() => setComposing(true)}
-            onCompositionEnd={() => setComposing(false)}
+            onCompositionEnd={() => {
+              setComposing(false)
+              flushDictation()
+            }}
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
@@ -2190,6 +2229,38 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
             />
             <div class="flex items-center gap-1 mr-1">
+              <Show when={store.mode === "normal" && dictation.supported()}>
+                <Show when={dictation.interim()}>
+                  <span class="text-12-regular text-text-weak max-w-40 truncate" aria-live="polite">
+                    {dictation.interim()}
+                  </span>
+                </Show>
+                <Tooltip
+                  placement="top"
+                  value={
+                    dictation.active() ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
+                  }
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class="size-6 px-1"
+                    onClick={() => (dictation.active() ? dictation.stop() : dictation.start())}
+                    aria-label={
+                      dictation.active()
+                        ? language.t("prompt.action.dictateStop")
+                        : language.t("prompt.action.dictate")
+                    }
+                    aria-pressed={dictation.active()}
+                  >
+                    <Icon
+                      name="mic"
+                      class="size-4.5"
+                      classList={{ "text-icon-critical-base animate-pulse": dictation.active() }}
+                    />
+                  </Button>
+                </Tooltip>
+              </Show>
               <Show when={store.mode === "normal"}>
                 <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
                   <Button
