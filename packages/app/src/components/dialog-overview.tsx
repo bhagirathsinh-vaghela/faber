@@ -166,7 +166,7 @@ export function Overview(props: { onOpen?: () => void }) {
         onSelect={(row) => {
           if (row) open(row)
         }}
-        class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!static [&_[data-slot=list-header]]:!bg-transparent [&_[data-slot=list-header]]:pl-3 [&_[data-slot=list-header]]:pb-3 [&_[data-slot=list-header]]:text-14-medium [&_[data-slot=list-header]]:text-text-strong [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2"
+        class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!static [&_[data-slot=list-header]]:!bg-transparent [&_[data-slot=list-header]]:pl-3 [&_[data-slot=list-header]]:pb-3 [&_[data-slot=list-header]]:text-11-medium [&_[data-slot=list-header]]:uppercase [&_[data-slot=list-header]]:tracking-wide [&_[data-slot=list-header]]:text-text-weak [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2"
       >
         {(row) => <Row row={row} showTime={row.section === "recent"} />}
       </List>
