@@ -127,6 +127,22 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       session: {
         get: getSession,
+        // Server truth for "is this session open/alive" = busy OR a scheduled
+        // ping (pingAt set) — the same signal the overview's attention bucket
+        // uses. pingAt is cleared server-side when the cache window lapses, so an
+        // armed-but-cold daemon does not read as live. A reconnecting client
+        // defers to this: a session force-stopped while the client was offline
+        // reads not-live, so it navigates home instead of resurrecting. Explicit
+        // reopen is a fresh open, not this reconnect path, so it is unaffected.
+        async live(sessionID: string) {
+          // Refresh the hub so the decision uses current server state, not a
+          // snapshot from before the disconnect.
+          const recent = await sdk.client.global
+            .recent()
+            .then((x) => x.data ?? [])
+            .catch(() => globalSync.data.recent_hub)
+          return recent.some((entry) => entry.sessionID === sessionID && (entry.busy || entry.pingAt !== undefined))
+        },
         addOptimisticMessage(input: {
           sessionID: string
           messageID: string

@@ -8,6 +8,8 @@ import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
 import { SessionPing } from "../../session/ping"
+import { Instance } from "../../project/instance"
+import { OpenProjects } from "../../project/open"
 import { SessionPin } from "../../session/pin"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
@@ -147,6 +149,10 @@ export const SessionRoutes = lazy(() =>
         // resumed session within a live window keeps getting pinged even though
         // no new prompt has been sent this process.
         if (!session.parentID) SessionPing.start(sessionID)
+        // Attaching to a root session opens its project in the shared sidebar
+        // set. Tied to session attach (a genuine "open" signal), NOT instance
+        // bootstrap, which also fires for incidental re-provides.
+        if (!session.parentID) OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
         // Pin prompt-shaping state at view time, not just first turn — a config
         // reload between opening a session and prompting it must not change
         // what the session was opened against.

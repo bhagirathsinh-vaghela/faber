@@ -478,7 +478,12 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           setWork("inlineCodeFont", value)
           const weight = work.overrides[theme.mode()]?.["--markdown-inline-code-weight"]
           if (weight)
-            setWork("overrides", theme.mode(), "--markdown-inline-code-weight", `${clampWeight(value, parseFloat(weight))}`)
+            setWork(
+              "overrides",
+              theme.mode(),
+              "--markdown-inline-code-weight",
+              `${clampWeight(value, parseFloat(weight))}`,
+            )
         },
         codeTheme: () => work.codeTheme ?? defaultAppearance.codeTheme,
         setCodeTheme(value: string) {

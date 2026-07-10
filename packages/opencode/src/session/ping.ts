@@ -164,6 +164,15 @@ export namespace SessionPing {
     disarm(sessionID)
   }
 
+  // The daemon registry lives at module scope, outside any Instance context, so
+  // Instance.dispose does not reach it. Disposing an instance without this would
+  // leave its sessions' loops running, and each ping re-enters Instance.provide
+  // for its captured directory — resurrecting the instance that was just torn
+  // down. Called from Instance.dispose to stop every daemon for a directory.
+  export function stopForDirectory(directory: string) {
+    for (const [sessionID, entry] of active) if (entry.directory === directory) stop(sessionID)
+  }
+
   export async function probe(sessionID: string, cacheProbeMessageID: string) {
     stop(sessionID)
     const abort = new AbortController()

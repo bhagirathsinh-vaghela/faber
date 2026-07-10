@@ -143,6 +143,156 @@
         ]
       }
     },
+    "/global/projects/open": {
+      "get": {
+        "operationId": "global.projects.open",
+        "summary": "Get open projects",
+        "description": "The server-owned set of projects shown in every client's sidebar. All clients connected to this server render the same set.",
+        "responses": {
+          "200": {
+            "description": "Open projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpenProject"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.projects.open({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "global.projects.openAdd",
+        "summary": "Open a project",
+        "description": "Add a project (resolved from a directory to its git root) to the shared sidebar set. Idempotent; broadcast to all clients over SSE.",
+        "responses": {
+          "200": {
+            "description": "Opened project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenProject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "directory": {
+                    "type": "string"
+                  }
+                },
+                "required": ["directory"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.projects.openAdd({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/projects/close": {
+      "post": {
+        "operationId": "global.projects.close",
+        "summary": "Close a project",
+        "description": "Remove a project from the shared sidebar set (broadcast to all clients). If any of its sessions are still live (busy or ping-armed) and force is not set, returns them without closing so the client can confirm. With force, each live session is stopped first, then the server instance is disposed.",
+        "responses": {
+          "200": {
+            "description": "Close result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "live": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "sessionID": {
+                            "type": "string"
+                          },
+                          "directory": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["sessionID", "directory"]
+                      }
+                    }
+                  },
+                  "required": ["closed", "live"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "directory": {
+                    "type": "string"
+                  },
+                  "force": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["directory"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.projects.close({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/event": {
       "get": {
         "operationId": "global.event",
@@ -4184,6 +4334,91 @@
         ]
       }
     },
+    "/preference/boxes": {
+      "get": {
+        "operationId": "preference.boxes.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get box collapse preferences",
+        "description": "Get the server-owned per-box-type collapse defaults (per normal/zen mode).",
+        "responses": {
+          "200": {
+            "description": "Box preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoxPreference"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.boxes.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "preference.boxes.set",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Set box collapse preferences",
+        "description": "Replace the server-owned per-box-type collapse defaults.",
+        "responses": {
+          "200": {
+            "description": "Box preferences updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoxPreference"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.boxes.set({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/preference/themes": {
       "get": {
         "operationId": "preference.theme.list",
@@ -8087,6 +8322,18 @@
           "unseen"
         ]
       },
+      "OpenProject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "worktree": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "worktree"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -11088,6 +11335,28 @@
           "properties"
         ]
       },
+      "Event.open-projects.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "open-projects.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OpenProject"
+                }
+              }
+            },
+            "required": ["entries"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "PermissionAction": {
         "type": "string",
         "enum": [
@@ -11933,6 +12202,36 @@
           "properties"
         ]
       },
+      "BoxPreference": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "normal": {
+              "type": "boolean"
+            },
+            "zen": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "Event.boxes.preference.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "boxes.preference.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/BoxPreference"
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "UserTheme": {
         "type": "object",
         "properties": {
@@ -12235,6 +12534,9 @@
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
+            "$ref": "#/components/schemas/Event.open-projects.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.created"
           },
           {
@@ -12275,6 +12577,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.appearance.preference.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.boxes.preference.updated"
           },
           {
             "$ref": "#/components/schemas/Event.theme.preference.updated"

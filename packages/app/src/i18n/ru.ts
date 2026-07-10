@@ -176,12 +176,11 @@ export const dict = {
   "common.attachment": "вложение",
 
   "prompt.placeholder.shell": "Введите команду оболочки...",
-  "prompt.placeholder.normal": 'Спросите что угодно...',
+  "prompt.placeholder.normal": "Спросите что угодно...",
   "prompt.placeholder.summarizeComments": "Суммировать комментарии…",
   "prompt.placeholder.summarizeComment": "Суммировать комментарий…",
   "prompt.mode.shell": "Оболочка",
   "prompt.mode.shell.exit": "esc для выхода",
-
 
   "prompt.popover.emptyResults": "Нет совпадений",
   "prompt.popover.emptyCommands": "Нет совпадающих команд",

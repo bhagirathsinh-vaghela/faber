@@ -176,12 +176,11 @@ export const dict = {
   "common.attachment": "pièce jointe",
 
   "prompt.placeholder.shell": "Entrez une commande shell...",
-  "prompt.placeholder.normal": 'Demandez n\'importe quoi...',
+  "prompt.placeholder.normal": "Demandez n'importe quoi...",
   "prompt.placeholder.summarizeComments": "Résumer les commentaires…",
   "prompt.placeholder.summarizeComment": "Résumer le commentaire…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "esc pour quitter",
-
 
   "prompt.popover.emptyResults": "Aucun résultat correspondant",
   "prompt.popover.emptyCommands": "Aucune commande correspondante",

@@ -12,6 +12,7 @@ import { Provider } from "../provider/provider"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, asSchema } from "ai"
 import { SessionCompaction } from "./compaction"
 import { Instance } from "../project/instance"
+import { OpenProjects } from "../project/open"
 import { Global } from "../global"
 import { Bus } from "../bus"
 import { ProviderTransform } from "../provider/transform"
@@ -746,6 +747,7 @@ export namespace SessionPrompt {
     if (!session.parentID) {
       SessionPing.start(sessionID)
       Session.markUnseen(sessionID)
+      OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
     }
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue

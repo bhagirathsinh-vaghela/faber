@@ -181,12 +181,11 @@ export const dict = {
   "common.attachment": "ไฟล์แนบ",
 
   "prompt.placeholder.shell": "ป้อนคำสั่งเชลล์...",
-  "prompt.placeholder.normal": 'ถามอะไรก็ได้...',
+  "prompt.placeholder.normal": "ถามอะไรก็ได้...",
   "prompt.placeholder.summarizeComments": "สรุปความคิดเห็น…",
   "prompt.placeholder.summarizeComment": "สรุปความคิดเห็น…",
   "prompt.mode.shell": "เชลล์",
   "prompt.mode.shell.exit": "กด esc เพื่อออก",
-
 
   "prompt.popover.emptyResults": "ไม่พบผลลัพธ์ที่ตรงกัน",
   "prompt.popover.emptyCommands": "ไม่พบคำสั่งที่ตรงกัน",

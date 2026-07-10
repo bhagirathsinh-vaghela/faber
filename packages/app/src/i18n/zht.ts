@@ -177,12 +177,11 @@ export const dict = {
   "common.attachment": "附件",
 
   "prompt.placeholder.shell": "輸入 shell 命令...",
-  "prompt.placeholder.normal": '隨便問點什麼...',
+  "prompt.placeholder.normal": "隨便問點什麼...",
   "prompt.placeholder.summarizeComments": "摘要評論…",
   "prompt.placeholder.summarizeComment": "摘要這則評論…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "按 esc 退出",
-
 
   "prompt.popover.emptyResults": "沒有符合的結果",
   "prompt.popover.emptyCommands": "沒有符合的命令",

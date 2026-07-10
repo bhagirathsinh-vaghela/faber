@@ -4,7 +4,6 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { captureFocus } from "@opencode-ai/ui/util/focus"
 import { useGlobalSync } from "./global-sync"
 import { useGlobalSDK } from "./global-sdk"
-import { useServer } from "./server"
 import { Project } from "@opencode-ai/sdk/v2"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
@@ -45,7 +44,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
   init: () => {
     const globalSdk = useGlobalSDK()
     const globalSync = useGlobalSync()
-    const server = useServer()
 
     const isRecord = (value: unknown): value is Record<string, unknown> =>
       typeof value === "object" && value !== null && !Array.isArray(value)
@@ -96,6 +94,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           workspaces: {} as Record<string, boolean>,
           workspacesDefault: false,
         },
+        // Per-client sidebar view state. Which projects are open is server-owned
+        // shared state; expand/collapse and drag-order are local view
+        // preferences, so they live here, not on the server. projectExpanded is
+        // keyed by worktree; projectOrder is a worktree list, unknowns append.
+        projectExpanded: {} as Record<string, boolean>,
+        projectOrder: [] as string[],
         terminal: {
           height: 280,
           opened: false,
@@ -350,28 +354,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return directory
     }
 
-    createEffect(() => {
-      const projects = server.projects.list()
-      const seen = new Set(projects.map((project) => project.worktree))
-
-      batch(() => {
-        for (const project of projects) {
-          const root = rootFor(project.worktree)
-          if (root === project.worktree) continue
-
-          server.projects.close(project.worktree)
-
-          if (!seen.has(root)) {
-            server.projects.open(root)
-            seen.add(root)
-          }
-
-          if (project.expanded) server.projects.expand(root)
-        }
-      })
+    const ordered = createMemo(() => {
+      const open = globalSync.data.open_projects
+      const order = store.projectOrder
+      const rank = new Map(order.map((worktree, index) => [worktree, index]))
+      return open
+        .map((project) => ({ worktree: project.worktree, expanded: store.projectExpanded[project.worktree] ?? false }))
+        .sort((a, b) => (rank.get(a.worktree) ?? order.length) - (rank.get(b.worktree) ?? order.length))
     })
 
-    const enriched = createMemo(() => server.projects.list().map(enrich))
+    const enriched = createMemo(() => ordered().map(enrich))
     const list = createMemo(() => {
       const projects = enriched()
       return projects.map((project) => {
@@ -436,12 +428,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     })
 
-    onMount(() => {
-      Promise.all(
-        server.projects.list().map((project) => {
-          return globalSync.project.loadSessions(project.worktree)
-        }),
-      )
+    createEffect(() => {
+      if (!globalSync.ready) return
+      for (const project of globalSync.data.open_projects) globalSync.project.loadSessions(project.worktree)
     })
 
     return {
@@ -450,21 +439,24 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         list,
         open(directory: string) {
           const root = rootFor(directory)
-          if (server.projects.list().find((x) => x.worktree === root)) return
           globalSync.project.loadSessions(root)
-          server.projects.open(root)
+          return globalSync.project.open(root)
         },
-        close(directory: string) {
-          server.projects.close(directory)
+        close(directory: string, force?: boolean) {
+          return globalSync.project.close(directory, force)
         },
         expand(directory: string) {
-          server.projects.expand(directory)
+          setStore("projectExpanded", directory, true)
         },
         collapse(directory: string) {
-          server.projects.collapse(directory)
+          setStore("projectExpanded", directory, false)
         },
         move(directory: string, toIndex: number) {
-          server.projects.move(directory, toIndex)
+          const current = ordered().map((project) => project.worktree)
+          const from = current.indexOf(directory)
+          if (from === -1) return
+          current.splice(toIndex, 0, current.splice(from, 1)[0])
+          setStore("projectOrder", current)
         },
       },
       sidebar: {

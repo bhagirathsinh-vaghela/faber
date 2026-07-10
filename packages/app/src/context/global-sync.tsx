@@ -19,6 +19,7 @@ import {
   type VcsInfo,
   type PermissionRequest,
   type QuestionRequest,
+  type OpenProject,
   createOpencodeClient,
 } from "@opencode-ai/sdk/v2/client"
 import { createStore, produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
@@ -216,6 +217,12 @@ function createGlobalSync() {
       unseen: boolean
       pingAt?: number
     }[]
+    // The server-owned set of projects shown in the sidebar. Every client
+    // connected to this server renders the same set: seeded at bootstrap from
+    // GET /global/projects/open, then replaced wholesale from the
+    // open-projects.updated event (full-list snapshot). Which projects are
+    // open is shared truth; per-client view state (expand/collapse) stays local.
+    open_projects: OpenProject[]
   }>({
     ready: false,
     path: { state: "", config: "", worktree: "", directory: "", home: "" },
@@ -227,6 +234,7 @@ function createGlobalSync() {
     stash: [],
     reload: undefined,
     recent_hub: [],
+    open_projects: [],
   })
 
   // Bumped on every (re)attach of the event stream. Open sessions subscribe to
@@ -483,6 +491,21 @@ function createGlobalSync() {
       void bootstrapInstance(directory)
     }
     return childStore
+  }
+
+  // Drop all in-memory per-directory state so a closed project stops consuming
+  // memory and stops receiving SSE dispatch (the event switch drops events for
+  // a directory with no child store). The reverse of ensureChild. Distinct from
+  // the server.instance.disposed handler, which re-bootstraps — this tears down.
+  function disposeChild(directory: string) {
+    delete children[directory]
+    vcsCache.delete(directory)
+    metaCache.delete(directory)
+    iconCache.delete(directory)
+    sdkCache.delete(directory)
+    booting.delete(directory)
+    sessionLoads.delete(directory)
+    sessionMeta.delete(directory)
   }
 
   async function loadSessions(directory: string) {
@@ -752,6 +775,10 @@ function createGlobalSync() {
         }
         case "recent.updated": {
           setGlobalStore("recent_hub", reconcile(event.properties.entries, { key: "sessionID" }))
+          return
+        }
+        case "open-projects.updated": {
+          setGlobalStore("open_projects", reconcile(event.properties.entries, { key: "id" }))
           return
         }
       }
@@ -1124,6 +1151,11 @@ function createGlobalSync() {
       ),
       retry(() => refreshRecent()),
       retry(() =>
+        globalSDK.client.global.projects.open().then((x) => {
+          setGlobalStore("open_projects", x.data ?? [])
+        }),
+      ),
+      retry(() =>
         globalSDK.client.preference.model.get().then((x) => {
           if (x.data) setGlobalStore("model_preference", x.data)
         }),
@@ -1192,6 +1224,7 @@ function createGlobalSync() {
     },
     reconnect,
     child,
+    disposeChild,
     bootstrap,
     updateConfig: (config: Config) => {
       setGlobalStore("reload", "pending")
@@ -1205,6 +1238,8 @@ function createGlobalSync() {
       loadSessions,
       meta: projectMeta,
       icon: projectIcon,
+      open: (directory: string) => globalSDK.client.global.projects.openAdd({ directory }),
+      close: (directory: string, force?: boolean) => globalSDK.client.global.projects.close({ directory, force }),
     },
   }
 }

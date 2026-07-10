@@ -6,13 +6,10 @@ import { $ } from "bun"
 import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { Flag } from "@/flag/flag"
-import { Session } from "../session"
-import { work } from "../util/queue"
 import { fn } from "@opencode-ai/util/fn"
 import { BusEvent } from "@/bus/bus-event"
 import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
-import { existsSync } from "fs"
 
 export namespace Project {
   const log = Log.create({ service: "project" })
@@ -53,161 +50,62 @@ export namespace Project {
   export async function fromDirectory(directory: string) {
     log.info("fromDirectory", { directory })
 
-    const { id, sandbox, worktree, vcs } = await iife(async () => {
-      const matches = Filesystem.up({ targets: [".git"], start: directory })
+    // Identity IS the directory (canonicalized so /tmp and /private/tmp do not
+    // fork into two projects). Git is detected only to resolve the worktree —
+    // the up-tree ceiling for AGENTS.md/skills/config discovery, git ops, and
+    // path relativization — and vcs. It no longer determines identity. A
+    // non-git directory is its own worktree, so its up-walk stops at itself.
+    const id = await fs.realpath(directory).catch(() => directory)
+
+    const { worktree, vcs } = await iife(async () => {
+      const matches = Filesystem.up({ targets: [".git"], start: id })
       const git = await matches.next().then((x) => x.value)
       await matches.return()
-      if (git) {
-        let sandbox = path.dirname(git)
+      if (!git) return { worktree: id, vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS) }
 
-        const gitBinary = Bun.which("git")
+      const root = path.dirname(git)
+      if (!Bun.which("git")) return { worktree: root, vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS) }
 
-        // cached id calculation
-        let id = await Bun.file(path.join(git, "opencode"))
-          .text()
-          .then((x) => x.trim())
-          .catch(() => undefined)
+      const top = await $`git rev-parse --show-toplevel`
+        .quiet()
+        .nothrow()
+        .cwd(root)
+        .text()
+        .then((x) => path.resolve(root, x.trim()))
+        .catch(() => undefined)
+      if (!top) return { worktree: root, vcs: "git" as const }
 
-        if (!gitBinary) {
-          return {
-            id: id ?? "global",
-            worktree: sandbox,
-            sandbox: sandbox,
-            vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
-          }
-        }
-
-        // generate id from root commit
-        if (!id) {
-          const roots = await $`git rev-list --max-parents=0 --all`
-            .quiet()
-            .nothrow()
-            .cwd(sandbox)
-            .text()
-            .then((x) =>
-              x
-                .split("\n")
-                .filter(Boolean)
-                .map((x) => x.trim())
-                .toSorted(),
-            )
-            .catch(() => undefined)
-
-          if (!roots) {
-            return {
-              id: "global",
-              worktree: sandbox,
-              sandbox: sandbox,
-              vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
-            }
-          }
-
-          id = roots[0]
-          if (id) {
-            void Bun.file(path.join(git, "opencode"))
-              .write(id)
-              .catch(() => undefined)
-          }
-        }
-
-        if (!id) {
-          return {
-            id: "global",
-            worktree: sandbox,
-            sandbox: sandbox,
-            vcs: "git",
-          }
-        }
-
-        const top = await $`git rev-parse --show-toplevel`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
-          .then((x) => path.resolve(sandbox, x.trim()))
-          .catch(() => undefined)
-
-        if (!top) {
-          return {
-            id,
-            sandbox,
-            worktree: sandbox,
-            vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
-          }
-        }
-
-        sandbox = top
-
-        const worktree = await $`git rev-parse --git-common-dir`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
-          .then((x) => {
-            const dirname = path.dirname(x.trim())
-            if (dirname === ".") return sandbox
-            return dirname
-          })
-          .catch(() => undefined)
-
-        if (!worktree) {
-          return {
-            id,
-            sandbox,
-            worktree: sandbox,
-            vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
-          }
-        }
-
-        return {
-          id,
-          sandbox,
-          worktree,
-          vcs: "git",
-        }
-      }
-
-      return {
-        id: "global",
-        worktree: "/",
-        sandbox: "/",
-        vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
-      }
+      const shared = await $`git rev-parse --git-common-dir`
+        .quiet()
+        .nothrow()
+        .cwd(top)
+        .text()
+        .then((x) => {
+          const parent = path.dirname(x.trim())
+          return parent === "." ? top : parent
+        })
+        .catch(() => undefined)
+      return { worktree: shared ?? top, vcs: "git" as const }
     })
 
-    let existing = await Storage.read<Info>(["project", id]).catch(() => undefined)
-    if (!existing) {
-      existing = {
-        id,
-        worktree,
-        vcs: vcs as Info["vcs"],
-        sandboxes: [],
-        time: {
-          created: Date.now(),
-          updated: Date.now(),
-        },
-      }
-      if (id !== "global") {
-        await migrateFromGlobal(id, worktree)
-      }
-    }
-
-    // migrate old projects before sandboxes
-    if (!existing.sandboxes) existing.sandboxes = []
-
-    if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY) discover(existing)
-
+    const existing = await Storage.read<Info>(["project", id]).catch(() => undefined)
     const result: Info = {
-      ...existing,
+      id,
       worktree,
       vcs: vcs as Info["vcs"],
+      name: existing?.name,
+      icon: existing?.icon,
+      commands: existing?.commands,
       time: {
-        ...existing.time,
+        created: existing?.time.created ?? Date.now(),
         updated: Date.now(),
+        initialized: existing?.time.initialized,
       },
+      sandboxes: [],
     }
-    if (sandbox !== result.worktree && !result.sandboxes.includes(sandbox)) result.sandboxes.push(sandbox)
-    result.sandboxes = result.sandboxes.filter((x) => existsSync(x))
+
+    if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY) discover(result)
+
     await Storage.write<Info>(["project", id], result)
     GlobalBus.emit("event", {
       payload: {
@@ -215,7 +113,7 @@ export namespace Project {
         properties: result,
       },
     })
-    return { project: result, sandbox }
+    return { project: result, sandbox: worktree }
   }
 
   export async function discover(input: Info) {
@@ -248,30 +146,6 @@ export namespace Project {
     return
   }
 
-  async function migrateFromGlobal(newProjectID: string, worktree: string) {
-    const globalProject = await Storage.read<Info>(["project", "global"]).catch(() => undefined)
-    if (!globalProject) return
-
-    const globalSessions = await Storage.list(["session", "global"]).catch(() => [])
-    if (globalSessions.length === 0) return
-
-    log.info("migrating sessions from global", { newProjectID, worktree, count: globalSessions.length })
-
-    await work(10, globalSessions, async (key) => {
-      const sessionID = key[key.length - 1]
-      const session = await Storage.read<Session.Info>(key).catch(() => undefined)
-      if (!session) return
-      if (session.directory && session.directory !== worktree) return
-
-      session.projectID = newProjectID
-      log.info("migrating session", { sessionID, from: "global", to: newProjectID })
-      await Storage.write(["session", newProjectID, sessionID], session)
-      await Storage.remove(key)
-    }).catch((error) => {
-      log.error("failed to migrate sessions from global to project", { error, projectId: newProjectID })
-    })
-  }
-
   export async function setInitialized(projectID: string) {
     await Storage.update<Info>(["project", projectID], (draft) => {
       draft.time.initialized = Date.now()
@@ -281,10 +155,7 @@ export namespace Project {
   export async function list() {
     const keys = await Storage.list(["project"])
     const projects = await Promise.all(keys.map((x) => Storage.read<Info>(x)))
-    return projects.map((project) => ({
-      ...project,
-      sandboxes: project.sandboxes?.filter((x) => existsSync(x)),
-    }))
+    return projects
   }
 
   export const update = fn(
@@ -327,45 +198,15 @@ export namespace Project {
     },
   )
 
-  export async function sandboxes(projectID: string) {
-    const project = await Storage.read<Info>(["project", projectID]).catch(() => undefined)
-    if (!project?.sandboxes) return []
-    const valid: string[] = []
-    for (const dir of project.sandboxes) {
-      const stat = await fs.stat(dir).catch(() => undefined)
-      if (stat?.isDirectory()) valid.push(dir)
-    }
-    return valid
+  // Sandboxes (git-worktree grouping) are deprecated: identity is the directory
+  // now, so each worktree/subdirectory is already its own project. The field
+  // stays on Info for schema stability, but is never populated. These helpers
+  // are inert no-ops kept only so the git-worktree feature compiles.
+  export async function sandboxes(_projectID: string): Promise<string[]> {
+    return []
   }
 
-  export async function addSandbox(projectID: string, directory: string) {
-    const result = await Storage.update<Info>(["project", projectID], (draft) => {
-      const sandboxes = draft.sandboxes ?? []
-      if (!sandboxes.includes(directory)) sandboxes.push(directory)
-      draft.sandboxes = sandboxes
-      draft.time.updated = Date.now()
-    })
-    GlobalBus.emit("event", {
-      payload: {
-        type: Event.Updated.type,
-        properties: result,
-      },
-    })
-    return result
-  }
+  export async function addSandbox(_projectID: string, _directory: string) {}
 
-  export async function removeSandbox(projectID: string, directory: string) {
-    const result = await Storage.update<Info>(["project", projectID], (draft) => {
-      const sandboxes = draft.sandboxes ?? []
-      draft.sandboxes = sandboxes.filter((sandbox) => sandbox !== directory)
-      draft.time.updated = Date.now()
-    })
-    GlobalBus.emit("event", {
-      payload: {
-        type: Event.Updated.type,
-        properties: result,
-      },
-    })
-    return result
-  }
+  export async function removeSandbox(_projectID: string, _directory: string) {}
 }

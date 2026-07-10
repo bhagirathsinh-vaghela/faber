@@ -58,26 +58,50 @@ export const Instance = {
    */
   containsPath(filepath: string) {
     if (Filesystem.contains(Instance.directory, filepath)) return true
-    // Non-git projects set worktree to "/" which would match ANY absolute path.
-    // Skip worktree check in this case to preserve external_directory permissions.
-    if (Instance.worktree === "/") return false
     return Filesystem.contains(Instance.worktree, filepath)
   },
   state<S>(init: () => S, dispose?: (state: Awaited<S>) => Promise<void>) {
     return State.create(() => Instance.directory, init, dispose)
   },
   async dispose() {
-    Log.Default.info("disposing instance", { directory: Instance.directory })
-    await State.dispose(Instance.directory)
-    cache.delete(Instance.directory)
+    const directory = Instance.directory
+    Log.Default.info("disposing instance", { directory })
+    // Ping daemons live at module scope in session/ping.ts, outside State, so
+    // State.dispose below does not reach them. Stop them first, before their
+    // subsystems tear down. Dynamic import: ping.ts imports Instance, so a
+    // top-level import here would be circular.
+    const { SessionPing } = await import("@/session/ping")
+    SessionPing.stopForDirectory(directory)
+    await State.dispose(directory)
+    cache.delete(directory)
     GlobalBus.emit("event", {
-      directory: Instance.directory,
+      directory,
       payload: {
         type: "server.instance.disposed",
         properties: {
-          directory: Instance.directory,
+          directory,
         },
       },
+    })
+  },
+  // Dispose a specific directory's instance ONLY if it is already cached. Unlike
+  // provide()+dispose(), this never creates (and never bootstraps) a fresh
+  // instance for an uncached directory — which would re-add the project to the
+  // open set via InstanceBootstrap. The optional before() runs in the instance
+  // context just prior to disposal (e.g. to stop sessions, which read
+  // per-instance state). Used by project close.
+  async disposeDirectory(directory: string, before?: () => void | Promise<void>) {
+    const existing = cache.get(directory)
+    if (!existing) return
+    const ctx = await existing.catch(() => undefined)
+    if (!ctx) {
+      cache.delete(directory)
+      return
+    }
+    if (cache.get(directory) !== existing) return
+    await context.provide(ctx, async () => {
+      await before?.()
+      await Instance.dispose()
     })
   },
   async disposeAll() {

@@ -61,6 +61,11 @@ import type {
   GlobalHealthResponses,
   GlobalPingArmedErrors,
   GlobalPingArmedResponses,
+  GlobalProjectsCloseErrors,
+  GlobalProjectsCloseResponses,
+  GlobalProjectsOpenAddErrors,
+  GlobalProjectsOpenAddResponses,
+  GlobalProjectsOpenResponses,
   GlobalRecentErrors,
   GlobalRecentResponses,
   GlobalWebReloadResponses,
@@ -278,6 +283,85 @@ class HeyApiRegistry<T> {
   }
 }
 
+export class Projects extends HeyApiClient {
+  /**
+   * Get open projects
+   *
+   * The server-owned set of projects shown in every client's sidebar. All clients connected to this server render the same set.
+   */
+  public open<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalProjectsOpenResponses, unknown, ThrowOnError>({
+      url: "/global/projects/open",
+      ...options,
+    })
+  }
+
+  /**
+   * Open a project
+   *
+   * Add a project (resolved from a directory to its git root) to the shared sidebar set. Idempotent; broadcast to all clients over SSE.
+   */
+  public openAdd<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "directory" }] }])
+    return (options?.client ?? this.client).post<
+      GlobalProjectsOpenAddResponses,
+      GlobalProjectsOpenAddErrors,
+      ThrowOnError
+    >({
+      url: "/global/projects/open",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Close a project
+   *
+   * Remove a project from the shared sidebar set (broadcast to all clients). If any of its sessions are still live (busy or ping-armed) and force is not set, returns them without closing so the client can confirm. With force, each live session is stopped first, then the server instance is disposed.
+   */
+  public close<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      force?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "directory" },
+            { in: "body", key: "force" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<GlobalProjectsCloseResponses, GlobalProjectsCloseErrors, ThrowOnError>(
+      {
+        url: "/global/projects/close",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
 export class Config extends HeyApiClient {
   /**
    * Get global configuration
@@ -389,6 +473,11 @@ export class Global extends HeyApiClient {
       url: "/global/dispose",
       ...options,
     })
+  }
+
+  private _projects?: Projects
+  get projects(): Projects {
+    return (this._projects ??= new Projects({ client: this.client }))
   }
 
   private _config?: Config

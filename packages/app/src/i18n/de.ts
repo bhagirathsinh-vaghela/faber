@@ -180,12 +180,11 @@ export const dict = {
   "common.attachment": "Anhang",
 
   "prompt.placeholder.shell": "Shell-Befehl eingeben...",
-  "prompt.placeholder.normal": 'Fragen Sie alles...',
+  "prompt.placeholder.normal": "Fragen Sie alles...",
   "prompt.placeholder.summarizeComments": "Kommentare zusammenfassen…",
   "prompt.placeholder.summarizeComment": "Kommentar zusammenfassen…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "esc zum Verlassen",
-
 
   "prompt.popover.emptyResults": "Keine passenden Ergebnisse",
   "prompt.popover.emptyCommands": "Keine passenden Befehle",

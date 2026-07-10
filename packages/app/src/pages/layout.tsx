@@ -79,7 +79,6 @@ export default function Layout(props: ParentProps) {
   const [store, setStore, , ready] = persisted(
     Persist.global("layout.page", ["layout.page.v1"]),
     createStore({
-      lastSession: {} as { [directory: string]: string },
       activeProject: undefined as string | undefined,
       activeWorkspace: undefined as string | undefined,
       workspaceOrder: {} as Record<string, string[]>,
@@ -119,11 +118,6 @@ export default function Layout(props: ParentProps) {
   const colorSchemeLabel = (scheme: ColorScheme) => language.t(colorSchemeKey[scheme])
 
   const [state, setState] = createStore({
-    // The hub is the home page: landing on "/" must stay on the hub, never
-    // auto-jump into the last/first project's session. Explicit project-open
-    // paths (sidebar click, deep link, navigateToProject) set params.dir
-    // directly and are unaffected.
-    autoselect: false,
     busyWorkspaces: new Set<string>(),
     hoverSession: undefined as string | undefined,
     hoverProject: undefined as string | undefined,
@@ -180,25 +174,6 @@ export default function Layout(props: ParentProps) {
       { defer: true },
     ),
   )
-
-  const autoselecting = createMemo(() => {
-    if (params.dir) return false
-    if (!state.autoselect) return false
-    if (!pageReady()) return true
-    if (!layoutReady()) return true
-    const list = layout.projects.list()
-    if (list.length > 0) return true
-    return !!server.projects.last()
-  })
-
-  createEffect(() => {
-    if (!state.autoselect) return
-    const dir = params.dir
-    if (!dir) return
-    const directory = decode64(dir)
-    if (!directory) return
-    setState("autoselect", false)
-  })
 
   const editorOpen = (id: string) => editor.active === id
   const editorValue = () => editor.value
@@ -554,49 +529,6 @@ export default function Layout(props: ParentProps) {
 
     return projects.find((p) => p.worktree === root)
   })
-
-  createEffect(
-    on(
-      () => ({ ready: pageReady(), project: currentProject() }),
-      (value) => {
-        if (!value.ready) return
-        const project = value.project
-        if (!project) return
-        const last = server.projects.last()
-        if (last === project.worktree) return
-        server.projects.touch(project.worktree)
-      },
-      { defer: true },
-    ),
-  )
-
-  createEffect(
-    on(
-      () => ({ ready: pageReady(), layoutReady: layoutReady(), dir: params.dir, list: layout.projects.list() }),
-      (value) => {
-        if (!value.ready) return
-        if (!value.layoutReady) return
-        if (!state.autoselect) return
-        if (value.dir) return
-
-        const last = server.projects.last()
-
-        if (value.list.length === 0) {
-          if (!last) return
-          setState("autoselect", false)
-          openProject(last, false)
-          navigateToProject(last)
-          return
-        }
-
-        const next = value.list.find((project) => project.worktree === last) ?? value.list[0]
-        if (!next) return
-        setState("autoselect", false)
-        openProject(next.worktree, false)
-        navigateToProject(next.worktree)
-      },
-    ),
-  )
 
   const workspaceKey = (directory: string) => directory.replace(/[\\/]+$/, "")
 
@@ -1269,9 +1201,9 @@ export default function Layout(props: ParentProps) {
       setState("hoverSession", undefined)
       setState("hoverProject", undefined)
     }
-    server.projects.touch(directory)
-    const lastSession = store.lastSession[directory]
-    navigate(`/${base64Encode(directory)}${lastSession ? `/session/${lastSession}` : ""}`)
+    // Opening a project lands on the sessions list, never a session. Opening a
+    // session is a separate, explicit action; project-open must not arm a ping.
+    navigate(`/${base64Encode(directory)}`)
     layout.mobileSidebar.hide()
   }
 
@@ -1330,7 +1262,17 @@ export default function Layout(props: ParentProps) {
     onCleanup(() => window.removeEventListener(deepLinkEvent, handler as EventListener))
   })
 
-  const displayName = (project: LocalProject) => project.name || getFilename(project.worktree)
+  // Label a project by the shortest meaningful path, mirroring the TUI's
+  // directory.ts: collapse a $HOME prefix to "~", otherwise show the absolute
+  // path. A user-set name still wins. Identity is the directory now, so the
+  // path is the natural label (not just the basename).
+  const shortPath = (directory: string) => {
+    const home = globalSync.data.path.home
+    if (home && (directory === home || directory.startsWith(home + "/"))) return "~" + directory.slice(home.length)
+    return directory
+  }
+
+  const displayName = (project: LocalProject) => project.name || shortPath(project.worktree)
 
   async function renameProject(project: LocalProject, next: string) {
     const current = displayName(project)
@@ -1360,35 +1302,41 @@ export default function Layout(props: ParentProps) {
     setWorkspaceName(directory, next, projectId, branch)
   }
 
-  function closeProject(directory: string) {
+  async function finishClose(directory: string, force?: boolean) {
     const index = layout.projects.list().findIndex((x) => x.worktree === directory)
     const next = layout.projects.list()[index + 1]
-    layout.projects.close(directory)
-    if (next) navigateToProject(next.worktree)
-    else navigate("/")
+    const result = await layout.projects.close(directory, force)
+    // Live sessions still open somewhere: don't tear anything down. Surface them
+    // so the user confirms stopping them before the close proceeds.
+    if (result.data && !result.data.closed) {
+      dialog.show(() => <DialogCloseProject directory={directory} live={result.data!.live.length} />)
+      return
+    }
+    globalSync.disposeChild(directory)
+    if (params.dir && decode64(params.dir) === directory) {
+      if (next) navigateToProject(next.worktree)
+      else navigate("/")
+    }
+  }
+
+  function closeProject(directory: string) {
+    void finishClose(directory)
   }
 
   async function chooseProject() {
     function resolve(result: string | string[] | null) {
-      if (Array.isArray(result)) {
-        for (const directory of result) {
-          openProject(directory, false)
-        }
-        navigateToProject(result[0])
-      } else if (result) {
-        openProject(result)
-      }
+      const directory = Array.isArray(result) ? result[0] : result
+      if (directory) openProject(directory)
     }
 
     if (platform.openDirectoryPickerDialog && server.isLocal()) {
       const result = await platform.openDirectoryPickerDialog?.({
         title: language.t("command.project.open"),
-        multiple: true,
       })
       resolve(result)
     } else {
       dialog.show(
-        () => <DialogSelectDirectory multiple={true} onSelect={resolve} />,
+        () => <DialogSelectDirectory onSelect={resolve} />,
         () => resolve(null),
       )
     }
@@ -1524,6 +1472,36 @@ export default function Layout(props: ParentProps) {
             </Button>
             <Button variant="primary" size="large" onClick={handleDelete}>
               {language.t("session.delete.button")}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    )
+  }
+
+  function DialogCloseProject(props: { directory: string; live: number }) {
+    const name = createMemo(() => getFilename(props.directory))
+    const handleClose = () => {
+      dialog.close()
+      void finishClose(props.directory, true)
+    }
+    return (
+      <Dialog title={language.t("project.close.title")} fit>
+        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
+          <div class="flex flex-col gap-1">
+            <span class="text-14-regular text-text-strong">
+              {language.t("project.close.confirm", { name: name() })}
+            </span>
+            <span class="text-12-regular text-text-weak">
+              {language.t("project.close.live", { count: props.live })}
+            </span>
+          </div>
+          <div class="flex justify-end gap-2">
+            <Button variant="ghost" size="large" onClick={() => dialog.close()}>
+              {language.t("common.cancel")}
+            </Button>
+            <Button variant="primary" size="large" onClick={handleClose}>
+              {language.t("project.close.button")}
             </Button>
           </div>
         </div>
@@ -1671,7 +1649,6 @@ export default function Layout(props: ParentProps) {
         if (!dir || !id) return
         const directory = decode64(dir)
         if (!directory) return
-        setStore("lastSession", directory, id)
         notification.session.markViewed(id)
         void globalSDK.client.session.seen({ directory, sessionID: id })
         const expanded = untrack(() => store.workspaceExpanded[directory])
@@ -1816,14 +1793,13 @@ export default function Layout(props: ParentProps) {
     const notifications = createMemo(() => notification.project.unseen(props.project.worktree))
     const hasError = createMemo(() => notifications().some((n) => n.type === "error"))
     const name = createMemo(() => props.project.name || getFilename(props.project.worktree))
-    const opencode = "4b0ea68d7af9a6031a7ffda7ad66e0cb83315750"
 
     return (
       <div class={`relative size-8 shrink-0 rounded ${props.class ?? ""}`}>
         <div class="size-full rounded overflow-clip">
           <Avatar
             fallback={name()}
-            src={props.project.id === opencode ? "https://opencode.ai/favicon.svg" : props.project.icon?.override}
+            src={props.project.icon?.override}
             {...getAvatarColors(props.project.icon?.color)}
             class="size-full rounded"
             classList={{ "badge-mask": notifications().length > 0 && props.notify }}
@@ -3146,9 +3122,7 @@ export default function Layout(props: ParentProps) {
             "xl:border-l xl:rounded-tl-sm": !layout.sidebar.opened(),
           }}
         >
-          <Show when={!autoselecting()} fallback={<div class="size-full" />}>
-            {props.children}
-          </Show>
+          {props.children}
         </main>
       </div>
       <Toast.Region />

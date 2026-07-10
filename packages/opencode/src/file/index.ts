@@ -272,7 +272,7 @@ export namespace File {
     let cache: Entry = { files: [], dirs: [] }
     let fetching = false
 
-    const isGlobalHome = Instance.directory === Global.Path.home && Instance.project.id === "global"
+    const isGlobalHome = Instance.directory === Global.Path.home
 
     const fn = async (result: Entry) => {
       // Disable scanning if in root of file system

@@ -22,6 +22,11 @@ export type RecentSession = {
   pingAt?: number
 }
 
+export type OpenProject = {
+  id: string
+  worktree: string
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -912,6 +917,13 @@ export type EventSessionCompacted = {
   }
 }
 
+export type EventOpenProjectsUpdated = {
+  type: "open-projects.updated"
+  properties: {
+    entries: Array<OpenProject>
+  }
+}
+
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -1238,6 +1250,7 @@ export type Event =
   | EventTodoUpdated
   | EventSessionPingArmed
   | EventSessionCompacted
+  | EventOpenProjectsUpdated
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -2760,6 +2773,83 @@ export type GlobalRecentResponses = {
 }
 
 export type GlobalRecentResponse = GlobalRecentResponses[keyof GlobalRecentResponses]
+
+export type GlobalProjectsOpenData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/projects/open"
+}
+
+export type GlobalProjectsOpenResponses = {
+  /**
+   * Open projects
+   */
+  200: Array<OpenProject>
+}
+
+export type GlobalProjectsOpenResponse = GlobalProjectsOpenResponses[keyof GlobalProjectsOpenResponses]
+
+export type GlobalProjectsOpenAddData = {
+  body?: {
+    directory: string
+  }
+  path?: never
+  query?: never
+  url: "/global/projects/open"
+}
+
+export type GlobalProjectsOpenAddErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalProjectsOpenAddError = GlobalProjectsOpenAddErrors[keyof GlobalProjectsOpenAddErrors]
+
+export type GlobalProjectsOpenAddResponses = {
+  /**
+   * Opened project
+   */
+  200: OpenProject
+}
+
+export type GlobalProjectsOpenAddResponse = GlobalProjectsOpenAddResponses[keyof GlobalProjectsOpenAddResponses]
+
+export type GlobalProjectsCloseData = {
+  body?: {
+    directory: string
+    force?: boolean
+  }
+  path?: never
+  query?: never
+  url: "/global/projects/close"
+}
+
+export type GlobalProjectsCloseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalProjectsCloseError = GlobalProjectsCloseErrors[keyof GlobalProjectsCloseErrors]
+
+export type GlobalProjectsCloseResponses = {
+  /**
+   * Close result
+   */
+  200: {
+    closed: boolean
+    live: Array<{
+      sessionID: string
+      directory: string
+    }>
+  }
+}
+
+export type GlobalProjectsCloseResponse = GlobalProjectsCloseResponses[keyof GlobalProjectsCloseResponses]
 
 export type GlobalEventData = {
   body?: never

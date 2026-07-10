@@ -176,12 +176,11 @@ export const dict = {
   "common.attachment": "załącznik",
 
   "prompt.placeholder.shell": "Wpisz polecenie terminala...",
-  "prompt.placeholder.normal": 'Zapytaj o cokolwiek...',
+  "prompt.placeholder.normal": "Zapytaj o cokolwiek...",
   "prompt.placeholder.summarizeComments": "Podsumuj komentarze…",
   "prompt.placeholder.summarizeComment": "Podsumuj komentarz…",
   "prompt.mode.shell": "Terminal",
   "prompt.mode.shell.exit": "esc aby wyjść",
-
 
   "prompt.popover.emptyResults": "Brak pasujących wyników",
   "prompt.popover.emptyCommands": "Brak pasujących poleceń",

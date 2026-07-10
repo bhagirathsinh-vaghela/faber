@@ -180,8 +180,8 @@ export namespace SessionCompaction {
       [
         "1. Primary Request and Intent: The user's explicit requests and goals, in detail. What are they ultimately trying to accomplish.",
         "2. Key Technical Concepts: The technologies, frameworks, patterns, and domain concepts in play.",
-        "3. Files and Code: The specific files examined, modified, or created — always by exact path (e.g. packages/app/src/context/sync.tsx, never \"the sync module\"). For each, note why it matters and include the important code (signatures, the changed lines). Name branches, PR numbers, and ticket IDs exactly; never generalize an identifier.",
-        "4. Errors and Fixes: Every error hit and how it was resolved, INCLUDING any user feedback or correction on it (e.g. \"the user told me to do X differently\"). This is what stops the next context from re-walking a dead end.",
+        '3. Files and Code: The specific files examined, modified, or created — always by exact path (e.g. packages/app/src/context/sync.tsx, never "the sync module"). For each, note why it matters and include the important code (signatures, the changed lines). Name branches, PR numbers, and ticket IDs exactly; never generalize an identifier.',
+        '4. Errors and Fixes: Every error hit and how it was resolved, INCLUDING any user feedback or correction on it (e.g. "the user told me to do X differently"). This is what stops the next context from re-walking a dead end.',
         "5. Decisions and Rejected Alternatives: Each decision and its reasoning, AND the alternatives that were considered and ruled out, with why. Rejected approaches are as important as the chosen one — without them the ruled-out path gets re-attempted.",
         "6. Problem Solving: Problems solved and any ongoing troubleshooting still in flight.",
         "7. Pending Tasks vs. Open Threads: Separate (a) tasks the user explicitly asked for that are not yet done from (b) unresolved questions or discussions raised but not concluded.",

@@ -180,12 +180,11 @@ export const dict = {
   "common.attachment": "附件",
 
   "prompt.placeholder.shell": "输入 shell 命令...",
-  "prompt.placeholder.normal": '随便问点什么...',
+  "prompt.placeholder.normal": "随便问点什么...",
   "prompt.placeholder.summarizeComments": "总结评论…",
   "prompt.placeholder.summarizeComment": "总结该评论…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "按 esc 退出",
-
 
   "prompt.popover.emptyResults": "没有匹配的结果",
   "prompt.popover.emptyCommands": "没有匹配的命令",

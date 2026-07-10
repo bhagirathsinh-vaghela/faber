@@ -175,12 +175,11 @@ export const dict = {
   "common.attachment": "添付ファイル",
 
   "prompt.placeholder.shell": "シェルコマンドを入力...",
-  "prompt.placeholder.normal": '何でも聞いてください...',
+  "prompt.placeholder.normal": "何でも聞いてください...",
   "prompt.placeholder.summarizeComments": "コメントを要約…",
   "prompt.placeholder.summarizeComment": "コメントを要約…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "escで終了",
-
 
   "prompt.popover.emptyResults": "一致する結果がありません",
   "prompt.popover.emptyCommands": "一致するコマンドがありません",

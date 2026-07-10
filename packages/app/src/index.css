@@ -100,7 +100,8 @@
 /* When window-controls-overlay is active the whole titlebar is a drag region
    (set inline in Titlebar); interactive children must opt out so they stay
    clickable. */
-[data-slot="titlebar"][data-wco] :is(button, a, input, textarea, select, [role="button"], [role="menuitem"], [contenteditable]) {
+[data-slot="titlebar"][data-wco]
+  :is(button, a, input, textarea, select, [role="button"], [role="menuitem"], [contenteditable]) {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

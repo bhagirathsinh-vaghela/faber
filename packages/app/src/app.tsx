@@ -72,10 +72,7 @@ function BoxDefaultsBridge(props: ParentProps) {
   const settings = useSettings()
   const layout = useLayout()
   return (
-    <BoxDefaultsProvider
-      mode={() => (layout.zen.opened() ? "zen" : "normal")}
-      collapsed={settings.boxes.collapsed}
-    >
+    <BoxDefaultsProvider mode={() => (layout.zen.opened() ? "zen" : "normal")} collapsed={settings.boxes.collapsed}>
       {props.children}
     </BoxDefaultsProvider>
   )

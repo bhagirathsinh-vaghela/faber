@@ -417,7 +417,10 @@ export const SettingsCustomization: Component = () => {
                   />
                 </div>
                 <div class="w-24">
-                  <SizeInput value={settings.appearance.fontSize()} onChange={(v) => settings.appearance.setFontSize(v)} />
+                  <SizeInput
+                    value={settings.appearance.fontSize()}
+                    onChange={(v) => settings.appearance.setFontSize(v)}
+                  />
                 </div>
                 <div class="w-24">
                   <WeightControl

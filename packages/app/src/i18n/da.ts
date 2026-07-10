@@ -176,12 +176,11 @@ export const dict = {
   "common.attachment": "vedhæftning",
 
   "prompt.placeholder.shell": "Indtast shell-kommando...",
-  "prompt.placeholder.normal": 'Spørg om hvad som helst...',
+  "prompt.placeholder.normal": "Spørg om hvad som helst...",
   "prompt.placeholder.summarizeComments": "Opsummér kommentarer…",
   "prompt.placeholder.summarizeComment": "Opsummér kommentar…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "esc for at afslutte",
-
 
   "prompt.popover.emptyResults": "Ingen matchende resultater",
   "prompt.popover.emptyCommands": "Ingen matchende kommandoer",

@@ -176,12 +176,11 @@ export const dict = {
   "common.attachment": "مرفق",
 
   "prompt.placeholder.shell": "أدخل أمر shell...",
-  "prompt.placeholder.normal": 'اسأل أي شيء...',
+  "prompt.placeholder.normal": "اسأل أي شيء...",
   "prompt.placeholder.summarizeComments": "لخّص التعليقات…",
   "prompt.placeholder.summarizeComment": "لخّص التعليق…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "esc للخروج",
-
 
   "prompt.popover.emptyResults": "لا توجد نتائج مطابقة",
   "prompt.popover.emptyCommands": "لا توجد أوامر مطابقة",

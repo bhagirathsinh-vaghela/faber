@@ -1931,8 +1931,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <Show when={!prompt.dirty()}>
             <div
               classList={{
-                "absolute top-0 inset-x-0 px-2 pr-12 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate":
-                  true,
+                "absolute top-0 inset-x-0 px-2 pr-12 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
                 // Mirror the editor's vertical padding so the placeholder sits
                 // exactly where typed text will appear.
                 "pt-2 pb-0 md:py-3": !zen(),
@@ -1962,8 +1961,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         >
           <div
             classList={{
-              "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!":
-                true,
+              "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!": true,
               // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
               hidden: zen(),
             }}

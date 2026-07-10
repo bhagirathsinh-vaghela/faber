@@ -611,11 +611,31 @@ export default function Page() {
 
   // On reconnect, re-hydrate the open session so a message/part the server
   // published while the stream was down (no replay) heals without a reload.
+  // First defer to server truth: a session force-stopped (e.g. its project was
+  // closed from another client) while this client was offline is no longer
+  // live, so navigate home instead of resurrecting it.
+  //
+  // The reconnect signal also bumps on the FIRST connect, which races page load:
+  // if this effect registers before that first bump, treating it as a reconnect
+  // would navigate a freshly-opened idle session home. Gate the live-check on
+  // having connected at least once, so only genuine RE-connects can bounce home;
+  // the first connect only re-syncs.
+  let connected = false
   createEffect(
-    on(sync.reconnect, () => {
-      if (!params.id) return
-      void sync.session.sync(params.id, true)
-    }, { defer: true }),
+    on(
+      sync.reconnect,
+      async () => {
+        if (!params.id) return
+        const reconnected = connected
+        connected = true
+        if (reconnected && !(await sync.session.live(params.id))) {
+          navigate("/")
+          return
+        }
+        void sync.session.sync(params.id, true)
+      },
+      { defer: true },
+    ),
   )
 
   createEffect(() => {

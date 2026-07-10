@@ -219,12 +219,11 @@ export const dict = {
   "common.attachment": "attachment",
 
   "prompt.placeholder.shell": "Enter shell command...",
-  "prompt.placeholder.normal": 'Ask anything...',
+  "prompt.placeholder.normal": "Ask anything...",
   "prompt.placeholder.summarizeComments": "Summarize comments…",
   "prompt.placeholder.summarizeComment": "Summarize comment…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "esc to exit",
-
 
   "prompt.popover.emptyResults": "No matching results",
   "prompt.popover.emptyCommands": "No matching commands",
@@ -821,6 +820,10 @@ export const dict = {
   "workspace.delete.title": "Delete workspace",
   "workspace.delete.confirm": 'Delete workspace "{{name}}"?',
   "workspace.delete.button": "Delete workspace",
+  "project.close.title": "Close project",
+  "project.close.confirm": 'Close project "{{name}}"?',
+  "project.close.live": "{{count}} session(s) still live — they will be stopped and become recent sessions.",
+  "project.close.button": "Close project",
   "workspace.reset.title": "Reset workspace",
   "workspace.reset.confirm": 'Reset workspace "{{name}}"?',
   "workspace.reset.button": "Reset workspace",
