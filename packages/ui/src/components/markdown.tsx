@@ -62,12 +62,38 @@ function fenceSource(node: Hast) {
 //    its inline spans, so a tail ending mid **bold**, `code`, or [link](…) would
 //    still render raw. Trim the tail back to the last point where every inline
 //    marker is balanced. Plain prose has nothing open, so it streams live.
+//
+// Streaming appends only ever grow `text`, and re-lexing the WHOLE string on
+// every ~10Hz tick is O(n²) over a turn (measured: ~40ms/call on a 36KB
+// message). We only need the START OFFSET of the last block token, so lex just
+// a bounded tail: rewind to a hard block fence (a blank line) well before the
+// end, lex from there, and add the settled length ahead of it. `anchor` is that
+// fence — chosen far enough back that no in-flight append can retro-merge across
+// it (setext underline, loose-list continuation), which a naive last-`\n\n` cut
+// would miss.
 function renderableLength(text: string) {
-  const tokens = marked.lexer(text)
-  let boundary = 0
+  const anchor = tailAnchor(text)
+  const tokens = marked.lexer(text.slice(anchor))
+  let boundary = anchor
   for (let i = 0; i < tokens.length - 1; i++) boundary += tokens[i].raw.length
   const tail = text.slice(boundary)
   return boundary + balancedInlineLength(tail)
+}
+
+// A safe offset to start lexing from: the blank-line boundary two blocks back
+// from the end, or 0 when the text is short. Lexing from here yields byte-for-
+// byte the same trailing tokens as lexing the whole string, because the two
+// full blocks of overlap absorb every retroactive re-interpretation marked can
+// apply (setext heading from a following `===`/`---`, a paragraph folding into
+// a loose list). An open ``` fence spans blank lines, so if the anchor would
+// land inside one, fall back to 0 and lex the whole text — correctness over the
+// micro-optimization for the rare mid-fence tick.
+function tailAnchor(text: string) {
+  const second = text.lastIndexOf("\n\n", text.lastIndexOf("\n\n") - 1)
+  if (second <= 0) return 0
+  const head = text.slice(0, second)
+  if ((head.match(/```/g)?.length ?? 0) % 2 === 1) return 0
+  return second
 }
 
 // Longest prefix of a streaming tail whose inline markers are all closed. Scans
