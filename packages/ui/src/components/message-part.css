@@ -653,6 +653,11 @@ a[data-component="tool-action"]:hover {
 
 [data-component="tool-part-wrapper"] {
   width: 100%;
+  /* paint (not just layout) confines the tool box's repaint to its own bounds:
+     the "args streaming" bar inside it animates forever, and without a paint
+     boundary its per-frame repaint fills the whole box. Nothing here overflows
+     the box, so clipping is safe. */
+  contain: layout paint;
 
   /* One block, one box: a tool call is its own block, so give its box the same
      accent-box scheme as message/task boxes — a muted-purple accent drives both
