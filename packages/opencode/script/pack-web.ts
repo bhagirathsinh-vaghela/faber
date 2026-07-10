@@ -6,6 +6,7 @@
 
 import path from "path"
 import fs from "fs"
+import zlib from "zlib"
 import { $ } from "bun"
 
 const dir = path.resolve(import.meta.dir, "..")
@@ -39,15 +40,28 @@ await $`bun run build`.cwd(appDir)
 if (!fs.existsSync(path.join(distDir, "index.html")))
   throw new Error(`pack-web: app build produced no index.html at ${distDir}`)
 
-const assets: Record<string, { type: string; body: string }> = {}
+// Text assets shrink 3-20x; pre-compressed formats (png/woff2/wasm) don't, so
+// storing variants for them just bloats the embed. Brotli at max quality — this
+// runs offline at pack time, so compression cost is free and served forever.
+const compressible = new Set([".html", ".js", ".mjs", ".css", ".json", ".webmanifest", ".svg", ".map", ".txt"])
+
+const assets: Record<string, { type: string; body: string; br?: string; gzip?: string }> = {}
 const glob = new Bun.Glob("**/*")
 for (const rel of glob.scanSync({ cwd: distDir, onlyFiles: true })) {
   const ext = path.extname(rel).toLowerCase()
   const web = "/" + rel.split(path.sep).join("/")
-  assets[web] = {
+  const raw = fs.readFileSync(path.join(distDir, rel))
+  const asset: { type: string; body: string; br?: string; gzip?: string } = {
     type: types[ext] ?? "application/octet-stream",
-    body: Buffer.from(fs.readFileSync(path.join(distDir, rel))).toString("base64"),
+    body: Buffer.from(raw).toString("base64"),
   }
+  if (compressible.has(ext)) {
+    asset.br = zlib
+      .brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } })
+      .toString("base64")
+    asset.gzip = zlib.gzipSync(raw, { level: 9 }).toString("base64")
+  }
+  assets[web] = asset
 }
 
 if (!assets["/index.html"]) throw new Error("pack-web: /index.html missing from packed assets")

@@ -3,7 +3,9 @@ import { Bus } from "@/bus"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
+import type { MiddlewareHandler } from "hono"
 import { cors } from "hono/cors"
+import zlib from "zlib"
 import { streamSSE } from "hono/streaming"
 import { basicAuth } from "hono/basic-auth"
 import z from "zod"
@@ -52,6 +54,45 @@ export namespace Server {
 
   let _url: URL | undefined
   let _corsWhitelist: string[] = []
+
+  const compressible = /^(application\/json|application\/manifest\+json|text\/|application\/javascript|image\/svg\+xml)/
+  // Below ~1KB the br/gzip framing overhead outweighs the savings.
+  const compressFloor = 1024
+  // Dynamic responses compress on the request thread, so quality trades directly
+  // against TTFB. On a ~1.9MB history payload, brotli q11 costs ~700ms and blocks
+  // the event loop for every client; q5 costs ~8ms for a 14.4x ratio (vs q11's
+  // 16.6x), a 16KB give-up for an 88x speedup. Static assets keep q11 (precompressed
+  // offline in pack-web.ts, where CPU is free).
+  const dynamicBrotli = { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } }
+
+  // Compresses buffered JSON/text responses per Accept-Encoding. text/event-stream
+  // MUST be skipped: the SSE feed is infinite, so the arrayBuffer() below would
+  // await forever and no byte ever reaches the client. It also matches the text/
+  // branch of `compressible`, so it needs an explicit exclusion, not just omission
+  // from the allowlist. (Content-Length is not a reliable stream signal here: hono
+  // sets it when serializing, after this middleware sees c.res.)
+  const compress: MiddlewareHandler = async (c, next) => {
+    await next()
+    const res = c.res
+    if (!res.body || res.headers.get("content-encoding")) return
+    const type = res.headers.get("content-type") ?? ""
+    if (type.startsWith("text/event-stream")) return
+    if (!compressible.test(type)) return
+    const accept = c.req.header("accept-encoding") ?? ""
+    const encoding = accept.includes("br") ? "br" : accept.includes("gzip") ? "gzip" : undefined
+    if (!encoding) return
+    const raw = Buffer.from(await res.arrayBuffer())
+    if (raw.byteLength < compressFloor) {
+      c.res = new Response(raw, res)
+      return
+    }
+    const body = encoding === "br" ? zlib.brotliCompressSync(raw, dynamicBrotli) : zlib.gzipSync(raw)
+    const headers = new Headers(res.headers)
+    headers.set("Content-Encoding", encoding)
+    headers.delete("Content-Length")
+    headers.append("Vary", "Accept-Encoding")
+    c.res = new Response(body, { status: res.status, headers })
+  }
 
   export function url(): URL {
     return _url ?? new URL("http://localhost:4096")
@@ -103,6 +144,7 @@ export namespace Server {
             timer.stop()
           }
         })
+        .use(compress)
         .use(
           cors({
             origin(input) {
@@ -648,7 +690,7 @@ export namespace Server {
           },
         )
         .all("/*", async (c) => {
-          const response = Web.serve(c.req.path)
+          const response = Web.serve(c.req.path, c.req.header("accept-encoding"))
           if (response) return response
           return c.text("web UI not embedded in this build", 404)
         }) as unknown as Hono,
