@@ -1244,8 +1244,10 @@ export default function Page() {
     if ((event.key === "End" || event.key === "Home") && bare) {
       if (dialog.active) return
       event.preventDefault()
-      if (event.key === "End") resumeScroll()
-      else jumpToTop()
+      if (event.key === "End") {
+        resumeScroll()
+        inputRef?.focus()
+      } else jumpToTop()
       return
     }
 
