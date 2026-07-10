@@ -3,7 +3,6 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
 import { dict as en } from "@/i18n/en"
-import { dict as zh } from "@/i18n/zh"
 import pkg from "../package.json"
 
 const DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl"
@@ -14,19 +13,7 @@ if ("scrollRestoration" in history) history.scrollRestoration = "manual"
 
 const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
-  const locale = (() => {
-    if (typeof navigator !== "object") return "en" as const
-    const languages = navigator.languages?.length ? navigator.languages : [navigator.language]
-    for (const language of languages) {
-      if (!language) continue
-      if (language.toLowerCase().startsWith("zh")) return "zh" as const
-    }
-    return "en" as const
-  })()
-
-  const key = "error.dev.rootNotFound" as const
-  const message = locale === "zh" ? (zh[key] ?? en[key]) : en[key]
-  throw new Error(message)
+  throw new Error(en["error.dev.rootNotFound"])
 }
 
 const platform: Platform = {

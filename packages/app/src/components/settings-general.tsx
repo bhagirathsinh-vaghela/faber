@@ -116,13 +116,6 @@ export const SettingsGeneral: Component = () => {
     { value: "dark", label: language.t("theme.scheme.dark") },
   ])
 
-  const languageOptions = createMemo(() =>
-    language.locales.map((locale) => ({
-      value: locale,
-      label: language.label(locale),
-    })),
-  )
-
   const soundOptions = [...SOUND_OPTIONS]
 
   return (
@@ -139,23 +132,6 @@ export const SettingsGeneral: Component = () => {
           <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.appearance")}</h3>
 
           <div class="bg-surface-raised-base px-4 rounded-lg">
-            <SettingsRow
-              title={language.t("settings.general.row.language.title")}
-              description={language.t("settings.general.row.language.description")}
-            >
-              <Select
-                data-action="settings-language"
-                options={languageOptions()}
-                current={languageOptions().find((o) => o.value === language.locale())}
-                value={(o) => o.value}
-                label={(o) => o.label}
-                onSelect={(option) => option && language.setLocale(option.value)}
-                variant="secondary"
-                size="small"
-                triggerVariant="settings"
-              />
-            </SettingsRow>
-
             <SettingsRow
               title={language.t("settings.general.row.appearance.title")}
               description={language.t("settings.general.row.appearance.description")}
