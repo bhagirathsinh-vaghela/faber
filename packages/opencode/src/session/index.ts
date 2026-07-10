@@ -489,6 +489,12 @@ export namespace Session {
     }
   })
 
+  // Last wire form broadcast per message, so a re-save that changed nothing
+  // (step bookkeeping re-persists the same assistant message many times per
+  // turn) skips the broadcast. FIFO-capped so it can't grow with history.
+  const broadcasted = new Map<string, string>()
+  const BROADCASTED_CAP = 1000
+
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     await Storage.write(["message", msg.sessionID, msg.id], msg)
     // A message write is the only real-turn signal (pings never persist a
@@ -511,9 +517,15 @@ export namespace Session {
         title: session.title,
         updated: session.lastActivity ?? at,
       })
-    Bus.publish(MessageV2.Event.Updated, {
-      info: msg,
-    })
+    const wire = JSON.stringify(msg)
+    if (broadcasted.get(msg.id) !== wire) {
+      broadcasted.delete(msg.id)
+      broadcasted.set(msg.id, wire)
+      if (broadcasted.size > BROADCASTED_CAP) broadcasted.delete(broadcasted.keys().next().value!)
+      Bus.publish(MessageV2.Event.Updated, {
+        info: msg,
+      })
+    }
     return msg
   })
 
@@ -524,6 +536,7 @@ export namespace Session {
     }),
     async (input) => {
       await Storage.remove(["message", input.sessionID, input.messageID])
+      broadcasted.delete(input.messageID)
       Bus.publish(MessageV2.Event.Removed, {
         sessionID: input.sessionID,
         messageID: input.messageID,
