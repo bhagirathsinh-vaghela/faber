@@ -1014,25 +1014,52 @@ function createGlobalSync() {
       }
       case "message.part.updated": {
         const part = event.properties.part
+        const delta = event.properties.delta
+        // Deltas only ride on text/reasoning parts (the only parts with a text
+        // field the server blanks to keep the wire O(n) instead of O(n^2)).
+        const isText = part.type === "text" || part.type === "reasoning"
+        const textDelta = delta !== undefined && isText ? delta : undefined
         const parts = store.part[part.messageID]
         if (!parts) {
           // Same guard as message.updated: a part for a message we don't hold is
           // an unopened session's stream. Seed it only when the session is live
           // or a live session's child; otherwise drop it (a real open refetches).
           if (store.message[part.sessionID] === undefined && !wantsUnopenedStream(store, part.sessionID)) break
-          setStore("part", part.messageID, [part])
+          // With no prior part to append to, the delta IS the text so far.
+          const seed =
+            textDelta !== undefined && (part.type === "text" || part.type === "reasoning")
+              ? { ...part, text: textDelta }
+              : part
+          setStore("part", part.messageID, [seed])
           break
         }
         const result = Binary.search(parts, part.id, (p) => p.id)
         if (result.found) {
+          // Delta path: server sent an empty text + the increment. Append it to
+          // the text we already hold instead of overwriting with the blank.
+          if (textDelta !== undefined) {
+            setStore(
+              "part",
+              part.messageID,
+              result.index,
+              produce((p) => {
+                if (p.type === "text" || p.type === "reasoning") p.text = p.text + textDelta
+              }),
+            )
+            break
+          }
           setStore("part", part.messageID, result.index, reconcile(part, { merge: true }))
           break
         }
+        // First chunk of a new part on a message that already holds parts: the
+        // server blanked text, so the delta is the text so far. Insert with it,
+        // else the first chunk is lost and streaming starts one delta short.
+        const inserted = textDelta !== undefined && (part.type === "text" || part.type === "reasoning") ? { ...part, text: textDelta } : part
         setStore(
           "part",
           part.messageID,
           produce((draft) => {
-            draft.splice(result.index, 0, part)
+            draft.splice(result.index, 0, inserted)
           }),
         )
         break

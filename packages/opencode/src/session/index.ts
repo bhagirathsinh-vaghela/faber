@@ -557,8 +557,14 @@ export namespace Session {
     const part = "delta" in input ? input.part : input
     const delta = "delta" in input ? input.delta : undefined
     await Storage.write(["part", part.messageID, part.id], part)
+    // Storage keeps the full accumulated part, but the bus event only needs the
+    // delta once the client holds the part: sending the whole growing text on
+    // every chunk is O(n^2) on the wire. Blank the text when a delta is present;
+    // the client appends the delta. The full part still ships when there is no
+    // delta (first event, finalization), which reseeds/heals the client.
+    const wire = delta !== undefined && "text" in part ? { ...part, text: "" } : part
     Bus.publish(MessageV2.Event.PartUpdated, {
-      part,
+      part: wire,
       delta,
     })
     return part
