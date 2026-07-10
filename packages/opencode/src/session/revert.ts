@@ -78,7 +78,7 @@ export namespace SessionRevert {
       await Storage.write(["session_diff", input.sessionID], diffs)
       Bus.publish(Session.Event.Diff, {
         sessionID: input.sessionID,
-        diff: diffs,
+        diff: diffs.map(({ before, after, ...rest }) => rest),
       })
       return Session.update(input.sessionID, (draft) => {
         draft.revert = revert

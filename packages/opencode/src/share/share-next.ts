@@ -56,10 +56,12 @@ export namespace ShareNext {
       ])
     })
     Bus.subscribe(Session.Event.Diff, async (evt) => {
+      // The event diff is bodyless; the share page renders file bodies, so
+      // read the stored full diff instead of forwarding the event payload.
       await sync(evt.properties.sessionID, [
         {
           type: "session_diff",
-          data: evt.properties.diff,
+          data: await Session.diff(evt.properties.sessionID).catch(() => evt.properties.diff),
         },
       ])
     })

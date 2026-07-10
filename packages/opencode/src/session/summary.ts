@@ -111,9 +111,12 @@ export namespace SessionSummary {
       }
     })
     await Storage.write(["session_diff", input.sessionID], diffs)
+    // Broadcast bodyless: before/after are whole file bodies, and every event
+    // consumer either strips them (web client) or re-reads the stored full
+    // diff (share-next). Bodies stay fetchable via the session.diff route.
     Bus.publish(Session.Event.Diff, {
       sessionID: input.sessionID,
-      diff: diffs,
+      diff: diffs.map(({ before, after, ...rest }) => rest),
     })
   }
 
