@@ -52,6 +52,30 @@
   animation: text-shimmer var(--shimmer-duration, 2s) linear infinite;
 }
 
+/* Honor OS "Reduce Motion": freeze the continuous animations to a legible
+   resting state instead of running them at full frame rate. Spinner rects set
+   their animation inline (see spinner.tsx), so !important is needed to win over
+   the inline style; the shimmer text is class-driven and needs no override
+   weight. Corner squares already rest at opacity 0, so pin them there. */
+@media (prefers-reduced-motion: reduce) {
+  [data-component="text-shimmer"] {
+    animation: none;
+  }
+
+  [data-component="spinner"] rect {
+    animation: none !important;
+    opacity: 0.7;
+  }
+
+  /* The Tailwind `animate-pulse` utility (pulse-opacity) is used app-wide for
+     loading skeletons and the dictation dot. Freeze it at a mid opacity so the
+     element stays visible without pulsing. */
+  .animate-pulse {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 @keyframes fadeUp {
   from {
     opacity: 0;

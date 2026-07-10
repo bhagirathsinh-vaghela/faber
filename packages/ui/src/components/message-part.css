@@ -443,6 +443,21 @@
   }
 }
 
+/* Honor OS "Reduce Motion": freeze the streaming bar to a filled resting state
+   (full-opacity track, band centered) instead of the breathe + ping-pong. The
+   bar still reads as "the agent is working here", just without motion. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="tool-streaming-bar"] {
+    animation: none;
+    opacity: 1;
+  }
+
+  [data-slot="tool-streaming-bar-fill"] {
+    animation: none;
+    transform: translateX(41%);
+  }
+}
+
 [data-component="edit-trigger"],
 [data-component="write-trigger"] {
   display: flex;

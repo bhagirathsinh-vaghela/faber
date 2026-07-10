@@ -12,3 +12,11 @@
 .blinking-cursor {
   animation: blink 1s step-end infinite;
 }
+
+/* Honor OS "Reduce Motion": show a steady cursor instead of a blink. */
+@media (prefers-reduced-motion: reduce) {
+  .blinking-cursor {
+    animation: none;
+    opacity: 1;
+  }
+}
