@@ -52,8 +52,10 @@ export namespace Web {
       "Content-Type": asset.type,
       "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
       Vary: "Accept-Encoding",
+      // worker-src/script-src blob: for the dictation AudioWorklet, which loads
+      // its module from an inline Blob URL.
       "Content-Security-Policy":
-        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:",
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:",
     }
     if (encoding) headers["Content-Encoding"] = encoding
     return new Response(body, { headers })
