@@ -720,24 +720,20 @@ a[data-component="tool-action"]:hover {
   }
 
   &[data-permission="true"] {
+    /* Static warning-tinted ring + soft halo (same shape as the dictation pill:
+       1px ring, ~18px colored glow). Was an animated conic-gradient border
+       driven by @property --border-angle, which re-rasterizes on the CPU every
+       frame; the prompt reads just as clearly with a still glow. */
     &::before {
       content: "";
       position: absolute;
       inset: -1.5px;
       top: -5px;
       border-radius: 7.5px;
-      border: 1.5px solid transparent;
-      background:
-        linear-gradient(var(--background-base) 0 0) padding-box,
-        conic-gradient(
-            from var(--border-angle),
-            transparent 0deg,
-            transparent 0deg,
-            var(--border-warning-strong, var(--border-warning-selected)) 300deg,
-            var(--border-warning-base) 360deg
-          )
-          border-box;
-      animation: chase-border 2.5s linear infinite;
+      border: 1.5px solid var(--border-warning-strong, var(--border-warning-selected));
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--border-warning-base) 35%, transparent),
+        0 0 18px 2px color-mix(in srgb, var(--border-warning-base) 25%, transparent);
       pointer-events: none;
       z-index: -1;
     }
@@ -746,22 +742,6 @@ a[data-component="tool-action"]:hover {
   &[data-question="true"] {
     background: var(--background-base);
     border: 1px solid var(--border-weak-base);
-  }
-}
-
-@property --border-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes chase-border {
-  from {
-    --border-angle: 0deg;
-  }
-
-  to {
-    --border-angle: 360deg;
   }
 }
 
