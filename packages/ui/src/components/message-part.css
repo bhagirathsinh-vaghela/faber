@@ -61,6 +61,15 @@
   background: var(--box-bg, var(--box-fill));
 }
 
+/* A streaming assistant box grows a token at a time. Without layout containment
+   each append reflows and repaints the whole transcript above it (the box's size
+   change escapes up the tree); containment confines relayout to the box so only
+   it repaints. Not `paint` — the box has no overflowing decoration to clip, and
+   layout alone removes the cross-box reflow. */
+[data-component="message-box"] {
+  contain: layout;
+}
+
 [data-component="user-message"] {
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
