@@ -14,40 +14,60 @@ import type { createDictation } from "@/utils/dictation"
 export function DictationOverlay(props: {
   dictation: ReturnType<typeof createDictation>
   onAccept: (text: string) => void
+  // Keeps the transcript without inserting at the target (outside click,
+  // host unmount): the host stows it in the prompt draft.
+  onStash: (text: string) => void
   onClose: () => void
 }) {
   const language = useLanguage()
 
+  let panelRef: HTMLDivElement | undefined
   let transcriptRef: HTMLDivElement | undefined
   let done = false
-  const finish = (accept: boolean) => {
+  const finish = (outcome: "accept" | "stash" | "discard") => {
     done = true
     const text = props.dictation.text().trim()
     props.dictation.stop()
     props.onClose()
-    if (accept && text) props.onAccept(text)
+    if (!text) return
+    if (outcome === "accept") props.onAccept(text)
+    if (outcome === "stash") props.onStash(text)
   }
 
   const handleKey = (event: KeyboardEvent) => {
     if (event.key === "Enter") {
       event.preventDefault()
       event.stopPropagation()
-      finish(true)
+      finish("accept")
     }
     if (event.key === "Escape") {
       event.preventDefault()
       event.stopPropagation()
-      finish(false)
+      finish("discard")
     }
   }
 
-  onMount(() => document.addEventListener("keydown", handleKey, true))
+  // The mic toggle handles its own stop; everything else outside the panel
+  // stashes so a stray click never drops the transcript.
+  const handlePointer = (event: PointerEvent) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    if (panelRef?.contains(target)) return
+    if (target.closest("[data-dictation-toggle]")) return
+    finish("stash")
+  }
+
+  onMount(() => {
+    document.addEventListener("keydown", handleKey, true)
+    document.addEventListener("pointerdown", handlePointer, true)
+  })
   onCleanup(() => {
     document.removeEventListener("keydown", handleKey, true)
+    document.removeEventListener("pointerdown", handlePointer, true)
     if (done) return
     const text = props.dictation.text().trim()
     props.dictation.stop()
-    if (text) props.onAccept(text)
+    if (text) props.onStash(text)
   })
 
   // Keep the newest words visible as the transcript outgrows the box.
@@ -59,7 +79,10 @@ export function DictationOverlay(props: {
   return (
     <Portal>
       <div class="fixed inset-x-0 top-[10%] md:top-[15%] z-[9999] flex justify-center pointer-events-none px-3 md:px-4">
-        <div class="pointer-events-auto w-full max-w-2xl rounded-2xl border border-border-weak-base bg-surface-raised-stronger-non-alpha shadow-2xl px-4 py-3 md:px-5 md:py-4 flex flex-col gap-2.5 md:gap-3">
+        <div
+          ref={panelRef}
+          class="pointer-events-auto w-full max-w-2xl rounded-2xl border border-border-weak-base bg-surface-raised-stronger-non-alpha shadow-2xl px-4 py-3 md:px-5 md:py-4 flex flex-col gap-2.5 md:gap-3"
+        >
           <div class="flex items-center gap-2.5 md:gap-3">
             <span class="relative flex size-2 shrink-0">
               <span class="absolute inline-flex size-full rounded-full bg-icon-critical-base opacity-60 animate-ping" />
@@ -91,7 +114,7 @@ export function DictationOverlay(props: {
                 type="button"
                 variant="ghost"
                 class="size-7 px-1"
-                onClick={() => finish(false)}
+                onClick={() => finish("discard")}
                 aria-label={language.t("dictation.discard")}
               >
                 <Icon name="close" class="size-4.5 text-icon-weak" />
@@ -100,7 +123,7 @@ export function DictationOverlay(props: {
                 type="button"
                 variant="primary"
                 class="size-7 px-1"
-                onClick={() => finish(true)}
+                onClick={() => finish("accept")}
                 aria-label={language.t("dictation.accept")}
               >
                 <Icon name="check" class="size-4.5" />

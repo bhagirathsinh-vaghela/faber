@@ -924,11 +924,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   }
 
+  const stashDictation = (text: string) => {
+    // Appends to the prompt draft state, which outlives this component, so the
+    // transcript never vanishes. The toast tells the user where it went.
+    prompt.set([...clonePrompt(prompt.current()), { type: "text", content: " " + text + " ", start: 0, end: 0 }])
+    showToast({
+      title: language.t("dictation.stashed.title"),
+      description: language.t("dictation.stashed.description"),
+      duration: 2000,
+    })
+  }
   const insertDictation = (text: string) => {
-    // Editor unmounted (navigation mid-dictation): stash into the prompt draft
-    // state, which outlives this component, so the transcript never vanishes.
     if (!editorRef?.isConnected) {
-      prompt.set([...clonePrompt(prompt.current()), { type: "text", content: " " + text + " ", start: 0, end: 0 }])
+      stashDictation(text)
       return
     }
     // The overlay held focus; restore the caret to the prompt before addPart,
@@ -1813,6 +1821,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <DictationOverlay
             dictation={dictation}
             onAccept={insertDictation}
+            onStash={stashDictation}
             onClose={() => setStore("dictating", false)}
           />
         </Show>
@@ -2244,6 +2253,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     type="button"
                     variant="ghost"
                     class="size-6 px-1"
+                    data-dictation-toggle
                     onClick={() => {
                       if (store.dictating) {
                         dictation.stop()

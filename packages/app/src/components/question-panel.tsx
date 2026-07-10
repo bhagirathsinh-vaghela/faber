@@ -192,14 +192,22 @@ function Panel(props: {
       })
     },
   })
+  const stashDictation = (text: string) => {
+    // The prompt draft outlives this panel, so the transcript survives even
+    // when the question is answered or dismissed mid-dictation.
+    promptDraft.set([
+      ...clonePrompt(promptDraft.current()),
+      { type: "text", content: " " + text + " ", start: 0, end: 0 },
+    ])
+    showToast({
+      title: language.t("dictation.stashed.title"),
+      description: language.t("dictation.stashed.description"),
+      duration: 2000,
+    })
+  }
   const acceptDictation = (text: string) => {
-    // Textarea gone (question answered/panel closed mid-dictation): stash into
-    // the prompt draft, which outlives this panel, so the transcript survives.
     if (!input?.isConnected) {
-      promptDraft.set([
-        ...clonePrompt(promptDraft.current()),
-        { type: "text", content: " " + text + " ", start: 0, end: 0 },
-      ])
+      stashDictation(text)
       return
     }
     input.value = (input.value ? input.value + " " : "") + text
@@ -724,6 +732,7 @@ function Panel(props: {
                         type="button"
                         variant="ghost"
                         class="size-6 px-1"
+                        data-dictation-toggle
                         onClick={() => {
                           if (dictating()) {
                             dictation.stop()
@@ -757,6 +766,7 @@ function Panel(props: {
                     <DictationOverlay
                       dictation={dictation}
                       onAccept={acceptDictation}
+                      onStash={stashDictation}
                       onClose={() => setDictating(false)}
                     />
                   </Show>

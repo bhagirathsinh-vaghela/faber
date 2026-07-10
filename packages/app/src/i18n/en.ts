@@ -239,6 +239,8 @@ export const dict = {
   "dictation.listening": "Listening",
   "dictation.accept": "accept",
   "dictation.discard": "discard",
+  "dictation.stashed.title": "Dictation saved",
+  "dictation.stashed.description": "The transcript was added to the end of your prompt draft.",
 
   "prompt.toast.pasteUnsupported.title": "Unsupported paste",
   "prompt.toast.pasteUnsupported.description": "Only images or PDFs can be pasted here.",
