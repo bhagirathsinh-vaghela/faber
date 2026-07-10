@@ -42,21 +42,25 @@ function encode(samples: Float32Array) {
 
 let active: (() => void) | undefined
 
+// True while any dictation session (from any host) is capturing. Not
+// reactive: for one-shot checks like whether a newly-mounted panel should
+// grab focus.
+export const dictationActive = () => !!active
+
 // Transcript accumulates in the store (finals append to committed, interims
 // replace) and is only handed to the host on an explicit accept; stop()
 // discards. The host renders committed/interim live and decides.
-const LEVEL_BARS = 24
-
 export function createDictation(opts: { url: () => string; onError?: (message: string) => void }) {
   const [store, setStore] = createStore({
     active: false,
     committed: "",
     interim: "",
-    levels: Array.from({ length: LEVEL_BARS }, () => 0),
   })
 
   let session: { socket: WebSocket; context: AudioContext; stream: MediaStream } | undefined
-  let raf = 0
+  // The live analyser drives the waveform canvas directly (its own rAF reads
+  // frequency data), so per-frame audio levels never churn the Solid store.
+  let analyser: AnalyserNode | undefined
 
   const supported = () => !!navigator.mediaDevices?.getUserMedia
 
@@ -64,9 +68,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     if (!session) return
     const { socket, context, stream } = session
     session = undefined
+    analyser = undefined
     if (active === stop) active = undefined
-    cancelAnimationFrame(raf)
-    setStore({ active: false, levels: store.levels.map(() => 0) })
+    setStore("active", false)
     for (const track of stream.getTracks()) track.stop()
     context.close()
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }))
@@ -116,23 +120,11 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       const source = context.createMediaStreamSource(stream)
       source.connect(worklet)
 
-      // Speech indicator: sample the analyser each frame into a scrolling bar
-      // strip (newest level enters on the right).
-      const analyser = context.createAnalyser()
+      // Waveform reads this analyser's frequency data on its own rAF.
+      analyser = context.createAnalyser()
       analyser.fftSize = 256
-      analyser.smoothingTimeConstant = 0.6
+      analyser.smoothingTimeConstant = 0.8
       source.connect(analyser)
-      const samples = new Float32Array(analyser.fftSize)
-      const pump = () => {
-        if (!session) return
-        analyser.getFloatTimeDomainData(samples)
-        let sum = 0
-        for (const sample of samples) sum += sample * sample
-        const level = Math.min(1, Math.sqrt(sum / samples.length) * 6)
-        setStore("levels", [...store.levels.slice(1), level])
-        raf = requestAnimationFrame(pump)
-      }
-      raf = requestAnimationFrame(pump)
 
       socket.onopen = () => {
         for (const frame of pending) socket.send(frame)
@@ -173,7 +165,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     active: () => store.active,
     committed: () => store.committed,
     interim: () => store.interim,
-    levels: () => store.levels,
+    analyser: () => analyser,
     text,
     start,
     stop,

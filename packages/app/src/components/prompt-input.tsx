@@ -1820,6 +1820,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         <Show when={store.dictating}>
           <DictationOverlay
             dictation={dictation}
+            accent={workingTint()}
             onAccept={insertDictation}
             onStash={stashDictation}
             onClose={() => setStore("dictating", false)}

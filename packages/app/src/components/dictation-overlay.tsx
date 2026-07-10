@@ -1,16 +1,16 @@
-import { For, Show, createEffect, onCleanup, onMount } from "solid-js"
+import { Show, createEffect, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Button } from "@opencode-ai/ui/button"
-import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
 import type { createDictation } from "@/utils/dictation"
+import { DictationWaveform } from "./dictation-waveform"
 
-// Live transcription HUD (floating panel + dancing level bars, in the style of
-// modern dictation apps). Text settles here, not in the host input: Enter or
-// the check button accepts, Escape or the close button discards. All close the
-// mic. If the host unmounts mid-dictation the transcript is stashed via
-// onAccept, never dropped. Portaled to body with a top z-index so no ancestor
-// (overflow-clip forms, panels) can hide it.
+// Live transcription HUD: a compact floating pill with a canvas waveform, in
+// the style of modern dictation apps. Text settles here, not in the host
+// input: Enter or the check button accepts, Escape or the close button
+// discards. All close the mic. If the host unmounts mid-dictation the
+// transcript is stashed, never dropped. Portaled to body with a top z-index so
+// no ancestor (overflow-clip forms, panels) can hide it.
 export function DictationOverlay(props: {
   dictation: ReturnType<typeof createDictation>
   onAccept: (text: string) => void
@@ -18,6 +18,9 @@ export function DictationOverlay(props: {
   // host unmount): the host stows it in the prompt draft.
   onStash: (text: string) => void
   onClose: () => void
+  // Agent tint for the border, matching the question panel; defaults to the
+  // interactive accent when the host has no agent color.
+  accent?: string
 }) {
   const language = useLanguage()
 
@@ -57,6 +60,15 @@ export function DictationOverlay(props: {
     finish("stash")
   }
 
+  // The scrim eats clicks (so an outside click only dismisses) but must let
+  // the app scroll: find the scrollable element under the cursor and scroll it.
+  const forwardWheel = (event: WheelEvent) => {
+    const under = document
+      .elementsFromPoint(event.clientX, event.clientY)
+      .find((el) => el !== event.currentTarget && el.scrollHeight > el.clientHeight)
+    under?.scrollBy({ top: event.deltaY, left: event.deltaX })
+  }
+
   onMount(() => {
     document.addEventListener("keydown", handleKey, true)
     document.addEventListener("pointerdown", handlePointer, true)
@@ -76,72 +88,63 @@ export function DictationOverlay(props: {
     transcriptRef?.scrollTo({ top: transcriptRef.scrollHeight })
   })
 
+  const accent = () => props.accent ?? "var(--icon-interactive-base)"
+
   return (
     <Portal>
-      <div class="fixed inset-x-0 top-[10%] md:top-[15%] z-[9999] flex justify-center pointer-events-none px-3 md:px-4">
+      {/* Dim scrim. Captures clicks so an outside click means only "dismiss"
+          (handlePointer stashes) and never leaks to the app behind, but
+          re-dispatches wheel to the element under the cursor so the app still
+          scrolls. */}
+      <div
+        class="fixed inset-0 z-[9998] overscroll-contain"
+        style={{ background: "rgba(0, 0, 0, 0.7)" }}
+        onWheel={forwardWheel}
+      />
+      <div class="fixed inset-x-0 top-[12%] md:top-[16%] z-[9999] flex justify-center pointer-events-none px-3 md:px-4">
         <div
           ref={panelRef}
-          class="pointer-events-auto w-full max-w-2xl rounded-2xl border border-border-weak-base bg-surface-raised-stronger-non-alpha shadow-2xl px-4 py-3 md:px-5 md:py-4 flex flex-col gap-2.5 md:gap-3"
+          class="pointer-events-auto w-full max-w-md flex flex-col gap-2 rounded-[1.75rem] border-[4.5px] bg-surface-raised-stronger-non-alpha p-2 transform-gpu isolate"
+          style={{
+            "border-color": accent(),
+            "box-shadow": `0 0 0 1px color-mix(in srgb, ${accent()} 35%, transparent), 0 0 24px 4px color-mix(in srgb, ${accent()} 30%, transparent), 0 8px 24px rgba(0,0,0,0.4)`,
+          }}
         >
-          <div class="flex items-center gap-2.5 md:gap-3">
-            <span class="relative flex size-2 shrink-0">
+          <div class="shrink-0 relative flex items-center justify-center px-2 pt-1">
+            <span class="absolute left-3 flex size-2.5 shrink-0">
               <span class="absolute inline-flex size-full rounded-full bg-icon-critical-base opacity-60 animate-ping" />
-              <span class="relative inline-flex size-2 rounded-full bg-icon-critical-base" />
+              <span class="relative inline-flex size-2.5 rounded-full bg-icon-critical-base animate-pulse" />
             </span>
-            <div class="flex items-end gap-[2px] md:gap-[3px] h-6 md:h-7 flex-1 min-w-0" aria-hidden="true">
-              <For each={props.dictation.levels()}>
-                {(level) => (
-                  <span
-                    class="flex-1 rounded-full bg-icon-primary transition-[height,opacity] duration-75"
-                    style={{
-                      height: `${Math.max(12, level * 100)}%`,
-                      opacity: level > 0.02 ? "1" : "0.35",
-                    }}
-                  />
-                )}
-              </For>
-            </div>
-            <div class="hidden md:flex items-center gap-2 shrink-0">
-              <kbd class="text-11-regular text-text-weak rounded border border-border-weak-base px-1.5 py-0.5">
-                ↵ {language.t("dictation.accept")}
-              </kbd>
-              <kbd class="text-11-regular text-text-weak rounded border border-border-weak-base px-1.5 py-0.5">
-                esc {language.t("dictation.discard")}
-              </kbd>
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-              <Button
-                type="button"
-                variant="ghost"
-                class="size-7 px-1"
-                onClick={() => finish("discard")}
-                aria-label={language.t("dictation.discard")}
-              >
-                <Icon name="close" class="size-4.5 text-icon-weak" />
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                class="size-7 px-1"
-                onClick={() => finish("accept")}
-                aria-label={language.t("dictation.accept")}
-              >
-                <Icon name="check" class="size-4.5" />
-              </Button>
+            <div class="h-6 w-[180px] transform-gpu">
+              <DictationWaveform analyser={props.dictation.analyser} />
             </div>
           </div>
           <div
             ref={transcriptRef}
-            class="text-13-regular text-text-strong max-h-[30dvh] md:max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed"
+            class="max-h-32 text-13-regular text-text-strong overflow-y-auto whitespace-pre-wrap leading-relaxed px-3 pb-1 pt-0.5"
             aria-live="polite"
           >
-            {props.dictation.committed()}
+            <span class="text-13-medium">{props.dictation.committed()}</span>
             <Show when={props.dictation.interim()}>
               <span class="text-text-weak">{(props.dictation.committed() ? " " : "") + props.dictation.interim()}</span>
             </Show>
             <Show when={!props.dictation.text()}>
               <span class="text-text-weak">{language.t("dictation.listening")}…</span>
             </Show>
+          </div>
+          <div class="shrink-0 flex flex-row items-end justify-end gap-2 px-2 pb-1">
+            <div class="flex flex-col items-center gap-0.5">
+              <kbd class="text-11-regular text-text-weak">esc</kbd>
+              <Button type="button" variant="secondary" size="small" onClick={() => finish("discard")}>
+                {language.t("dictation.discard")}
+              </Button>
+            </div>
+            <div class="flex flex-col items-center gap-0.5">
+              <kbd class="text-11-regular text-text-weak">↵</kbd>
+              <Button type="button" variant="primary" size="small" onClick={() => finish("accept")}>
+                {language.t("dictation.accept")}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

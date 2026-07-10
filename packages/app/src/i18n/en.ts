@@ -237,8 +237,8 @@ export const dict = {
   "prompt.action.dictateStop": "Stop dictation",
   "prompt.toast.dictationFailed.title": "Dictation failed",
   "dictation.listening": "Listening",
-  "dictation.accept": "accept",
-  "dictation.discard": "discard",
+  "dictation.accept": "Accept",
+  "dictation.discard": "Discard",
   "dictation.stashed.title": "Dictation saved",
   "dictation.stashed.description": "The transcript was added to the end of your prompt draft.",
 

@@ -13,7 +13,7 @@ import { useLocal } from "@/context/local"
 import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
-import { createDictation } from "@/utils/dictation"
+import { createDictation, dictationActive } from "@/utils/dictation"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { clonePrompt, usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -181,6 +181,8 @@ function Panel(props: {
   let input: HTMLTextAreaElement | undefined
 
   const promptDraft = usePrompt()
+  const promptEmpty = () =>
+    promptDraft.current().every((part) => part.type === "text" && part.content.trim() === "")
   const [dictating, setDictating] = createSignal(false)
   const dictation = createDictation({
     url: () => sdk.url,
@@ -471,10 +473,13 @@ function Panel(props: {
     // close hands focus back there. Capture before blurring, while it still
     // holds focus.
     const restore = captureFocus()
-    // Pull focus off the prompt so the question is the clearly-active surface
-    // and the caret stops blinking in the input behind it.
-    ;(document.activeElement as HTMLElement | null)?.blur()
-    panel?.focus()
+    // Only seize focus when the user isn't mid-thought in the prompt: a typed
+    // draft or an open dictation overlay owns the focus, and moving the glowy
+    // focus border to the question would make it ambiguous who's active.
+    if (!dictationActive() && promptEmpty()) {
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      panel?.focus()
+    }
     trackFocus()
     document.addEventListener("keydown", handleKey, true)
     document.addEventListener("focusin", trackFocus)
@@ -765,6 +770,7 @@ function Panel(props: {
                   <Show when={dictating()}>
                     <DictationOverlay
                       dictation={dictation}
+                      accent={accent()}
                       onAccept={acceptDictation}
                       onStash={stashDictation}
                       onClose={() => setDictating(false)}
