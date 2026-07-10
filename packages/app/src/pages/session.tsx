@@ -604,10 +604,19 @@ export default function Page() {
 
   const hasScrollGesture = () => Date.now() - ui.scrollGesture < scrollGestureWindowMs
 
-  createEffect(() => {
-    if (!params.id) return
-    sync.session.sync(params.id)
-  })
+  createEffect(
+    on(
+      () => params.id,
+      (id, prev) => {
+        // Leaving a session: evict the one we came from so its transcript stops
+        // sitting in memory. evict keeps live sessions (and their children), so
+        // an active session being juggled survives; only idle scrollback drops.
+        if (prev && prev !== id) sync.session.evict(prev, id)
+        if (!id) return
+        sync.session.sync(id)
+      },
+    ),
+  )
 
   // On reconnect, re-hydrate the open session so a message/part the server
   // published while the stream was down (no replay) heals without a reload.

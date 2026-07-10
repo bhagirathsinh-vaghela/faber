@@ -359,6 +359,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
         },
         more: createMemo(() => current()[0].session.length >= current()[0].limit),
+        // Drop a session's cached transcript when navigating away from it, so
+        // idle scrollback stops accumulating in memory. globalSync.evictSession
+        // keeps live sessions (and live sessions' children) so the sessions
+        // being juggled stay instant; `keep` protects the session just opened.
+        evict(sessionID: string, keep?: string) {
+          const [store, setStore] = globalSync.child(sdk.directory)
+          globalSync.evictSession(store, setStore, sessionID, new Set(keep ? [keep] : []))
+          // If the transcript was actually dropped, clear its load meta so a
+          // reopen re-hydrates tail-first instead of short-circuiting as loaded.
+          if (store.message[sessionID] === undefined) {
+            const key = keyFor(sdk.directory, sessionID)
+            setMeta(
+              produce((draft) => {
+                delete draft.limit[key]
+                delete draft.complete[key]
+                delete draft.loading[key]
+              }),
+            )
+          }
+        },
         archive: async (sessionID: string) => {
           const directory = sdk.directory
           const client = sdk.client

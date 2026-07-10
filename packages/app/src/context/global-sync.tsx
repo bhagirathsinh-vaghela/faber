@@ -694,6 +694,55 @@ function createGlobalSync() {
     return promise
   }
 
+  // A session "needs attention" when the overview surfaces it: a running turn
+  // (busy), finished output not yet seen (unseen), or an armed ping whose cache
+  // window hasn't lapsed (pingAt is cleared server-side when it does, so a
+  // present pingAt means real). This is the single definition the home overview
+  // buckets on and the server keys project cleanup on — reused here so the set
+  // of sessions the user juggles is exactly the set eviction protects.
+  function attentionSession(entry: (typeof globalStore)["recent_hub"][number]) {
+    return entry.busy || entry.unseen || entry.pingAt !== undefined
+  }
+
+  // Sessions in the attention set — and their subagent children, whose
+  // transcripts the parent's task panel reads — are never evicted, so switching
+  // between the sessions being juggled stays instant. recent_hub is the global
+  // home overview carrying these flags.
+  function liveSessions() {
+    const live = new Set<string>()
+    for (const entry of globalStore.recent_hub) {
+      if (attentionSession(entry)) live.add(entry.sessionID)
+    }
+    return live
+  }
+
+  // Whether to seed a store entry for a session that was never opened here.
+  // Only live sessions and subagent children of live sessions (whose transcripts
+  // the parent's task panel reads) warrant one; every other unopened session is
+  // a background stream we drop until it is actually opened.
+  function wantsUnopenedStream(store: Store<State>, sessionID: string) {
+    const live = liveSessions()
+    if (live.has(sessionID)) return true
+    const match = Binary.search(store.session, sessionID, (s) => s.id)
+    const session = match.found ? store.session[match.index] : undefined
+    return !!session?.parentID && live.has(session.parentID)
+  }
+
+  // Evict a session's cached transcript unless it is live, a child of a live
+  // session, or explicitly kept (the currently-viewed session). Bodies drop from
+  // the store; a reopen re-fetches tail-first, cheap against the local server.
+  function evictSession(store: Store<State>, setStore: SetStoreFunction<State>, sessionID: string, keep: Set<string>) {
+    if (keep.has(sessionID)) return
+    const live = liveSessions()
+    if (live.has(sessionID)) return
+    const session = (() => {
+      const match = Binary.search(store.session, sessionID, (s) => s.id)
+      return match.found ? store.session[match.index] : undefined
+    })()
+    if (session?.parentID && live.has(session.parentID)) return
+    purgeSessionData(store, setStore, sessionID)
+  }
+
   function purgeMessageParts(setStore: SetStoreFunction<State>, messageID: string | undefined) {
     if (!messageID) return
     setStore(
@@ -917,9 +966,17 @@ function createGlobalSync() {
         break
       }
       case "message.updated": {
-        const messages = store.message[event.properties.info.sessionID]
+        const sessionID = event.properties.info.sessionID
+        const messages = store.message[sessionID]
         if (!messages) {
-          setStore("message", event.properties.info.sessionID, [event.properties.info])
+          // No cached transcript means this session was never opened here. Only
+          // seed one for a session whose updates the UI actively needs — a live
+          // session or a subagent child of one (its parent's task panel reads
+          // it). Otherwise a background firehose (another session streaming in a
+          // shared directory) would grow the store unbounded; drop it and let a
+          // real open fetch it fresh.
+          if (!wantsUnopenedStream(store, sessionID)) break
+          setStore("message", sessionID, [event.properties.info])
           break
         }
         const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
@@ -959,6 +1016,10 @@ function createGlobalSync() {
         const part = event.properties.part
         const parts = store.part[part.messageID]
         if (!parts) {
+          // Same guard as message.updated: a part for a message we don't hold is
+          // an unopened session's stream. Seed it only when the session is live
+          // or a live session's child; otherwise drop it (a real open refetches).
+          if (store.message[part.sessionID] === undefined && !wantsUnopenedStream(store, part.sessionID)) break
           setStore("part", part.messageID, [part])
           break
         }
@@ -1225,6 +1286,8 @@ function createGlobalSync() {
     reconnect,
     child,
     disposeChild,
+    evictSession,
+    attentionSession,
     bootstrap,
     updateConfig: (config: Config) => {
       setGlobalStore("reload", "pending")
