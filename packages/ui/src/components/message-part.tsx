@@ -980,7 +980,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   return (
     <Show when={throttledText()}>
       <MessageBox message={props.message} numberKey={part.id} copy={displayText}>
-        <Markdown text={throttledText()} cacheKey={part.id} />
+        <Markdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
         {/* Snapshot line under every assistant text box, matching the Response
             box. Gate on this block's OWN completion, not the whole turn: an
             intermediate step gets its chips as soon as it finishes, while the
@@ -1001,7 +1001,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={throttledText()}>
       <div data-component="reasoning-part">
-        <Markdown text={throttledText()} cacheKey={part.id} />
+        <Markdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
       </div>
     </Show>
   )

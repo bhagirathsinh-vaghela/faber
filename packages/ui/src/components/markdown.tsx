@@ -1,3 +1,4 @@
+import { marked } from "marked"
 import { useI18n } from "../context/i18n"
 import { useCodeTheme } from "../context/code-theme"
 import { highlightCode, themeColors } from "../context/marked"
@@ -48,6 +49,43 @@ function fenceSource(node: Hast) {
   const list = Array.isArray(cls) ? cls.map(String) : []
   const lang = list.map((c) => /^language-(\w+)/.exec(c)?.[1]).find(Boolean)
   return { text, lang: lang ?? "text" }
+}
+
+// How much of a still-streaming markdown string is safe to render without
+// flicker. Two layers:
+//
+// 1. Block boundary (marked's lexer). Every block
+//    token except the last is settled; the trailing, still-growing block (an
+//    open ``` fence, a partial list, the current paragraph) is dropped. Plain
+//    prose is one paragraph token, so its whole text is the "tail".
+// 2. Inline guard on that tail. The lexer settles a paragraph as a block but not
+//    its inline spans, so a tail ending mid **bold**, `code`, or [link](…) would
+//    still render raw. Trim the tail back to the last point where every inline
+//    marker is balanced. Plain prose has nothing open, so it streams live.
+function renderableLength(text: string) {
+  const tokens = marked.lexer(text)
+  let boundary = 0
+  for (let i = 0; i < tokens.length - 1; i++) boundary += tokens[i].raw.length
+  const tail = text.slice(boundary)
+  return boundary + balancedInlineLength(tail)
+}
+
+// Longest prefix of a streaming tail whose inline markers are all closed. Scans
+// the flicker-prone markers (inline code, emphasis, links) and returns the
+// offset just before the first still-open one; returns the full length when
+// everything is balanced (the plain-prose case, which must stream live).
+function balancedInlineLength(tail: string) {
+  // An unclosed ``` fence: cut from where the fence opened (before any inline
+  // backtick handling, which would otherwise leave stray backticks visible).
+  const fence = tail.lastIndexOf("```")
+  if (fence !== -1 && (tail.match(/```/g)?.length ?? 0) % 2 === 1) return fence
+  if ((tail.match(/`/g)?.length ?? 0) % 2 === 1) return tail.lastIndexOf("`")
+  const link = tail.lastIndexOf("[")
+  if (link !== -1 && tail.indexOf(")", link) === -1) return link
+  for (const marker of ["**", "__", "~~", "*", "_"]) {
+    if ((tail.split(marker).length - 1) % 2 === 1) return tail.lastIndexOf(marker)
+  }
+  return tail.length
 }
 
 // A fenced code block: <div box><pre><code/></pre> + copy button. The body is
@@ -171,6 +209,15 @@ export function Markdown(
   const theme = useCodeTheme()
   const [root, setRoot] = createSignal<HTMLDivElement>()
 
+  // While streaming, render only the flicker-free prefix (settled blocks + the
+  // tail up to its last closed inline marker). Plain prose has no open marker so
+  // it streams live; an incomplete **bold**/`code`/fence is withheld until it
+  // closes. The full text renders once the part completes.
+  const rendered = createMemo(() => {
+    if (local.complete) return local.text
+    return local.text.slice(0, renderableLength(local.text))
+  })
+
   const labels = { copy: i18n.t("ui.message.copy"), copied: i18n.t("ui.message.copied") }
 
   let copyCleanup: (() => void) | undefined
@@ -220,7 +267,7 @@ export function Markdown(
         rehypePlugins={[rehypeKatex]}
         components={components(labels, theme)}
       >
-        {local.text}
+        {rendered()}
       </SolidMarkdown>
     </div>
   )
