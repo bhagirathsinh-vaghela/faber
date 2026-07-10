@@ -364,11 +364,18 @@ export namespace Session {
 
   export async function update(id: string, editor: (session: Info) => void, options?: { touch?: boolean }) {
     const project = Instance.project
+    // Detect a no-op update: mid-turn callers (cache-marker refresh, ping
+    // bookkeeping) frequently run an editor that changes nothing, and each one
+    // otherwise re-broadcasts an identical session object to every client. Snapshot
+    // before/after and skip the publish when the serialized session is unchanged.
+    let changed = true
     const result = await Storage.update<Info>(["session", project.id, id], (draft) => {
+      const before = JSON.stringify(draft)
       editor(draft)
       if (options?.touch !== false) {
         draft.time.updated = Date.now()
       }
+      changed = JSON.stringify(draft) !== before
     })
     // An archived session leaves the overview; eviction is idempotent, so
     // evicting on any archived update (not just the transition) is harmless.
@@ -377,9 +384,10 @@ export namespace Session {
     // entry's title — session.updated only refreshes the open session's view.
     // setTitle no-ops when unchanged, so calling it on every update is cheap.
     else void SessionRecent.setTitle(id, result.title)
-    Bus.publish(Event.Updated, {
-      info: result,
-    })
+    if (changed)
+      Bus.publish(Event.Updated, {
+        info: result,
+      })
     return result
   }
 
