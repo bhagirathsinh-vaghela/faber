@@ -754,13 +754,11 @@ function Panel(props: {
                     </Button>
                   </form>
                   <Show when={dictating()}>
-                    <div class="relative">
-                      <DictationOverlay
-                        dictation={dictation}
-                        onAccept={acceptDictation}
-                        onClose={() => setDictating(false)}
-                      />
-                    </div>
+                    <DictationOverlay
+                      dictation={dictation}
+                      onAccept={acceptDictation}
+                      onClose={() => setDictating(false)}
+                    />
                   </Show>
                 </Show>
               </div>
