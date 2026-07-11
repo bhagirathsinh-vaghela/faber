@@ -9,7 +9,7 @@ export default function Home() {
   const server = useServer()
 
   return (
-    <div class="size-full min-h-0 flex flex-col items-center overflow-hidden px-4">
+    <div class="size-full min-h-0 flex flex-col items-center overflow-hidden px-4 bg-background-stronger">
       <div class="shrink-0 flex flex-col items-center mt-8 mb-6">
         <Button
           size="large"
