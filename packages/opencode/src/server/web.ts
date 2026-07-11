@@ -42,7 +42,8 @@ export namespace Web {
     const index = decoded.get("/index.html")
     if (!index) return null
     const asset = decoded.get(file === "/" ? "/index.html" : file) ?? index
-    const encoding = asset.br && accept?.includes("br") ? "br" : asset.gzip && accept?.includes("gzip") ? "gzip" : undefined
+    const encoding =
+      asset.br && accept?.includes("br") ? "br" : asset.gzip && accept?.includes("gzip") ? "gzip" : undefined
     const body = encoding === "br" ? asset.br! : encoding === "gzip" ? asset.gzip! : asset.body
     // Vite content-hashes /assets/* filenames, so their bytes never change for a
     // given URL — cache them forever. Everything else (index.html fallback) must

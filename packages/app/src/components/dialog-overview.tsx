@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
@@ -14,6 +14,7 @@ import { useMru } from "@/context/mru"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { CACHE_TTL } from "@/utils/cache-countdown"
 import { useLanguage } from "@/context/language"
+import { useStopSession } from "@/hooks/use-stop-session"
 
 function getFilename(dir: string) {
   const parts = dir.split("/").filter(Boolean)
@@ -139,7 +140,7 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   const frozen = useFrozen()
   const sdk = useGlobalSDK()
   const navigate = useNavigate()
-  const params = useParams()
+  const runStop = useStopSession()
   const language = useLanguage()
   const mru = useMru()
 
@@ -172,7 +173,7 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   // Ctrl+Tab advances one step on the opening press (highlight the next session,
   // position 1), so two live sessions flip with a single tap. Ctrl+Shift+Tab and
   // the home page rest on the current session (position 0). Further taps cycle.
-  const initial = !props.attention ? undefined : props.advance ? items()[1] ?? items()[0] : items()[0]
+  const initial = !props.attention ? undefined : props.advance ? (items()[1] ?? items()[0]) : items()[0]
 
   const open = (row: OverviewRow) => {
     void sdk.client.session.seen({ directory: row.directory, sessionID: row.sessionID })
@@ -208,12 +209,7 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
     event.stopPropagation()
     const row = highlight()
     if (!row?.pingAt) return
-    void sdk.client.session.abort({ directory: row.directory, sessionID: row.sessionID }).catch(() => {})
-    void sdk.client.session.pingStop({ directory: row.directory, sessionID: row.sessionID }).catch(() => {})
-    if (params.id === row.sessionID) {
-      navigate("/")
-      props.onOpen?.()
-    }
+    if (runStop(row.sessionID, row.directory)) props.onOpen?.()
   }
   onMount(() => window.addEventListener("keydown", stop, true))
   onCleanup(() => window.removeEventListener("keydown", stop, true))

@@ -1514,7 +1514,10 @@ export namespace Config {
     const filepath = path.join(Instance.directory, "config.json")
     const existing = await loadFile(filepath)
     await Bun.write(filepath, JSON.stringify(mergeDeep(existing, config), null, 2))
-    await Instance.dispose()
+    // Reset the parsed-config memo so this instance re-reads the file. Disposing
+    // the instance would abort in-flight turns and kill ping daemons; running
+    // sessions keep their pinned config until Stop -> reopen re-pins.
+    state.reset()
   }
 
   function globalConfigFile() {
@@ -1607,17 +1610,16 @@ export namespace Config {
 
     global.reset()
 
-    void Instance.disposeAll()
-      .catch(() => undefined)
-      .finally(() => {
-        GlobalBus.emit("event", {
-          directory: "global",
-          payload: {
-            type: Event.Disposed.type,
-            properties: {},
-          },
-        })
-      })
+    // Signal clients to refetch the changed config. NOT a dispose: the pin
+    // system re-fingerprints per session on next touch, so running sessions
+    // keep their pinned config and no in-flight turn is aborted.
+    GlobalBus.emit("event", {
+      directory: "global",
+      payload: {
+        type: Event.Disposed.type,
+        properties: {},
+      },
+    })
 
     return next
   }

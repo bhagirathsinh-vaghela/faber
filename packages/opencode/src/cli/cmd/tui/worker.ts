@@ -132,7 +132,6 @@ export const rpc = {
   },
   async reload() {
     Config.global.reset()
-    await Instance.disposeAll()
   },
   async shutdown() {
     Log.Default.info("worker shutting down")

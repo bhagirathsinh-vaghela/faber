@@ -1,11 +1,11 @@
 import { createMemo, onCleanup, onMount, Show } from "solid-js"
 import { Portal } from "solid-js/web"
-import { useParams, useNavigate } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSync } from "@/context/sync"
-import { useGlobalSDK } from "@/context/global-sdk"
+import { useStopSession } from "@/hooks/use-stop-session"
 import { getFilename } from "@opencode-ai/util/path"
 import { decode64 } from "@/utils/base64"
 
@@ -17,13 +17,12 @@ import { Keybind } from "@opencode-ai/ui/keybind"
 import { StatusPopover } from "../status-popover"
 
 export function SessionHeader() {
-  const globalSDK = useGlobalSDK()
   const layout = useLayout()
   const params = useParams()
-  const navigate = useNavigate()
   const command = useCommand()
   const sync = useSync()
   const language = useLanguage()
+  const runStop = useStopSession()
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
@@ -45,10 +44,7 @@ export function SessionHeader() {
   function stopSession() {
     const id = params.id
     if (!id) return
-    const directory = projectDirectory()
-    void globalSDK.client.session.abort({ sessionID: id, directory }).catch(() => {})
-    void globalSDK.client.session.pingStop({ sessionID: id, directory }).catch(() => {})
-    navigate("/")
+    runStop(id, projectDirectory())
   }
 
   // Alt+Q stops the open session, matching the header stop button and the

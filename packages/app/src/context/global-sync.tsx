@@ -24,6 +24,7 @@ import {
 } from "@opencode-ai/sdk/v2/client"
 import { createStore, produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
+import { needsAttention } from "@opencode-ai/util/session"
 import { retry } from "@opencode-ai/util/retry"
 import { useGlobalSDK } from "./global-sdk"
 import type { InitError } from "../pages/error"
@@ -694,16 +695,6 @@ function createGlobalSync() {
     return promise
   }
 
-  // A session "needs attention" when the overview surfaces it: a running turn
-  // (busy), finished output not yet seen (unseen), or an armed ping whose cache
-  // window hasn't lapsed (pingAt is cleared server-side when it does, so a
-  // present pingAt means real). This is the single definition the home overview
-  // buckets on and the server keys project cleanup on — reused here so the set
-  // of sessions the user juggles is exactly the set eviction protects.
-  function attentionSession(entry: (typeof globalStore)["recent_hub"][number]) {
-    return entry.busy || entry.unseen || entry.pingAt !== undefined
-  }
-
   // Sessions in the attention set — and their subagent children, whose
   // transcripts the parent's task panel reads — are never evicted, so switching
   // between the sessions being juggled stays instant. recent_hub is the global
@@ -711,7 +702,7 @@ function createGlobalSync() {
   function liveSessions() {
     const live = new Set<string>()
     for (const entry of globalStore.recent_hub) {
-      if (attentionSession(entry)) live.add(entry.sessionID)
+      if (needsAttention(entry)) live.add(entry.sessionID)
     }
     return live
   }
@@ -1370,7 +1361,7 @@ function createGlobalSync() {
     child,
     disposeChild,
     evictSession,
-    attentionSession,
+    needsAttention,
     setOpenSession,
     ensureInterest,
     bootstrap,
@@ -1387,7 +1378,7 @@ function createGlobalSync() {
       meta: projectMeta,
       icon: projectIcon,
       open: (directory: string) => globalSDK.client.global.projects.openAdd({ directory }),
-      close: (directory: string, force?: boolean) => globalSDK.client.global.projects.close({ directory, force }),
+      close: (directory: string) => globalSDK.client.global.projects.close({ directory }),
     },
   }
 }

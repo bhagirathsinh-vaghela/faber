@@ -225,41 +225,14 @@
       "post": {
         "operationId": "global.projects.close",
         "summary": "Close a project",
-        "description": "Remove a project from the shared sidebar set (broadcast to all clients). If any of its sessions are still live (busy or ping-armed) and force is not set, returns them without closing so the client can confirm. With force, each live session is stopped first, then the server instance is disposed.",
+        "description": "Remove a project from the shared sidebar set (broadcast to all clients). A pure view unlink: it disposes nothing and never touches live sessions. A session's instance is torn down only when its own live count reaches zero (Liveness auto-dispose), so a busy or ping-armed session keeps running after its project is closed.",
         "responses": {
           "200": {
-            "description": "Close result",
+            "description": "Closed",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "closed": {
-                      "type": "boolean"
-                    },
-                    "live": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "sessionID": {
-                            "type": "string"
-                          },
-                          "directory": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "sessionID",
-                          "directory"
-                        ]
-                      }
-                    }
-                  },
-                  "required": [
-                    "closed",
-                    "live"
-                  ]
+                  "type": "boolean"
                 }
               }
             }
@@ -283,9 +256,6 @@
                 "properties": {
                   "directory": {
                     "type": "string"
-                  },
-                  "force": {
-                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -390,7 +360,10 @@
                     }
                   }
                 },
-                "required": ["connectionID", "sessions"]
+                "required": [
+                  "connectionID",
+                  "sessions"
+                ]
               }
             }
           }

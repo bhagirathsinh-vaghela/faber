@@ -16,6 +16,7 @@ import { SessionPrompt } from "./prompt"
 import { computeStepCost } from "./processor"
 import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
+import { Liveness } from "@/project/liveness"
 import { SessionRecent } from "./recent"
 
 export const CACHE_TTL = 5 * 60 * 1000
@@ -119,6 +120,7 @@ export namespace SessionPing {
 
   function arm(sessionID: string, entry: { abort: AbortController; id: number; directory: string }) {
     active.set(sessionID, entry)
+    Liveness.setArmed(entry.directory, sessionID, true)
     armed(sessionID, entry.directory, true)
   }
 
@@ -126,6 +128,7 @@ export namespace SessionPing {
     const entry = active.get(sessionID)
     if (!entry) return
     active.delete(sessionID)
+    Liveness.setArmed(entry.directory, sessionID, false)
     void SessionRecent.setPing(sessionID, undefined)
     armed(sessionID, entry.directory, false)
   }
@@ -186,15 +189,22 @@ export namespace SessionPing {
   // abort (a new prompt supersedes it, an explicit stop, or process death) or
   // when the session is not a parent (it should never have been started).
   async function run(sessionID: string, signal: AbortSignal, id: number) {
+    // Only THIS loop, while it is still the armed one, may write the countdown.
+    // evaluate()/sleep() are awaits, so an abort (stop, supersede) can land mid
+    // await; stamping after that would strand a deadline past disarm's clear.
+    // Gating every write on the live signal + loop id makes disarm the last word
+    // regardless of async ordering — pingAt is a strict shadow of armed state.
+    const stamp = (at: number | undefined) => {
+      if (signal.aborted) return
+      if (active.get(sessionID)?.id !== id) return
+      void SessionRecent.setPing(sessionID, at)
+    }
     while (!signal.aborted) {
       try {
         const next = await evaluate(sessionID)
+        if (signal.aborted) break
         if (next.type === "stop") break
-        // The overview reads the next-ping deadline off the recent LRU; stamp it
-        // when a ping is scheduled, clear it while idle (no ping is coming).
-        void SessionRecent.setPing(sessionID, next.type === "ping" ? next.at : undefined)
-        // "ping" sleeps the exact time to the ping moment; "idle" backs off a
-        // coarse tick and re-checks.
+        stamp(next.type === "ping" ? next.at : undefined)
         await sleep(next.type === "ping" ? next.delay : IDLE_TICK, signal)
         if (signal.aborted) break
         if (next.type === "ping") await ping(sessionID, signal)

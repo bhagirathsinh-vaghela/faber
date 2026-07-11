@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Instance } from "@/project/instance"
+import { Liveness } from "@/project/liveness"
 import { SessionRecent } from "./recent"
 import z from "zod"
 
@@ -64,7 +65,9 @@ export namespace SessionStatus {
       sessionID,
       status,
     })
-    void SessionRecent.setBusy(sessionID, status.type === "busy" || status.type === "retry")
+    const working = status.type === "busy" || status.type === "retry"
+    void SessionRecent.setBusy(sessionID, working)
+    Liveness.setBusy(Instance.directory, sessionID, working)
     if (status.type === "idle") {
       // deprecated
       Bus.publish(Event.Idle, {

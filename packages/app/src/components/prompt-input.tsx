@@ -984,21 +984,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     },
   ])
 
-  const abort = async () => {
+  // In-place stop (Esc / the streaming stop button): abort the turn and stay on
+  // the session. The turn's own completion disarms the ping daemon, so no
+  // navigation and no separate teardown call — this is NOT the stop-and-leave
+  // action the header/overview use.
+  const abort = () => {
     const sessionID = params.id
-    if (!sessionID) return Promise.resolve()
+    if (!sessionID) return
     const queued = pending.get(sessionID)
     if (queued) {
       queued.abort.abort()
       queued.cleanup()
       pending.delete(sessionID)
-      return Promise.resolve()
+      return
     }
-    return sdk.client.session
-      .abort({
-        sessionID,
-      })
-      .catch(() => {})
+    void sdk.client.session.abort({ sessionID }).catch(() => {})
   }
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {

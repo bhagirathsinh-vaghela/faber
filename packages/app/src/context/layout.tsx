@@ -392,12 +392,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           globalSync.project.loadSessions(directory)
           return globalSync.project.open(directory)
         },
-        close(directory: string, force?: boolean) {
-          return globalSync.project.close(directory, force).then((result) => {
-            // Prune the closed worktree from the persisted drag-order once the
-            // close is confirmed. A refused close (live sessions, no force)
-            // returns closed:false and leaves the project open, so keep its rank.
-            if (result.data?.closed) setStore("projectOrder", (order) => order.filter((x) => x !== directory))
+        close(directory: string) {
+          return globalSync.project.close(directory).then((result) => {
+            setStore("projectOrder", (order) => order.filter((x) => x !== directory))
             return result
           })
         },

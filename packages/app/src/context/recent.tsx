@@ -41,7 +41,7 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
 
     // A session is in exactly one bucket. Both sort by last real-turn activity
     // (never pings/views), newest-first — most-recently-active on top in either
-    // section. Membership uses globalSync.attentionSession — the same predicate
+    // section. Membership uses globalSync.needsAttention — the same predicate
     // transcript eviction protects on — so the overview's attention list and the
     // never-evict set stay one definition. It rides only server-pushed fields
     // (busy/unseen/pingAt), never the local clock, so the buckets recompute on
@@ -49,12 +49,12 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     // server-side when its window lapses.
     const attention = createMemo(() =>
       rows()
-        .filter((r) => globalSync.attentionSession(r))
+        .filter((r) => globalSync.needsAttention(r))
         .sort((a, b) => b.updated - a.updated),
     )
     const recent = createMemo(() =>
       rows()
-        .filter((r) => !globalSync.attentionSession(r))
+        .filter((r) => !globalSync.needsAttention(r))
         .sort((a, b) => b.updated - a.updated),
     )
 

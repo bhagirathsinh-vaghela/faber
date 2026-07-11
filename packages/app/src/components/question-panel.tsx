@@ -181,8 +181,7 @@ function Panel(props: {
   let input: HTMLTextAreaElement | undefined
 
   const promptDraft = usePrompt()
-  const promptEmpty = () =>
-    promptDraft.current().every((part) => part.type === "text" && part.content.trim() === "")
+  const promptEmpty = () => promptDraft.current().every((part) => part.type === "text" && part.content.trim() === "")
   const [dictating, setDictating] = createSignal(false)
   const dictation = createDictation({
     url: () => sdk.url,

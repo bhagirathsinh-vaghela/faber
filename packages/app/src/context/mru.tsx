@@ -13,13 +13,9 @@ const MRU_LIMIT = 100
 export const { use: useMru, provider: MruProvider } = createSimpleContext({
   name: "Mru",
   init: () => {
-    const [store, setStore] = persisted(
-      Persist.global("mru.sessions.v1"),
-      createStore<{ ids: string[] }>({ ids: [] }),
-    )
+    const [store, setStore] = persisted(Persist.global("mru.sessions.v1"), createStore<{ ids: string[] }>({ ids: [] }))
 
-    const touch = (id: string) =>
-      setStore("ids", (ids) => [id, ...ids.filter((x) => x !== id)].slice(0, MRU_LIMIT))
+    const touch = (id: string) => setStore("ids", (ids) => [id, ...ids.filter((x) => x !== id)].slice(0, MRU_LIMIT))
 
     // Drop ids no longer in the live set (session archived or deleted). Called
     // when the overview renders, guarded by a non-empty live set so a transient

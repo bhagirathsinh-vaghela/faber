@@ -115,7 +115,9 @@ export function DictationWaveform(props: { analyser: () => AnalyserNode | undefi
 // loud, otherwise a center-weighted breathing wave so silence still moves.
 function level(i: number, half: number, bins: Uint8Array | undefined, phase: number) {
   const position = (i - half) / (half || 1)
-  const breathe = (0.14 + Math.sin(phase + position * 3) * 0.08 + Math.cos(phase * 1.6 - position * 2) * 0.05) * (1 - Math.abs(position) * 0.4)
+  const breathe =
+    (0.14 + Math.sin(phase + position * 3) * 0.08 + Math.cos(phase * 1.6 - position * 2) * 0.05) *
+    (1 - Math.abs(position) * 0.4)
   if (!bins) return Math.max(MIN_SCALE, breathe)
   const band = bins.subarray(Math.floor(bins.length * BAND_START), Math.floor(bins.length * BAND_END))
   const mirrored = i < half ? half - 1 - i : i - half

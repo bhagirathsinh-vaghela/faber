@@ -39,7 +39,6 @@ export const dict = {
   "command.theme.scheme.cycle": "Cycle color scheme",
   "command.theme.scheme.set": "Use color scheme: {{scheme}}",
 
-
   "command.session.new": "New session",
   "command.file.open": "Open file",
   "command.home.open": "Go to home",
@@ -363,8 +362,6 @@ export const dict = {
   "context.usage.cost": "Cost",
   "context.usage.clickToView": "Click to view context",
   "context.usage.view": "View context usage",
-
-
 
   "toast.theme.title": "Theme switched",
   "toast.scheme.title": "Color scheme",
@@ -796,10 +793,6 @@ export const dict = {
   "workspace.delete.title": "Delete workspace",
   "workspace.delete.confirm": 'Delete workspace "{{name}}"?',
   "workspace.delete.button": "Delete workspace",
-  "project.close.title": "Close project",
-  "project.close.confirm": 'Close project "{{name}}"?',
-  "project.close.live": "{{count}} session(s) still live — they will be stopped and become recent sessions.",
-  "project.close.button": "Close project",
   "project.close.failed.title": "Failed to close project",
   "workspace.reset.title": "Reset workspace",
   "workspace.reset.confirm": 'Reset workspace "{{name}}"?',

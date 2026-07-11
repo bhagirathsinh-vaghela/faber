@@ -276,6 +276,13 @@ export namespace SessionPrompt {
     const s = state()
     const match = s[sessionID]
     if (!match) {
+      // No in-flight turn — so this is the "verify nothing is in flight, THEN
+      // kill the ping" case (an idle, ping-armed session). There is no loop tail
+      // to own the disarm here, and disarming can't race a completing turn:
+      // a running turn would have a truthy match and take the branch below,
+      // where the loop tail owns arm/disarm. Only `unseen` may keep the session
+      // in the attention bucket after this.
+      SessionPing.stop(sessionID)
       SessionStatus.set(sessionID, { type: "idle" })
       return
     }
@@ -745,8 +752,17 @@ export namespace SessionPrompt {
     }
     SessionCompaction.prune({ sessionID })
     if (!session.parentID) {
-      SessionPing.start(sessionID)
-      Session.markUnseen(sessionID)
+      // Arm/disarm the ping daemon HERE, at the turn's own completion, so it is
+      // ordered by this loop and can't race an external stop against a fresh
+      // turn's arm. A turn that ran to completion keeps the cache warm (arm); a
+      // turn stopped by the user tears the daemon down (disarm) so the session
+      // leaves the overview's needs-attention bucket instead of lingering on its
+      // armed ping. markUnseen only on completion — a stopped turn isn't unread.
+      if (abort.aborted) SessionPing.stop(sessionID)
+      else {
+        SessionPing.start(sessionID)
+        Session.markUnseen(sessionID)
+      }
       OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
     }
     for await (const item of MessageV2.stream(sessionID)) {

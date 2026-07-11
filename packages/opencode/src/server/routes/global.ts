@@ -13,8 +13,6 @@ import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
 import { SessionPing } from "../../session/ping"
-import { SessionPin } from "../../session/pin"
-import { SessionPrompt } from "../../session/prompt"
 import { SessionRecent } from "../../session/recent"
 import { errors } from "../error"
 import { Web } from "../web"
@@ -148,88 +146,25 @@ export const GlobalRoutes = lazy(() =>
       describeRoute({
         summary: "Close a project",
         description:
-          "Remove a project from the shared sidebar set (broadcast to all clients). If any of its sessions are still live (busy or ping-armed) and force is not set, returns them without closing so the client can confirm. With force, each live session is stopped first, then the server instance is disposed.",
+          "Remove a project from the shared sidebar set (broadcast to all clients). A pure view unlink: it disposes nothing and never touches live sessions. A session's instance is torn down only when its own live count reaches zero (Liveness auto-dispose), so a busy or ping-armed session keeps running after its project is closed.",
         operationId: "global.projects.close",
         responses: {
           200: {
-            description: "Close result",
+            description: "Closed",
             content: {
               "application/json": {
-                schema: resolver(
-                  z.object({
-                    closed: z.boolean(),
-                    live: z.array(z.object({ sessionID: z.string(), directory: z.string() })),
-                  }),
-                ),
+                schema: resolver(z.boolean()),
               },
             },
           },
           ...errors(400),
         },
       }),
-      validator("json", z.object({ directory: z.string(), force: z.boolean().optional() })),
+      validator("json", z.object({ directory: z.string() })),
       async (c) => {
-        const body = c.req.valid("json")
-        const { project } = await Project.fromDirectory(body.directory)
-
-        // Live = busy OR a scheduled ping (pingAt set). This matches the
-        // overview's "needs attention" definition: pingAt is cleared server-side
-        // when the cache window lapses, so an armed-but-cold daemon (idle session
-        // whose cache died) is NOT live. unseen is deliberately excluded — close
-        // is non-destructive (the session becomes a recent session, keeping its
-        // unseen flag), so unread output is not a reason to block a close.
-        const recent = await SessionRecent.list()
-        const candidates = recent
-          .filter((x) => x.busy || x.pingAt !== undefined)
-          .map((x) => ({ sessionID: x.sessionID, directory: x.directory }))
-        // Match by project id, not path containment: a session's stored
-        // directory can differ from the resolved worktree (symlinks like
-        // /tmp -> /private/tmp, or a sandbox under the worktree), which a raw
-        // path compare would miss. fromDirectory is per-directory cached.
-        const owns = async (directory: string) =>
-          Project.fromDirectory(directory)
-            .then((x) => x.project.id === project.id)
-            .catch(() => false)
-        const seen = new Map<string, { sessionID: string; directory: string }>()
-        for (const entry of candidates) {
-          if (seen.has(entry.sessionID)) continue
-          if (await owns(entry.directory)) seen.set(entry.sessionID, entry)
-        }
-        const unique = [...seen.values()]
-
-        if (unique.length && !body.force) return c.json({ closed: false, live: unique })
-
-        // Disarm the ping, drop the pin, and clear the busy flag for every live
-        // session (all three are context-free module state, so run them
-        // unconditionally — they must settle even if the instance was already
-        // evicted). Clearing busy here covers the evicted-but-busy case: the
-        // in-context SessionPrompt.cancel below only fires for a cached instance,
-        // so a session left busy after eviction would otherwise stay flagged live.
-        for (const entry of unique) {
-          SessionPing.stop(entry.sessionID)
-          SessionPin.drop(entry.sessionID)
-          await SessionRecent.setBusy(entry.sessionID, false)
-        }
-        // Identity is the directory, so the worktree must NOT be disposed here:
-        // subfolder projects share the repo root as worktree, and disposing it
-        // would tear down a different live project's instance mid-turn. Dispose
-        // only directories keyed to this project: the client's raw path, the
-        // canonical id (symlinks like /tmp -> /private/tmp key separately), and
-        // each live session's directory. disposeDirectory only disposes an
-        // already-cached instance — it never creates (and never bootstraps) one,
-        // which would re-add the project to the open set. Abort any in-flight
-        // turn in the instance context (cancel reads per-instance state) just
-        // before that instance disposes.
-        const byDir = new Map<string, string[]>()
-        for (const entry of unique) byDir.set(entry.directory, [...(byDir.get(entry.directory) ?? []), entry.sessionID])
-        const directories = new Set([body.directory, project.id, ...byDir.keys()])
-        for (const directory of directories)
-          await Instance.disposeDirectory(directory, () => {
-            for (const sessionID of byDir.get(directory) ?? []) SessionPrompt.cancel(sessionID)
-          })
-        // Close AFTER disposing so nothing re-adds it.
+        const { project } = await Project.fromDirectory(c.req.valid("json").directory)
         OpenProjects.close(project.id)
-        return c.json({ closed: true, live: unique })
+        return c.json(true)
       },
     )
     .get(

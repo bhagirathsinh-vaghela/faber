@@ -329,26 +329,15 @@ export class Projects extends HeyApiClient {
   /**
    * Close a project
    *
-   * Remove a project from the shared sidebar set (broadcast to all clients). If any of its sessions are still live (busy or ping-armed) and force is not set, returns them without closing so the client can confirm. With force, each live session is stopped first, then the server instance is disposed.
+   * Remove a project from the shared sidebar set (broadcast to all clients). A pure view unlink: it disposes nothing and never touches live sessions. A session's instance is torn down only when its own live count reaches zero (Liveness auto-dispose), so a busy or ping-armed session keeps running after its project is closed.
    */
   public close<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
-      force?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "body", key: "directory" },
-            { in: "body", key: "force" },
-          ],
-        },
-      ],
-    )
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "directory" }] }])
     return (options?.client ?? this.client).post<GlobalProjectsCloseResponses, GlobalProjectsCloseErrors, ThrowOnError>(
       {
         url: "/global/projects/close",

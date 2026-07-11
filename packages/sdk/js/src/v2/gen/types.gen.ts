@@ -901,14 +901,6 @@ export type EventTodoUpdated = {
   }
 }
 
-export type EventSessionPingArmed = {
-  type: "session.ping.armed"
-  properties: {
-    sessionID: string
-    armed: boolean
-  }
-}
-
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -920,6 +912,14 @@ export type EventOpenProjectsUpdated = {
   type: "open-projects.updated"
   properties: {
     entries: Array<OpenProject>
+  }
+}
+
+export type EventSessionPingArmed = {
+  type: "session.ping.armed"
+  properties: {
+    sessionID: string
+    armed: boolean
   }
 }
 
@@ -1247,9 +1247,9 @@ export type Event =
   | EventBackgroundTaskResultPending
   | EventBackgroundTaskAutoInjectChanged
   | EventTodoUpdated
-  | EventSessionPingArmed
   | EventSessionCompacted
   | EventOpenProjectsUpdated
+  | EventSessionPingArmed
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -2823,7 +2823,6 @@ export type GlobalProjectsOpenAddResponse = GlobalProjectsOpenAddResponses[keyof
 export type GlobalProjectsCloseData = {
   body?: {
     directory: string
-    force?: boolean
   }
   path?: never
   query?: never
@@ -2841,15 +2840,9 @@ export type GlobalProjectsCloseError = GlobalProjectsCloseErrors[keyof GlobalPro
 
 export type GlobalProjectsCloseResponses = {
   /**
-   * Close result
+   * Closed
    */
-  200: {
-    closed: boolean
-    live: Array<{
-      sessionID: string
-      directory: string
-    }>
-  }
+  200: boolean
 }
 
 export type GlobalProjectsCloseResponse = GlobalProjectsCloseResponses[keyof GlobalProjectsCloseResponses]
