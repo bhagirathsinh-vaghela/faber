@@ -6,6 +6,7 @@ import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSync } from "@/context/sync"
 import { useStopSession } from "@/hooks/use-stop-session"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { getFilename } from "@opencode-ai/util/path"
 import { decode64 } from "@/utils/base64"
 
@@ -23,6 +24,7 @@ export function SessionHeader() {
   const sync = useSync()
   const language = useLanguage()
   const runStop = useStopSession()
+  const dialog = useDialog()
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
@@ -54,6 +56,12 @@ export function SessionHeader() {
     if (!(event.altKey && event.code === "KeyQ")) return
     if (event.ctrlKey || event.metaKey || event.shiftKey) return
     if (!params.id) return
+    // A dialog (e.g. the overview) open on top of the session owns Alt+Q — it
+    // stops its highlighted row. Both this handler and the overview's are
+    // window/capture-phase listeners, so stopPropagation can't stop the other,
+    // and this one is registered first (the session mounts before the dialog).
+    // Bail while a dialog is active so Alt+Q hits only the overview's row.
+    if (dialog.active) return
     event.preventDefault()
     event.stopPropagation()
     stopSession()
