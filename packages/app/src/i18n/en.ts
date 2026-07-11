@@ -42,6 +42,7 @@ export const dict = {
 
   "command.session.new": "New session",
   "command.file.open": "Open file",
+  "command.home.open": "Go to home",
   "command.overview.open": "Open overview",
   "command.overview.attention": "Switch to session needing attention",
   "command.overview.attention.reverse": "Switch to previous session needing attention",

@@ -854,6 +854,13 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
     },
     {
+      id: "home.open",
+      title: language.t("command.home.open"),
+      category: language.t("command.category.session"),
+      keybind: "alt+h",
+      onSelect: () => navigate("/"),
+    },
+    {
       id: "overview.open",
       title: language.t("command.overview.open"),
       category: language.t("command.category.session"),
