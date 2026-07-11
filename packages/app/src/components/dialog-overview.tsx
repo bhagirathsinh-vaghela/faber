@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { useNavigate } from "@solidjs/router"
+import { useNavigate, useParams } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
@@ -139,6 +139,7 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   const frozen = useFrozen()
   const sdk = useGlobalSDK()
   const navigate = useNavigate()
+  const params = useParams()
   const language = useLanguage()
   const mru = useMru()
 
@@ -188,6 +189,34 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   // never navigate.
   let ref: ListRef | undefined
   const [highlight, setHighlight] = createSignal(initial)
+
+  // Alt+Q fires the highlighted row's stop button: a full stop, matching the
+  // session header's stopSession (abort the running turn AND drop the cache
+  // ping). Scoped to the overview: the listener lives only while this component
+  // is mounted (home page or dialog), so Alt+Q is inert everywhere else.
+  // Capture phase because the command system is suspended while a dialog is
+  // open, so a registered command would never see the key here. Gated on the
+  // same pingAt that renders the row's stop button — a row without one is a
+  // no-op. If the stopped row is the session open behind the dialog, navigate
+  // home like the header does; stopping any other row leaves the view put.
+  const stop = (event: KeyboardEvent) => {
+    // event.code, not event.key: on macOS Alt+Q composes the glyph "œ", so
+    // event.key never equals "q". The physical code is layout/composition proof.
+    if (!(event.altKey && event.code === "KeyQ")) return
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return
+    event.preventDefault()
+    event.stopPropagation()
+    const row = highlight()
+    if (!row?.pingAt) return
+    void sdk.client.session.abort({ directory: row.directory, sessionID: row.sessionID }).catch(() => {})
+    void sdk.client.session.pingStop({ directory: row.directory, sessionID: row.sessionID }).catch(() => {})
+    if (params.id === row.sessionID) {
+      navigate("/")
+      props.onOpen?.()
+    }
+  }
+  onMount(() => window.addEventListener("keydown", stop, true))
+  onCleanup(() => window.removeEventListener("keydown", stop, true))
 
   if (props.attention) {
     const cycle = (event: KeyboardEvent) => {
