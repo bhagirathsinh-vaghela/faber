@@ -1,4 +1,4 @@
-import { createMemo, Show } from "solid-js"
+import { createMemo, onCleanup, onMount, Show } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useParams, useNavigate } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
@@ -50,6 +50,20 @@ export function SessionHeader() {
     void globalSDK.client.session.pingStop({ sessionID: id, directory }).catch(() => {})
     navigate("/")
   }
+
+  // Alt+Q stops the open session, matching the header stop button and the
+  // overview's Alt+Q. event.code, not event.key: on macOS Alt+Q composes the
+  // glyph "œ", so event.key never equals "q"; the physical code is layout proof.
+  const stop = (event: KeyboardEvent) => {
+    if (!(event.altKey && event.code === "KeyQ")) return
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return
+    if (!params.id) return
+    event.preventDefault()
+    event.stopPropagation()
+    stopSession()
+  }
+  onMount(() => window.addEventListener("keydown", stop, true))
+  onCleanup(() => window.removeEventListener("keydown", stop, true))
 
   const centerMount = createMemo(() => document.getElementById("opencode-titlebar-center"))
   const rightMount = createMemo(() => document.getElementById("opencode-titlebar-right"))
