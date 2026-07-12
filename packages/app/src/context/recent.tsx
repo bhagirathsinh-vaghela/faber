@@ -56,16 +56,24 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
         .sort((a, b) => b.updated - a.updated),
     )
 
-    const countdown = (row: OverviewRow) => cacheCountdownUntil(row.pingAt, now())
+    // Always resolve the LIVE row by id, never trust a passed-in snapshot. The
+    // overview freezes row ORDER via a keyed <For>, which hands the render
+    // callback a by-reference-stale row object between reconciles. Reading pingAt
+    // off that snapshot lets the countdown tick toward an outdated deadline after
+    // the server re-arms a ping. Re-deriving from rows() here keeps the ping
+    // deadline live per tick while the order stays frozen. Falls back to the
+    // passed row if the session already left the hub.
+    const live = (row: OverviewRow) => rows().find((r) => r.sessionID === row.sessionID) ?? row
+
+    const countdown = (row: OverviewRow) => cacheCountdownUntil(live(row).pingAt, now())
 
     // The ring next to the countdown, from the SAME anchor (pingAt) and the SAME
-    // shared clock as countdown() above. It used to fill against row.updated +
-    // CACHE_TTL via its own Date.now(), a different anchor and a non-reactive
-    // clock, so the ring could read empty (or stale) while the mm:ss text still
-    // showed time. Fraction of the cache window remaining until the ping.
+    // shared clock as countdown() above. Fraction of the cache window remaining
+    // until the ping, re-derived from the live row so it can't lag the text.
     const remaining = (row: OverviewRow) => {
-      if (!row.pingAt) return 0
-      return Math.max(0, Math.min(1, (row.pingAt - now()) / CACHE_TTL))
+      const at = live(row).pingAt
+      if (!at) return 0
+      return Math.max(0, Math.min(1, (at - now()) / CACHE_TTL))
     }
 
     return { attention, recent, countdown, remaining }
