@@ -2,7 +2,7 @@ import { createMemo } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useTicker } from "./ticker"
-import { cacheCountdownUntil } from "@/utils/cache-countdown"
+import { CACHE_TTL, cacheCountdownUntil } from "@/utils/cache-countdown"
 
 export type OverviewRow = {
   sessionID: string
@@ -58,6 +58,16 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
 
     const countdown = (row: OverviewRow) => cacheCountdownUntil(row.pingAt, now())
 
-    return { attention, recent, countdown }
+    // The ring next to the countdown, from the SAME anchor (pingAt) and the SAME
+    // shared clock as countdown() above. It used to fill against row.updated +
+    // CACHE_TTL via its own Date.now(), a different anchor and a non-reactive
+    // clock, so the ring could read empty (or stale) while the mm:ss text still
+    // showed time. Fraction of the cache window remaining until the ping.
+    const remaining = (row: OverviewRow) => {
+      if (!row.pingAt) return 0
+      return Math.max(0, Math.min(1, (row.pingAt - now()) / CACHE_TTL))
+    }
+
+    return { attention, recent, countdown, remaining }
   },
 })

@@ -12,17 +12,12 @@ import { DateTime } from "luxon"
 import { useRecent, type OverviewRow } from "@/context/recent"
 import { useMru } from "@/context/mru"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { CACHE_TTL } from "@/utils/cache-countdown"
 import { useLanguage } from "@/context/language"
 import { useStopSession } from "@/hooks/use-stop-session"
 
 function getFilename(dir: string) {
   const parts = dir.split("/").filter(Boolean)
   return parts[parts.length - 1] ?? dir
-}
-
-function remainingFraction(row: { updated: number }) {
-  return Math.max(0, Math.min(1, (row.updated + CACHE_TTL - Date.now()) / CACHE_TTL))
 }
 
 type Section = "attention" | "recent"
@@ -107,7 +102,7 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
         <ChipGroup>
           <Chip
             class={countdown() ? undefined : "opacity-35"}
-            icon={<CountdownRing fraction={countdown() ? remainingFraction(props.row) : 0} />}
+            icon={<CountdownRing fraction={countdown() ? recent.remaining(props.row) : 0} />}
           >
             {countdown() ?? "--"}
           </Chip>
