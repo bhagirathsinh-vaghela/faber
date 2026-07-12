@@ -20,6 +20,7 @@ import {
   type PermissionRequest,
   type QuestionRequest,
   type OpenProject,
+  type RecentSession,
   createOpencodeClient,
 } from "@opencode-ai/sdk/v2/client"
 import { createStore, produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
@@ -77,8 +78,19 @@ type State = {
   stash: StashEntry[]
   session: Session[]
   sessionTotal: number
+  // Retry DETAIL only (attempt/countdown/message). The busy boolean lives in
+  // session_busy — a session mid-turn is `idle` here but busy there.
   session_status: {
     [sessionID: string]: SessionStatus
+  }
+  // The single live busy source, keyed by sessionID, fed by the always-global
+  // `session.busy` event. `busy` = effective (own turn OR any in-flight
+  // descendant subtask, full subtree); `busySelf` = own turn only. Every
+  // consumer (overview, sidebar, open session, dock, title, SessionTurn) reads
+  // this — no more recent_hub-vs-session_status split. recent_hub still carries
+  // busy for the durable list, but the live flip everyone animates off is here.
+  session_busy: {
+    [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }
   }
   // Session IDs whose ping daemon is armed on this server instance. The hub's
   // will-ping countdown is gated on this, never on the persisted cache anchor
@@ -446,6 +458,7 @@ function createGlobalSync() {
           session: [],
           sessionTotal: 0,
           session_status: {},
+          session_busy: {},
           ping_armed: {},
           auto_accept: {},
           session_diff: {},
@@ -726,6 +739,10 @@ function createGlobalSync() {
   // server drops every other session's streaming firehose for this connection.
   // An idle subagent streams nothing, so not listing it drops no event.
   const [openSession, rawSetOpenSession] = createSignal<string | undefined>()
+  // The open session's directory — the subtree the busy reconcile tick heals.
+  // Tracked alongside openSession and pushed on subscribe so the server can
+  // route the tick's snapshot into this directory's client store.
+  const [openDirectory, setOpenDirectory] = createSignal<string | undefined>()
 
   function interestSet() {
     const live = liveSessions()
@@ -740,9 +757,12 @@ function createGlobalSync() {
   // previous narrow set) drops the new session's live events and the snapshot
   // misses them too. Pushing here closes that window. The effect still covers
   // liveness changes.
-  function setOpenSession(id: string | undefined) {
+  function setOpenSession(id: string | undefined, directory?: string) {
     rawSetOpenSession(id)
-    return globalSDK.subscribe(interestSet())
+    setOpenDirectory(directory)
+    // busySession = the open session id: the busy tick heals exactly its subtree.
+    // undefined here (navigating away / to the overview) silences the tick.
+    return globalSDK.subscribe(interestSet(), directory, id)
   }
 
   // Guarantee a session is in our interest set on the SERVER before the caller
@@ -761,15 +781,18 @@ function createGlobalSync() {
   // sync, say), this line would wrongly reassign openSession and could drop the
   // viewed session's events. That caller would be the bug — route the transient
   // membership separately then, do not sync() a background session.
-  function ensureInterest(sessionID: string) {
+  function ensureInterest(sessionID: string, directory?: string) {
     if (openSession() !== sessionID) rawSetOpenSession(sessionID)
-    return globalSDK.subscribe(interestSet())
+    if (directory) setOpenDirectory(directory)
+    return globalSDK.subscribe(interestSet(), directory ?? openDirectory(), sessionID)
   }
 
   // Re-push when liveness (recent_hub) changes while the open session is steady:
-  // a background session going busy joins the interest set, an idle one leaves.
+  // a background session going busy joins the message interest set, an idle one
+  // leaves. The busy scope (open session id + its directory) stays stable across
+  // these liveness re-pushes.
   createEffect(() => {
-    globalSDK.subscribe(interestSet())
+    globalSDK.subscribe(interestSet(), openDirectory(), openSession())
   })
 
   // Evict a session's cached transcript unless it is live, a child of a live
@@ -810,6 +833,7 @@ function createGlobalSync() {
         delete draft.permission[sessionID]
         delete draft.question[sessionID]
         delete draft.session_status[sessionID]
+        delete draft.session_busy[sessionID]
         delete draft.ping_armed[sessionID]
         delete draft.auto_accept[sessionID]
 
@@ -868,6 +892,35 @@ function createGlobalSync() {
         }
         case "recent.updated": {
           setGlobalStore("recent_hub", reconcile(event.properties.entries, { key: "sessionID" }))
+          // Feed the one operative busy store from the aggregated hub channel:
+          // the overview's breadth source. Each row carries the same busy facts
+          // the server stamped; writing them here keeps session_busy the single
+          // thing every animation reads, with no per-session event storm.
+          seedBusy(event.properties.entries)
+          return
+        }
+        case "session.busy": {
+          // The 5s reconcile tick for the open subtree — a FULL snapshot of every
+          // in-scope session (busy AND idle), authoritative by construction. It
+          // heals the CHILDREN the hub can't (children aren't in recent_hub), and
+          // self-corrects any dropped transition within one tick. Each entry
+          // carries its own directory, so route it into that directory's store.
+          for (const [id, facts] of Object.entries(event.properties.sessions)) {
+            const [store, set] = ensureChild(facts.directory)
+            const prev = store.session_busy[id]
+            if (
+              prev &&
+              prev.busy === facts.busy &&
+              prev.busySelf === facts.busySelf &&
+              prev.busyDescendant === facts.busyDescendant
+            )
+              continue
+            set("session_busy", id, {
+              busy: facts.busy,
+              busySelf: facts.busySelf,
+              busyDescendant: facts.busyDescendant,
+            })
+          }
           return
         }
         case "open-projects.updated": {
@@ -913,6 +966,7 @@ function createGlobalSync() {
           delete draft.permission[sessionID]
           delete draft.question[sessionID]
           delete draft.session_status[sessionID]
+          delete draft.session_busy[sessionID]
           delete draft.ping_armed[sessionID]
           delete draft.auto_accept[sessionID]
         }),
@@ -1236,6 +1290,12 @@ function createGlobalSync() {
       .catch(() => undefined)
     if (!recent) return
     setGlobalStore("recent_hub", reconcile(recent, { key: "sessionID" }))
+    // Re-seed the operative busy store on every bootstrap AND reconnect. This is
+    // the no-regress guarantee for the visibility-gated stream: while hidden the
+    // SSE attach is torn down and busy transitions are missed, so resume must
+    // re-derive busy from the authoritative hub snapshot rather than trust the
+    // stale pre-hide store.
+    seedBusy(recent)
   }
 
   async function bootstrap() {
@@ -1348,6 +1408,40 @@ function createGlobalSync() {
     setStore("icon", value)
   }
 
+  // The single live busy read. session_busy lives on the per-directory child
+  // store (children share their parent's directory), so resolve the child and
+  // read it there. Every consumer routes through here so busy has one
+  // definition on the client. A session with no entry (never ran, or idle since
+  // load) is not busy.
+  function busy(directory: string, sessionID: string) {
+    const [store] = ensureChild(directory)
+    return store.session_busy[sessionID] ?? { busy: false, busySelf: false, busyDescendant: false }
+  }
+
+  // Write hub rows' busy facts into the per-directory session_busy stores. This
+  // is how the aggregated recent.updated / bootstrap /recent channel feeds the
+  // one operative busy state, so a session already busy on connect animates
+  // immediately (no stale-on-connect gap) and the overview never needs a
+  // per-session event. Only writes on change so it can't churn reactions.
+  function seedBusy(entries: RecentSession[]) {
+    for (const entry of entries) {
+      const [store, setStore] = ensureChild(entry.directory)
+      const prev = store.session_busy[entry.sessionID]
+      if (
+        prev &&
+        prev.busy === entry.busy &&
+        prev.busySelf === entry.busySelf &&
+        prev.busyDescendant === entry.busyDescendant
+      )
+        continue
+      setStore("session_busy", entry.sessionID, {
+        busy: entry.busy,
+        busySelf: entry.busySelf,
+        busyDescendant: entry.busyDescendant,
+      })
+    }
+  }
+
   return {
     data: globalStore,
     set: setGlobalStore,
@@ -1361,6 +1455,7 @@ function createGlobalSync() {
     child,
     disposeChild,
     evictSession,
+    busy,
     needsAttention,
     setOpenSession,
     ensureInterest,

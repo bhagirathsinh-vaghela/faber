@@ -295,19 +295,43 @@
   }
 }
 
-/* A halo that expands and fades outward from a status dot to signal live work,
-   like a radar ping. Only opacity and transform animate (dodges the Lightning
-   CSS @keyframes-with-custom-properties bug the dock glow also avoids). */
-.status-ping::after {
+/* Busy dot, in the shared two-color language (dock/zen bar). The dot renders a
+   solid center in --busy-tint (own/warning when busySelf, else the task accent
+   for delegating-only), plus a radar-ping halo. When a session is busy for BOTH
+   reasons, a second task-accent halo cross-fades over the base so the tint
+   oscillates own↔task — same idiom as .dock-working-glow-task. Only opacity and
+   transform animate (dodges the Lightning CSS @keyframes-with-custom-properties
+   bug). --busy-tint is set inline on the dot element. */
+[data-slot="busy-dot"] {
+  background: var(--busy-tint, var(--icon-warning-base));
+}
+
+.busy-dot-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.busy-dot-fill::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  background: currentColor;
-  animation: status-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  background: var(--busy-tint, var(--icon-warning-base));
+  animation: busy-dot-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
-@keyframes status-ping {
+/* Task-accent halo overlaid on the base while a subtask ALSO runs; fades in and
+   out so the visible tint oscillates between the own color and the task accent,
+   matching the dock. Rides the same ping so both halos expand in lockstep. */
+.busy-dot-fill-task::after {
+  background: var(--box-accent-task);
+  animation:
+    busy-dot-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite,
+    dock-task-fade 2.6s ease-in-out infinite;
+}
+
+@keyframes busy-dot-ping {
   0% {
     opacity: 0.55;
     transform: scale(1);
@@ -320,7 +344,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status-ping::after {
+  .busy-dot-fill::after,
+  .busy-dot-fill-task::after {
     animation: none;
   }
 }

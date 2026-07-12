@@ -577,7 +577,6 @@ export default function Page() {
     return sync.data.session_diff[id] !== undefined
   })
 
-  const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
   let promptInner: HTMLDivElement | undefined
@@ -718,16 +717,18 @@ export default function Page() {
     ),
   )
 
-  const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
-  const subtaskWorking = createMemo(() => {
-    if (!params.id) return false
-    return sync.data.session.some((s) => {
-      if (s.parentID !== params.id) return false
-      const child = sync.data.session_status[s.id]
-      return child?.type === "busy" || child?.type === "retry"
-    })
-  })
-  const titleWorking = createMemo(() => status().type !== "idle" || subtaskWorking())
+  // The single busy read for this session: busy = effective (own OR any subtask,
+  // full subtree, computed server-side); busySelf = own turn only. No local
+  // child scan — the server already rolled the subtree up.
+  const busy = createMemo(
+    () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
+  )
+  // busy because a subtask runs (own turn may or may not also be running).
+  const subtaskBusy = createMemo(() => busy().busyDescendant)
+  // Busy purely because a subtask is running (own turn idle). Drives the
+  // delegating indicator.
+  const subtaskWorking = createMemo(() => busy().busy && !busy().busySelf)
+  const titleWorking = createMemo(() => busy().busy)
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
@@ -785,7 +786,7 @@ export default function Page() {
   createEffect(() => {
     const id = lastUserMessage()?.id
     if (!id) return
-    if (status().type !== "idle") setStore("expanded", id, true)
+    if (busy().busy) setStore("expanded", id, true)
   })
 
   const selectionPreview = (path: string, selection: FileSelection) => {
@@ -1058,7 +1059,7 @@ export default function Page() {
       onSelect: async () => {
         const sessionID = params.id
         if (!sessionID) return
-        if (status()?.type !== "idle") {
+        if (busy().busy) {
           await sdk.client.session.abort({ sessionID }).catch(() => {})
         }
         const revert = info()?.revert?.messageID

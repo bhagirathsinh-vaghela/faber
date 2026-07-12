@@ -30,7 +30,15 @@ export namespace SessionRecent {
       // Last real-turn timestamp — the same signal that stamps session
       // lastActivity. Pings and views never reach here.
       updated: z.number(),
+      // Effective busy: this session's own turn OR any in-flight descendant
+      // subtask (full subtree). The single boolean isAlive/needsAttention read.
       busy: z.boolean(),
+      // This session's OWN turn only.
+      busySelf: z.boolean(),
+      // Any descendant subtask's own turn is in flight (full subtree). With
+      // busySelf, lets the client pick own-only / both / delegating-only visuals
+      // (busy+busySelf alone can't tell own-only from both).
+      busyDescendant: z.boolean(),
       unseen: z.boolean(),
       // Epoch ms the next cache ping fires; absent when no ping is scheduled.
       // The client renders the countdown from this against its own clock, so a
@@ -51,7 +59,8 @@ export namespace SessionRecent {
 
   const hydrate = lazy(async () => {
     const stored = await Storage.read<Stored[]>(KEY).catch(() => [] as Stored[])
-    for (const entry of stored) entries.set(entry.sessionID, { ...entry, busy: false })
+    for (const entry of stored)
+      entries.set(entry.sessionID, { ...entry, busy: false, busySelf: false, busyDescendant: false })
   })
 
   const sorted = () => [...entries.values()].sort((a, b) => b.updated - a.updated)
@@ -61,7 +70,7 @@ export namespace SessionRecent {
     if (timer) return
     timer = setTimeout(() => {
       timer = undefined
-      const durable: Stored[] = sorted().map(({ busy, pingAt, ...rest }) => rest)
+      const durable: Stored[] = sorted().map(({ busy, busySelf, busyDescendant, pingAt, ...rest }) => rest)
       void Storage.write(KEY, durable)
     }, FLUSH_MS)
   }
@@ -111,13 +120,15 @@ export namespace SessionRecent {
   // A real turn touched this session: move it to the front and evict the oldest
   // past the cap. Live flags survive a re-touch so a busy turn that writes many
   // messages doesn't strobe the spinner off between chunks.
-  export async function touch(input: Omit<Entry, "busy" | "unseen" | "pingAt">) {
+  export async function touch(input: Omit<Entry, "busy" | "busySelf" | "busyDescendant" | "unseen" | "pingAt">) {
     await hydrate()
     const prev = entries.get(input.sessionID)
     entries.delete(input.sessionID)
     entries.set(input.sessionID, {
       ...input,
       busy: prev?.busy ?? false,
+      busySelf: prev?.busySelf ?? false,
+      busyDescendant: prev?.busyDescendant ?? false,
       unseen: prev?.unseen ?? false,
       pingAt: prev?.pingAt,
     })
@@ -134,11 +145,14 @@ export namespace SessionRecent {
   // Live-flag flips. The entry is guaranteed present (the turn that set the flag
   // already touched it); a missing entry means the session aged out of the cap,
   // so the flip is irrelevant to the overview and dropped.
-  export async function setBusy(sessionID: string, busy: boolean) {
+  export async function setBusy(sessionID: string, busy: boolean, busySelf: boolean, busyDescendant: boolean) {
     await hydrate()
     const entry = entries.get(sessionID)
-    if (!entry || entry.busy === busy) return
+    if (!entry || (entry.busy === busy && entry.busySelf === busySelf && entry.busyDescendant === busyDescendant))
+      return
     entry.busy = busy
+    entry.busySelf = busySelf
+    entry.busyDescendant = busyDescendant
     publish()
   }
 

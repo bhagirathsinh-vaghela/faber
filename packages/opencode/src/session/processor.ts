@@ -137,9 +137,6 @@ export namespace SessionProcessor {
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()
               switch (value.type) {
-                case "start":
-                  SessionStatus.set(input.sessionID, { type: "busy" })
-                  break
 
                 case "reasoning-start":
                   if (value.id in reasoningMap) {
@@ -482,6 +479,8 @@ export namespace SessionProcessor {
               sessionID: input.assistantMessage.sessionID,
               error: input.assistantMessage.error,
             })
+            // Clear the retry LABEL only. Busy stays true (the handle is still
+            // in flight) until the loop unwinds through defer(cancel).
             SessionStatus.set(input.sessionID, { type: "idle" })
           }
           if (snapshot) {

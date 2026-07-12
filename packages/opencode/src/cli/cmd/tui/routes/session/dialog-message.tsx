@@ -11,8 +11,7 @@ function waitForIdle(sync: ReturnType<typeof useSync>, sessionID: string, timeou
   return new Promise((resolve) => {
     const deadline = setTimeout(() => resolve(false), timeout)
     const poll = setInterval(() => {
-      const status = sync.data.session_status?.[sessionID]
-      if (!status || status.type === "idle") {
+      if (!sync.data.session_busy?.[sessionID]?.busy) {
         clearTimeout(deadline)
         clearInterval(poll)
         resolve(true)

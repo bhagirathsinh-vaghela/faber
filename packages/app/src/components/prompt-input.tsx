@@ -213,21 +213,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return paths
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const status = createMemo(
-    () =>
-      sync.data.session_status[params.id ?? ""] ?? {
-        type: "idle",
-      },
+  // The single busy read for this session, from the one operative store.
+  // working = effective (own OR any subtask, server-rolled full subtree);
+  // subtaskWorking = busy purely because a subtask runs (own turn idle).
+  const busy = createMemo(
+    () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
-  const working = createMemo(() => status()?.type !== "idle")
-  const subtaskWorking = createMemo(() => {
-    if (!params.id) return false
-    return sync.data.session.some((s) => {
-      if (s.parentID !== params.id) return false
-      const child = sync.data.session_status[s.id]
-      return child?.type === "busy" || child?.type === "retry"
-    })
-  })
+  const working = createMemo(() => busy().busy)
+  // A subtask is running (drives the task-accent overlay in the mix), whether or
+  // not the own turn is also running.
+  const subtaskWorking = createMemo(() => busy().busyDescendant)
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
@@ -1595,14 +1590,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (!worktree || worktree.status !== "pending") return true
 
       if (sessionDirectory === projectDirectory) {
-        sync.set("session_status", session.id, { type: "busy" })
+        // Optimistic own-turn busy: flip the operative store instantly so the
+        // spinner shows the moment the user sends, without waiting up to 5s for
+        // the reconcile tick. The next tick confirms (or clears, if the send
+        // never started a turn). busySelf:true — this is our own turn.
+        sync.set("session_busy", session.id, { busy: true, busySelf: true, busyDescendant: false })
       }
 
       const controller = new AbortController()
 
       const cleanup = () => {
         if (sessionDirectory === projectDirectory) {
-          sync.set("session_status", session.id, { type: "idle" })
+          sync.set("session_busy", session.id, { busy: false, busySelf: false, busyDescendant: false })
         }
         removeOptimisticMessage()
         for (const item of commentItems) {
@@ -1692,7 +1691,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         if (!absent) return
       }
       if (sessionDirectory === projectDirectory) {
-        sync.set("session_status", session.id, { type: "idle" })
+        // Send failed before a turn began — undo the optimistic busy. No subtask
+        // can exist yet, so clearing both facts is correct; the reconcile tick
+        // backstops it regardless.
+        sync.set("session_busy", session.id, { busy: false, busySelf: false, busyDescendant: false })
       }
       showToast({
         title: language.t("prompt.toast.promptSendFailed.title"),

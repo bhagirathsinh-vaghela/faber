@@ -14,6 +14,8 @@ import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
 import { SessionPing } from "../../session/ping"
 import { SessionRecent } from "../../session/recent"
+import { SessionBusy } from "../../session/busy"
+import { Event as ServerEvent } from "../event"
 import { errors } from "../error"
 import { Web } from "../web"
 
@@ -217,12 +219,14 @@ export const GlobalRoutes = lazy(() =>
         log.info("global event connected", { connectionID })
         return streamSSE(c, async (stream) => {
           let heartbeat: ReturnType<typeof setInterval> | undefined
+          let busyTick: ReturnType<typeof setInterval> | undefined
           let finish: (() => void) | undefined
           let torn = false
           const teardown = () => {
             if (torn) return
             torn = true
             if (heartbeat) clearInterval(heartbeat)
+            if (busyTick) clearInterval(busyTick)
             GlobalBus.off("event", handler)
             if (connectionID) GlobalInterest.clear(connectionID)
             finish?.()
@@ -262,6 +266,40 @@ export const GlobalRoutes = lazy(() =>
             void send({ payload: { type: "server.heartbeat", properties: {} } })
           }, 30000)
 
+          // Busy reconcile tick (independent of the 30s keepalive above). Level-
+          // triggered safety net for the open session's subtree: recent.updated
+          // heals hub ROOTS, but subtask children are not in the hub, so their
+          // busy state can only self-heal here. Quiescence-gated — we send only
+          // while the scoped subtree has a busy session, plus ONE trailing all-
+          // idle when it clears, then stay silent. So a client wakes only while
+          // work is actually happening in what it's viewing; an idle connection
+          // gets nothing from this timer (the keepalive still covers liveness).
+          // A connection with no interest set is the overview: it reconciles via
+          // recent.updated, so this tick does nothing for it.
+          let busyActive = false
+          busyTick = setInterval(() => {
+            // Busy scope is exactly ONE open session's subtree (or none, on the
+            // overview). Not the message interest set, not a directory list.
+            const scope = connectionID ? GlobalInterest.busy(connectionID) : undefined
+            if (!scope) return
+
+            const busy = SessionBusy.subtreeBusy(scope.sessionID, scope.directory)
+            // Quiescence gate: nothing busy in the open subtree. Send ONE trailing
+            // all-idle snapshot so a client that saw busy clears it, then stay
+            // silent until work resumes.
+            if (!busy && !busyActive) return
+            busyActive = busy
+            const sessions = SessionBusy.subtreeSnapshot(scope.sessionID, scope.directory)
+            // Stamp directory so the client routes this into that directory's
+            // store (each entry also carries it); without it the frame defaults
+            // to "global" and would still hit the global handler branch, but the
+            // stamp keeps parity with how Bus.publish tags directory.
+            void send({
+              directory: scope.directory,
+              payload: { type: ServerEvent.Busy.type, properties: { sessions } },
+            })
+          }, 5000)
+
           await send({ payload: { type: "server.connected", properties: {} } })
 
           await new Promise<void>((resolve) => {
@@ -299,11 +337,15 @@ export const GlobalRoutes = lazy(() =>
           connectionID: z.string(),
           directory: z.string().nullish(),
           sessions: z.array(z.string()),
+          // The open session whose subtree the busy reconcile tick heals. Null on
+          // the overview (no open session) — the tick then stays silent and busy
+          // is served by recent.updated. Separate from `sessions` (message scope).
+          busySession: z.string().nullish(),
         }),
       ),
       async (c) => {
         const body = c.req.valid("json")
-        GlobalInterest.set(body.connectionID, body.directory ?? undefined, body.sessions)
+        GlobalInterest.set(body.connectionID, body.directory ?? undefined, body.sessions, body.busySession ?? undefined)
         return c.json(true)
       },
     )

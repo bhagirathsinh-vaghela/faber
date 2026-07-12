@@ -48,6 +48,7 @@ import { TaskTool } from "@/tool/task"
 import { Tool } from "@/tool/tool"
 import { PermissionNext } from "@/permission/next"
 import { SessionStatus } from "./status"
+import { SessionBusy } from "./busy"
 import { LLM } from "./llm"
 import { SessionPing } from "./ping"
 import { SessionPin } from "./pin"
@@ -283,6 +284,9 @@ export namespace SessionPrompt {
       // where the loop tail owns arm/disarm. Only `unseen` may keep the session
       // in the attention bucket after this.
       SessionPing.stop(sessionID)
+      // No live handle — busy is already false, but restamp defensively so the
+      // projection can never lag a self-flag that somehow outlived its turn.
+      SessionBusy.exit(sessionID)
       SessionStatus.set(sessionID, { type: "idle" })
       return
     }
@@ -291,6 +295,9 @@ export namespace SessionPrompt {
       item.reject(new DOMException("Aborted", "AbortError"))
     }
     delete s[sessionID]
+    // The in-flight handle is gone — clear the derived busy (self + restamp
+    // ancestors) and the retry detail. Both are now false.
+    SessionBusy.exit(sessionID)
     SessionStatus.set(sessionID, { type: "idle" })
     return
   }
@@ -311,9 +318,12 @@ export namespace SessionPrompt {
     // Pin prompt-shaping state on the first turn after boot; child sessions
     // inherit the parent's pin so a config refresh mid-task can't split them.
     if (session.parentID) SessionPin.adopt(sessionID, session.parentID)
+    // The in-flight handle now exists — derive busy (self + restamp ancestors,
+    // seeding the child->parent edge). Paired with the defer(cancel) above,
+    // which calls SessionBusy.exit on every loop exit.
+    SessionBusy.enter(sessionID, session.parentID)
     const snapshot = await SessionPin.get(sessionID)
     while (true) {
-      SessionStatus.set(sessionID, { type: "busy" })
       log.info("loop", { step, sessionID })
       if (abort.aborted) break
       let msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))

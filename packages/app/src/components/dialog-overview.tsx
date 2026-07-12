@@ -107,11 +107,29 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
             {countdown() ?? "--"}
           </Chip>
         </ChipGroup>
+        {/* One dot, three states in the shared two-color language (same as the
+            dock/zen bar). Base tint = own turn (warning) when busySelf, else the
+            task accent (delegating-only). A task-accent overlay cross-fades in
+            when a subtask ALSO runs (busySelf && busyDescendant = "both"), so the
+            tint oscillates own↔task exactly like the dock. */}
         <Show when={props.row.busy}>
           <span
-            title={language.t("home.attention.busy")}
-            class="status-ping relative size-2 rounded-full text-icon-warning-base bg-current shrink-0"
-          />
+            data-slot="busy-dot"
+            title={
+              props.row.busySelf
+                ? props.row.busyDescendant
+                  ? language.t("home.attention.busyDelegating")
+                  : language.t("home.attention.busy")
+                : language.t("home.attention.delegating")
+            }
+            class="relative size-2 rounded-full shrink-0"
+            style={{ "--busy-tint": props.row.busySelf ? "var(--icon-warning-base)" : "var(--box-accent-task)" }}
+          >
+            <span class="busy-dot-fill" />
+            <Show when={props.row.busySelf && props.row.busyDescendant}>
+              <span class="busy-dot-fill busy-dot-fill-task" />
+            </Show>
+          </span>
         </Show>
         <Show when={!props.row.busy && props.row.unseen}>
           <span

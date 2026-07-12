@@ -18,6 +18,8 @@ export type RecentSession = {
   title: string
   updated: number
   busy: boolean
+  busySelf: boolean
+  busyDescendant: boolean
   unseen: boolean
   pingAt?: number
 }
@@ -87,6 +89,20 @@ export type EventGlobalDisposed = {
   type: "global.disposed"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventSessionBusy = {
+  type: "session.busy"
+  properties: {
+    sessions: {
+      [key: string]: {
+        directory: string
+        busy: boolean
+        busySelf: boolean
+        busyDescendant: boolean
+      }
+    }
   }
 }
 
@@ -597,9 +613,6 @@ export type SessionStatus =
       message: string
       next: number
     }
-  | {
-      type: "busy"
-    }
 
 export type EventSessionStatus = {
   type: "session.status"
@@ -923,6 +936,16 @@ export type EventOpenProjectsUpdated = {
   }
 }
 
+export type EventSessionWorking = {
+  type: "session.working"
+  properties: {
+    sessionID: string
+    busy: boolean
+    busySelf: boolean
+    busyDescendant: boolean
+  }
+}
+
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -1216,6 +1239,7 @@ export type Event =
   | EventServerInstanceDisposed
   | EventServerConnected
   | EventGlobalDisposed
+  | EventSessionBusy
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventFileEdited
@@ -1250,6 +1274,7 @@ export type Event =
   | EventSessionPingArmed
   | EventSessionCompacted
   | EventOpenProjectsUpdated
+  | EventSessionWorking
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -2870,6 +2895,7 @@ export type GlobalSubscribeData = {
     connectionID: string
     directory?: string | null
     sessions: Array<string>
+    busySession?: string | null
   }
   path?: never
   query?: never
@@ -3618,6 +3644,39 @@ export type SessionStatusResponses = {
 }
 
 export type SessionStatusResponse = SessionStatusResponses[keyof SessionStatusResponses]
+
+export type SessionBusyData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/session/busy"
+}
+
+export type SessionBusyErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionBusyError = SessionBusyErrors[keyof SessionBusyErrors]
+
+export type SessionBusyResponses = {
+  /**
+   * Get session busy state
+   */
+  200: {
+    [key: string]: {
+      busy: boolean
+      busySelf: boolean
+      busyDescendant: boolean
+    }
+  }
+}
+
+export type SessionBusyResponse = SessionBusyResponses[keyof SessionBusyResponses]
 
 export type SessionPingArmedData = {
   body?: never

@@ -1492,8 +1492,9 @@ export default function Layout(props: ParentProps) {
     const directory = decode64(dir)
     if (!directory) return
     const [activeStore] = globalSync.child(directory)
-    const status = activeStore.session_status[id]
-    if (status && status.type !== "idle") return
+    // Don't mark seen while the session is working (own turn or a subtask) —
+    // effective busy from the one operative store.
+    if (activeStore.session_busy[id]?.busy) return
     void globalSDK.client.session.seen({ directory, sessionID: id })
   })
 
@@ -1610,16 +1611,9 @@ export default function Layout(props: ParentProps) {
     })
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
-      const busy = (id: string) => {
-        const status = sessionStore.session_status[id]
-        return status?.type === "busy" || status?.type === "retry"
-      }
-      if (busy(props.session.id)) return true
-
-      const childIDs =
-        props.children?.get(props.session.id) ??
-        sessionStore.session.filter((s) => s.parentID === props.session.id).map((s) => s.id)
-      return childIDs.some(busy)
+      // The single operative store already carries effective busy (own turn OR
+      // any subtask, full subtree rolled up server-side) — no local child scan.
+      return sessionStore.session_busy[props.session.id]?.busy ?? false
     })
 
     const tint = createMemo(() => {

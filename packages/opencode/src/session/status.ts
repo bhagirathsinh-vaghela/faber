@@ -1,10 +1,14 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Instance } from "@/project/instance"
-import { Liveness } from "@/project/liveness"
-import { SessionRecent } from "./recent"
 import z from "zod"
 
+// Retry-detail carrier ONLY. The busy BOOLEAN is derived from the real
+// in-flight handle in SessionBusy (SessionPrompt.state membership) — this
+// record never asserts "busy". It exists to carry the retry attempt/countdown
+// the client renders as a label on top of the busy spinner. `idle` here means
+// "not retrying", not "not working": a session mid-turn between retries is
+// idle-status but still busy via SessionBusy.
 export namespace SessionStatus {
   export const Info = z
     .union([
@@ -16,9 +20,6 @@ export namespace SessionStatus {
         attempt: z.number(),
         message: z.string(),
         next: z.number(),
-      }),
-      z.object({
-        type: z.literal("busy"),
       }),
     ])
     .meta({
@@ -60,14 +61,14 @@ export namespace SessionStatus {
     return state()
   }
 
+  // Sets ONLY the retry detail. The busy boolean is owned by SessionBusy; this
+  // never touches it. `idle` clears the retry record (the turn may still be in
+  // flight — that is SessionBusy's concern, not ours).
   export function set(sessionID: string, status: Info) {
     Bus.publish(Event.Status, {
       sessionID,
       status,
     })
-    const working = status.type === "busy" || status.type === "retry"
-    void SessionRecent.setBusy(sessionID, working)
-    Liveness.setBusy(Instance.directory, sessionID, working)
     if (status.type === "idle") {
       // deprecated
       Bus.publish(Event.Idle, {

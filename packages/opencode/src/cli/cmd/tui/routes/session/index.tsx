@@ -651,8 +651,8 @@ export function Session() {
         name: "undo",
       },
       onSelect: async (dialog) => {
-        const status = sync.data.session_status?.[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
+        if (sync.data.session_busy?.[route.sessionID]?.busy)
+          await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
         const revert = session()?.revert?.messageID
         const allMsgs = messages()
         // Find last non-synthetic user message (skip TASK RESULT messages)

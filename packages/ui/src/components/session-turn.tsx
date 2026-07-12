@@ -401,7 +401,11 @@ export function SessionTurn(
   })
 
   const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
-  const working = createMemo(() => status().type !== "idle" && isLastUserMessage())
+  // Busy boolean from the one operative store (effective: own turn OR subtree).
+  // Only the active (last) turn shows the spinner. session_status is used ONLY
+  // for the retry label below, never for the busy boolean.
+  const busy = createMemo(() => data.store.session_busy[props.sessionID]?.busy ?? false)
+  const working = createMemo(() => busy() && isLastUserMessage())
   const retry = createMemo(() => {
     // session_status is session-scoped; only show retry on the active (last) turn
     if (!isLastUserMessage()) return

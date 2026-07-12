@@ -14,8 +14,15 @@ import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 
 type Data = {
   session: Session[]
+  // Retry DETAIL only (label/countdown). The busy boolean lives in session_busy.
   session_status: {
     [sessionID: string]: SessionStatus
+  }
+  // The one operative busy state: busy = effective (own turn OR any subtask,
+  // full subtree, rolled up server-side); busySelf = own turn only. Every busy
+  // indicator reads this; busySelf picks own-vs-delegating animation.
+  session_busy: {
+    [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }
   }
   session_diff: {
     [sessionID: string]: FileDiff[]

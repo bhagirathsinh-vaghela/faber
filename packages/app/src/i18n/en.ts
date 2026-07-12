@@ -460,6 +460,8 @@ export const dict = {
   "home.empty.description": "Get started by opening a local project",
   "home.attention": "Needs attention",
   "home.attention.busy": "Working",
+  "home.attention.delegating": "Subtask running",
+  "home.attention.busyDelegating": "Working + subtask",
   "home.attention.unseen": "New",
   "home.attention.stopPing": "Stop pinging",
 

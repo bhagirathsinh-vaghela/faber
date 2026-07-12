@@ -67,6 +67,9 @@ const getData = query(async (shareID) => {
     session_status: {
       [sessionID: string]: SessionStatus
     }
+    session_busy: {
+      [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }
+    }
     message: {
       [sessionID: string]: Message[]
     }
@@ -94,6 +97,8 @@ const getData = query(async (shareID) => {
         type: "idle",
       },
     },
+    // A shared transcript is a completed snapshot — never busy.
+    session_busy: {},
     message: {},
     part: {},
     model: {},

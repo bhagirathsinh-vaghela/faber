@@ -76,6 +76,9 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+  // Effective busy (own turn OR any subtask) from the one operative store;
+  // status above is retry DETAIL only now.
+  const busy = createMemo(() => sync.data.session_busy?.[props.sessionID ?? ""]?.busy ?? false)
   const history = usePromptHistory()
   const stash = usePromptStash()
   const command = useCommandDialog()
@@ -325,7 +328,7 @@ export function Prompt(props: PromptProps) {
         keybind: "session_interrupt",
         category: "Session",
         hidden: true,
-        enabled: status().type !== "idle",
+        enabled: busy(),
         onSelect: (dialog) => {
           if (autocomplete.visible) return
           if (!input.focused) return
@@ -1241,7 +1244,7 @@ export function Prompt(props: PromptProps) {
           />
         </box>
         <box flexDirection="row" justifyContent="space-between">
-          <Show when={status().type !== "idle"} fallback={<text />}>
+          <Show when={busy()} fallback={<text />}>
             <box
               flexDirection="row"
               gap={1}

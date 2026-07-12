@@ -41,8 +41,7 @@ export function DialogForkFromTimeline(props: {
         footer: Locale.time(message.time.created),
         onSelect: revert
           ? async (dialog) => {
-              const status = sync.data.session_status?.[props.sessionID]
-              if (status?.type !== "idle")
+              if (sync.data.session_busy?.[props.sessionID]?.busy)
                 await sdk.client.session.abort({ sessionID: props.sessionID }).catch(() => {})
               await sdk.client.session.revert({
                 sessionID: props.sessionID,

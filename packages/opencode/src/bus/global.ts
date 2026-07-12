@@ -24,15 +24,35 @@ GlobalBus.setMaxListeners(0)
 // server-side filter ship before any client wiring — an un-subscribing client
 // is unaffected.
 export namespace GlobalInterest {
-  type Interest = { directory?: string; sessions: Set<string> }
+  // `sessions` is the message-streaming interest set (drives wants() below):
+  // open session + subagent children + the handful of live/attention sessions
+  // the user juggles, which CAN span directories (transcript warmth). Separate
+  // from `busy`, which is the simple two-mode busy scope: the ONE open session
+  // (server expands to its subtree) or none (overview → heals via recent.updated).
+  // directory routes the busy tick frame back to the right per-directory store.
+  type Interest = { directory?: string; sessions: Set<string>; busy?: string }
   const registry = new Map<string, Interest>()
 
-  export function set(connectionID: string, directory: string | undefined, sessions: string[]) {
-    registry.set(connectionID, { directory, sessions: new Set(sessions) })
+  export function set(
+    connectionID: string,
+    directory: string | undefined,
+    sessions: string[],
+    busy: string | undefined,
+  ) {
+    registry.set(connectionID, { directory, sessions: new Set(sessions), busy })
   }
 
   export function clear(connectionID: string) {
     registry.delete(connectionID)
+  }
+
+  // The open session whose subtree the busy reconcile tick heals, and its
+  // directory. Absent = overview (or nothing open): the tick stays silent, since
+  // the overview heals busy via recent.updated instead.
+  export function busy(connectionID: string): { sessionID: string; directory: string } | undefined {
+    const entry = registry.get(connectionID)
+    if (!entry?.busy || !entry.directory) return undefined
+    return { sessionID: entry.busy, directory: entry.directory }
   }
 
   // Session-scoped event types: only meaningful to a client viewing that

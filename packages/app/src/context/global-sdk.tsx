@@ -25,6 +25,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     // reused across reconnects so the server keeps our set.
     const connectionID = crypto.randomUUID()
     let interest: string[] = []
+    let interestDirectory: string | undefined
+    let interestBusySession: string | undefined
     const emitter = createGlobalEmitter<{
       [key: string]: Event
     }>()
@@ -78,12 +80,24 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     // Declare (or re-declare) which sessions this connection wants. Fire-and-
     // forget: on failure the server just keeps our previous set (or fail-open if
     // none), so a dropped subscribe over-sends but never drops events.
-    const pushInterest = () => eventSdk.global.subscribe({ connectionID, sessions: interest }).catch(() => {})
+    const pushInterest = () =>
+      eventSdk.global
+        .subscribe({
+          connectionID,
+          sessions: interest,
+          directory: interestDirectory,
+          busySession: interestBusySession,
+        })
+        .catch(() => {})
 
-    // Update the interest set and push it. Called by global-sync as the set of
-    // sessions the client keeps mounted changes (open session + live sessions).
-    const subscribe = (sessions: string[]) => {
+    // Update the message interest set AND the busy scope, then push. `sessions`
+    // is the message-streaming set (open + children + juggled live sessions).
+    // `busySession` is the single open session whose subtree the busy tick heals
+    // (undefined on the overview). `directory` routes the busy tick frame back.
+    const subscribe = (sessions: string[], directory?: string, busySession?: string) => {
       interest = sessions
+      interestDirectory = directory
+      interestBusySession = busySession
       return pushInterest()
     }
 

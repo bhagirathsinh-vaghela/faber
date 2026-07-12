@@ -156,6 +156,8 @@ import type {
   QuestionReplyResponses,
   SessionAbortErrors,
   SessionAbortResponses,
+  SessionBusyErrors,
+  SessionBusyResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -471,6 +473,7 @@ export class Global extends HeyApiClient {
       connectionID?: string
       directory?: string | null
       sessions?: Array<string>
+      busySession?: string | null
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -482,6 +485,7 @@ export class Global extends HeyApiClient {
             { in: "body", key: "connectionID" },
             { in: "body", key: "directory" },
             { in: "body", key: "sessions" },
+            { in: "body", key: "busySession" },
           ],
         },
       ],
@@ -1237,6 +1241,25 @@ export class Session extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<SessionStatusResponses, SessionStatusErrors, ThrowOnError>({
       url: "/session/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get session busy state
+   *
+   * Busy facts for every currently-busy session in this instance (own turn or any subtask). Bootstrap for clients that read the session.working event; absent sessions are idle.
+   */
+  public busy<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<SessionBusyResponses, SessionBusyErrors, ThrowOnError>({
+      url: "/session/busy",
       ...options,
       ...params,
     })

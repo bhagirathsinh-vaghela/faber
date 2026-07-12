@@ -257,7 +257,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // id instead of being dropped. Awaited here (not in the caller) so the
           // ordering holds no matter which path triggered the sync. Fail-open on
           // the server means a slow/failed subscribe over-sends, never drops.
-          await globalSync.ensureInterest(sessionID)
+          await globalSync.ensureInterest(sessionID, sdk.directory)
 
           // force re-fetch heals the reconnect gap: the server has no SSE replay,
           // so a message (or a part completed) during the disconnect window is

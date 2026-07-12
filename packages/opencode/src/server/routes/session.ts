@@ -12,6 +12,7 @@ import { Instance } from "../../project/instance"
 import { OpenProjects } from "../../project/open"
 import { SessionPin } from "../../session/pin"
 import { SessionStatus } from "@/session/status"
+import { SessionBusy } from "@/session/busy"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
 import { Agent } from "../../agent/agent"
@@ -90,6 +91,35 @@ export const SessionRoutes = lazy(() =>
       }),
       async (c) => {
         const result = SessionStatus.list()
+        return c.json(result)
+      },
+    )
+    .get(
+      "/busy",
+      describeRoute({
+        summary: "Get session busy state",
+        description:
+          "Busy facts for every currently-busy session in this instance (own turn or any subtask). Bootstrap for clients that read the session.working event; absent sessions are idle.",
+        operationId: "session.busy",
+        responses: {
+          200: {
+            description: "Get session busy state",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.record(
+                    z.string(),
+                    z.object({ busy: z.boolean(), busySelf: z.boolean(), busyDescendant: z.boolean() }),
+                  ),
+                ),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      async (c) => {
+        const result = SessionBusy.list()
         return c.json(result)
       },
     )

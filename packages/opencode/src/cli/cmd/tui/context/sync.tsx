@@ -48,8 +48,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       }
       config: Config
       session: Session[]
+      // Retry DETAIL only (idle|retry). Busy lives in session_busy.
       session_status: {
         [sessionID: string]: SessionStatus
+      }
+      // Busy facts per session, fed by the session.working event on /event and
+      // bootstrapped on attach. busy = effective (own turn OR any subtask);
+      // busySelf = own turn only.
+      session_busy: {
+        [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }
       }
       session_diff: {
         [sessionID: string]: Snapshot.FileDiff[]
@@ -93,6 +100,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       provider_default: {},
       session: [],
       session_status: {},
+      session_busy: {},
       session_diff: {},
       todo: {},
       message: {},
@@ -226,6 +234,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
+          break
+        }
+
+        case "session.working": {
+          setStore("session_busy", event.properties.sessionID, {
+            busy: event.properties.busy,
+            busySelf: event.properties.busySelf,
+            busyDescendant: event.properties.busyDescendant,
+          })
           break
         }
 
@@ -402,6 +419,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.formatter.status().then((x) => setStore("formatter", reconcile(x.data!))),
             sdk.client.session.status().then((x) => {
               setStore("session_status", reconcile(x.data!))
+            }),
+            sdk.client.session.busy().then((x) => {
+              setStore("session_busy", reconcile(x.data ?? {}))
             }),
             sdk.client.provider.auth().then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
             sdk.client.vcs.get().then((x) => setStore("vcs", reconcile(x.data))),
