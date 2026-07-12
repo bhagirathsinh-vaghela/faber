@@ -6,6 +6,7 @@ import { Bus } from "../bus"
 import { FileWatcher } from "../file/watcher"
 import { Instance } from "../project/instance"
 import { Patch } from "../patch"
+import { FileTime } from "../file/time"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
@@ -97,6 +98,10 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
           }
 
           const oldContent = await fs.readFile(filePath, "utf-8")
+          // Guard against overwriting a file the model never read or that changed
+          // on disk since it was read, matching edit/write. apply_patch would
+          // otherwise clobber an out-of-band edit that the other tools refuse.
+          await FileTime.assert(ctx.sessionID, filePath)
           let newContent = oldContent
 
           // Apply the update chunks to get new content
@@ -138,6 +143,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
           const contentToDelete = await fs.readFile(filePath, "utf-8").catch((error) => {
             throw new Error(`apply_patch verification failed: ${error}`)
           })
+          await FileTime.assert(ctx.sessionID, filePath)
           const deleteDiff = trimDiff(createTwoFilesPatch(filePath, filePath, contentToDelete, ""))
 
           const deletions = contentToDelete.split("\n").length
@@ -189,35 +195,43 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
     for (const change of fileChanges) {
       const edited = change.type === "delete" ? undefined : (change.movePath ?? change.filePath)
-      switch (change.type) {
-        case "add":
-          // Create parent directories (recursive: true is safe on existing/root dirs)
-          await fs.mkdir(path.dirname(change.filePath), { recursive: true })
-          await fs.writeFile(change.filePath, change.newContent, "utf-8")
-          updates.push({ file: change.filePath, event: "add" })
-          break
-
-        case "update":
-          await fs.writeFile(change.filePath, change.newContent, "utf-8")
-          updates.push({ file: change.filePath, event: "change" })
-          break
-
-        case "move":
-          if (change.movePath) {
+      // Serialize each file's write against concurrent edit/write on the same
+      // path, then re-stamp the written file so a later edit this session does
+      // not trip the "modified since last read" guard on our own write.
+      await FileTime.withLock(change.filePath, async () => {
+        switch (change.type) {
+          case "add":
             // Create parent directories (recursive: true is safe on existing/root dirs)
-            await fs.mkdir(path.dirname(change.movePath), { recursive: true })
-            await fs.writeFile(change.movePath, change.newContent, "utf-8")
+            await fs.mkdir(path.dirname(change.filePath), { recursive: true })
+            await fs.writeFile(change.filePath, change.newContent, "utf-8")
+            await FileTime.restamp(ctx.sessionID, change.filePath)
+            updates.push({ file: change.filePath, event: "add" })
+            break
+
+          case "update":
+            await fs.writeFile(change.filePath, change.newContent, "utf-8")
+            await FileTime.restamp(ctx.sessionID, change.filePath)
+            updates.push({ file: change.filePath, event: "change" })
+            break
+
+          case "move":
+            if (change.movePath) {
+              // Create parent directories (recursive: true is safe on existing/root dirs)
+              await fs.mkdir(path.dirname(change.movePath), { recursive: true })
+              await fs.writeFile(change.movePath, change.newContent, "utf-8")
+              await fs.unlink(change.filePath)
+              await FileTime.restamp(ctx.sessionID, change.movePath)
+              updates.push({ file: change.filePath, event: "unlink" })
+              updates.push({ file: change.movePath, event: "add" })
+            }
+            break
+
+          case "delete":
             await fs.unlink(change.filePath)
             updates.push({ file: change.filePath, event: "unlink" })
-            updates.push({ file: change.movePath, event: "add" })
-          }
-          break
-
-        case "delete":
-          await fs.unlink(change.filePath)
-          updates.push({ file: change.filePath, event: "unlink" })
-          break
-      }
+            break
+        }
+      })
 
       if (edited) {
         await Bus.publish(File.Event.Edited, {

@@ -3,7 +3,30 @@ import path from "path"
 import * as fs from "fs/promises"
 import { ApplyPatchTool } from "../../src/tool/apply_patch"
 import { Instance } from "../../src/project/instance"
+import { FileTime } from "../../src/file/time"
 import { tmpdir } from "../fixture/fixture"
+
+// apply_patch now guards updates/deletes with FileTime.assert (a file must be
+// read before it's patched). Seed a read for every existing file under the
+// instance directory the way the Read tool would, so the tests exercise the
+// patch logic rather than the read-first guard.
+async function seedReads(sessionID: string) {
+  // The patch-validation tests run without an instance context; nothing to seed.
+  const dir = (() => {
+    try {
+      return Instance.directory
+    } catch {
+      return undefined
+    }
+  })()
+  if (!dir) return
+  for (const file of await fs.readdir(dir, { recursive: true })) {
+    const full = path.join(dir, file)
+    const stat = await fs.stat(full).catch(() => null)
+    if (!stat?.isFile()) continue
+    FileTime.read(sessionID, full, stat.mtime.getTime(), await FileTime.hash(full))
+  }
+}
 
 const baseCtx = {
   sessionID: "test",
@@ -41,6 +64,7 @@ type ToolCtx = typeof baseCtx & {
 }
 
 const execute = async (params: { patchText: string }, ctx: ToolCtx) => {
+  await seedReads(ctx.sessionID)
   const tool = await ApplyPatchTool.init()
   return tool.execute(params, ctx)
 }
@@ -288,6 +312,27 @@ describe("tool.apply_patch freeform", () => {
         await expect(execute({ patchText }, ctx)).rejects.toThrow(
           "apply_patch verification failed: Failed to read file to update",
         )
+      },
+    })
+  })
+
+  test("rejects update when the file was never read", async () => {
+    await using fixture = await tmpdir()
+    const { ctx } = makeCtx()
+
+    await Instance.provide({
+      directory: fixture.path,
+      fn: async () => {
+        const target = path.join(fixture.path, "unread.txt")
+        await fs.writeFile(target, "line1\nline2\n", "utf-8")
+
+        const patchText = "*** Begin Patch\n*** Update File: unread.txt\n@@\n-line2\n+changed\n*** End Patch"
+
+        // Call the tool directly (not the seedReads helper) so the read-first
+        // guard is exercised. The file must be untouched after the refusal.
+        const tool = await ApplyPatchTool.init()
+        await expect(tool.execute({ patchText }, ctx)).rejects.toThrow("before overwriting it")
+        expect(await fs.readFile(target, "utf-8")).toBe("line1\nline2\n")
       },
     })
   })
