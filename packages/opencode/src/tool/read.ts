@@ -106,11 +106,24 @@ export const ReadTool = Tool.define("read", {
     const isBinary = await isBinaryFile(filepath, file)
     if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
-    // Dedup: if file hasn't changed since last read in this session, return a stub
+    const limit = params.limit ?? DEFAULT_READ_LIMIT
+    const offset = params.offset || 0
+
+    // Dedup: if this exact range was already read and the file hasn't changed
+    // since, return a stub instead of re-sending the content. A different range
+    // must fall through to a real read — the stored entry only covers the range
+    // it captured. An undefined offset marks an Edit/Write stamp, not a Read, so
+    // it can never stub a Read against post-edit content the model never saw.
     const stat = await file.stat()
     const lastRead = FileTime.get(ctx.sessionID, filepath)
-    if (lastRead && stat.mtime.getTime() <= lastRead.mtime) {
-      FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime(), lastRead.hash)
+    if (
+      lastRead &&
+      lastRead.offset !== undefined &&
+      lastRead.offset === offset &&
+      lastRead.limit === params.limit &&
+      stat.mtime.getTime() <= lastRead.mtime
+    ) {
+      FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime(), lastRead.hash, offset, params.limit)
       return {
         title,
         output: `<file_unchanged>${filepath}</file_unchanged>`,
@@ -121,12 +134,12 @@ export const ReadTool = Tool.define("read", {
           // history after a server restart (in-memory read map is process-local).
           mtime: stat.mtime.getTime(),
           hash: lastRead.hash,
+          offset,
+          limit: params.limit,
         },
       }
     }
 
-    const limit = params.limit ?? DEFAULT_READ_LIMIT
-    const offset = params.offset || 0
     const lines = await file.text().then((text) => text.split("\n"))
 
     const raw: string[] = []
@@ -173,7 +186,7 @@ export const ReadTool = Tool.define("read", {
     // spurious re-read. Hash the raw file bytes (same as FileTime.assert) so the
     // two sides compare identically, regardless of read truncation.
     const contentHash = await FileTime.hash(filepath)
-    FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime(), contentHash)
+    FileTime.read(ctx.sessionID, filepath, stat.mtime.getTime(), contentHash, offset, params.limit)
 
     if (instructions.length > 0) {
       output += `\n\n<system-reminder>\n${instructions.map((i) => i.content).join("\n\n")}\n</system-reminder>`
@@ -187,9 +200,13 @@ export const ReadTool = Tool.define("read", {
         truncated,
         // Persisted so FileTime can be rebuilt from session history after a
         // server restart (the in-memory read map is process-local). The hash
-        // lets the restored entry keep its content fallback across a restart.
+        // lets the restored entry keep its content fallback across a restart;
+        // offset/limit let the restored entry keep its read range so dedup stays
+        // range-aware across the seed().
         mtime: stat.mtime.getTime(),
         hash: contentHash,
+        offset,
+        limit: params.limit,
         ...(instructions.length > 0 && { loaded: instructions.map((i) => i.filepath) }),
       },
     }

@@ -133,6 +133,64 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
     })
   })
 
+  test("re-reading the same range returns the unchanged stub", async () => {
+    await using tmp = await tmpdir({
+      init: (dir) => Bun.write(path.join(dir, "f.txt"), "a\nb\nc\nd\n"),
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const file = path.join(tmp.path, "f.txt")
+        const read = await ReadTool.init()
+        const first = await read.execute({ filePath: file }, ctx)
+        expect(first.output).toContain("<file>")
+
+        const second = await read.execute({ filePath: file }, ctx)
+        expect(second.output).toContain("<file_unchanged>")
+      },
+    })
+  })
+
+  test("reading a different range after a full read does not stub", async () => {
+    await using tmp = await tmpdir({
+      init: (dir) => Bun.write(path.join(dir, "f.txt"), Array.from({ length: 50 }, (_, i) => `line ${i}`).join("\n")),
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const file = path.join(tmp.path, "f.txt")
+        const read = await ReadTool.init()
+        const full = await read.execute({ filePath: file }, ctx)
+        expect(full.output).toContain("line 0")
+
+        const windowed = await read.execute({ filePath: file, offset: 20, limit: 5 }, ctx)
+        expect(windowed.output).not.toContain("<file_unchanged>")
+        expect(windowed.output).toContain("line 20")
+      },
+    })
+  })
+
+  test("an edit stamp does not stub a subsequent read", async () => {
+    await using tmp = await tmpdir({
+      init: (dir) => Bun.write(path.join(dir, "f.txt"), "one\ntwo\nthree\n"),
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const file = path.join(tmp.path, "f.txt")
+        const read = await ReadTool.init()
+        await read.execute({ filePath: file }, ctx)
+
+        const edit = await EditTool.init()
+        await edit.execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
+
+        const after = await read.execute({ filePath: file }, ctx)
+        expect(after.output).not.toContain("<file_unchanged>")
+        expect(after.output).toContain("2")
+      },
+    })
+  })
+
   test("assert requires a prior read", async () => {
     await using tmp = await tmpdir({
       init: (dir) => Bun.write(path.join(dir, "f.txt"), "x\n"),

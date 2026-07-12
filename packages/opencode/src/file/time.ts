@@ -25,7 +25,7 @@ export namespace FileTime {
   export const state = Instance.state(() => {
     const read: {
       [sessionID: string]: {
-        [path: string]: { mtime: number; hash?: string } | undefined
+        [path: string]: { mtime: number; hash?: string; offset?: number; limit?: number } | undefined
       }
     } = {}
     const locks = new Map<string, Promise<void>>()
@@ -35,11 +35,16 @@ export namespace FileTime {
     }
   })
 
-  export function read(sessionID: string, file: string, mtime?: number, hash?: string) {
+  // offset/limit record which line range a Read tool call captured, so read-dedup
+  // can distinguish "same range, re-read" (stub) from "different range" (real
+  // read). Edit/Write leave them undefined: their entry is a write-guard stamp,
+  // not a cached view, and deduping a later Read against it would point the model
+  // at post-edit content it never read.
+  export function read(sessionID: string, file: string, mtime?: number, hash?: string, offset?: number, limit?: number) {
     log.info("read", { sessionID, file })
     const { read } = state()
     read[sessionID] = read[sessionID] || {}
-    read[sessionID][file] = { mtime: mtime ?? Date.now(), hash }
+    read[sessionID][file] = { mtime: mtime ?? Date.now(), hash, offset, limit }
   }
 
   // Record a file's state after our own write: its true on-disk mtime (not the
@@ -67,11 +72,14 @@ export namespace FileTime {
   // server restart the reads are restored, and after compaction the filtered-out
   // reads are dropped (forcing a real re-read instead of an unchanged stub). The
   // in-memory map is a cache of this durable truth, not the source of truth.
-  export function seed(sessionID: string, entries: { file: string; mtime: number; hash?: string }[]) {
+  export function seed(
+    sessionID: string,
+    entries: { file: string; mtime: number; hash?: string; offset?: number; limit?: number }[],
+  ) {
     const { read } = state()
-    const next: { [path: string]: { mtime: number; hash?: string } | undefined } = {}
+    const next: { [path: string]: { mtime: number; hash?: string; offset?: number; limit?: number } | undefined } = {}
     for (const entry of entries) {
-      next[entry.file] = { mtime: entry.mtime, hash: entry.hash }
+      next[entry.file] = { mtime: entry.mtime, hash: entry.hash, offset: entry.offset, limit: entry.limit }
     }
     read[sessionID] = next
   }

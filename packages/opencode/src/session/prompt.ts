@@ -351,6 +351,8 @@ export namespace SessionPrompt {
                     file: path.resolve(Instance.directory, part.state.input.filePath),
                     mtime: part.state.metadata.mtime,
                     hash: typeof part.state.metadata.hash === "string" ? part.state.metadata.hash : undefined,
+                    offset: typeof part.state.metadata.offset === "number" ? part.state.metadata.offset : undefined,
+                    limit: typeof part.state.metadata.limit === "number" ? part.state.metadata.limit : undefined,
                   },
                 ]
               : [],
