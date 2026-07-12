@@ -1,9 +1,10 @@
 import { createOpencodeClient, type Event } from "@opencode-ai/sdk/v2/client"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
-import { batch, onCleanup } from "solid-js"
+import { batch, createEffect, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
+import { Visibility } from "@/utils/visibility"
 
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
   name: "GlobalSDK",
@@ -86,6 +87,21 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       return pushInterest()
     }
 
+    // Close the stream while the tab is hidden and rebuild it on resume:
+    // iOS silently kills a backgrounded SSE connection anyway, and
+    // holding one open burns battery for events we are not painting. `attempt`
+    // is the current stream's abort handle; aborting it breaks the for-await and
+    // drops the loop into its wait-for-visible gate. On resume the loop
+    // re-attaches, the server emits server.connected, and global-sync heals the
+    // gap via the since-id delta. A no-op when the document API is absent.
+    let attempt: AbortController | undefined
+    createEffect(() => {
+      if (Visibility.hidden()) attempt?.abort()
+    })
+    // Passing a per-attempt signal to the SSE call overrides the client-level
+    // lifetime signal, so cascade teardown to whatever stream is live.
+    abort.signal.addEventListener("abort", () => attempt?.abort())
+
     // Thin-client streaming model (like tmux reattach): the stream must run
     // forever. When it drops (server restart, sleep, network blip) reconnect
     // with backoff. The server emits server.connected on every (re)attach, so
@@ -93,8 +109,12 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     void (async () => {
       let backoff = 250
       while (!abort.signal.aborted) {
+        // Hold off attaching while hidden; resume rebuilds unconditionally.
+        await Visibility.whenVisible()
+        if (abort.signal.aborted) break
+        attempt = new AbortController()
         try {
-          const events = await eventSdk.global.event({ connectionID })
+          const events = await eventSdk.global.event({ connectionID }, { signal: attempt.signal })
           backoff = 250
           // Re-declare interest on every (re)attach: the server registry is
           // per-process, so a restart wiped our set and would otherwise fail-open
