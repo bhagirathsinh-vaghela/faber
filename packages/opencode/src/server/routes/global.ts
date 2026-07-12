@@ -19,6 +19,21 @@ import { Web } from "../web"
 
 const log = Log.create({ service: "server" })
 
+// Web-SSE-only optimization: a streaming text part resends its whole growing
+// text every chunk (O(n^2) on the wire). The event carries a `delta` the web
+// client appends, so blank the text on the way out to this stream. Clone first
+// — the same event object is fanned out to every connection and other in-process
+// consumers, which need the full text.
+function blankStreamedText(event: any) {
+  const p = event?.payload
+  if (p?.type !== "message.part.updated") return event
+  if (p.properties?.delta === undefined || typeof p.properties?.part?.text !== "string") return event
+  return {
+    ...event,
+    payload: { ...p, properties: { ...p.properties, part: { ...p.properties.part, text: "" } } },
+  }
+}
+
 const host = os.hostname()
 
 export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
@@ -238,7 +253,7 @@ export const GlobalRoutes = lazy(() =>
             // Drop events this connection has scoped itself away from. No
             // connectionID, or one that never subscribed, passes everything.
             if (connectionID && !GlobalInterest.wants(connectionID, event.payload)) return
-            await send(event)
+            await send(blankStreamedText(event))
           }
           GlobalBus.on("event", handler)
 
