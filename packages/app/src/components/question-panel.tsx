@@ -558,9 +558,9 @@ function Panel(props: {
 
       {/* Scroll region: only the question content scrolls when it exceeds the
           panel's capped height. data-scrollable opts into the transcript's
-          nested-scroll contract so createAutoScroll / the session-scroller wheel
-          handlers don't hijack this inner scroll. min-h-0 lets it shrink below
-          content height inside the flex column. */}
+          nested-scroll contract so the session-scroller wheel handlers don't
+          hijack this inner scroll. min-h-0 lets it shrink below content height
+          inside the flex column. */}
       <div data-scrollable class="flex min-h-0 flex-col gap-2 overflow-y-auto no-scrollbar px-4 py-3 pr-6">
         {/* Request tabs (multiple pending requests) */}
         <Show when={multiRequest()}>

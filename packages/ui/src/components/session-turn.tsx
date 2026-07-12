@@ -43,7 +43,6 @@ import { IconButton } from "./icon-button"
 import { Spinner } from "./spinner"
 import { createStore } from "solid-js/store"
 import { DateTime, DurationUnit, Interval } from "luxon"
-import { createAutoScroll } from "../hooks"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 
 type Translator = (key: UiI18nKey, params?: UiI18nParams) => string
@@ -131,7 +130,6 @@ export function SessionTurn(
     lastUserMessageID?: string
     stepsExpanded?: boolean
     onStepsExpandedToggle?: () => void
-    onUserInteracted?: () => void
     onJump?: () => void
     footer?: (message: AssistantMessage) => JSX.Element
     classes?: {
@@ -270,7 +268,6 @@ export function SessionTurn(
   })
 
   const permissions = createMemo(() => data.store.permission?.[props.sessionID] ?? emptyPermissions)
-  const permissionCount = createMemo(() => permissions().length)
   const nextPermission = createMemo(() => permissions()[0])
 
   const permissionParts = createMemo(() => {
@@ -502,12 +499,6 @@ export function SessionTurn(
     return locale.startsWith("zh") ? human.replaceAll("、", "") : human
   }
 
-  const autoScroll = createAutoScroll({
-    working,
-    onUserInteracted: props.onUserInteracted,
-    overflowAnchor: "auto",
-  })
-
   createResizeObserver(
     () => stickyRef(),
     ({ height }) => {
@@ -583,14 +574,6 @@ export function SessionTurn(
     onCleanup(() => clearInterval(timer))
   })
 
-  createEffect(
-    on(permissionCount, (count, prev) => {
-      if (!count) return
-      if (prev !== undefined && count <= prev) return
-      autoScroll.forceScrollToBottom()
-    }),
-  )
-
   let lastStatusChange = Date.now()
   let statusTimeout: number | undefined
   createEffect(() => {
@@ -622,17 +605,11 @@ export function SessionTurn(
 
   return (
     <div data-component="session-turn" class={props.classes?.root} ref={setRootRef}>
-      <div
-        ref={autoScroll.scrollRef}
-        onScroll={autoScroll.handleScroll}
-        data-slot="session-turn-content"
-        class={props.classes?.content}
-      >
-        <div onClick={autoScroll.handleInteraction}>
+      <div data-slot="session-turn-content" class={props.classes?.content}>
+        <div>
           <Show when={message()}>
             {(msg) => (
               <div
-                ref={autoScroll.contentRef}
                 data-message={msg().id}
                 data-slot="session-turn-message-container"
                 class={props.classes?.container}
