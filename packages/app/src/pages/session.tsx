@@ -534,11 +534,11 @@ export default function Page() {
     const targetIndex = currentIndex === -1 ? (offset > 0 ? 0 : msgs.length - 1) : currentIndex + offset
     if (targetIndex < 0 || targetIndex >= msgs.length) return
 
-    if (targetIndex === msgs.length - 1) {
-      resumeScroll()
-      return
-    }
-
+    // Reaching the last message is just another jump — select it and scroll to
+    // it, but do NOT re-arm follow (no resumeScroll). Follow re-arms only
+    // through the existing gesture path: a wheel/touch/scrollbar scroll that
+    // actually lands at the bottom flips following back on in the onScroll
+    // handler. alt+0 landing on the last prompt shouldn't force live-follow.
     setFollowing(false)
     scrollToMessage(msgs[targetIndex], "auto")
   }
@@ -709,6 +709,11 @@ export default function Page() {
     on(
       () => visibleUserMessages().at(-1)?.id,
       (lastId, prevLastId) => {
+        // Snap the active message to the newest turn ONLY while following the
+        // tail. If the user has navigated away with alt+9/alt+0 (following is
+        // off), a new streamed turn must NOT reset their position — otherwise
+        // it drags them back to the bottom mid-read.
+        if (!following()) return
         if (lastId && prevLastId && lastId > prevLastId) {
           setStore("messageId", undefined)
         }
@@ -2359,7 +2364,15 @@ export default function Page() {
                             // it lapses stay inert.
                             markScrollGesture(e.currentTarget)
                           }
-                          if (isDesktop()) scheduleScrollSpy(e.currentTarget)
+                          // The scroll-spy (updates the active message from
+                          // whatever prompt sits at the viewport top) must run
+                          // ONLY for user gestures. A programmatic scroll from
+                          // keyboard nav (alt+9/alt+0 -> scrollToMessage) already
+                          // set the exact target; letting the spy re-derive it
+                          // from the landing offset overwrites that anchor with a
+                          // neighbor, so the next step counts from the wrong
+                          // message. Same gesture guard the follow logic uses.
+                          if (isDesktop() && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
                         style={{
