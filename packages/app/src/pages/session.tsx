@@ -765,12 +765,17 @@ export default function Page() {
     on(
       () => [params.id, prompt.ready()] as const,
       ([id, ready]) => {
-        if (!id || !ready || focusedFor === id) return
-        if ((sync.data.question[id] ?? []).length > 0) return
+        if (!ready) return
+        // A brand-new session has no params.id yet (created on first submit), but
+        // its prompt dock is already mounted. Key focus on a sentinel so the
+        // new-session view lands the cursor once, same as an opened session.
+        const key = id ?? "new"
+        if (focusedFor === key) return
+        if (id && (sync.data.question[id] ?? []).length > 0) return
         if (view().terminal.opened() || dialog.active) return
         const active = document.activeElement as HTMLElement | null
         if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return
-        focusedFor = id
+        focusedFor = key
         requestAnimationFrame(() => command.trigger("prompt.focus"))
       },
     ),
