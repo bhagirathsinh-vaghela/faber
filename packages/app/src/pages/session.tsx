@@ -620,7 +620,13 @@ export default function Page() {
       },
     ),
   )
-  onCleanup(() => sync.setOpenSession(undefined))
+  onCleanup(() => {
+    sync.setOpenSession(undefined)
+    // Evict on teardown so leaving to home or another project drops this
+    // transcript from the store. evict targets only this id and keeps live
+    // sessions, so it never drops a session being navigated to or a busy one.
+    if (params.id) sync.session.evict(params.id)
+  })
 
   // On reconnect, re-hydrate the open session so a message/part the server
   // published while the stream was down (no replay) heals without a reload.
