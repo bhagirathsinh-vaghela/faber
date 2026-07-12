@@ -1,5 +1,5 @@
 import { createMemo, Show } from "solid-js"
-import { Icon } from "@opencode-ai/ui/icon"
+import { CountdownRing } from "@opencode-ai/ui/countdown-ring"
 import { useSync } from "@/context/sync"
 import { useTicker } from "@/context/ticker"
 import { useParams } from "@solidjs/router"
@@ -25,6 +25,15 @@ export function Statusline() {
     const base = session()?.cache?.lastRequestAt
     if (!base || base + CACHE_TTL <= now()) return null
     return clock(base + CACHE_TTL)
+  })
+
+  // Fraction of the cache window left, from the SAME anchor (lastRequestAt) and
+  // the SAME shared clock as the countdown, so the ring never disagrees with the
+  // mm:ss it sits next to.
+  const cacheFraction = createMemo(() => {
+    const base = session()?.cache?.lastRequestAt
+    if (!base) return 0
+    return Math.max(0, Math.min(1, (base + CACHE_TTL - now()) / CACHE_TTL))
   })
 
   const pingPending = createMemo(() => session()?.ping?.pending ?? false)
@@ -60,7 +69,7 @@ export function Statusline() {
           cost={sessionCost()}
           leading={{
             accent: "model",
-            icon: <Icon name="clock" />,
+            icon: <CountdownRing fraction={cacheFraction()} color="var(--model)" />,
             tooltip: (
               <span>
                 {cacheExpiryAbsolute() ? `◷ expires ${cacheExpiryAbsolute()}` : "◷ --"}
