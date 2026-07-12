@@ -38,7 +38,7 @@ function duration(ms: number): string {
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
   if (ms < 86400000) return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`
-  return `${Math.floor((ms % 3600000) / 86400000)}d ${Math.floor(ms / 3600000)}h`
+  return `${Math.floor(ms / 86400000)}d ${Math.floor((ms % 86400000) / 3600000)}h`
 }
 
 function Field(props: { color: string; text: string }) {
