@@ -38,6 +38,10 @@ export namespace GlobalInterest {
   // Session-scoped event types: only meaningful to a client viewing that
   // session, and each carries a sessionID the extractor below can find. Any
   // type NOT in this set is always-global and passes unconditionally.
+  // permission.*/question.* stay global on purpose: they are user-attention
+  // signals that must surface for any session, including an idle one outside
+  // the connection's interest set, so scoping them would silently drop the
+  // "agent is blocked waiting on you" prompt.
   const scoped = new Set([
     "message.updated",
     "message.removed",
@@ -47,12 +51,6 @@ export namespace GlobalInterest {
     "session.error",
     "session.compacted",
     "todo.updated",
-    "permission.asked",
-    "permission.replied",
-    "permission.updated",
-    "question.asked",
-    "question.replied",
-    "question.rejected",
   ])
 
   // Pull the sessionID out of a payload regardless of where the event nests it
