@@ -21,10 +21,13 @@ export function Statusline() {
 
   const cacheCountdown = createMemo(() => computeCountdown(session(), beforeExpiryMs(sync.data.config), now()))
 
-  const cacheExpiryAbsolute = createMemo(() => {
+  // Absolute time of the next ping (expiry minus beforeExpiry), the same deadline
+  // the countdown and ring target — so the tooltip agrees with the number.
+  const pingAbsolute = createMemo(() => {
     const base = session()?.cache?.lastRequestAt
-    if (!base || base + CACHE_TTL <= now()) return null
-    return clock(base + CACHE_TTL)
+    const at = base ? base + CACHE_TTL - beforeExpiryMs(sync.data.config) : undefined
+    if (!at || at <= now()) return null
+    return clock(at)
   })
 
   // Fraction remaining, tracking the SAME deadline as the countdown text: the
@@ -74,7 +77,7 @@ export function Statusline() {
             icon: <CountdownRing fraction={cacheFraction()} color="var(--model)" />,
             tooltip: (
               <span>
-                {cacheExpiryAbsolute() ? `◷ expires ${cacheExpiryAbsolute()}` : "◷ --"}
+                {pingAbsolute() ? `◷ pings ${pingAbsolute()}` : "◷ --"}
                 {pingCount() > 0 ? ` (${pingCount()}× pinged)` : ""}
               </span>
             ),
