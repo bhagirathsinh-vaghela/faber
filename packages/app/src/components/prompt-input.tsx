@@ -1656,7 +1656,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const send = async () => {
       const ok = await waitForWorktree()
       if (!ok) return
-      await client.session.prompt({
+      // prompt_async returns as soon as the turn is accepted; the synchronous
+      // prompt route holds the connection open for the whole turn and writes no
+      // bytes, so a turn past the server's idle timeout gets its POST reaped.
+      // Results stream over SSE regardless, so the response body is unused.
+      await client.session.promptAsync({
         sessionID: session.id,
         agent,
         model,
