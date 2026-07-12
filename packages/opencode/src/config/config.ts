@@ -217,6 +217,12 @@ export namespace Config {
       result.share = "auto"
     }
 
+    // Session sharing is disabled in this build regardless of config: it is
+    // unused, and forcing it here turns off the UI share commands (gated on
+    // share !== "disabled") and the server share path (Session.share throws)
+    // through the paths that already honor "disabled".
+    result.share = "disabled"
+
     if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
 
     // Apply flag overrides for compaction settings
