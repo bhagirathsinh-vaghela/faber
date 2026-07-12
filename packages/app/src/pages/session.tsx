@@ -1602,6 +1602,13 @@ export default function Page() {
 
   const atBottom = (el: HTMLElement) => el.scrollHeight - el.clientHeight - el.scrollTop <= 4
 
+  // Live "is the tail visible" flag, updated on every scroll. The zen-toggle
+  // re-pin needs the PRE-toggle state, but its effect runs after Solid has
+  // already reflowed the transcript (title unmount, dock swap), so reading
+  // atBottom() there is too late. This snapshot answers "were we at the bottom
+  // just before the toggle" without touching the post-reflow DOM.
+  let tailVisible = true
+
   const pinToBottom = () => {
     const el = scroller
     if (!el) return
@@ -1713,13 +1720,30 @@ export default function Page() {
     },
   )
 
-  // Zen toggling swaps the transcript's bottom padding (dock reservation vs
-  // safe-area), moving the tail under the dock; re-pin if following.
+  // Zen toggling reflows the tail in ways the content ResizeObserver can't
+  // catch: the sticky session title (a scroller child, not virtua content)
+  // unmounts, the scroller's --session-title-height flips, and the dock swaps
+  // height. The scroller runs overflow-anchor:none (virtua needs it to avoid
+  // oscillation), so the browser no longer compensates these height changes the
+  // way it did before virtua. The tail slides under the dock and stays there.
+  //
+  // Kick a re-pin from the pre-toggle snapshot (a fresh atBottom() read here is
+  // too late, the DOM already reflowed). The single pin lands the first frame;
+  // the onScroll re-pin below then keeps the tail glued as the dock/title reflow
+  // and virtua's later size-change compensation arrive over subsequent frames.
   createEffect(
     on(
       () => layout.zen.opened(),
       () => {
-        if (!following()) return
+        const el = scroller
+        if (!el) return
+        // Use the pre-toggle snapshot, NOT a fresh atBottom() read: by the time
+        // this effect runs the transcript has already reflowed, so a live read
+        // would report off-bottom and we'd wrongly skip.
+        if (!following() && !tailVisible) return
+        // Re-assert following; the onScroll re-pin then keeps the tail glued as
+        // the dock/title reflow and virtua's compensation land over later frames.
+        setFollowing(true)
         requestAnimationFrame(pinToBottom)
       },
       { defer: true },
@@ -2354,6 +2378,10 @@ export default function Page() {
                           markScrollGesture(e.currentTarget)
                         }}
                         onScroll={(e) => {
+                          // Keep the pre-toggle tail snapshot current on EVERY
+                          // scroll (gesture or programmatic pin), so the zen
+                          // re-pin knows we were at the bottom before the reflow.
+                          tailVisible = atBottom(e.currentTarget)
                           // Only a user gesture (wheel/touch/scrollbar/keys —
                           // tracked by markScrollGesture) may change follow
                           // state: away from the bottom unfollows, back to it
@@ -2367,6 +2395,14 @@ export default function Page() {
                             // extends it); programmatic scrolls arriving after
                             // it lapses stay inert.
                             markScrollGesture(e.currentTarget)
+                          } else if (following() && !atBottom(e.currentTarget)) {
+                            // A NON-gesture scroll knocked us off the bottom while
+                            // following. This is virtua re-applying an eagerly
+                            // captured offset on a size change (dock/title reflow
+                            // on a zen toggle, async content) — overflow-anchor is
+                            // off, so nothing else corrects it. Re-pin so following
+                            // keeps meaning "glued to the tail".
+                            pinToBottom()
                           }
                           // The scroll-spy (updates the active message from
                           // whatever prompt sits at the viewport top) must run
