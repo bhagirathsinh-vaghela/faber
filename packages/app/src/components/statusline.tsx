@@ -27,13 +27,15 @@ export function Statusline() {
     return clock(base + CACHE_TTL)
   })
 
-  // Fraction of the cache window left, from the SAME anchor (lastRequestAt) and
-  // the SAME shared clock as the countdown, so the ring never disagrees with the
-  // mm:ss it sits next to.
+  // Fraction remaining, tracking the SAME deadline as the countdown text: the
+  // ping moment (expiry minus beforeExpiry), not raw expiry. Both the numerator
+  // and the window subtract beforeExpiry, so the ring reads full at the max the
+  // text shows and empties exactly when the text hits 00:00 — they can't drift.
   const cacheFraction = createMemo(() => {
     const base = session()?.cache?.lastRequestAt
     if (!base) return 0
-    return Math.max(0, Math.min(1, (base + CACHE_TTL - now()) / CACHE_TTL))
+    const window = CACHE_TTL - beforeExpiryMs(sync.data.config)
+    return Math.max(0, Math.min(1, (base + window - now()) / window))
   })
 
   const pingPending = createMemo(() => session()?.ping?.pending ?? false)
