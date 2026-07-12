@@ -8,6 +8,10 @@ export type OverviewRow = {
   sessionID: string
   directory: string
   title: string
+  // The agent that ran the last turn; tints the busy dot's own-busy state
+  // (agentColor), matching every other busy indicator. Absent for rows the
+  // server touched before it carried an agent.
+  agent?: string
   updated: number
   // Live busy facts, read from the one operative store (session_busy), NOT the
   // recent_hub row's own busy — so the dot animates off the same state the
@@ -42,6 +46,7 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           sessionID: entry.sessionID,
           directory: entry.directory,
           title: entry.title,
+          agent: entry.agent,
           updated: entry.updated,
           busy: live.busy,
           busySelf: live.busySelf,

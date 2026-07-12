@@ -404,8 +404,16 @@ export function SessionTurn(
   // Busy boolean from the one operative store (effective: own turn OR subtree).
   // Only the active (last) turn shows the spinner. session_status is used ONLY
   // for the retry label below, never for the busy boolean.
-  const busy = createMemo(() => data.store.session_busy[props.sessionID]?.busy ?? false)
+  const busyFacts = createMemo(
+    () => data.store.session_busy[props.sessionID] ?? { busy: false, busySelf: false, busyDescendant: false },
+  )
+  const busy = createMemo(() => busyFacts().busy)
   const working = createMemo(() => busy() && isLastUserMessage())
+  // Three-state color table. No agent color in the ui context, so own-busy keeps
+  // the inherited currentColor; a child-only turn paints the spinner task-accent,
+  // and when BOTH run a task-accent copy cross-fades over the base.
+  const spinnerTint = createMemo(() => (busyFacts().busySelf ? undefined : "var(--box-accent-task)"))
+  const mixing = createMemo(() => busyFacts().busySelf && busyFacts().busyDescendant)
   const retry = createMemo(() => {
     // session_status is session-scoped; only show retry on the active (last) turn
     if (!isLastUserMessage()) return
@@ -682,7 +690,19 @@ export function SessionTurn(
                           >
                             <Switch>
                               <Match when={working()}>
-                                <Spinner />
+                                <span style={{ position: "relative", display: "inline-flex" }}>
+                                  <Spinner style={{ color: spinnerTint() }} />
+                                  <Show when={mixing()}>
+                                    <Spinner
+                                      style={{
+                                        position: "absolute",
+                                        inset: 0,
+                                        color: "var(--box-accent-task)",
+                                        animation: "dock-task-fade 2.6s ease-in-out infinite",
+                                      }}
+                                    />
+                                  </Show>
+                                </span>
                               </Match>
                               <Match when={!props.stepsExpanded}>
                                 <svg

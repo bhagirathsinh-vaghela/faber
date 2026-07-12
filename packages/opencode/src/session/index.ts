@@ -521,6 +521,7 @@ export namespace Session {
         sessionID: session.id,
         directory: session.directory,
         title: session.title,
+        agent: "agent" in msg ? msg.agent : undefined,
         updated: session.lastActivity ?? at,
       })
     const wire = JSON.stringify(msg)

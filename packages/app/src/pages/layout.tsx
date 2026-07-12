@@ -1609,12 +1609,17 @@ export default function Layout(props: ParentProps) {
       }
       return false
     })
+    // The single operative store carries the three busy facts (effective, own,
+    // descendant), rolled up server-side — no local child scan.
+    const busyFacts = createMemo(
+      () => sessionStore.session_busy[props.session.id] ?? { busy: false, busySelf: false, busyDescendant: false },
+    )
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
-      // The single operative store already carries effective busy (own turn OR
-      // any subtask, full subtree rolled up server-side) — no local child scan.
-      return sessionStore.session_busy[props.session.id]?.busy ?? false
+      return busyFacts().busy
     })
+    // Task-accent cross-fade shows only when BOTH own turn and a subtask run.
+    const mixing = createMemo(() => busyFacts().busySelf && busyFacts().busyDescendant)
 
     const tint = createMemo(() => {
       const messages = sessionStore.message[props.session.id]
@@ -1685,7 +1690,17 @@ export default function Layout(props: ParentProps) {
           >
             <Switch fallback={<Icon name="dash" size="small" class="text-icon-weak" />}>
               <Match when={isWorking()}>
-                <Spinner class="size-[15px]" />
+                <span class="mix-spinner size-[15px]">
+                  <Spinner
+                    class="size-[15px]"
+                    style={{
+                      color: busyFacts().busySelf ? (tint() ?? "var(--icon-interactive-base)") : "var(--box-accent-task)",
+                    }}
+                  />
+                  <Show when={mixing()}>
+                    <Spinner class="mix-spinner-task size-[15px]" />
+                  </Show>
+                </span>
               </Match>
               <Match when={hasPermissions()}>
                 <div class="size-1.5 rounded-full bg-surface-warning-strong" />

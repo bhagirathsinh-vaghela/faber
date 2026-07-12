@@ -22,6 +22,18 @@
   }
 }
 
+/* Cross-fades a task-accent overlay in and out so a "both busy" indicator's tint
+   oscillates between its base color and the task accent. */
+@keyframes dock-task-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* Sweeps a bright highlight left-to-right across text to signal live activity.
    The text is painted with a gradient (base color -> highlight -> base) that is
    wider than the text; animating background-position slides the highlight band

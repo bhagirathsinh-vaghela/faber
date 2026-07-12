@@ -12,8 +12,10 @@ import { DateTime } from "luxon"
 import { useRecent, type OverviewRow } from "@/context/recent"
 import { useMru } from "@/context/mru"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { useStopSession } from "@/hooks/use-stop-session"
+import { agentColor } from "@/utils/agent"
 
 function getFilename(dir: string) {
   const parts = dir.split("/").filter(Boolean)
@@ -78,9 +80,23 @@ function useFrozen() {
 function Row(props: { row: OverviewRow; showTime?: boolean }) {
   const language = useLanguage()
   const sdk = useGlobalSDK()
+  const globalSync = useGlobalSync()
   const recent = useRecent()
 
   const countdown = () => recent.countdown(props.row)
+
+  // Own-busy tint = the agent color, matching the dock/zen/sidebar/title. The
+  // custom color comes from the row's directory child store (same source the
+  // sidebar uses); agentColor falls back to the four built-ins by name. A session
+  // with no stamped agent (touched before the hub carried one) or an unresolved
+  // custom agent falls back to the interactive base.
+  const ownTint = () => {
+    const name = props.row.agent
+    if (!name) return "var(--icon-interactive-base)"
+    const [store] = globalSync.child(props.row.directory, { bootstrap: false })
+    const custom = store.agent.find((a) => a.name === name)?.color
+    return agentColor(name, custom) || "var(--icon-interactive-base)"
+  }
 
   const stopPing = (e: MouseEvent) => {
     e.stopPropagation()
@@ -108,10 +124,10 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
           </Chip>
         </ChipGroup>
         {/* One dot, three states in the shared two-color language (same as the
-            dock/zen bar). Base tint = own turn (warning) when busySelf, else the
-            task accent (delegating-only). A task-accent overlay cross-fades in
-            when a subtask ALSO runs (busySelf && busyDescendant = "both"), so the
-            tint oscillates own↔task exactly like the dock. */}
+            dock/zen bar). Base tint = the agent color when busySelf (own turn),
+            else the task accent (child-only). A task-accent overlay cross-fades
+            in when a subtask ALSO runs (busySelf && busyDescendant = "both"), so
+            the tint oscillates agent↔task exactly like the dock. */}
         <Show when={props.row.busy}>
           <span
             data-slot="busy-dot"
@@ -123,7 +139,7 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
                 : language.t("home.attention.delegating")
             }
             class="relative size-2 rounded-full shrink-0"
-            style={{ "--busy-tint": props.row.busySelf ? "var(--icon-warning-base)" : "var(--box-accent-task)" }}
+            style={{ "--busy-tint": props.row.busySelf ? ownTint() : "var(--box-accent-task)" }}
           >
             <span class="busy-dot-fill" />
             <Show when={props.row.busySelf && props.row.busyDescendant}>

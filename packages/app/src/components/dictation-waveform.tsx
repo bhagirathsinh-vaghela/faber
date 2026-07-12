@@ -31,7 +31,7 @@ export function DictationWaveform(props: { analyser: () => AnalyserNode | undefi
     let width = 0
     let height = 0
     let last = 0
-    let bins: Uint8Array | undefined
+    let bins: Uint8Array<ArrayBuffer> | undefined
     let fade: CanvasGradient | undefined
     // ~30fps is plenty for an audio meter and halves wake-ups vs. 60fps,
     // which matters for mobile battery.

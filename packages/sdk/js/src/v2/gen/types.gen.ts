@@ -16,6 +16,7 @@ export type RecentSession = {
   sessionID: string
   directory: string
   title: string
+  agent?: string
   updated: number
   busy: boolean
   busySelf: boolean

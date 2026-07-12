@@ -27,6 +27,10 @@ export namespace SessionRecent {
       sessionID: z.string(),
       directory: z.string(),
       title: z.string(),
+      // The agent that ran the session's last turn. The overview tints its
+      // busy dot with this (agentColor), matching every other busy indicator;
+      // absent for sessions last touched before this field existed.
+      agent: z.string().optional(),
       // Last real-turn timestamp — the same signal that stamps session
       // lastActivity. Pings and views never reach here.
       updated: z.number(),
@@ -48,7 +52,14 @@ export namespace SessionRecent {
     .meta({ ref: "RecentSession" })
   export type Entry = z.infer<typeof Entry>
 
-  const Stored = Entry.pick({ sessionID: true, directory: true, title: true, updated: true, unseen: true })
+  const Stored = Entry.pick({
+    sessionID: true,
+    directory: true,
+    title: true,
+    agent: true,
+    updated: true,
+    unseen: true,
+  })
   type Stored = z.infer<typeof Stored>
 
   export const Event = {
@@ -120,12 +131,15 @@ export namespace SessionRecent {
   // A real turn touched this session: move it to the front and evict the oldest
   // past the cap. Live flags survive a re-touch so a busy turn that writes many
   // messages doesn't strobe the spinner off between chunks.
-  export async function touch(input: Omit<Entry, "busy" | "busySelf" | "busyDescendant" | "unseen" | "pingAt">) {
+  export async function touch(
+    input: Omit<Entry, "agent" | "busy" | "busySelf" | "busyDescendant" | "unseen" | "pingAt"> & { agent?: string },
+  ) {
     await hydrate()
     const prev = entries.get(input.sessionID)
     entries.delete(input.sessionID)
     entries.set(input.sessionID, {
       ...input,
+      agent: input.agent ?? prev?.agent,
       busy: prev?.busy ?? false,
       busySelf: prev?.busySelf ?? false,
       busyDescendant: prev?.busyDescendant ?? false,

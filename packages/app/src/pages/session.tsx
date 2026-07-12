@@ -725,14 +725,19 @@ export default function Page() {
   )
   // busy because a subtask runs (own turn may or may not also be running).
   const subtaskBusy = createMemo(() => busy().busyDescendant)
-  // Busy purely because a subtask is running (own turn idle). Drives the
-  // delegating indicator.
-  const subtaskWorking = createMemo(() => busy().busy && !busy().busySelf)
   const titleWorking = createMemo(() => busy().busy)
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
   })
+  // Shared three-state color table (agent = own turn, task = child-only,
+  // agent↔task cross-fade = both). Base tint is the agent color only while the
+  // own turn runs; a child-only turn paints the base task-accent. The task
+  // overlay cross-fades in ONLY when both run.
+  const baseTint = createMemo(() =>
+    busy().busySelf ? (workingTint() ?? "var(--icon-interactive-base)") : "var(--box-accent-task)",
+  )
+  const mixing = createMemo(() => busy().busySelf && busy().busyDescendant)
 
   createEffect(
     on(
@@ -2393,10 +2398,12 @@ export default function Page() {
                                   fallback={
                                     <div class="group/title flex items-center gap-1 min-w-0">
                                       <Show when={titleWorking()}>
-                                        <Spinner
-                                          class="size-[15px] shrink-0"
-                                          style={{ color: workingTint() ?? "var(--icon-interactive-base)" }}
-                                        />
+                                        <span class="mix-spinner size-[15px] shrink-0">
+                                          <Spinner class="size-[15px]" style={{ color: baseTint() }} />
+                                          <Show when={mixing()}>
+                                            <Spinner class="mix-spinner-task size-[15px]" />
+                                          </Show>
+                                        </span>
                                       </Show>
                                       <h1 class="text-14-medium text-text-strong truncate" onDblClick={startRename}>
                                         {info()?.title}
@@ -2590,12 +2597,9 @@ export default function Page() {
                   spinner (dock-line1), so this is the busy cue in zen. */}
               <Show when={layout.zen.opened() && titleWorking()}>
                 <div class="w-full px-3 mb-2">
-                  <div
-                    class="zen-working-bar"
-                    style={{ "--stream-accent": workingTint() ?? "var(--icon-interactive-base)" }}
-                  >
+                  <div class="zen-working-bar" style={{ "--stream-accent": baseTint() }}>
                     <span class="zen-working-bar-fill" />
-                    <Show when={subtaskWorking()}>
+                    <Show when={mixing()}>
                       <span class="zen-working-bar-fill zen-working-bar-fill-task" />
                     </Show>
                   </div>

@@ -349,3 +349,27 @@
     animation: none;
   }
 }
+
+/* Size-agnostic mixed spinner: a relative wrapper holds the base spinner (tinted
+   inline via the three-state table) and, when BOTH own turn and a subtask run, a
+   task-accent copy absolutely overlaid that cross-fades so the tint oscillates
+   agent↔task — same idiom as the dock, but not pinned to the dock's 23px box.
+   Used by the sidebar glyph, session title, and SessionTurn spinner. */
+.mix-spinner {
+  position: relative;
+  display: inline-flex;
+}
+
+.mix-spinner-task {
+  position: absolute;
+  inset: 0;
+  color: var(--box-accent-task);
+  animation: dock-task-fade 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mix-spinner-task {
+    animation: none;
+    opacity: 0.5;
+  }
+}

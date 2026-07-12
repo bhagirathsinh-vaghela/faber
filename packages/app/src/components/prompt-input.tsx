@@ -214,19 +214,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   // The single busy read for this session, from the one operative store.
-  // working = effective (own OR any subtask, server-rolled full subtree);
-  // subtaskWorking = busy purely because a subtask runs (own turn idle).
+  // working = effective (own OR any subtask, server-rolled full subtree).
   const busy = createMemo(
     () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
   const working = createMemo(() => busy().busy)
-  // A subtask is running (drives the task-accent overlay in the mix), whether or
-  // not the own turn is also running.
-  const subtaskWorking = createMemo(() => busy().busyDescendant)
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
   })
+  // Shared three-state color table (agent = own turn, task = child-only,
+  // agent↔task cross-fade = both). The base tint is the agent color only while
+  // the own turn runs; a child-only turn paints the base itself task-accent.
+  // The task overlay cross-fades in ONLY when both are running.
+  const baseTint = createMemo(() =>
+    busy().busySelf ? (workingTint() ?? "var(--icon-interactive-base)") : "var(--box-accent-task)",
+  )
+  const mixing = createMemo(() => busy().busySelf && busy().busyDescendant)
   const imageAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "image") as ImageAttachmentPart[],
   )
@@ -2034,24 +2038,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               hidden: zen(),
             }}
           >
-            <Show when={working() || subtaskWorking()}>
+            <Show when={working()}>
               {/* Working indicator: the spinner sits ON TOP of a soft, diffuse
-                  agent-tinted glow that pulses behind it. While a subtask runs,
-                  a task-accent-tinted copy of both layers cross-fades over the
-                  base so the tint oscillates between the two colors. */}
-              <span
-                class="dock-working-indicator mr-2"
-                style={{ "--dock-glow-tint": workingTint() ?? "var(--icon-interactive-base)" }}
-              >
+                  glow that pulses behind it. Base tint follows the three-state
+                  table (agent when own turn, task accent when child-only); when
+                  BOTH run, a task-accent copy of both layers cross-fades over the
+                  agent base so the tint oscillates between the two colors. */}
+              <span class="dock-working-indicator mr-2" style={{ "--dock-glow-tint": baseTint() }}>
                 <span data-slot="dock-working-glow" class="dock-working-glow" />
-                <Show when={subtaskWorking()}>
+                <Show when={mixing()}>
                   <span data-slot="dock-working-glow" class="dock-working-glow dock-working-glow-task" />
                 </Show>
-                <Spinner
-                  class="dock-working-spinner"
-                  style={{ color: workingTint() ?? "var(--icon-interactive-base)" }}
-                />
-                <Show when={subtaskWorking()}>
+                <Spinner class="dock-working-spinner" style={{ color: baseTint() }} />
+                <Show when={mixing()}>
                   <Spinner class="dock-working-spinner dock-working-spinner-task" />
                 </Show>
               </span>
