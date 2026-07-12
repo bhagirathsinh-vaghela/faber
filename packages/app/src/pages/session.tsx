@@ -13,6 +13,7 @@ import {
 } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
 import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
@@ -32,7 +33,6 @@ import { useCodeComponent } from "@opencode-ai/ui/context/code"
 import { LineComment as LineCommentView, LineCommentEditor } from "@opencode-ai/ui/line-comment"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { BasicTool } from "@opencode-ai/ui/basic-tool"
-import { createAutoScroll } from "@opencode-ai/ui/hooks"
 import { SessionReview } from "@opencode-ai/ui/session-review"
 import { Mark } from "@opencode-ai/ui/logo"
 import { Spinner } from "@opencode-ai/ui/spinner"
@@ -494,25 +494,10 @@ export default function Page() {
     activeTerminalDraggable: undefined as string | undefined,
     expanded: {} as Record<string, boolean>,
     messageId: undefined as string | undefined,
-    turnStart: 0,
     mobileTab: "session" as "session" | "changes",
     newSessionWorktree: "main",
     promptHeight: 0,
   })
-
-  const renderedUserMessages = createMemo(
-    () => {
-      const msgs = visibleUserMessages()
-      const start = store.turnStart
-      if (start <= 0) return msgs
-      if (start >= msgs.length) return emptyUserMessages
-      return msgs.slice(start)
-    },
-    emptyUserMessages,
-    {
-      equals: same,
-    },
-  )
 
   // The most recent turns render with their steps expanded by default; older
   // turns collapse to keep the transcript's DOM bounded on long sessions. An
@@ -554,7 +539,7 @@ export default function Page() {
       return
     }
 
-    autoScroll.pause()
+    setFollowing(false)
     scrollToMessage(msgs[targetIndex], "auto")
   }
 
@@ -597,7 +582,9 @@ export default function Page() {
   let promptDock: HTMLDivElement | undefined
   let promptInner: HTMLDivElement | undefined
   let scroller: HTMLDivElement | undefined
-  let contentEl: HTMLDivElement | undefined
+  // A signal (not a plain ref) so the tail-follow ResizeObserver attaches
+  // whenever the transcript (re)mounts; a bare `let` is invisible to it.
+  const [content, setContent] = createSignal<HTMLDivElement>()
 
   const scrollGestureWindowMs = 250
 
@@ -1580,10 +1567,38 @@ export default function Page() {
     void file.tree.list("")
   })
 
-  const autoScroll = createAutoScroll({
-    working: () => status().type !== "idle",
-    overflowAnchor: "dynamic",
-  })
+  // `following` = the view is pinned to the tail. While it holds, every content
+  // resize re-pins with a raw synchronous scrollTop write. virtua tracks native
+  // scroll events, so a raw write does NOT desync its window — but its own
+  // async scrollTo/scrollToIndex queue re-applies a stale eagerly-captured
+  // offset on later size events, which is exactly what un-pins a growing tail.
+  // So: raw pin while following; the handle's scrollToIndex ONLY to realize an
+  // unmounted tail on long jumps (End from far up), where estimated sizes need
+  // virtua's measure-retry loop.
+  const [following, setFollowing] = createSignal(true)
+
+  const lastIndex = () => visibleUserMessages().length - 1
+
+  const atBottom = (el: HTMLElement) => el.scrollHeight - el.clientHeight - el.scrollTop <= 4
+
+  const pinToBottom = () => {
+    const el = scroller
+    if (!el) return
+    el.scrollTop = el.scrollHeight - el.clientHeight
+  }
+
+  // End/submit from far up the transcript: the tail may be unmounted with only
+  // estimated sizes below the viewport, so one raw pin lands short. Let virtua
+  // realize the last item, then raw-pin each frame until the bottom holds.
+  const settleToBottom = (tries = 0) => {
+    const el = scroller
+    if (!el || !following()) return
+    const i = lastIndex()
+    if (i >= 0 && !atBottom(el)) turnList()?.scrollToIndex(i, { align: "end" })
+    pinToBottom()
+    if (tries > 30 || (atBottom(el) && tries > 2)) return
+    requestAnimationFrame(() => settleToBottom(tries + 1))
+  }
 
   const clearMessageHash = () => {
     if (!window.location.hash) return
@@ -1592,16 +1607,39 @@ export default function Page() {
 
   const resumeScroll = () => {
     setStore("messageId", undefined)
-    autoScroll.forceScrollToBottom()
+    setFollowing(true)
+    settleToBottom()
     clearMessageHash()
   }
+
+  // Follow the tail through EVERY kind of growth — streamed text, but also tool
+  // boxes, diffs, code, and images rendering async. A data signal only sees
+  // text length; a ResizeObserver on the scrolled content sees all of it. The
+  // pin is a raw synchronous scrollTop write in the same frame, so the view
+  // never paints off-bottom.
+  createResizeObserver(content, () => {
+    if (!following()) return
+    pinToBottom()
+  })
+
+  // A brand-new turn changes the list length before any content resize; settle
+  // (not bare pin) because the new tail may mount with only an estimated size.
+  createEffect(
+    on(
+      () => lastUserMessage()?.id,
+      () => {
+        if (following()) settleToBottom()
+      },
+      { defer: true },
+    ),
+  )
 
   // When the user returns to the bottom, treat the active message as "latest".
   createEffect(
     on(
-      autoScroll.userScrolled,
-      (scrolled) => {
-        if (scrolled) return
+      following,
+      (f) => {
+        if (!f) return
         setStore("messageId", undefined)
         clearMessageHash()
       },
@@ -1616,97 +1654,28 @@ export default function Page() {
 
   const setScrollRef = (el: HTMLDivElement | undefined) => {
     scroller = el
-    autoScroll.scrollRef(el)
   }
 
-  const turnInit = 20
-  const turnBatch = 20
-  let turnHandle: number | undefined
-  let turnIdle = false
+  // virtua owns turn windowing: it keeps only the visible range (+overscan)
+  // mounted and props the scroller to full estimated height, so scrollHeight
+  // stays honest for the tail-follow/restore logic below. Its handle drives
+  // every jump-to-turn (Home/End/deep-link/prev-next) via scrollToIndex, which
+  // realizes an unmounted target before scrolling — the DOM getElementById path
+  // alone can't reach a turn that isn't rendered.
+  const [turnList, setTurnList] = createSignal<VirtualizerHandle | undefined>()
+  const turnIndex = (messageID: string) => visibleUserMessages().findIndex((m) => m.id === messageID)
 
-  function cancelTurnBackfill() {
-    const handle = turnHandle
-    if (handle === undefined) return
-    turnHandle = undefined
-
-    if (turnIdle && window.cancelIdleCallback) {
-      window.cancelIdleCallback(handle)
-      return
-    }
-
-    clearTimeout(handle)
-  }
-
-  function scheduleTurnBackfill() {
-    if (turnHandle !== undefined) return
-    if (store.turnStart <= 0) return
-
-    if (window.requestIdleCallback) {
-      turnIdle = true
-      turnHandle = window.requestIdleCallback(() => {
-        turnHandle = undefined
-        backfillTurns()
-      })
-      return
-    }
-
-    turnIdle = false
-    turnHandle = window.setTimeout(() => {
-      turnHandle = undefined
-      backfillTurns()
-    }, 0)
-  }
-
-  function backfillTurns() {
-    const start = store.turnStart
-    if (start <= 0) return
-
-    const next = start - turnBatch
-    const nextStart = next > 0 ? next : 0
-
-    const el = scroller
-    if (!el) {
-      setStore("turnStart", nextStart)
-      scheduleTurnBackfill()
-      return
-    }
-
-    const beforeTop = el.scrollTop
-    const beforeHeight = el.scrollHeight
-    // When following the tail, stay pinned to the bottom as older turns load
-    // in rather than preserving a fixed offset (which would drift us upward).
-    const following = !autoScroll.userScrolled()
-
-    setStore("turnStart", nextStart)
-
-    requestAnimationFrame(() => {
-      if (following) {
-        el.scrollTop = el.scrollHeight
-        return
-      }
-      const delta = el.scrollHeight - beforeHeight
-      if (!delta) return
-      el.scrollTop = beforeTop + delta
-    })
-
-    scheduleTurnBackfill()
-  }
-
-  createEffect(
-    on(
-      () => [params.id, messagesReady()] as const,
-      ([id, ready]) => {
-        cancelTurnBackfill()
-        setStore("turnStart", 0)
-        if (!id || !ready) return
-
-        const len = visibleUserMessages().length
-        const start = len > turnInit ? len - turnInit : 0
-        setStore("turnStart", start)
-        scheduleTurnBackfill()
-      },
-      { defer: true },
-    ),
+  // True exactly when the turn list changed by gaining items at its head
+  // (history load-earlier) within the same session: the previous head is still
+  // present but an older message now precedes it. Message IDs sort by age.
+  const prepended = createMemo(
+    (prev: { head: string | undefined; session: string | undefined; value: boolean }) => {
+      const head = visibleUserMessages()[0]?.id
+      const session = params.id
+      const value = session === prev.session && !!prev.head && !!head && head < prev.head
+      return { head, session, value }
+    },
+    { head: undefined, session: undefined, value: false },
   )
 
   createResizeObserver(
@@ -1716,34 +1685,21 @@ export default function Page() {
 
       if (next === store.promptHeight) return
 
-      const el = scroller
-      const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
-
       setStore("promptHeight", next)
 
-      if (stick && el) {
-        requestAnimationFrame(() => {
-          el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-        })
-      }
+      // A taller dock covers the tail; re-pin through virtua if following.
+      if (following()) requestAnimationFrame(pinToBottom)
     },
   )
 
-  // Zen toggling swaps the message list's bottom padding (dock reservation vs
-  // safe-area), which changes scrollHeight under an unchanged scrollTop. The
-  // auto-scroll resize re-pin only runs while working/settling, so on an idle
-  // turn exiting zen leaves the last message cut off under the dock. If the
-  // user was following the bottom, re-pin after the padding swap lays out.
+  // Zen toggling swaps the transcript's bottom padding (dock reservation vs
+  // safe-area), moving the tail under the dock; re-pin if following.
   createEffect(
     on(
       () => layout.zen.opened(),
       () => {
-        if (autoScroll.userScrolled()) return
-        const el = scroller
-        if (!el) return
-        requestAnimationFrame(() => {
-          el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-        })
+        if (!following()) return
+        requestAnimationFrame(pinToBottom)
       },
       { defer: true },
     ),
@@ -1783,155 +1739,43 @@ export default function Page() {
     return true
   }
 
+  // A long jump from an unmounted target undershoots on the first scrollToIndex
+  // because virtua only has estimated sizes for the turns in between; it homes
+  // in as those get measured. So re-issue scrollToIndex each frame until the
+  // target's DOM element exists, then hand off to a DOM scroll that lands it
+  // under the sticky title bar (virtua aligns to the scroller top, which the
+  // sticky title would otherwise clip).
+  const settleToMessage = (messageID: string, behavior: ScrollBehavior, tries = 0) => {
+    const el = document.getElementById(anchor(messageID))
+    if (el && scrollToElement(el, behavior)) return
+    if (tries > 30) return
+    const index = turnIndex(messageID)
+    if (index !== -1) turnList()?.scrollToIndex(index, { align: "start" })
+    requestAnimationFrame(() => settleToMessage(messageID, behavior, tries + 1))
+  }
+
   const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
     // Jumping to a message is a deliberate move away from the tail, so stop
     // auto-follow first. Without this, a click while the session streams
     // scrolls up and then the resize re-pin drags the view back to the bottom.
-    autoScroll.pause()
+    setFollowing(false)
     setActiveMessage(message)
-
-    const msgs = visibleUserMessages()
-    const index = msgs.findIndex((m) => m.id === message.id)
-    if (index !== -1 && index < store.turnStart) {
-      setStore("turnStart", index)
-      scheduleTurnBackfill()
-
-      requestAnimationFrame(() => {
-        const el = document.getElementById(anchor(message.id))
-        if (!el) {
-          requestAnimationFrame(() => {
-            const next = document.getElementById(anchor(message.id))
-            if (!next) return
-            scrollToElement(next, behavior)
-          })
-          return
-        }
-        scrollToElement(el, behavior)
-      })
-
-      updateHash(message.id)
-      return
-    }
-
-    const el = document.getElementById(anchor(message.id))
-    if (!el) {
-      updateHash(message.id)
-      requestAnimationFrame(() => {
-        const next = document.getElementById(anchor(message.id))
-        if (!next) return
-        if (!scrollToElement(next, behavior)) return
-      })
-      return
-    }
-    if (scrollToElement(el, behavior)) {
-      updateHash(message.id)
-      return
-    }
-
-    requestAnimationFrame(() => {
-      const next = document.getElementById(anchor(message.id))
-      if (!next) return
-      if (!scrollToElement(next, behavior)) return
-    })
     updateHash(message.id)
+    settleToMessage(message.id, behavior)
   }
 
-  // Reload streams messages in progressively and mounts older turns ABOVE the
-  // viewport (async backfill), so a single scroll-to-bottom fires against a
-  // partial list and then drifts as more content loads. A fixed time-boxed loop
-  // gave up before slow payloads landed: messagesReady() flips when the store
-  // slot exists, but the message content can arrive seconds later (a slow
-  // fetch), so the old loop settled against a partial transcript and stranded
-  // the view once the real content grew in. Instead, follow the tail through
-  // content growth — pin now, then re-pin on every content resize until the user
-  // scrolls away or the height goes quiet. Deterministic regardless of when the
-  // payload arrives.
-  let restoreObserver: ResizeObserver | undefined
-  let restoreSettle: ReturnType<typeof setTimeout> | undefined
-  const stopRestore = () => {
-    restoreObserver?.disconnect()
-    restoreObserver = undefined
-    if (restoreSettle) clearTimeout(restoreSettle)
-    restoreSettle = undefined
-  }
+  // Restoring the tail (reload, reconnect, submit): mark following and settle;
+  // the content ResizeObserver then keeps the tail pinned as content grows in.
   const restoreScroll = () => {
-    const el = scroller
-    if (!el) return
-
-    stopRestore()
-
-    const pin = () => {
-      // A real user scroll gesture takes over — stop following.
-      if (hasScrollGesture()) {
-        stopRestore()
-        return
-      }
-      el.scrollTop = el.scrollHeight
-    }
-
-    pin()
-
-    const content = contentEl
-    if (!content) return
-    restoreObserver = new ResizeObserver(() => {
-      if (hasScrollGesture()) {
-        stopRestore()
-        return
-      }
-      requestAnimationFrame(pin)
-      // Each growth resets the settle timer; once the height is quiet for a
-      // beat (no more content arriving), detach.
-      if (restoreSettle) clearTimeout(restoreSettle)
-      restoreSettle = setTimeout(stopRestore, 750)
-    })
-    restoreObserver.observe(content)
-    restoreSettle = setTimeout(stopRestore, 750)
-  }
-  onCleanup(stopRestore)
-
-  // Older turns mount ABOVE the viewport (history backfill, load-earlier, turn
-  // windowing), shifting the content under a numerically unchanged scrollTop —
-  // a view left at the tail gets stranded mid-list. Whenever the rendered head
-  // moves to an older message while following the tail, re-pin. A user who has
-  // scrolled up is covered by native scroll anchoring instead: autoScroll sets
-  // overflow-anchor to auto exactly when userScrolled, so the browser holds
-  // their place and a manual correction here would double-shift it.
-  createEffect(
-    on(
-      () => [params.id, renderedUserMessages()[0]?.id] as const,
-      ([session, head], previous) => {
-        if (!previous) return
-        const [prevSession, prevHead] = previous
-        if (session !== prevSession) return
-        if (!head || !prevHead || head >= prevHead) return
-        if (autoScroll.userScrolled()) return
-        if (hasScrollGesture()) return
-
-        // restoreScroll rather than a bare pin: the prepended turns keep
-        // growing for a beat after mount (async parts, highlighting), and it
-        // follows that growth until the height goes quiet.
-        restoreScroll()
-      },
-    ),
-  )
-
-  // Home mirror of restoreScroll: render every loaded turn, then pin to the
-  // top while older turns backfill in above (which would otherwise push us
-  // back down), until it holds steady or the user scrolls away.
-  const jumpToTop = (held = 0, tries = 0) => {
-    const el = scroller
-    if (!el) return
     if (hasScrollGesture()) return
+    setFollowing(true)
+    settleToBottom()
+  }
 
-    autoScroll.pause()
-    if (store.turnStart > 0) setStore("turnStart", 0)
-
-    const before = el.scrollTop
-    el.scrollTop = 0
-    const steady = before < 1 ? held + 1 : 0
-
-    if (steady >= 30 || tries > 240) return
-    requestAnimationFrame(() => jumpToTop(steady, tries + 1))
+  const jumpToTop = () => {
+    if (hasScrollGesture()) return
+    setFollowing(false)
+    turnList()?.scrollToIndex(0, { align: "start" })
   }
 
   const applyHash = (behavior: ScrollBehavior) => {
@@ -1943,7 +1787,7 @@ export default function Page() {
 
     const match = hash.match(/^message-(.+)$/)
     if (match) {
-      autoScroll.pause()
+      setFollowing(false)
       const msg = visibleUserMessages().find((m) => m.id === match[1])
       if (msg) {
         scrollToMessage(msg, behavior)
@@ -1957,12 +1801,14 @@ export default function Page() {
 
     const target = document.getElementById(hash)
     if (target) {
-      autoScroll.pause()
+      setFollowing(false)
       scrollToElement(target, behavior)
       return
     }
 
-    autoScroll.forceScrollToBottom()
+    // Unresolvable hash: land at the tail, following.
+    setFollowing(true)
+    settleToBottom()
   }
 
   const closestMessage = (node: Element | null): HTMLElement | null => {
@@ -2047,7 +1893,6 @@ export default function Page() {
 
     // dependencies
     visibleUserMessages().length
-    store.turnStart
 
     const targetId = ui.pendingMessage
     if (!targetId) return
@@ -2056,7 +1901,7 @@ export default function Page() {
     const msg = visibleUserMessages().find((m) => m.id === targetId)
     if (!msg) return
     if (ui.pendingMessage === targetId) setUi("pendingMessage", undefined)
-    autoScroll.pause()
+    setFollowing(false)
     requestAnimationFrame(() => scrollToMessage(msg, "auto"))
   })
 
@@ -2125,7 +1970,6 @@ export default function Page() {
   })
 
   onCleanup(() => {
-    cancelTurnBackfill()
     document.removeEventListener("keydown", handleKeyDown)
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
   })
@@ -2390,8 +2234,8 @@ export default function Page() {
                       <div
                         class="absolute left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+32px)] z-[60] pointer-events-none transition-all duration-200 ease-out"
                         classList={{
-                          "opacity-100 translate-y-0 scale-100": autoScroll.userScrolled(),
-                          "opacity-0 translate-y-2 scale-95 pointer-events-none": !autoScroll.userScrolled(),
+                          "opacity-100 translate-y-0 scale-100": !following(),
+                          "opacity-0 translate-y-2 scale-95 pointer-events-none": !!following(),
                         }}
                       >
                         <button
@@ -2489,9 +2333,20 @@ export default function Page() {
                           markScrollGesture(e.currentTarget)
                         }}
                         onScroll={(e) => {
-                          if (!hasScrollGesture()) return
-                          autoScroll.handleScroll()
-                          markScrollGesture(e.currentTarget)
+                          // Only a user gesture (wheel/touch/scrollbar/keys —
+                          // tracked by markScrollGesture) may change follow
+                          // state: away from the bottom unfollows, back to it
+                          // refollows. Programmatic scrolls (our pins, virtua's
+                          // jump compensation, smooth jumps) never do — they
+                          // set following explicitly at their call sites.
+                          if (hasScrollGesture()) {
+                            setFollowing(atBottom(e.currentTarget))
+                            // Keep the gesture window alive across a long drag
+                            // or momentum scroll (each event within the window
+                            // extends it); programmatic scrolls arriving after
+                            // it lapses stay inert.
+                            markScrollGesture(e.currentTarget)
+                          }
                           if (isDesktop()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
@@ -2584,10 +2439,7 @@ export default function Page() {
                         </Show>
 
                         <div
-                          ref={(el) => {
-                            contentEl = el
-                            autoScroll.contentRef(el)
-                          }}
+                          ref={setContent}
                           role="log"
                           class="flex flex-col gap-4 items-start justify-start transition-[margin]"
                           classList={{
@@ -2595,25 +2447,8 @@ export default function Page() {
                             "md:max-w-[95%] md:mx-auto": centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
-                            // Reserve space for the floating prompt dock in both
-                            // modes: the slim zen dock still floats over the
-                            // transcript, so the last message needs the same
-                            // clearance or it sits under the dock.
-                            "pb-[calc(var(--prompt-height,8rem)+32px)] md:pb-[calc(var(--prompt-height,10rem)+32px)]": true,
                           }}
                         >
-                          <Show when={store.turnStart > 0}>
-                            <div class="w-full flex justify-center">
-                              <Button
-                                variant="ghost"
-                                size="large"
-                                class="text-12-medium opacity-50"
-                                onClick={() => setStore("turnStart", 0)}
-                              >
-                                {language.t("session.messages.renderEarlier")}
-                              </Button>
-                            </div>
-                          </Show>
                           <Show when={historyMore()}>
                             <div class="w-full flex justify-center">
                               <Button
@@ -2624,7 +2459,6 @@ export default function Page() {
                                 onClick={() => {
                                   const id = params.id
                                   if (!id) return
-                                  setStore("turnStart", 0)
                                   sync.session.history.loadMore(id)
                                 }}
                               >
@@ -2634,44 +2468,49 @@ export default function Page() {
                               </Button>
                             </div>
                           </Show>
-                          <For each={renderedUserMessages()}>
-                            {(message) => {
-                              if (import.meta.env.DEV) {
-                                onMount(() => {
-                                  const id = params.id
-                                  if (!id) return
-                                  navMark({ dir: params.dir, to: id, name: "session:first-turn-mounted" })
-                                })
-                              }
-
-                              return (
-                                <div
-                                  id={anchor(message.id)}
-                                  data-message-id={message.id}
-                                  classList={{
-                                    "min-w-0 w-full max-w-full": true,
+                          <Virtualizer
+                            ref={setTurnList}
+                            scrollRef={scroller}
+                            data={visibleUserMessages()}
+                            overscan={4}
+                            // shift only when turns PREPEND (history load-earlier):
+                            // it anchors the view by unshifting virtua's size
+                            // cache. Left on for appends it slides every cached
+                            // height one slot per new turn.
+                            shift={prepended().value}
+                          >
+                            {(message, index) => (
+                              <div
+                                id={anchor(message.id)}
+                                data-message-id={message.id}
+                                classList={{
+                                  "min-w-0 w-full max-w-full pb-4": true,
+                                  // The last turn carries the floating-dock
+                                  // clearance so virtua's align:"end" lands the
+                                  // message above the dock, not under it.
+                                  "!pb-[calc(var(--prompt-height,8rem)+32px)] md:!pb-[calc(var(--prompt-height,10rem)+32px)]":
+                                    index() === lastIndex(),
+                                }}
+                              >
+                                <SessionTurn
+                                  sessionID={params.id!}
+                                  messageID={message.id}
+                                  lastUserMessageID={lastUserMessage()?.id}
+                                  footer={(m) => <MessageFooter message={m} />}
+                                  stepsExpanded={stepsExpandedDefault(message.id)}
+                                  onStepsExpandedToggle={() =>
+                                    setStore("expanded", message.id, (open: boolean | undefined) => !open)
+                                  }
+                                  onJump={() => scrollToMessage(message)}
+                                  classes={{
+                                    root: "min-w-0 w-full relative",
+                                    content: "flex flex-col justify-between !overflow-visible",
+                                    container: "w-full px-4 md:px-0",
                                   }}
-                                >
-                                  <SessionTurn
-                                    sessionID={params.id!}
-                                    messageID={message.id}
-                                    lastUserMessageID={lastUserMessage()?.id}
-                                    footer={(m) => <MessageFooter message={m} />}
-                                    stepsExpanded={stepsExpandedDefault(message.id)}
-                                    onStepsExpandedToggle={() =>
-                                      setStore("expanded", message.id, (open: boolean | undefined) => !open)
-                                    }
-                                    onJump={() => scrollToMessage(message)}
-                                    classes={{
-                                      root: "min-w-0 w-full relative",
-                                      content: "flex flex-col justify-between !overflow-visible",
-                                      container: "w-full px-4 md:px-0",
-                                    }}
-                                  />
-                                </div>
-                              )
-                            }}
-                          </For>
+                                />
+                              </div>
+                            )}
+                          </Virtualizer>
                         </div>
                       </div>
                     </div>

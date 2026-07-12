@@ -33,6 +33,9 @@
   & {
     scrollbar-width: thin;
     scrollbar-color: var(--border-weak-base) transparent;
+    /* The virtualizer owns scroll anchoring; the browser's own anchoring fights
+       it and desyncs the mounted window while streaming. */
+    overflow-anchor: none;
   }
 }
 
