@@ -11,6 +11,8 @@ const MIN_QUALITY = 0.5
 const START_QUALITY = 0.85
 
 export async function compress(file: File) {
+  if (file.size <= TARGET_BYTES) return file
+
   const bitmap = await createImageBitmap(file)
 
   const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
@@ -22,6 +24,10 @@ export async function compress(file: File) {
   canvas.height = height
   const ctx = canvas.getContext("2d")
   if (!ctx) return file
+  // JPEG has no alpha channel, so transparent source pixels composite against
+  // the canvas default (transparent black) and render black. Paint white first.
+  ctx.fillStyle = "#ffffff"
+  ctx.fillRect(0, 0, width, height)
   ctx.drawImage(bitmap, 0, 0, width, height)
   bitmap.close()
 
