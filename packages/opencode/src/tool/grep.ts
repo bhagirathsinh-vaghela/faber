@@ -11,6 +11,21 @@ const VCS_EXCLUDES = ["!.git", "!.svn", "!.hg", "!.bzr", "!.jj", "!.sl"]
 const DEFAULT_HEAD_LIMIT = 250
 const RIPGREP_TIMEOUT_MS = 20_000
 
+// One metadata shape across every output mode. Mode-specific counts
+// (filenames/numFiles for file modes, numMatches for count, numLines for
+// content) are optional so all return branches share a single inferred type;
+// without this the tool's metadata is inferred from whichever branch runs
+// first and the others fail to assign.
+type Metadata = {
+  numFiles?: number
+  filenames?: string[]
+  numMatches?: number
+  numLines?: number
+  totalBeforePagination: number
+  appliedLimit: number | undefined
+  appliedOffset: number
+}
+
 export const GrepTool = Tool.define("grep", {
   description: DESCRIPTION,
   parameters: z
@@ -168,7 +183,7 @@ async function formatFilesWithMatches(
   params: { pattern: string; head_limit?: number; offset?: number },
   hasErrors: boolean,
   timedOut: boolean,
-) {
+): Promise<{ title: string; metadata: Metadata; output: string }> {
   let files = output
     .trim()
     .split(/\r?\n/)
@@ -222,7 +237,7 @@ function formatCount(
   params: { pattern: string; head_limit?: number; offset?: number },
   hasErrors: boolean,
   timedOut: boolean,
-) {
+): { title: string; metadata: Metadata; output: string } {
   let entries = output
     .trim()
     .split(/\r?\n/)
@@ -273,7 +288,7 @@ function formatContent(
   params: { pattern: string; head_limit?: number; offset?: number },
   hasErrors: boolean,
   timedOut: boolean,
-) {
+): { title: string; metadata: Metadata; output: string } {
   let lines = output.trimEnd().split(/\r?\n/)
 
   // Relativize file paths in output lines. Strip only the path prefix: path.relative() on the

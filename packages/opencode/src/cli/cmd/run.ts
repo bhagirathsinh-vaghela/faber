@@ -76,7 +76,7 @@ function glob(info: ToolProps<typeof GlobTool>) {
   const root = info.input.path ?? ""
   const title = `Glob "${info.input.pattern}"`
   const suffix = root ? `in ${normalizePath(root)}` : ""
-  const num = info.metadata.count
+  const num = info.metadata.numFiles
   const description =
     num === undefined ? suffix : `${suffix}${suffix ? " · " : ""}${num} ${num === 1 ? "match" : "matches"}`
   inline({
@@ -90,7 +90,8 @@ function grep(info: ToolProps<typeof GrepTool>) {
   const root = info.input.path ?? ""
   const title = `Grep "${info.input.pattern}"`
   const suffix = root ? `in ${normalizePath(root)}` : ""
-  const num = info.metadata.matches
+  // count mode reports numMatches, files mode numFiles, content mode numLines
+  const num = info.metadata.numMatches ?? info.metadata.numFiles ?? info.metadata.numLines
   const description =
     num === undefined ? suffix : `${suffix}${suffix ? " · " : ""}${num} ${num === 1 ? "match" : "matches"}`
   inline({

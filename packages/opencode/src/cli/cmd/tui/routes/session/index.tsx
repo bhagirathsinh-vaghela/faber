@@ -2588,8 +2588,8 @@ function Glob(props: ToolProps<typeof GlobTool>) {
       toolIndex={props.toolIndex}
     >
       Glob "{props.input.pattern}" <Show when={props.input.path}>in {normalizePath(props.input.path)} </Show>
-      <Show when={props.metadata.count}>
-        ({props.metadata.count} {props.metadata.count === 1 ? "match" : "matches"})
+      <Show when={props.metadata.numFiles}>
+        ({props.metadata.numFiles} {props.metadata.numFiles === 1 ? "match" : "matches"})
       </Show>
     </InlineTool>
   )
@@ -2629,6 +2629,8 @@ function Read(props: ToolProps<typeof ReadTool>) {
 }
 
 function Grep(props: ToolProps<typeof GrepTool>) {
+  // count mode reports numMatches, files mode numFiles, content mode numLines
+  const num = () => props.metadata.numMatches ?? props.metadata.numFiles ?? props.metadata.numLines
   return (
     <InlineTool
       icon="✱"
@@ -2638,8 +2640,8 @@ function Grep(props: ToolProps<typeof GrepTool>) {
       toolIndex={props.toolIndex}
     >
       Grep "{props.input.pattern}" <Show when={props.input.path}>in {normalizePath(props.input.path)} </Show>
-      <Show when={props.metadata.matches}>
-        ({props.metadata.matches} {props.metadata.matches === 1 ? "match" : "matches"})
+      <Show when={num()}>
+        ({num()} {num() === 1 ? "match" : "matches"})
       </Show>
     </InlineTool>
   )

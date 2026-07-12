@@ -41,7 +41,7 @@ describe("tool.grep", () => {
           },
           ctx,
         )
-        expect(result.metadata.matches).toBeGreaterThan(0)
+        expect(result.metadata.numFiles).toBeGreaterThan(0)
         expect(result.output).toContain("Found")
         expect(result.output).toContain("file(s)")
       },
@@ -65,7 +65,7 @@ describe("tool.grep", () => {
           },
           ctx,
         )
-        expect(result.metadata.matches).toBe(0)
+        expect(result.metadata.numFiles).toBe(0)
         expect(result.output).toBe("No files found")
       },
     })
@@ -88,7 +88,7 @@ describe("tool.grep", () => {
           },
           ctx,
         )
-        expect(result.metadata.matches).toBeGreaterThan(0)
+        expect(result.metadata.numFiles).toBeGreaterThan(0)
       },
     })
   })
@@ -205,7 +205,7 @@ describe("tool.grep", () => {
           ctx,
         )
         // Should only find the python file
-        expect(result.metadata.matches).toBe(1)
+        expect(result.metadata.numFiles).toBe(1)
         expect(result.output).toContain("c.py")
         expect(result.output).not.toContain("a.ts")
       },
@@ -226,7 +226,7 @@ describe("tool.grep", () => {
           },
           ctx,
         )
-        expect(all.metadata.matches).toBe(2) // a.ts and b.ts
+        expect(all.metadata.numFiles).toBe(2) // a.ts and b.ts
 
         // With head_limit=1, should only get 1 file
         const limited = await grep.execute(
@@ -237,7 +237,7 @@ describe("tool.grep", () => {
           },
           ctx,
         )
-        expect(limited.metadata.matches).toBe(1)
+        expect(limited.metadata.numFiles).toBe(1)
 
         // With offset=1, head_limit=1
         const paged = await grep.execute(
@@ -249,7 +249,7 @@ describe("tool.grep", () => {
           },
           ctx,
         )
-        expect(paged.metadata.matches).toBe(1)
+        expect(paged.metadata.numFiles).toBe(1)
       },
     })
   })
@@ -298,7 +298,7 @@ describe("tool.grep", () => {
           ctx,
         )
         // Should find real.txt but not anything in .git
-        expect(result.metadata.matches).toBe(1)
+        expect(result.metadata.numFiles).toBe(1)
         expect(result.output).toContain("real.txt")
         expect(result.output).not.toContain(".git")
       },
