@@ -244,14 +244,24 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   onCleanup(() => window.removeEventListener("keydown", stop, true))
 
   if (props.attention) {
+    // The commit-on-Ctrl-release is only a real gesture once the user has
+    // actually held Ctrl and tapped Tab. `armed` gates it: a bare Control keyup
+    // with no preceding Ctrl+Tab (the home page, a mod+k/ctrl+shift+tab dialog,
+    // or an unmatched OS Control release) must never navigate. Without this the
+    // home page bounced fresh clients off `/` into the top session on any stray
+    // Ctrl tap, because `attention` armed the listener without a Ctrl-hold.
+    let armed = false
     const cycle = (event: KeyboardEvent) => {
       if (!(event.ctrlKey && event.key === "Tab")) return
       event.preventDefault()
       event.stopPropagation()
+      armed = true
       ref?.onKeyDown(new KeyboardEvent("keydown", { key: event.shiftKey ? "ArrowUp" : "ArrowDown", bubbles: true }))
     }
     const commit = (event: KeyboardEvent) => {
       if (event.key !== "Control") return
+      if (!armed) return
+      armed = false
       const row = highlight()
       if (row) open(row)
     }
