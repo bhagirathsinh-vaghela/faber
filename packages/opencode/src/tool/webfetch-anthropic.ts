@@ -6,6 +6,7 @@ import { Tool } from "./tool"
 import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch-anthropic.txt"
 import { abortAfterAny } from "../util/abort"
+import { fetchFollowingSameHost } from "../util/fetch"
 import { Provider } from "../provider/provider"
 import { LLM } from "../session/llm"
 import { Agent } from "../agent/agent"
@@ -56,36 +57,16 @@ export const WebFetchAnthropicTool = Tool.define("webfetch", {
 
     let response: Response
     try {
-      const initial = await fetch(url, {
-        signal,
-        headers,
-        redirect: "manual",
-      })
-
-      // Handle redirects
-      if ([301, 302, 307, 308].includes(initial.status)) {
-        const location = initial.headers.get("location")
-        if (!location) throw new Error("Redirect missing Location header")
-
-        const redirectUrl = new URL(location, url).toString()
-        const originalHost = new URL(url).hostname.replace(/^www\./, "")
-        const redirectHost = new URL(redirectUrl).hostname.replace(/^www\./, "")
-
-        if (originalHost === redirectHost) {
-          // Same host — follow redirect
-          response = await fetch(redirectUrl, { signal, headers })
-        } else {
-          // Different host — tell the model to retry
-          clearTimeout()
-          return {
-            output: `REDIRECT DETECTED: The URL redirects to a different host.\n\nOriginal URL: ${params.url}\nRedirect URL: ${redirectUrl}\nStatus: ${initial.status} ${initial.statusText}\n\nTo complete your request, I need to fetch content from the redirected URL. Please use WebFetch again with these parameters:\n- url: "${redirectUrl}"\n- prompt: "${params.prompt}"`,
-            title: `${params.url} (redirect to ${redirectHost})`,
-            metadata: {},
-          }
+      const result = await fetchFollowingSameHost(url, { signal, headers })
+      if (result.type === "cross-host") {
+        const redirectHost = new URL(result.to).hostname.replace(/^www\./, "")
+        return {
+          output: `REDIRECT DETECTED: The URL redirects to a different host.\n\nOriginal URL: ${params.url}\nRedirect URL: ${result.to}\nStatus: ${result.status} ${result.statusText}\n\nTo complete your request, I need to fetch content from the redirected URL. Please use WebFetch again with these parameters:\n- url: "${result.to}"\n- prompt: "${params.prompt}"`,
+          title: `${params.url} (redirect to ${redirectHost})`,
+          metadata: {},
         }
-      } else {
-        response = initial
       }
+      response = result.response
     } finally {
       clearTimeout()
     }
