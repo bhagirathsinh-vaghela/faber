@@ -2190,10 +2190,10 @@ export default function Page() {
             // so reserve its real height in both modes. The transcript otherwise
             // scrolls under the visible zen dock and the bottom message is clipped.
             "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
-            // In zen the titlebar is gone, so this panel must itself clear the
-            // device's top safe-area inset (status bar), plus a 1rem gap that
-            // mirrors the bottom margin. --sat is 0 in a browser, so it degrades
-            // to just the gap.
+            // In zen the titlebar stops drawing, so on mobile this panel clears
+            // the device's top safe-area inset (status bar) plus a 1rem gap that
+            // mirrors the bottom margin. --sat is 0 on desktop, where the WCO
+            // strip is already reserved by the titlebar, so it degrades to the gap.
             "padding-top": layout.zen.opened() ? "calc(var(--sat) + 1rem)" : undefined,
           }}
         >

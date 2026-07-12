@@ -171,7 +171,9 @@ export function Titlebar() {
     // the #opencode-titlebar-{center,right} portal targets that session-header
     // memoizes; on zen exit the header would portal into the stale detached
     // nodes and its search box / Share button would never reappear until a
-    // reload. Keeping the element mounted preserves those targets.
+    // reload. Keeping the element mounted preserves those targets. display:none
+    // reclaims the full window height in zen (no wasted strip); the app flows
+    // under the WCO controls, which just float in the top corner.
     <header
       data-slot="titlebar"
       data-wco={overlay() ? "" : undefined}

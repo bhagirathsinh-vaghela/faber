@@ -2275,7 +2275,20 @@ export default function Layout(props: ParentProps) {
             >
               <DragDropSensors />
               <ConstrainDragXAxis />
-              <div class="h-full w-full flex flex-col items-center gap-3 px-3 py-2 overflow-y-auto no-scrollbar">
+              {/* In zen the titlebar is gone. When the PWA's window-controls
+                  overlay is collapsed the OS controls float in the top corner and
+                  the app fills the full height, so the first project would sit
+                  under them. env(titlebar-area-height) is the overlay's height in
+                  that mode and 0 otherwise (expanded bar / plain browser), so this
+                  pad self-detects the collapsed-overlay case and clears it. */}
+              <div
+                class="h-full w-full flex flex-col items-center gap-3 px-3 py-2 overflow-y-auto no-scrollbar"
+                style={{
+                  "padding-top": layout.zen.opened()
+                    ? "calc(0.5rem + env(titlebar-area-height, 0px))"
+                    : undefined,
+                }}
+              >
                 <SortableProvider ids={layout.projects.list().map((p) => p.worktree)}>
                   <For each={layout.projects.list()}>
                     {(project) => <SortableProject project={project} mobile={sidebarProps.mobile} />}
