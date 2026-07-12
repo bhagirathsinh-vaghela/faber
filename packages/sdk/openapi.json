@@ -2682,6 +2682,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Get session messages",
@@ -11327,34 +11334,6 @@
           "properties"
         ]
       },
-      "Event.session.ping.armed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.ping.armed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "armed": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "sessionID",
-              "armed"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -11398,6 +11377,34 @@
             },
             "required": [
               "entries"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.ping.armed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.ping.armed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "armed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sessionID",
+              "armed"
             ]
           }
         },
@@ -12580,13 +12587,13 @@
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.session.ping.armed"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
             "$ref": "#/components/schemas/Event.open-projects.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.ping.armed"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"

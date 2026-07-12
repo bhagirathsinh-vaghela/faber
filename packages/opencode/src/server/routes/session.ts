@@ -623,6 +623,9 @@ export const SessionRoutes = lazy(() =>
           // default boundary stop. Raw string compare — z.coerce.boolean treats
           // the string "false" as true.
           compacted: z.string().optional(),
+          // Reconnect delta: return only messages newer than this id, so a
+          // resuming client heals its gap without re-fetching the whole window.
+          after: z.string().optional(),
         }),
       ),
       async (c) => {
@@ -631,6 +634,7 @@ export const SessionRoutes = lazy(() =>
           sessionID: c.req.valid("param").sessionID,
           limit: query.limit,
           compacted: query.compacted === undefined ? undefined : query.compacted !== "false",
+          after: query.after,
         })
         return c.json(messages)
       },

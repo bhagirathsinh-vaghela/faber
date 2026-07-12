@@ -1682,6 +1682,7 @@ export class Session extends HeyApiClient {
       directory?: string
       limit?: number
       compacted?: string
+      after?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1694,6 +1695,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "limit" },
             { in: "query", key: "compacted" },
+            { in: "query", key: "after" },
           ],
         },
       ],

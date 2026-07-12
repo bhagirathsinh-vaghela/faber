@@ -152,31 +152,31 @@ export function AppInterface(props: { defaultUrl?: string }) {
             <Router
               root={(props) => (
                 <TickerProvider>
-                <SettingsProvider>
-                  <CodeThemeBridge>
-                    <DiffThemeBridge>
-                      <PermissionProvider>
-                        <LayoutProvider>
-                          <BoxDefaultsBridge>
-                            <NotificationProvider>
-                              <ModelsProvider>
-                                <CommandProvider>
-                                  <HighlightsProvider>
-                                    <MruProvider>
-                                      <RecentProvider>
-                                        <Layout>{props.children}</Layout>
-                                      </RecentProvider>
-                                    </MruProvider>
-                                  </HighlightsProvider>
-                                </CommandProvider>
-                              </ModelsProvider>
-                            </NotificationProvider>
-                          </BoxDefaultsBridge>
-                        </LayoutProvider>
-                      </PermissionProvider>
-                    </DiffThemeBridge>
-                  </CodeThemeBridge>
-                </SettingsProvider>
+                  <SettingsProvider>
+                    <CodeThemeBridge>
+                      <DiffThemeBridge>
+                        <PermissionProvider>
+                          <LayoutProvider>
+                            <BoxDefaultsBridge>
+                              <NotificationProvider>
+                                <ModelsProvider>
+                                  <CommandProvider>
+                                    <HighlightsProvider>
+                                      <MruProvider>
+                                        <RecentProvider>
+                                          <Layout>{props.children}</Layout>
+                                        </RecentProvider>
+                                      </MruProvider>
+                                    </HighlightsProvider>
+                                  </CommandProvider>
+                                </ModelsProvider>
+                              </NotificationProvider>
+                            </BoxDefaultsBridge>
+                          </LayoutProvider>
+                        </PermissionProvider>
+                      </DiffThemeBridge>
+                    </CodeThemeBridge>
+                  </SettingsProvider>
                 </TickerProvider>
               )}
             >

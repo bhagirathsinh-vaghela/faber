@@ -609,11 +609,7 @@ export function SessionTurn(
         <div>
           <Show when={message()}>
             {(msg) => (
-              <div
-                data-message={msg().id}
-                data-slot="session-turn-message-container"
-                class={props.classes?.container}
-              >
+              <div data-message={msg().id} data-slot="session-turn-message-container" class={props.classes?.container}>
                 <Switch>
                   <Match when={isShellMode()}>
                     <Part part={shellModePart()!} message={msg()} defaultOpen />

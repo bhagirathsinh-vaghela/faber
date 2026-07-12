@@ -616,81 +616,6 @@ export type EventSessionIdle = {
   }
 }
 
-export type QuestionOption = {
-  /**
-   * Display text (1-5 words, concise)
-   */
-  label: string
-  /**
-   * Explanation of choice
-   */
-  description: string
-}
-
-export type QuestionInfo = {
-  /**
-   * Complete question
-   */
-  question: string
-  /**
-   * Very short label (max 30 chars)
-   */
-  header: string
-  /**
-   * Available choices
-   */
-  options: Array<QuestionOption>
-  /**
-   * Allow selecting multiple choices
-   */
-  multiple?: boolean
-  /**
-   * Allow typing a custom answer (default: true)
-   */
-  custom?: boolean
-}
-
-export type QuestionRequest = {
-  id: string
-  sessionID: string
-  /**
-   * When the question was asked (epoch millis)
-   */
-  time: number
-  /**
-   * Questions to ask
-   */
-  questions: Array<QuestionInfo>
-  tool?: {
-    messageID: string
-    callID: string
-  }
-}
-
-export type EventQuestionAsked = {
-  type: "question.asked"
-  properties: QuestionRequest
-}
-
-export type QuestionAnswer = Array<string>
-
-export type EventQuestionReplied = {
-  type: "question.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    answers: Array<QuestionAnswer>
-  }
-}
-
-export type EventQuestionRejected = {
-  type: "question.rejected"
-  properties: {
-    sessionID: string
-    requestID: string
-  }
-}
-
 export type EventTuiPromptAppend = {
   type: "tui.prompt.append"
   properties: {
@@ -767,6 +692,81 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
+  }
+}
+
+export type QuestionOption = {
+  /**
+   * Display text (1-5 words, concise)
+   */
+  label: string
+  /**
+   * Explanation of choice
+   */
+  description: string
+}
+
+export type QuestionInfo = {
+  /**
+   * Complete question
+   */
+  question: string
+  /**
+   * Very short label (max 30 chars)
+   */
+  header: string
+  /**
+   * Available choices
+   */
+  options: Array<QuestionOption>
+  /**
+   * Allow selecting multiple choices
+   */
+  multiple?: boolean
+  /**
+   * Allow typing a custom answer (default: true)
+   */
+  custom?: boolean
+}
+
+export type QuestionRequest = {
+  id: string
+  sessionID: string
+  /**
+   * When the question was asked (epoch millis)
+   */
+  time: number
+  /**
+   * Questions to ask
+   */
+  questions: Array<QuestionInfo>
+  tool?: {
+    messageID: string
+    callID: string
+  }
+}
+
+export type EventQuestionAsked = {
+  type: "question.asked"
+  properties: QuestionRequest
+}
+
+export type QuestionAnswer = Array<string>
+
+export type EventQuestionReplied = {
+  type: "question.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    answers: Array<QuestionAnswer>
+  }
+}
+
+export type EventQuestionRejected = {
+  type: "question.rejected"
+  properties: {
+    sessionID: string
+    requestID: string
   }
 }
 
@@ -901,6 +901,14 @@ export type EventTodoUpdated = {
   }
 }
 
+export type EventSessionPingArmed = {
+  type: "session.ping.armed"
+  properties: {
+    sessionID: string
+    armed: boolean
+  }
+}
+
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -912,14 +920,6 @@ export type EventOpenProjectsUpdated = {
   type: "open-projects.updated"
   properties: {
     entries: Array<OpenProject>
-  }
-}
-
-export type EventSessionPingArmed = {
-  type: "session.ping.armed"
-  properties: {
-    sessionID: string
-    armed: boolean
   }
 }
 
@@ -1231,9 +1231,6 @@ export type Event =
   | EventPermissionAutoaccept
   | EventSessionStatus
   | EventSessionIdle
-  | EventQuestionAsked
-  | EventQuestionReplied
-  | EventQuestionRejected
   | EventTuiPromptAppend
   | EventTuiCommandExecute
   | EventTuiToastShow
@@ -1241,15 +1238,18 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
+  | EventQuestionAsked
+  | EventQuestionReplied
+  | EventQuestionRejected
   | EventBackgroundTaskCreated
   | EventBackgroundTaskProgress
   | EventBackgroundTaskCompleted
   | EventBackgroundTaskResultPending
   | EventBackgroundTaskAutoInjectChanged
   | EventTodoUpdated
+  | EventSessionPingArmed
   | EventSessionCompacted
   | EventOpenProjectsUpdated
-  | EventSessionPingArmed
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -4057,6 +4057,7 @@ export type SessionMessagesData = {
     directory?: string
     limit?: number
     compacted?: string
+    after?: string
   }
   url: "/session/{sessionID}/message"
 }

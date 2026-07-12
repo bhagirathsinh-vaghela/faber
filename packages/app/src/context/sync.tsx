@@ -106,6 +106,61 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
     }
 
+    // Reconnect delta: heal the open session's transcript after a
+    // disconnect by fetching only the messages the gap could have added, instead
+    // of re-downloading the whole loaded window. The cursor is the SECOND-newest
+    // known message id, so the server (strict id > after) returns the newest
+    // known message too: that message may have streamed parts or completed while
+    // we were offline, and re-fetching it lets the reconcile-by-id below merge
+    // those in. With fewer than two known messages there is no meaningful delta
+    // boundary, so fall back to the full hydrating load.
+    const deltaMessages = async (input: {
+      directory: string
+      client: typeof sdk.client
+      setStore: Setter
+      sessionID: string
+      limit: number
+    }) => {
+      const key = keyFor(input.directory, input.sessionID)
+      if (meta.loading[key]) return
+      const known = current()[0].message[input.sessionID]
+      if (!known || known.length < 2) return loadMessages(input)
+      const cursor = known[known.length - 2].id
+
+      setMeta("loading", key, true)
+      await retry(() => input.client.session.messages({ sessionID: input.sessionID, after: cursor }))
+        .then((messages) => {
+          const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
+          if (items.length === 0) return
+          batch(() => {
+            input.setStore(
+              "message",
+              input.sessionID,
+              produce((list) => {
+                for (const item of items) {
+                  const match = Binary.search(list, item.info.id, (m) => m.id)
+                  if (match.found) list[match.index] = item.info
+                  else list.splice(match.index, 0, item.info)
+                }
+              }),
+            )
+            for (const item of items) {
+              input.setStore(
+                "part",
+                item.info.id,
+                reconcile(
+                  item.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id)),
+                  { key: "id" },
+                ),
+              )
+            }
+          })
+        })
+        .finally(() => {
+          setMeta("loading", key, false)
+        })
+    }
+
     return {
       get data() {
         return current()[0]
@@ -204,13 +259,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // the server means a slow/failed subscribe over-sends, never drops.
           await globalSync.ensureInterest(sessionID)
 
-          // force re-fetch re-hydrates messages+parts at the loaded limit after
-          // a reconnect: the server has no SSE replay, so a message (or a part
-          // completed) during the disconnect window is missing from the store
-          // and reconcile heals it. Skip only the early-return; keep the same
-          // load path so the reconcile-by-id below dedupes.
+          // force re-fetch heals the reconnect gap: the server has no SSE replay,
+          // so a message (or a part completed) during the disconnect window is
+          // missing from the store. deltaMessages fetches only the gap (since the
+          // second-newest known id) and merges by id, instead of re-downloading
+          // the whole loaded window; it falls back to a full load when there is
+          // no delta boundary yet.
           if (force && hydrated) {
-            return loadMessages({ directory, client, setStore, sessionID, limit: meta.limit[key]! })
+            return deltaMessages({ directory, client, setStore, sessionID, limit: meta.limit[key]! })
           }
 
           if (hasSession && hasMessages && hydrated) return

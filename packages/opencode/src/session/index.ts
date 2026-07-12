@@ -421,6 +421,11 @@ export namespace Session {
       // boundary — pre-compaction messages are the model's dropped context and
       // are never serialized. Pass false to page into pre-compaction history.
       compacted: z.boolean().optional(),
+      // Reconnect delta: return only messages newer than this id. Message ids
+      // are monotonic, so the newest-first stream can stop the moment it reaches
+      // one at or below the cursor. A resuming client passes its last-known id
+      // to heal the disconnect gap without re-fetching the whole window.
+      after: Identifier.schema("message").optional(),
     }),
     async (input) => {
       const compacted = input.compacted ?? true
@@ -429,6 +434,7 @@ export namespace Session {
       // MessageV2.stream yields newest-first; mirror MessageV2.filterCompacted
       for await (const msg of MessageV2.stream(input.sessionID)) {
         if (input.limit && result.length >= input.limit) break
+        if (input.after && msg.info.id <= input.after) break
         result.push(msg)
         if (
           compacted &&
