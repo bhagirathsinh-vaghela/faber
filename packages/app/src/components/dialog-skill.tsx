@@ -1,4 +1,4 @@
-import { Component, createMemo, createResource, createSignal, Show } from "solid-js"
+import { Component, createMemo, createSignal, onMount, Show } from "solid-js"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
@@ -6,6 +6,7 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { useSDK } from "@/context/sdk"
 import { useLocal } from "@/context/local"
 import { useLanguage } from "@/context/language"
+import type { AppSkillsResponse } from "@opencode-ai/sdk/v2/client"
 
 interface SkillItem {
   name: string
@@ -27,14 +28,19 @@ export const DialogSkill: Component<DialogSkillProps> = (props) => {
   const language = useLanguage()
   const [showDescriptions, setShowDescriptions] = createSignal(false)
 
-  const [skills] = createResource(async () => {
+  // Seed the static skill list into a plain signal on mount. NOT createResource:
+  // a resource is Suspense-coupled, so its pending state on open trips the
+  // <Suspense> around <Session> and flickers the transcript. A signal never
+  // suspends.
+  const [skills, setSkills] = createSignal<AppSkillsResponse>([])
+  onMount(async () => {
     const res = await sdk.client.app.skills()
-    return res.data ?? []
+    setSkills(res.data ?? [])
   })
 
   const items = createMemo((): SkillItem[] => {
     const favorites = local.skill.favorite()
-    return (skills() ?? [])
+    return skills()
       .map((skill) => ({
         name: skill.name,
         description: skill.description,

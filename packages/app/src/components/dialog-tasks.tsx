@@ -1,4 +1,5 @@
-import { Component, createMemo, createResource, createSignal, onCleanup, Show } from "solid-js"
+import { Component, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
@@ -36,23 +37,63 @@ export const DialogTasks: Component = () => {
   const language = useLanguage()
   const [tab, setTab] = createSignal<Tab>("running")
 
-  const [tasks, { refetch }] = createResource(
-    () => params.id,
-    async (sessionID) => {
-      const res = await sdk.client.background.list({ sessionID })
-      return res.data ?? []
-    },
-  )
+  // Same pattern as PromptActionBar: one seed fetch on mount, then keep the list
+  // live off the background.task.* events. NOT createResource — a resource is
+  // Suspense-coupled, so its pending state (on open and on every refetch) trips
+  // the <Suspense> around <Session> and flickers the whole transcript. A plain
+  // store fed by events never suspends, exactly like the overview's recent_hub.
+  const [tasks, setTasks] = createStore<BackgroundTask[]>([])
 
-  const interval = setInterval(() => refetch(), 2000)
-  onCleanup(() => clearInterval(interval))
+  const upsert = (task: BackgroundTask) =>
+    setTasks(
+      produce((list) => {
+        const i = list.findIndex((t) => t.id === task.id)
+        if (i === -1) list.push(task)
+        else list[i] = task
+      }),
+    )
+
+  onMount(async () => {
+    const sessionID = params.id
+    if (!sessionID) return
+    const res = await sdk.client.background.list({ sessionID })
+    setTasks(reconcile(res.data ?? [], { key: "id" }))
+  })
+
+  const unsubs = [
+    sdk.event.on("background.task.created", (evt) => {
+      if (evt.properties.task.parentSessionID === params.id) upsert(evt.properties.task)
+    }),
+    sdk.event.on("background.task.progress", (evt) => {
+      if (evt.properties.parentSessionID !== params.id) return
+      setTasks(
+        produce((list) => {
+          const t = list.find((x) => x.id === evt.properties.taskId)
+          if (t) t.progress = evt.properties.progress
+        }),
+      )
+    }),
+    sdk.event.on("background.task.completed", (evt) => {
+      if (evt.properties.parentSessionID !== params.id) return
+      setTasks(
+        produce((list) => {
+          const t = list.find((x) => x.id === evt.properties.taskId)
+          if (!t) return
+          t.status = evt.properties.status
+          t.result = evt.properties.result
+          t.time = { ...t.time, completed: Date.now() }
+        }),
+      )
+    }),
+  ]
+  onCleanup(() => unsubs.forEach((u) => u()))
 
   const running = createMemo(() =>
-    (tasks() ?? []).filter((t) => t.status === "running").toSorted((a, b) => b.time.created - a.time.created),
+    tasks.filter((t) => t.status === "running").toSorted((a, b) => b.time.created - a.time.created),
   )
 
   const completed = createMemo(() =>
-    (tasks() ?? [])
+    tasks
       .filter((t) => t.status !== "running")
       .toSorted((a, b) => (b.time.completed ?? b.time.created) - (a.time.completed ?? a.time.created)),
   )
@@ -65,10 +106,9 @@ export const DialogTasks: Component = () => {
     navigate(`/${base64Encode(sdk.directory)}/session/${task.subagent.sessionID}`)
   }
 
-  const cancel = async (task: BackgroundTask) => {
-    await sdk.client.background.cancel({ id: task.id })
-    refetch()
-  }
+  // Cancelling emits background.task.completed (status "cancelled"), which the
+  // listener above folds into the store — no manual refetch.
+  const cancel = (task: BackgroundTask) => sdk.client.background.cancel({ id: task.id })
 
   return (
     <Dialog title={language.t("dialog.tasks.title")}>

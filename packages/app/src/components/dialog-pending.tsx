@@ -1,4 +1,5 @@
-import { Component, createMemo, createResource, createSignal, onCleanup } from "solid-js"
+import { Component, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { useParams } from "@solidjs/router"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
@@ -25,18 +26,32 @@ export const DialogPending: Component = () => {
   const language = useLanguage()
   const [selected, setSelected] = createSignal(new Set<string>())
 
-  const [pending, { refetch }] = createResource(
-    () => params.id,
-    async (sessionID) => {
-      const res = await sdk.client.background.getPending({ sessionID })
-      return res.data ?? []
-    },
-  )
+  // Same pattern as PromptActionBar: seed once on mount, then append from the
+  // result_pending event. NOT createResource — its pending state suspends the
+  // <Suspense> around <Session> and flickers the transcript on open and on every
+  // 2s poll. A plain store fed by the event never suspends. Accepting a result
+  // closes the dialog, so the seed re-reads fresh on the next open (the server
+  // clears silently, matching how PromptActionBar tracks the available count).
+  const [pending, setPending] = createStore<PendingResult[]>([])
 
-  const interval = setInterval(() => refetch(), 2000)
-  onCleanup(() => clearInterval(interval))
+  onMount(async () => {
+    const sessionID = params.id
+    if (!sessionID) return
+    const res = await sdk.client.background.getPending({ sessionID })
+    setPending(reconcile(res.data ?? [], { key: "taskId" }))
+  })
 
-  const items = createMemo(() => pending() ?? [])
+  const unsub = sdk.event.on("background.task.result_pending", (evt) => {
+    if (evt.properties.sessionID !== params.id) return
+    setPending(
+      produce((list) => {
+        if (!list.some((p) => p.taskId === evt.properties.pending.taskId)) list.push(evt.properties.pending)
+      }),
+    )
+  })
+  onCleanup(() => unsub())
+
+  const items = createMemo(() => pending)
 
   const toggle = (taskId: string) => {
     setSelected((prev) => {
