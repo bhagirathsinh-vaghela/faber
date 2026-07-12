@@ -881,14 +881,14 @@ export default function Page() {
       title: language.t("command.overview.attention"),
       category: language.t("command.category.session"),
       keybind: "ctrl+tab",
-      onSelect: () => dialog.show(() => <DialogOverview advance />),
+      onSelect: () => dialog.show(() => <DialogOverview advance switcher />),
     },
     {
       id: "overview.attention.reverse",
       title: language.t("command.overview.attention.reverse"),
       category: language.t("command.category.session"),
       keybind: "ctrl+shift+tab",
-      onSelect: () => dialog.show(() => <DialogOverview />),
+      onSelect: () => dialog.show(() => <DialogOverview switcher />),
     },
     {
       id: "tab.close",

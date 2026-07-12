@@ -165,7 +165,7 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
 // Both the home page (`/`) and DialogOverview render this body inside their
 // own frame, so any change to what the overview shows lands in both views. The
 // search input holds focus so the arrow keys drive the list and typing filters.
-export function Overview(props: { onOpen?: () => void; attention?: boolean; advance?: boolean }) {
+export function Overview(props: { onOpen?: () => void; attention?: boolean; advance?: boolean; switcher?: boolean }) {
   const frozen = useFrozen()
   const sdk = useGlobalSDK()
   const navigate = useNavigate()
@@ -244,13 +244,15 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   onCleanup(() => window.removeEventListener("keydown", stop, true))
 
   if (props.attention) {
-    // The commit-on-Ctrl-release is only a real gesture once the user has
-    // actually held Ctrl and tapped Tab. `armed` gates it: a bare Control keyup
-    // with no preceding Ctrl+Tab (the home page, a mod+k/ctrl+shift+tab dialog,
-    // or an unmatched OS Control release) must never navigate. Without this the
-    // home page bounced fresh clients off `/` into the top session on any stray
-    // Ctrl tap, because `attention` armed the listener without a Ctrl-hold.
-    let armed = false
+    // The commit-on-Ctrl-release is only a real gesture when the overview was
+    // opened BY a Ctrl-hold keybind (Ctrl+Tab / Ctrl+Shift+Tab), which the
+    // `switcher` prop marks. That opening keybind IS the gesture, so arm on
+    // mount — the command that opened the dialog never runs through `cycle`, so
+    // waiting for a second Ctrl+Tab would strand the single-tap case (release
+    // Ctrl once and nothing happened). `armed` still gates it so a bare Control
+    // keyup on a NON-switcher surface (the home page, a mod+k palette) never
+    // navigates; those pass no `switcher`, so they open disarmed.
+    let armed = !!props.switcher
     const cycle = (event: KeyboardEvent) => {
       if (!(event.ctrlKey && event.key === "Tab")) return
       event.preventDefault()
@@ -303,13 +305,13 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   )
 }
 
-export function DialogOverview(props: { advance?: boolean }) {
+export function DialogOverview(props: { advance?: boolean; switcher?: boolean }) {
   const dialog = useDialog()
   const language = useLanguage()
 
   return (
     <Dialog size="large" title={language.t("home.title")} transition>
-      <Overview attention advance={props.advance} onOpen={() => dialog.close()} />
+      <Overview attention advance={props.advance} switcher={props.switcher} onOpen={() => dialog.close()} />
     </Dialog>
   )
 }
