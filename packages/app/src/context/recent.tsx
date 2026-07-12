@@ -1,6 +1,7 @@
-import { createMemo, createSignal, onCleanup } from "solid-js"
+import { createMemo } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
+import { useTicker } from "./ticker"
 import { cacheCountdownUntil } from "@/utils/cache-countdown"
 
 export type OverviewRow = {
@@ -17,10 +18,7 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
   name: "Recent",
   init: () => {
     const globalSync = useGlobalSync()
-
-    const [now, setNow] = createSignal(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    onCleanup(() => clearInterval(timer))
+    const { now } = useTicker()
 
     // The whole overview is the server-owned recent hub — membership, recency,
     // and the live flags (busy, unseen, next-ping deadline) all ride the same

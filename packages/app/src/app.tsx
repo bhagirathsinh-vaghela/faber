@@ -27,6 +27,7 @@ import { CommentsProvider } from "@/context/comments"
 import { NotificationProvider } from "@/context/notification"
 import { ModelsProvider } from "@/context/models"
 import { RecentProvider } from "@/context/recent"
+import { TickerProvider } from "@/context/ticker"
 import { MruProvider } from "@/context/mru"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
@@ -150,6 +151,7 @@ export function AppInterface(props: { defaultUrl?: string }) {
           <GlobalSyncProvider>
             <Router
               root={(props) => (
+                <TickerProvider>
                 <SettingsProvider>
                   <CodeThemeBridge>
                     <DiffThemeBridge>
@@ -175,6 +177,7 @@ export function AppInterface(props: { defaultUrl?: string }) {
                     </DiffThemeBridge>
                   </CodeThemeBridge>
                 </SettingsProvider>
+                </TickerProvider>
               )}
             >
               <Route

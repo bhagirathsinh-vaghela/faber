@@ -1,6 +1,7 @@
-import { createMemo, createSignal, onCleanup, Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useSync } from "@/context/sync"
+import { useTicker } from "@/context/ticker"
 import { useParams } from "@solidjs/router"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
 import { CACHE_TTL, beforeExpiryMs, cacheCountdown as computeCountdown } from "@/utils/cache-countdown"
@@ -16,9 +17,7 @@ export function Statusline() {
 
   const session = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
 
-  const [now, setNow] = createSignal(Date.now())
-  const timer = setInterval(() => setNow(Date.now()), 1000)
-  onCleanup(() => clearInterval(timer))
+  const { now } = useTicker()
 
   const cacheCountdown = createMemo(() => computeCountdown(session(), beforeExpiryMs(sync.data.config), now()))
 
