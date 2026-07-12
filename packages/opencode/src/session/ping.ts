@@ -167,6 +167,20 @@ export namespace SessionPing {
     disarm(sessionID)
   }
 
+  // Re-publish the ping deadline for an armed session after its cache re-anchors.
+  // The daemon computes pingAt from lastRequestAt, then sleeps until it fires —
+  // so a busy session that re-anchors mid-turn leaves the hub's pingAt pinned to
+  // the OLD anchor until the loop wakes, and the overview countdown drifts from
+  // the statusline (which reads the live anchor). Called at the re-anchor site,
+  // this recomputes via evaluate() and emits the existing recent.updated event
+  // so the overview snaps to the new deadline at once. No-op unless armed;
+  // setPing itself no-ops when the value is unchanged.
+  export async function refresh(sessionID: string) {
+    if (!active.has(sessionID)) return
+    const next = await evaluate(sessionID)
+    if (next.type === "ping") void SessionRecent.setPing(sessionID, next.at)
+  }
+
   // The daemon registry lives at module scope, outside any Instance context, so
   // Instance.dispose does not reach it. Disposing an instance without this would
   // leave its sessions' loops running, and each ping re-enters Instance.provide

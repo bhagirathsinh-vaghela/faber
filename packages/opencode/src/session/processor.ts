@@ -13,6 +13,7 @@ import type { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
+import { SessionPing } from "./ping"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 
@@ -128,6 +129,10 @@ export namespace SessionProcessor {
               draft.systemBlockCount = systemBlockCount
               if (!draft.parentID) draft.cache = { lastRequestAt: dispatchedAt }
             })
+            // The cache TTL just reset, so the armed ping deadline moved with it.
+            // Re-publish it now (event-driven) so the overview countdown tracks
+            // the new anchor instead of drifting until the daemon's next wake.
+            void SessionPing.refresh(input.sessionID)
 
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()
