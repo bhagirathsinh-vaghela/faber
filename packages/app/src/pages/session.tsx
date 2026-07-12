@@ -1202,7 +1202,6 @@ export default function Page() {
       description: language.t("command.zen.toggle.description"),
       category: language.t("command.category.session"),
       keybind: "alt+z",
-      disabled: !params.id,
       onSelect: () => layout.zen.toggle(),
     },
     ...(sync.data.config.share !== "disabled"
