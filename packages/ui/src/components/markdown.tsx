@@ -114,19 +114,27 @@ function balancedInlineLength(tail: string) {
   return tail.length
 }
 
-// A fenced code block: <div box><pre><code/></pre> + copy button. The body is
-// streamed plain first, then Shiki-highlighted once the block settles. Because
-// reconcile only re-runs this component's owner when the node's text changes,
-// re-highlight fires on append; a per-render guard skips redundant work.
-function CodeBlock(props: { lang: string; source: string; labels: CopyLabels; theme: string }) {
+// A fenced code block: <div box><pre><code/></pre> + copy button. The body
+// streams plain (no highlight) for the whole turn, then Shiki-highlights ONCE
+// when the part completes. Highlighting a fence on every append re-lexed the
+// whole block ~10x/second for zero visible gain (the plain text is already on
+// screen); gating on `complete` collapses that to a single highlight per fence.
+function CodeBlock(props: { lang: string; source: string; labels: CopyLabels; theme: string; complete?: boolean }) {
   const [code, setCode] = createSignal<HTMLElement>()
 
   createEffect(() => {
     const el = code()
     const raw = props.source.replace(/\n$/, "")
-    if (!el || isServer || !raw) return
-    highlightCode(raw, props.lang, props.theme)
+    const lang = props.lang
+    const theme = props.theme
+    if (!el || isServer || !raw || !props.complete) return
+    let live = true
+    onCleanup(() => (live = false))
+    highlightCode(raw, lang, theme)
       .then((html) => {
+        // Drop a result whose inputs changed (theme toggle, source grew) while
+        // codeToHtml was in flight — Shiki has no abort, so guard at apply time.
+        if (!live) return
         const tmp = document.createElement("div")
         tmp.innerHTML = html
         const shiki = tmp.querySelector("code")
@@ -192,7 +200,7 @@ function InlineCode(props: { children: JSX.Element; text: string; labels: CopyLa
   )
 }
 
-function components(labels: CopyLabels, theme: () => string): SolidMarkdownComponents {
+function components(labels: CopyLabels, theme: () => string, complete: () => boolean): SolidMarkdownComponents {
   return {
     // Block code is handled by the `pre` override below (remark emits
     // `pre > code`). This `code` override fires for BOTH, so it must only wrap
@@ -209,7 +217,7 @@ function components(labels: CopyLabels, theme: () => string): SolidMarkdownCompo
       // (streaming code output that grows line by line) flow through to
       // CodeBlock. Snapshotting once here froze fenced output at its first line.
       const fence = createMemo(() => fenceSource(props.node as unknown as Hast))
-      return <CodeBlock lang={fence().lang} source={fence().text} labels={labels} theme={theme()} />
+      return <CodeBlock lang={fence().lang} source={fence().text} labels={labels} theme={theme()} complete={complete()} />
     },
     a(props) {
       return (
@@ -235,12 +243,18 @@ export function Markdown(
   const theme = useCodeTheme()
   const [root, setRoot] = createSignal<HTMLDivElement>()
 
+  // A caller that omits `complete` is rendering static, already-settled text
+  // (a finished task result, a question label); only the two live-streaming
+  // sites pass the real flag. Treat absence as complete so those static fences
+  // still highlight (and skip the streaming-prefix clamp).
+  const complete = () => local.complete ?? true
+
   // While streaming, render only the flicker-free prefix (settled blocks + the
   // tail up to its last closed inline marker). Plain prose has no open marker so
   // it streams live; an incomplete **bold**/`code`/fence is withheld until it
   // closes. The full text renders once the part completes.
   const rendered = createMemo(() => {
-    if (local.complete) return local.text
+    if (complete()) return local.text
     return local.text.slice(0, renderableLength(local.text))
   })
 
@@ -291,7 +305,7 @@ export function Markdown(
         skipHtml
         remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
         rehypePlugins={[rehypeKatex]}
-        components={components(labels, theme)}
+        components={components(labels, theme, complete)}
       >
         {rendered()}
       </SolidMarkdown>

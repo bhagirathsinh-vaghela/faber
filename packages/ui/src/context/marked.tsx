@@ -6,17 +6,42 @@ import { bundledLanguages, type BundledLanguage } from "shiki"
 import { createSimpleContext } from "./helper"
 import { getSharedHighlighter } from "@pierre/diffs"
 
+// Highlighted-HTML cache keyed on (code, lang, theme). A fenced block re-mounts
+// on every virtua scroll-in and every theme toggle-back; Shiki's codeToHtml is
+// the expensive step, so caching its output skips the re-highlight entirely for
+// an already-seen block. Bounded LRU (Map keeps insertion order; re-set on hit
+// moves to newest, oldest evicted past the cap) so long sessions can't grow it
+// without bound.
+const CACHE_MAX = 500
+const cache = new Map<string, string>()
+function cached(key: string) {
+  const hit = cache.get(key)
+  if (hit === undefined) return undefined
+  cache.delete(key)
+  cache.set(key, hit)
+  return hit
+}
+function store(key: string, html: string) {
+  cache.set(key, html)
+  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!)
+}
+
 // Shared code highlighter used by both the marked path and the solid-markdown
 // renderer. `theme` is any Shiki bundled theme name (github-dark, dracula, …),
 // resolved by @pierre/diffs' bundled-theme fallback; defaults to "github-dark".
 export async function highlightCode(code: string, lang: string, theme = "github-dark"): Promise<string> {
+  const key = `${theme}\u0000${lang || "text"}\u0000${code}`
+  const hit = cached(key)
+  if (hit !== undefined) return hit
   const highlighter = await getSharedHighlighter({ themes: [theme], langs: [] })
   let language = lang || "text"
   if (!(language in bundledLanguages)) language = "text"
   if (language !== "text" && !highlighter.getLoadedLanguages().includes(language)) {
     await highlighter.loadLanguage(language as BundledLanguage)
   }
-  return highlighter.codeToHtml(code, { lang: language, theme, tabindex: false })
+  const html = highlighter.codeToHtml(code, { lang: language, theme, tabindex: false })
+  store(key, html)
+  return html
 }
 
 // Background + foreground of a Shiki bundled theme, used to style inline code so
