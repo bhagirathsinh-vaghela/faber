@@ -1314,6 +1314,17 @@ export default function Page() {
     }
   }
 
+  // Middle mouse button mirrors bare End: jump the transcript to the bottom,
+  // re-arm follow, and focus the prompt. auxclick fires only for non-primary
+  // buttons; button === 1 is the middle button.
+  const handleAuxClick = (event: MouseEvent) => {
+    if (event.button !== 1) return
+    if (dialog.active) return
+    event.preventDefault()
+    resumeScroll()
+    inputRef?.focus()
+  }
+
   const handleDragStart = (event: unknown) => {
     const id = getDraggableId(event)
     if (!id) return
@@ -1962,6 +1973,7 @@ export default function Page() {
 
   createEffect(() => {
     document.addEventListener("keydown", handleKeyDown)
+    document.addEventListener("auxclick", handleAuxClick)
   })
 
   const previewPrompt = () =>
@@ -2016,6 +2028,7 @@ export default function Page() {
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleKeyDown)
+    document.removeEventListener("auxclick", handleAuxClick)
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
   })
 
