@@ -218,7 +218,9 @@
   height: 6px;
   border-radius: 999px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--stream-accent, var(--icon-interactive-base)) 16%, transparent);
+  /* Opaque backing so scrolling transcript text can't bleed through the track,
+     with the accent tint mixed over the dock surface color. */
+  background: color-mix(in srgb, var(--stream-accent, var(--icon-interactive-base)) 16%, var(--background-stronger));
   /* Whole bar gently breathes, matching the tool streaming bar. */
   animation: busy-bar-breathe 2.4s ease-in-out infinite;
 }
