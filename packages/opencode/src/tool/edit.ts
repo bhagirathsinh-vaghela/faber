@@ -163,10 +163,15 @@ export const EditTool = Tool.define("edit", {
       if (change.removed) filediff.deletions += change.count || 0
     }
 
+    // The running event only needs the +/- stat, not the bodies. edit is
+    // synchronous, so this fires microseconds before the completion write that
+    // carries the full filediff + diff; sending the whole before/after (2x the
+    // file) and the unified diff here just doubled the wire cost for a frame the
+    // completion immediately replaces. Ship the counts, defer the bodies.
+    const { before, after, ...stat } = filediff
     ctx.metadata({
       metadata: {
-        diff,
-        filediff,
+        filediff: stat,
         diagnostics: {},
       },
     })
