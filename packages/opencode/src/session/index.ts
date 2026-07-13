@@ -51,6 +51,32 @@ export namespace Session {
     return `${title} (fork #1)`
   }
 
+  // Per-instance index of every session Info, so list/children answer from
+  // memory instead of a full-project glob + one locked file read per session
+  // on every call. Populated by the first full scan (loaded flag), then kept
+  // current at the three mutation points (createNext, update, remove); get
+  // caches opportunistically on a miss. Single-process only — a separate
+  // process writing session storage (the import CLI) won't invalidate this,
+  // which matches the pre-existing model (no server runs during import).
+  const index = Instance.state(() => ({ entries: new Map<string, Info>(), loaded: false }))
+
+  async function load() {
+    const state = index()
+    if (state.loaded) return state.entries
+    const project = Instance.project
+    for (const item of await Storage.list(["session", project.id])) {
+      const session = await Storage.read<Info>(item).catch(() => undefined)
+      if (session) state.entries.set(session.id, session)
+    }
+    state.loaded = true
+    return state.entries
+  }
+
+  function indexed(session: Info) {
+    index().entries.set(session.id, session)
+    return session
+  }
+
   // An allowed tool is either a bare tool id (allowed with any arguments) or a
   // tool id scoped to file-path globs (allowed only when the call's file path
   // matches one of `paths`, denied otherwise). Path scoping applies to the
@@ -301,6 +327,7 @@ export namespace Session {
     }
     log.info("created", result)
     await Storage.write(["session", Instance.project.id, result.id], result)
+    indexed(result)
     Bus.publish(Event.Created, {
       info: result,
     })
@@ -329,8 +356,10 @@ export namespace Session {
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
+    const cached = index().entries.get(id)
+    if (cached) return cached
     const read = await Storage.read<Info>(["session", Instance.project.id, id])
-    return read as Info
+    return indexed(read as Info)
   })
 
   export const getShare = fn(Identifier.schema("session"), async (id) => {
@@ -384,6 +413,7 @@ export namespace Session {
       }
       changed = JSON.stringify(draft) !== before
     })
+    indexed(result)
     // An archived session leaves the overview; eviction is idempotent, so
     // evicting on any archived update (not just the transition) is harmless.
     if (result.time.archived) void SessionRecent.remove(id)
@@ -458,24 +488,15 @@ export namespace Session {
   )
 
   export async function* list() {
-    const project = Instance.project
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item).catch(() => undefined)
-      if (!session) continue
+    const entries = await load()
+    for (const session of [...entries.values()].sort((a, b) => (a.id > b.id ? 1 : -1))) {
       yield session
     }
   }
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const project = Instance.project
-    const result = [] as Session.Info[]
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item).catch(() => undefined)
-      if (!session) continue
-      if (session.parentID !== parentID) continue
-      result.push(session)
-    }
-    return result
+    const entries = await load()
+    return [...entries.values()].filter((session) => session.parentID === parentID)
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
@@ -493,6 +514,7 @@ export namespace Session {
         await Storage.remove(msg)
       }
       await Storage.remove(["session", project.id, sessionID])
+      index().entries.delete(sessionID)
       void SessionRecent.remove(sessionID)
       Bus.publish(Event.Deleted, {
         info: session,

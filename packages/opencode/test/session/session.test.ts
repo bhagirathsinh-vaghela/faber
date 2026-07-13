@@ -69,3 +69,56 @@ describe("session.started event", () => {
     })
   })
 })
+
+describe("session index", () => {
+  async function ids() {
+    const result: string[] = []
+    for await (const session of Session.list()) result.push(session.id)
+    return result
+  }
+
+  test("list and children reflect create, rename, and remove without stale entries", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const parent = await Session.create({})
+        const child = await Session.create({ parentID: parent.id })
+
+        expect(await ids()).toEqual(expect.arrayContaining([parent.id, child.id]))
+
+        const children = await Session.children(parent.id)
+        expect(children.map((s) => s.id)).toEqual([child.id])
+        expect(await Session.children(child.id)).toEqual([])
+
+        await Session.update(parent.id, (draft) => {
+          draft.title = "renamed parent"
+        })
+        const found = (await Array.fromAsync(Session.list())).find((s) => s.id === parent.id)
+        expect(found?.title).toBe("renamed parent")
+
+        await Session.remove(child.id)
+        expect(await Session.children(parent.id)).toEqual([])
+        expect(await ids()).not.toContain(child.id)
+
+        await Session.remove(parent.id)
+        expect(await ids()).not.toContain(parent.id)
+      },
+    })
+  })
+
+  test("list is sorted by id descending-session ordering", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const a = await Session.create({})
+        const b = await Session.create({})
+
+        const listed = (await ids()).filter((id) => id === a.id || id === b.id)
+        expect(listed).toEqual([...listed].sort((x, y) => (x > y ? 1 : -1)))
+
+        await Session.remove(a.id)
+        await Session.remove(b.id)
+      },
+    })
+  })
+})
