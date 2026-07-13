@@ -48,6 +48,31 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       }
     }
 
+    // Decide how a same-key event already waiting in this flush window collapses
+    // with the arriving one. Returns the event to keep and whether to DROP the
+    // earlier slot. For idempotent state (session.status/lsp.updated) the latest
+    // always wins and the old slot drops. message.part.updated deltas are
+    // ADDITIVE (server blanked the part, client appends), so:
+    //   prev delta + next delta  -> concat deltas, keep next part, drop prev.
+    //   prev delta + next full    -> next full text supersedes, drop prev.
+    //   prev full  + next delta   -> next appends onto prev's full text, so KEEP
+    //                                prev (do not drop): both apply, in order.
+    //   prev full  + next full    -> next supersedes, drop prev.
+    const collapse = (prev: Queued | undefined, next: Queued): { keep: Queued; drop: boolean } => {
+      if (!prev) return { keep: next, drop: false }
+      const a = prev.payload
+      const b = next.payload
+      if (a.type !== "message.part.updated" || b.type !== "message.part.updated") return { keep: next, drop: true }
+      const prevDelta = a.properties.delta
+      const nextDelta = b.properties.delta
+      if (nextDelta === undefined) return { keep: next, drop: true }
+      if (prevDelta === undefined) return { keep: next, drop: false }
+      return {
+        keep: { directory: next.directory, payload: { ...b, properties: { ...b.properties, delta: prevDelta + nextDelta } } },
+        drop: true,
+      }
+    }
+
     const flush = () => {
       if (timer) clearTimeout(timer)
       timer = undefined
@@ -71,10 +96,18 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       buffer.length = 0
     }
 
+    // Render-batching window: coalesce incoming events into one Solid flush per
+    // FLUSH_MS instead of one per event (the server already coalesces text on the
+    // wire at ~80ms; this is the browser-side reactive pass). Leading-edge, so a
+    // lone event still flushes within the window of the last one. 48ms (~3 frames)
+    // cuts flushes ~3x on a fast stream vs the old 16ms with no perceptible lag,
+    // now that collapse() concatenates additive deltas so a wider window can't
+    // drop streamed text.
+    const FLUSH_MS = 48
     const schedule = () => {
       if (timer) return
       const elapsed = Date.now() - last
-      timer = setTimeout(flush, Math.max(0, 16 - elapsed))
+      timer = setTimeout(flush, Math.max(0, FLUSH_MS - elapsed))
     }
 
     // Declare (or re-declare) which sessions this connection wants. Fire-and-
@@ -140,14 +173,19 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
             const directory = event.directory ?? "global"
             const payload = event.payload
             const k = key(directory, payload)
+            let queued: Queued = { directory, payload }
             if (k) {
               const i = coalesced.get(k)
-              if (i !== undefined) {
-                queue[i] = undefined
-              }
+              const { keep, drop } = collapse(i !== undefined ? queue[i] : undefined, queued)
+              queued = keep
+              // Only null the earlier slot when it is safe to drop it. A queued
+              // full-part event followed by a delta must stay (the delta appends
+              // onto its text), so we keep both and coalesce future events against
+              // this newer one instead.
+              if (i !== undefined && drop) queue[i] = undefined
               coalesced.set(k, queue.length)
             }
-            queue.push({ directory, payload })
+            queue.push(queued)
             schedule()
 
             if (Date.now() - yielded < 8) continue
