@@ -686,9 +686,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
         renderEditor(inputParts)
 
-        if (cursorPosition !== null) {
-          setCursorPosition(editorRef, cursorPosition)
-        }
+        // Restore the pre-render caret when it was in the editor. On a session
+        // switch there's no in-editor selection to restore, so renderEditor would
+        // otherwise leave the caret at the DOM start (before the restored draft).
+        // Default to the end so the user resumes typing after existing text. This
+        // runs in the same pass as renderEditor, so no later effect can wipe it.
+        setCursorPosition(editorRef, cursorPosition ?? promptLength(inputParts))
       },
     ),
   )
