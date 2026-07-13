@@ -211,10 +211,22 @@
    dodging the Lightning CSS custom-property @keyframes bug), and tints with the
    --stream-accent (agent color, set inline). While a subtask runs, a task-accent
    fill cross-fades over the base so the color oscillates. */
+/* Pill-shaped surround behind the busy bar. The bar itself is only 6px tall and
+   sits high in the dock over the scrolling transcript, so an opaque bar alone
+   still reads poorly against the moving text behind it. This padded pill, filled
+   with the page background, gives the bar a halo that fully occludes the
+   transcript and sets it off as a distinct element. */
+.busy-bar-track {
+  width: 100%;
+  max-width: 240px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--background-stronger);
+}
+
 .busy-bar {
   position: relative;
   width: 100%;
-  max-width: 240px;
   height: 6px;
   border-radius: 999px;
   overflow: hidden;

@@ -2649,12 +2649,14 @@ export default function Page() {
                   the busy cue in BOTH modes. The dock's own busy spinner
                   (dock-line1) is suppressed, so this bar is the single indicator. */}
               <Show when={titleWorking()}>
-                <div class="w-full px-3 mb-2">
-                  <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
-                    <span class="busy-bar-fill" />
-                    <Show when={mixing()}>
-                      <span class="busy-bar-fill busy-bar-fill-task" />
-                    </Show>
+                <div class="w-full px-3 mb-2 flex justify-center">
+                  <div class="busy-bar-track">
+                    <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
+                      <span class="busy-bar-fill" />
+                      <Show when={mixing()}>
+                        <span class="busy-bar-fill busy-bar-fill-task" />
+                      </Show>
+                    </div>
                   </div>
                 </div>
               </Show>
