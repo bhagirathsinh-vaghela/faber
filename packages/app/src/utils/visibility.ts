@@ -13,6 +13,7 @@ import { createSignal } from "solid-js"
 
 const [hidden, setHidden] = createSignal(read())
 const waiters: Array<() => void> = []
+const hiddenWaiters: Array<() => void> = []
 
 function read() {
   return typeof document !== "undefined" && document.visibilityState === "hidden"
@@ -22,8 +23,7 @@ function sync() {
   const next = read()
   document.documentElement.toggleAttribute("data-app-hidden", next)
   setHidden(next)
-  if (next) return
-  const pending = waiters.splice(0)
+  const pending = (next ? hiddenWaiters : waiters).splice(0)
   for (const resolve of pending) resolve()
 }
 
@@ -47,5 +47,13 @@ export const Visibility = {
     arm()
     if (!read()) return Promise.resolve()
     return new Promise<void>((resolve) => waiters.push(resolve))
+  },
+  // Resolves the next time the tab is (or already is) hidden. The snapshot
+  // writer awaits this to persist the open transcript right before
+  // the app is backgrounded, so the next cold open paints from cache.
+  whenHidden() {
+    arm()
+    if (read()) return Promise.resolve()
+    return new Promise<void>((resolve) => hiddenWaiters.push(resolve))
   },
 }

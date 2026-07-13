@@ -1,4 +1,4 @@
-import { createEffect, createMemo, Show, type ParentProps } from "solid-js"
+import { createEffect, createMemo, onCleanup, Show, type ParentProps } from "solid-js"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
@@ -9,6 +9,8 @@ import { DataProvider } from "@opencode-ai/ui/context"
 import { iife } from "@opencode-ai/util/iife"
 import type { QuestionAnswer } from "@opencode-ai/sdk/v2"
 import { decode64 } from "@/utils/base64"
+import { Snapshot } from "@/utils/snapshot"
+import { Visibility } from "@/utils/visibility"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useLanguage } from "@/context/language"
 
@@ -39,13 +41,45 @@ export default function Layout(props: ParentProps) {
             const sdk = useSDK()
             const location = useLocation()
 
-            // fire the transcript tail fetch as early as the URL carries a
-            // session id — before the session-scoped providers and the heavy
-            // Session component mount, so the tail is in flight during boot
+            // Paint from cache, then reconcile. As early as the URL
+            // carries a session id, hydrate the on-device snapshot into the store
+            // so the transcript paints before any fetch, then run sync: with the
+            // store seeded it takes the deltaMessages branch and fetches only the
+            // gap since the snapshot. A missing/stale snapshot no-ops the hydrate
+            // and sync falls back to the normal tail fetch. The snapshot read is
+            // async, so fire the tail fetch immediately too — whichever wins, the
+            // store guards make the other a cheap no-op.
             createEffect(() => {
               const id = location.pathname.match(/\/session\/([^/?#]+)/)?.[1]
-              if (id) sync.session.sync(id)
+              if (!id) return
+              Snapshot.read(directory(), id).then((snapshot) => {
+                if (snapshot) sync.session.hydrate(snapshot)
+                sync.session.sync(id, snapshot !== undefined)
+              })
             })
+
+            // Persist the open transcript's tail when the tab hides, so the next
+            // cold open (every iOS PWA launch is one) has a snapshot to paint. The
+            // hidden tab is already off the critical path, so no extra idle gate.
+            let disposed = false
+            onCleanup(() => (disposed = true))
+            const persist = async () => {
+              while (!disposed) {
+                await Visibility.whenHidden()
+                if (disposed) return
+                const id = location.pathname.match(/\/session\/([^/?#]+)/)?.[1]
+                if (id) {
+                  const session = sync.session.get(id)
+                  const messages = sync.data.message[id]
+                  if (session && messages?.length)
+                    await Snapshot.write(Snapshot.build(directory(), session, messages, sync.data.part))
+                }
+                // Park until the tab is visible again so the loop re-arms on the
+                // NEXT hide instead of spinning while the tab stays hidden.
+                await Visibility.whenVisible()
+              }
+            }
+            void persist()
             const respond = (input: {
               sessionID: string
               permissionID: string

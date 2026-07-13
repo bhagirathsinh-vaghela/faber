@@ -5,6 +5,7 @@ import { retry } from "@opencode-ai/util/retry"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
+import { Snapshot } from "@/utils/snapshot"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 
 const keyFor = (directory: string, id: string) => `${directory}\n${id}`
@@ -225,6 +226,45 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               draft.part[input.messageID] = input.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id))
             }),
           )
+        },
+        // Seed the store from an on-device snapshot, so a cold open
+        // paints real content before any network fetch. Mirrors loadMessages'
+        // write (reconcile message + parts, set meta.limit) so the session reads
+        // as `hydrated`; the caller then runs sync(id, force=true), which takes
+        // the deltaMessages branch and fetches only the gap since the snapshot's
+        // newest message id. No-op if a snapshot is missing, stale-versioned, or
+        // the session already holds messages (a live open beat us to it).
+        hydrate(snapshot: Snapshot) {
+          const directory = sdk.directory
+          const sessionID = snapshot.sessionID
+          const key = keyFor(directory, sessionID)
+          const [store, setStore] = globalSync.child(directory)
+          if (store.message[sessionID] !== undefined) return
+          if (meta.limit[key] !== undefined) return
+
+          const messages = snapshot.messages.filter((m) => !!m?.id).sort((a, b) => cmp(a.id, b.id))
+          if (messages.length === 0) return
+
+          batch(() => {
+            setStore(
+              "session",
+              produce((draft) => {
+                const match = Binary.search(draft, sessionID, (s) => s.id)
+                if (match.found) draft[match.index] = snapshot.session
+                else draft.splice(match.index, 0, snapshot.session)
+              }),
+            )
+            setStore("message", sessionID, reconcile(messages, { key: "id" }))
+            for (const message of messages) {
+              const parts = (snapshot.parts[message.id] ?? []).filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id))
+              setStore("part", message.id, reconcile(parts, { key: "id" }))
+            }
+            // Mark hydrated at the snapshot's window so sync(force) deltas instead
+            // of re-fetching the tail. Never `complete`: the backfill-to-boundary
+            // stays available behind the delta.
+            setMeta("limit", key, messages.length)
+            setMeta("complete", key, false)
+          })
         },
         // Heal the OPEN session's transcript. CONTRACT: only call this for the
         // session currently on screen — it marks sessionID as the open session
