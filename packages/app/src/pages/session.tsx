@@ -776,7 +776,7 @@ export default function Page() {
         const active = document.activeElement as HTMLElement | null
         if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return
         focusedFor = key
-        requestAnimationFrame(() => command.trigger("prompt.focus"))
+        requestAnimationFrame(() => command.trigger("prompt.focus.end"))
       },
     ),
   )

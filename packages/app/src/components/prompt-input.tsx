@@ -981,6 +981,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         requestAnimationFrame(() => setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current())))
       },
     },
+    {
+      // Like prompt.focus but always lands the caret at the end of the draft,
+      // ignoring the persisted mid-edit position. Used on session switch/open so
+      // the user resumes typing after existing text, not before it.
+      id: "prompt.focus.end",
+      title: language.t("command.prompt.focus"),
+      description: language.t("command.prompt.focus.description"),
+      category: language.t("command.category.session"),
+      onSelect: () => {
+        editorRef.focus({ preventScroll: true })
+        requestAnimationFrame(() => setCursorPosition(editorRef, promptLength(prompt.current())))
+      },
+    },
   ])
 
   // In-place stop (Esc / the streaming stop button): abort the turn and stay on

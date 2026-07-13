@@ -162,6 +162,9 @@ export const SettingsKeybinds: Component = () => {
 
     for (const opt of command.options) {
       if (opt.id.startsWith("suggested.")) continue
+      // Internal-only, triggered programmatically (no keybind of its own); it
+      // duplicates prompt.focus in the list, so keep it out of the settings UI.
+      if (opt.id === "prompt.focus.end") continue
       out.set(opt.id, { title: opt.title, group: groupFor(opt.id) })
     }
 
