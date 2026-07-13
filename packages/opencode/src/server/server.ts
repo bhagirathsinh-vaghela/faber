@@ -692,7 +692,7 @@ export namespace Server {
           },
         )
         .all("/*", async (c) => {
-          const response = Web.serve(c.req.path, c.req.header("accept-encoding"))
+          const response = Web.serve(c.req.path, c.req.header("accept-encoding"), c.req.header("if-none-match"))
           if (response) return response
           return c.text("web UI not embedded in this build", 404)
         }) as unknown as Hono,
