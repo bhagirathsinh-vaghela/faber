@@ -160,8 +160,8 @@ export const SuperviseCommand = cmd({
     //           these get a "continue" prompt on the new server.
     //   armed — cache-ping daemon running but NOT mid-turn: the turn is
     //           finished, so no prompt (nothing to continue) — a bare session
-    //           GET on the new server re-arms the daemon from the persisted
-    //           cache anchor.
+    //           GET on the new server re-arms the daemon, which the new server
+    //           honors because these sessions carry keepWarm=true (see rearm).
     // Only a planned /restart ever reads this, so a crash-looping server can
     // never auto-resume anything — the arm dies with the restart request.
     async function liveness(): Promise<{ busy: SessionRef[]; armed: SessionRef[] }> {
@@ -200,9 +200,14 @@ export const SuperviseCommand = cmd({
       return results
     }
 
-    // The session.get route re-arms the ping daemon (idempotent, self-stops if
-    // the cache window already died) and pins the session's prompt state — a
-    // read is the whole re-arm.
+    // Re-arm via a bare session GET on the new server. This is correct ONLY
+    // because two things key off the same persisted keepWarm intent: the snapshot
+    // fed in here comes from the live armed registry (/global/ping/armed), which
+    // now holds only keepWarm sessions, and session.get re-arms iff keepWarm is
+    // true. A stopped session (keepWarm=false) is in neither, so a restart can't
+    // resurrect it. If the snapshot source ever changes to raw cache anchors, or
+    // session.get's keepWarm gate is dropped, this stops protecting stopped
+    // sessions — keep both keyed off keepWarm.
     async function rearm(sessions: SessionRef[]) {
       const results = []
       for (const s of sessions) {

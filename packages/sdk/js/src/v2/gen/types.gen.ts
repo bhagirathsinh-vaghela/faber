@@ -996,6 +996,7 @@ export type Session = {
   cache?: {
     lastRequestAt: number
   }
+  keepWarm?: boolean
   unseen?: boolean
   seen?: {
     at: number
@@ -4589,6 +4590,41 @@ export type SessionPingResponses = {
 }
 
 export type SessionPingResponse = SessionPingResponses[keyof SessionPingResponses]
+
+export type SessionArmData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/arm"
+}
+
+export type SessionArmErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionArmError = SessionArmErrors[keyof SessionArmErrors]
+
+export type SessionArmResponses = {
+  /**
+   * Ping daemon armed
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type SessionArmResponse = SessionArmResponses[keyof SessionArmResponses]
 
 export type SessionPingStopData = {
   body?: never

@@ -40,7 +40,14 @@ export namespace FileTime {
   // read). Edit/Write leave them undefined: their entry is a write-guard stamp,
   // not a cached view, and deduping a later Read against it would point the model
   // at post-edit content it never read.
-  export function read(sessionID: string, file: string, mtime?: number, hash?: string, offset?: number, limit?: number) {
+  export function read(
+    sessionID: string,
+    file: string,
+    mtime?: number,
+    hash?: string,
+    offset?: number,
+    limit?: number,
+  ) {
     log.info("read", { sessionID, file })
     const { read } = state()
     read[sessionID] = read[sessionID] || {}

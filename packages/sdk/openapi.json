@@ -358,6 +358,16 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "busySession": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -1760,6 +1770,72 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/busy": {
+      "get": {
+        "operationId": "session.busy",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get session busy state",
+        "description": "Busy facts for every currently-busy session in this instance (own turn or any subtask). Bootstrap for clients that read the session.working event; absent sessions are idle.",
+        "responses": {
+          "200": {
+            "description": "Get session busy state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "busy": {
+                        "type": "boolean"
+                      },
+                      "busySelf": {
+                        "type": "boolean"
+                      },
+                      "busyDescendant": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "busy",
+                      "busySelf",
+                      "busyDescendant"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.busy({\n  ...\n})"
           }
         ]
       }
@@ -3762,6 +3838,76 @@
         ]
       }
     },
+    "/session/{sessionID}/arm": {
+      "post": {
+        "operationId": "session.arm",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Arm cache ping",
+        "description": "Set the session's keep-warm intent and arm the cache ping daemon. This is the explicit-open verb: an intentional open (sidebar/overview click, new session) or the arm button calls it. A plain fetch (reload, reconnect) does not, so it cannot resurrect a stopped session.",
+        "responses": {
+          "200": {
+            "description": "Ping daemon armed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.arm({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/ping/stop": {
       "post": {
         "operationId": "session.pingStop",
@@ -3783,7 +3929,7 @@
           }
         ],
         "summary": "Stop cache ping",
-        "description": "Stop the cache ping daemon and drop the session's pinned prompt state. Reopening the session re-arms the ping and re-pins against current config.",
+        "description": "Clear the session's keep-warm intent, stop the cache ping daemon, and drop the pinned prompt state. The session stays cold until an organic turn or the arm route re-declares intent — a plain reopen no longer re-arms it.",
         "responses": {
           "200": {
             "description": "Ping daemon stopped",
@@ -8355,10 +8501,19 @@
           "title": {
             "type": "string"
           },
+          "agent": {
+            "type": "string"
+          },
           "updated": {
             "type": "number"
           },
           "busy": {
+            "type": "boolean"
+          },
+          "busySelf": {
+            "type": "boolean"
+          },
+          "busyDescendant": {
             "type": "boolean"
           },
           "unseen": {
@@ -8374,6 +8529,8 @@
           "title",
           "updated",
           "busy",
+          "busySelf",
+          "busyDescendant",
           "unseen"
         ]
       },
@@ -8571,6 +8728,56 @@
           "properties": {
             "type": "object",
             "properties": {}
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.busy": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.busy"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessions": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "type": "string"
+                    },
+                    "busy": {
+                      "type": "boolean"
+                    },
+                    "busySelf": {
+                      "type": "boolean"
+                    },
+                    "busyDescendant": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "directory",
+                    "busy",
+                    "busySelf",
+                    "busyDescendant"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "sessions"
+            ]
           }
         },
         "required": [
@@ -10404,18 +10611,6 @@
               "message",
               "next"
             ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "busy"
-              }
-            },
-            "required": [
-              "type"
-            ]
           }
         ]
       },
@@ -10463,186 +10658,6 @@
             },
             "required": [
               "sessionID"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "QuestionOption": {
-        "type": "object",
-        "properties": {
-          "label": {
-            "description": "Display text (1-5 words, concise)",
-            "type": "string"
-          },
-          "description": {
-            "description": "Explanation of choice",
-            "type": "string"
-          }
-        },
-        "required": [
-          "label",
-          "description"
-        ]
-      },
-      "QuestionInfo": {
-        "type": "object",
-        "properties": {
-          "question": {
-            "description": "Complete question",
-            "type": "string"
-          },
-          "header": {
-            "description": "Very short label (max 30 chars)",
-            "type": "string"
-          },
-          "options": {
-            "description": "Available choices",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/QuestionOption"
-            }
-          },
-          "multiple": {
-            "description": "Allow selecting multiple choices",
-            "type": "boolean"
-          },
-          "custom": {
-            "description": "Allow typing a custom answer (default: true)",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "question",
-          "header",
-          "options"
-        ]
-      },
-      "QuestionRequest": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^que.*"
-          },
-          "sessionID": {
-            "type": "string",
-            "pattern": "^ses.*"
-          },
-          "time": {
-            "description": "When the question was asked (epoch millis)",
-            "type": "number"
-          },
-          "questions": {
-            "description": "Questions to ask",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/QuestionInfo"
-            }
-          },
-          "tool": {
-            "type": "object",
-            "properties": {
-              "messageID": {
-                "type": "string"
-              },
-              "callID": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "messageID",
-              "callID"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "sessionID",
-          "time",
-          "questions"
-        ]
-      },
-      "Event.question.asked": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.asked"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/QuestionRequest"
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "QuestionAnswer": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "Event.question.replied": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.replied"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              },
-              "answers": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/QuestionAnswer"
-                }
-              }
-            },
-            "required": [
-              "sessionID",
-              "requestID",
-              "answers"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.question.rejected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "question.rejected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "sessionID",
-              "requestID"
             ]
           }
         },
@@ -10874,6 +10889,186 @@
               "sessionID",
               "arguments",
               "messageID"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "QuestionOption": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "description": "Display text (1-5 words, concise)",
+            "type": "string"
+          },
+          "description": {
+            "description": "Explanation of choice",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "description"
+        ]
+      },
+      "QuestionInfo": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "description": "Complete question",
+            "type": "string"
+          },
+          "header": {
+            "description": "Very short label (max 30 chars)",
+            "type": "string"
+          },
+          "options": {
+            "description": "Available choices",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionOption"
+            }
+          },
+          "multiple": {
+            "description": "Allow selecting multiple choices",
+            "type": "boolean"
+          },
+          "custom": {
+            "description": "Allow typing a custom answer (default: true)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "question",
+          "header",
+          "options"
+        ]
+      },
+      "QuestionRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^que.*"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "time": {
+            "description": "When the question was asked (epoch millis)",
+            "type": "number"
+          },
+          "questions": {
+            "description": "Questions to ask",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionInfo"
+            }
+          },
+          "tool": {
+            "type": "object",
+            "properties": {
+              "messageID": {
+                "type": "string"
+              },
+              "callID": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "messageID",
+              "callID"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "time",
+          "questions"
+        ]
+      },
+      "Event.question.asked": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.asked"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/QuestionRequest"
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "QuestionAnswer": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "Event.question.replied": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.replied"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              },
+              "answers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/QuestionAnswer"
+                }
+              }
+            },
+            "required": [
+              "sessionID",
+              "requestID",
+              "answers"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.question.rejected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "question.rejected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sessionID",
+              "requestID"
             ]
           }
         },
@@ -11334,6 +11529,34 @@
           "properties"
         ]
       },
+      "Event.session.ping.armed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.ping.armed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "armed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sessionID",
+              "armed"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.session.compacted": {
         "type": "object",
         "properties": {
@@ -11385,12 +11608,12 @@
           "properties"
         ]
       },
-      "Event.session.ping.armed": {
+      "Event.session.working": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "session.ping.armed"
+            "const": "session.working"
           },
           "properties": {
             "type": "object",
@@ -11398,13 +11621,21 @@
               "sessionID": {
                 "type": "string"
               },
-              "armed": {
+              "busy": {
+                "type": "boolean"
+              },
+              "busySelf": {
+                "type": "boolean"
+              },
+              "busyDescendant": {
                 "type": "boolean"
               }
             },
             "required": [
               "sessionID",
-              "armed"
+              "busy",
+              "busySelf",
+              "busyDescendant"
             ]
           }
         },
@@ -11583,6 +11814,9 @@
             "required": [
               "lastRequestAt"
             ]
+          },
+          "keepWarm": {
+            "type": "boolean"
           },
           "unseen": {
             "type": "boolean"
@@ -12494,6 +12728,9 @@
             "$ref": "#/components/schemas/Event.global.disposed"
           },
           {
+            "$ref": "#/components/schemas/Event.session.busy"
+          },
+          {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
           },
           {
@@ -12539,15 +12776,6 @@
             "$ref": "#/components/schemas/Event.session.idle"
           },
           {
-            "$ref": "#/components/schemas/Event.question.asked"
-          },
-          {
-            "$ref": "#/components/schemas/Event.question.replied"
-          },
-          {
-            "$ref": "#/components/schemas/Event.question.rejected"
-          },
-          {
             "$ref": "#/components/schemas/Event.tui.prompt.append"
           },
           {
@@ -12569,6 +12797,15 @@
             "$ref": "#/components/schemas/Event.command.executed"
           },
           {
+            "$ref": "#/components/schemas/Event.question.asked"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.replied"
+          },
+          {
+            "$ref": "#/components/schemas/Event.question.rejected"
+          },
+          {
             "$ref": "#/components/schemas/Event.background.task.created"
           },
           {
@@ -12587,13 +12824,16 @@
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.session.ping.armed"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
             "$ref": "#/components/schemas/Event.open-projects.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.session.ping.armed"
+            "$ref": "#/components/schemas/Event.session.working"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"

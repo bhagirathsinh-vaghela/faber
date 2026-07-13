@@ -430,8 +430,7 @@ export function TodoWriteTool(props: ToolProps) {
 
 export function GrepTool(props: ToolProps) {
   // count mode reports numMatches, files mode numFiles, content mode numLines
-  const num = () =>
-    props.state.metadata?.numMatches ?? props.state.metadata?.numFiles ?? props.state.metadata?.numLines
+  const num = () => props.state.metadata?.numMatches ?? props.state.metadata?.numFiles ?? props.state.metadata?.numLines
   return (
     <>
       <div data-component="tool-title">
@@ -620,9 +619,7 @@ export function GlobTool(props: ToolProps) {
         <Match when={props.state.metadata?.numFiles && props.state.metadata?.numFiles > 0}>
           <div data-component="tool-result">
             <ResultsButton
-              showCopy={
-                props.state.metadata?.numFiles === 1 ? "1 result" : `${props.state.metadata?.numFiles} results`
-              }
+              showCopy={props.state.metadata?.numFiles === 1 ? "1 result" : `${props.state.metadata?.numFiles} results`}
             >
               <ContentText expand compact text={props.state.output} />
             </ResultsButton>

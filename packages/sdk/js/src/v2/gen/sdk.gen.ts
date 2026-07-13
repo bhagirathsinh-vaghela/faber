@@ -156,6 +156,8 @@ import type {
   QuestionReplyResponses,
   SessionAbortErrors,
   SessionAbortResponses,
+  SessionArmErrors,
+  SessionArmResponses,
   SessionBusyErrors,
   SessionBusyResponses,
   SessionChildrenErrors,
@@ -2081,9 +2083,39 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Arm cache ping
+   *
+   * Set the session's keep-warm intent and arm the cache ping daemon. This is the explicit-open verb: an intentional open (sidebar/overview click, new session) or the arm button calls it. A plain fetch (reload, reconnect) does not, so it cannot resurrect a stopped session.
+   */
+  public arm<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionArmResponses, SessionArmErrors, ThrowOnError>({
+      url: "/session/{sessionID}/arm",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Stop cache ping
    *
-   * Stop the cache ping daemon and drop the session's pinned prompt state. Reopening the session re-arms the ping and re-pins against current config.
+   * Clear the session's keep-warm intent, stop the cache ping daemon, and drop the pinned prompt state. The session stays cold until an organic turn or the arm route re-declares intent — a plain reopen no longer re-arms it.
    */
   public pingStop<ThrowOnError extends boolean = false>(
     parameters: {

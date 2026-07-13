@@ -16,11 +16,7 @@ export type FetchResult =
 // problem. Same-host hops are followed up to MAX_REDIRECTS; the first cross-host
 // hop stops and is reported so the caller can decide (the model is asked to
 // retry with the new URL rather than being silently sent off-host).
-export async function fetchFollowingSameHost(
-  url: string,
-  init: RequestInit,
-  depth = 0,
-): Promise<FetchResult> {
+export async function fetchFollowingSameHost(url: string, init: RequestInit, depth = 0): Promise<FetchResult> {
   if (depth > MAX_REDIRECTS) throw new Error(`Too many redirects (>${MAX_REDIRECTS}) starting from ${url}`)
 
   const response = await fetch(url, { ...init, redirect: "manual" })

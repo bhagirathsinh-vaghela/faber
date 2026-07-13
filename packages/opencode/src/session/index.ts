@@ -116,6 +116,13 @@ export namespace Session {
           lastRequestAt: z.number(),
         })
         .optional(),
+      // Persisted "keep the cache warm" intent. The daemon arms only when this
+      // is true; attach/reconnect reconciles the daemon to it but never sets it.
+      // Only an explicit act flips it: an organic turn or the arm route set it
+      // true, a stop clears it. This is what makes a stop unbeatable by a
+      // concurrent client's re-sync — a fetch can no longer resurrect a stopped
+      // session because attach reads the intent instead of declaring it.
+      keepWarm: z.boolean().optional(),
       unseen: z.boolean().optional(),
       seen: z
         .object({

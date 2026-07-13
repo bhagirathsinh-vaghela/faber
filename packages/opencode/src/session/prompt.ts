@@ -170,6 +170,15 @@ export namespace SessionPrompt {
     // makes that stall self-heal. Any brief ping/turn overlap is safe: the cache
     // prefix is read-only shared state and lastRequestAt is last-writer-wins.
     const session = await Session.get(input.sessionID)
+    // Arm the daemon at turn START, not just the tail. Sending a prompt is the
+    // intended "keep this session" action, so it arms now — one lever (start()
+    // arms and sets keepWarm as its shadow). This costs no ping: a busy turn
+    // re-anchors the cache on every dispatch, sliding pingAt past now so the
+    // armed daemon stays quiet; it fires ONLY if the turn stalls past a cache
+    // window, which is exactly the mid-turn gap we want it to catch. The upshot
+    // is the session reads warm the whole time it is busy, and a client that
+    // Stopped it can't leave it cold once real work resumes.
+    if (!session.parentID) SessionPing.start(session.id)
     // Adopt before any pin read (createUserMessage pins otherwise): a child
     // must share its parent's snapshot, not the current generation.
     if (session.parentID) SessionPin.adopt(session.id, session.parentID)
@@ -277,12 +286,12 @@ export namespace SessionPrompt {
     const s = state()
     const match = s[sessionID]
     if (!match) {
-      // No in-flight turn — so this is the "verify nothing is in flight, THEN
-      // kill the ping" case (an idle, ping-armed session). There is no loop tail
-      // to own the disarm here, and disarming can't race a completing turn:
-      // a running turn would have a truthy match and take the branch below,
-      // where the loop tail owns arm/disarm. Only `unseen` may keep the session
-      // in the attention bucket after this.
+      // No in-flight turn — the "verify nothing is in flight, THEN kill the
+      // ping" case (an idle, ping-armed session). Just tear the daemon down.
+      // Intent (keepWarm) is owned by the caller: the /abort route clears it
+      // before calling here on a user Stop. cancel() must NOT write intent —
+      // it also runs on every normal loop exit via defer, where clearing it
+      // would cold a session that just finished a turn.
       SessionPing.stop(sessionID)
       // No live handle — busy is already false, but restamp defensively so the
       // projection can never lag a self-flag that somehow outlived its turn.
@@ -764,17 +773,12 @@ export namespace SessionPrompt {
     }
     SessionCompaction.prune({ sessionID })
     if (!session.parentID) {
-      // Arm/disarm the ping daemon HERE, at the turn's own completion, so it is
-      // ordered by this loop and can't race an external stop against a fresh
-      // turn's arm. A turn that ran to completion keeps the cache warm (arm); a
-      // turn stopped by the user tears the daemon down (disarm) so the session
-      // leaves the overview's needs-attention bucket instead of lingering on its
-      // armed ping. markUnseen only on completion — a stopped turn isn't unread.
-      if (abort.aborted) SessionPing.stop(sessionID)
-      else {
-        SessionPing.start(sessionID)
-        Session.markUnseen(sessionID)
-      }
+      // The daemon is already armed from turn start. On a clean finish leave it
+      // armed (re-assert is a no-op) and mark unread. An aborted turn is torn
+      // down elsewhere: a user Stop goes through the /abort route (stops the
+      // daemon), and a superseding prompt re-arms via its own start(). So the
+      // only thing the tail owns is markUnseen on completion.
+      if (!abort.aborted) Session.markUnseen(sessionID)
       OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
     }
     for await (const item of MessageV2.stream(sessionID)) {

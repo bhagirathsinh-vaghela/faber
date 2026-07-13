@@ -121,6 +121,14 @@ export namespace SessionPing {
   function arm(sessionID: string, entry: { abort: AbortController; id: number; directory: string }) {
     active.set(sessionID, entry)
     Liveness.setArmed(entry.directory, sessionID, true)
+    // keepWarm is the persisted shadow of the daemon: it is written HERE and in
+    // disarm, and NOWHERE else. Every intended arm (a prompt, an open, the
+    // button) funnels through start()->arm; every disarm through stop()/tail->
+    // disarm. session.get reconciles off this field but never writes it. One
+    // writer per direction — no caller juggles the flag, no cross-caller races.
+    void Session.update(sessionID, (draft) => {
+      draft.keepWarm = true
+    })
     armed(sessionID, entry.directory, true)
   }
 
@@ -130,6 +138,9 @@ export namespace SessionPing {
     active.delete(sessionID)
     Liveness.setArmed(entry.directory, sessionID, false)
     void SessionRecent.setPing(sessionID, undefined)
+    void Session.update(sessionID, (draft) => {
+      draft.keepWarm = false
+    })
     armed(sessionID, entry.directory, false)
   }
 

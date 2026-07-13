@@ -174,11 +174,14 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         log.info("SEARCH", { url: c.req.url })
         const session = await Session.get(sessionID)
-        // Re-arm the cache ping daemon on attach/resume. Idempotent (no-op if
-        // already running) and self-stops if the cache window is dead, so a
-        // resumed session within a live window keeps getting pinged even though
-        // no new prompt has been sent this process.
-        if (!session.parentID) SessionPing.start(sessionID)
+        // Reconcile the daemon to the session's persisted keep-warm intent —
+        // arm ONLY if the session already wants to stay warm. Attach never
+        // declares intent; a plain fetch (reload, background re-sync, mobile
+        // reconnect) can't resurrect a stopped session, because a stopped
+        // session has keepWarm=false. Intent is set explicitly (an organic turn
+        // or POST /arm) and crosses a restart via the persisted field, so this
+        // still re-arms a genuinely-warm session after a server restart.
+        if (!session.parentID && session.keepWarm) SessionPing.start(sessionID)
         // Attaching to a root session opens its project in the shared sidebar
         // set. Tied to session attach (a genuine "open" signal), NOT instance
         // bootstrap, which also fires for incidental re-provides.
@@ -453,7 +456,14 @@ export const SessionRoutes = lazy(() =>
         }),
       ),
       async (c) => {
-        SessionPrompt.cancel(c.req.valid("param").sessionID)
+        const sessionID = c.req.valid("param").sessionID
+        // Abort is the user Stop — the intended disarm action. Stop the daemon
+        // (which clears keepWarm as its shadow) THEN cancel the in-flight turn.
+        // Ordering matters: cancel() also runs on every normal loop exit via
+        // defer, so it must never disarm on its own — only this explicit route
+        // does. One lever: stop() disarms + shadows keepWarm=false.
+        SessionPing.stop(sessionID)
+        SessionPrompt.cancel(sessionID)
         return c.json(true)
       },
     )
@@ -1029,11 +1039,46 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
+      "/:sessionID/arm",
+      describeRoute({
+        summary: "Arm cache ping",
+        description:
+          "Set the session's keep-warm intent and arm the cache ping daemon. This is the explicit-open verb: an intentional open (sidebar/overview click, new session) or the arm button calls it. A plain fetch (reload, reconnect) does not, so it cannot resurrect a stopped session.",
+        operationId: "session.arm",
+        responses: {
+          200: {
+            description: "Ping daemon armed",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ ok: z.boolean() })),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const session = await Session.get(sessionID)
+        if (session.parentID) return c.json({ ok: true })
+        // The intended arm action. start() arms the daemon and sets keepWarm as
+        // its shadow — no direct field write here.
+        SessionPing.start(sessionID)
+        return c.json({ ok: true })
+      },
+    )
+    .post(
       "/:sessionID/ping/stop",
       describeRoute({
         summary: "Stop cache ping",
         description:
-          "Stop the cache ping daemon and drop the session's pinned prompt state. Reopening the session re-arms the ping and re-pins against current config.",
+          "Clear the session's keep-warm intent, stop the cache ping daemon, and drop the pinned prompt state. The session stays cold until an organic turn or the arm route re-declares intent — a plain reopen no longer re-arms it.",
         operationId: "session.pingStop",
         responses: {
           200: {
@@ -1055,6 +1100,7 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
+        // stop() disarms the daemon and clears keepWarm as its shadow.
         SessionPing.stop(sessionID)
         SessionPin.drop(sessionID)
         return c.json({ ok: true })

@@ -137,7 +137,6 @@ export namespace SessionProcessor {
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()
               switch (value.type) {
-
                 case "reasoning-start":
                   if (value.id in reasoningMap) {
                     continue
