@@ -1282,7 +1282,11 @@ export default function Page() {
       event.preventDefault()
       if (event.key === "End") {
         resumeScroll()
-        inputRef?.focus()
+        // preventScroll: focusing the contenteditable (bottom of the dock)
+        // otherwise triggers a browser scroll-into-view that fights settleToBottom
+        // and lands the transcript short. The arrow button doesn't focus, which is
+        // why it never had this bug.
+        inputRef?.focus({ preventScroll: true })
       } else jumpToTop()
       return
     }
@@ -1314,15 +1318,19 @@ export default function Page() {
     }
   }
 
-  // Middle mouse button mirrors bare End: jump the transcript to the bottom,
-  // re-arm follow, and focus the prompt. auxclick fires only for non-primary
-  // buttons; button === 1 is the middle button.
+  // Middle mouse button = the scroll-to-bottom arrow. That arrow (the pill above
+  // the dock, shown when scrolled up) reliably returns to the true bottom, and it
+  // does so by calling resumeScroll directly. Mirror it exactly, then focus the
+  // prompt so the user can type. auxclick fires only for non-primary buttons;
+  // button === 1 is the middle button.
   const handleAuxClick = (event: MouseEvent) => {
     if (event.button !== 1) return
     if (dialog.active) return
     event.preventDefault()
     resumeScroll()
-    inputRef?.focus()
+    // preventScroll: see the End-key branch — a bare focus() scroll-yanks the
+    // transcript short; the reliable arrow button doesn't focus at all.
+    inputRef?.focus({ preventScroll: true })
   }
 
   const handleDragStart = (event: unknown) => {
@@ -1629,14 +1637,23 @@ export default function Page() {
   // End/submit from far up the transcript: the tail may be unmounted with only
   // estimated sizes below the viewport, so one raw pin lands short. Let virtua
   // realize the last item, then raw-pin each frame until the bottom holds.
-  const settleToBottom = (tries = 0) => {
+  //
+  // Exit only once the bottom is STABLE: at-bottom AND scrollHeight unchanged for
+  // a few consecutive frames. The tell that this is right: when the first press
+  // lands short, an immediate second press always works — because by then the
+  // last box / dock / busy bar has finished growing and scrollHeight has settled.
+  // The old exit ("at-bottom for 2 frames") bailed mid-growth, pinning to a
+  // scrollHeight that then kept increasing. Requiring height-stability makes the
+  // FIRST press wait out that growth, so it behaves like the working second press.
+  const settleToBottom = (tries = 0, lastHeight = -1, stable = 0) => {
     const el = scroller
     if (!el || !following()) return
     const i = lastIndex()
     if (i >= 0 && !atBottom(el)) turnList()?.scrollToIndex(i, { align: "end" })
     pinToBottom()
-    if (tries > 30 || (atBottom(el) && tries > 2)) return
-    requestAnimationFrame(() => settleToBottom(tries + 1))
+    const streak = atBottom(el) && el.scrollHeight === lastHeight ? stable + 1 : 0
+    if (tries > 120 || streak >= 3) return
+    requestAnimationFrame(() => settleToBottom(tries + 1, el.scrollHeight, streak))
   }
 
   const clearMessageHash = () => {
@@ -1726,8 +1743,13 @@ export default function Page() {
 
       setStore("promptHeight", next)
 
-      // A taller dock covers the tail; re-pin through virtua if following.
-      if (following()) requestAnimationFrame(pinToBottom)
+      // A taller dock covers the tail; re-pin if following. The dock grows when
+      // the busy bar mounts mid-stream, and the height change propagates through
+      // --prompt-height -> last-turn padding -> scrollHeight over SEVERAL frames,
+      // not one. A single pinToBottom lands the first frame and then the padding
+      // keeps growing, leaving the view short (the busy-session bug). settle each
+      // frame until the bottom holds.
+      if (following()) settleToBottom()
     },
   )
 
