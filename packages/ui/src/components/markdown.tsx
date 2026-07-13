@@ -123,31 +123,39 @@ function CodeBlock(props: { lang: string; source: string; labels: CopyLabels; th
   const [code, setCode] = createSignal<HTMLElement>()
 
   createEffect(() => {
-    const el = code()
     const raw = props.source.replace(/\n$/, "")
     const lang = props.lang
     const theme = props.theme
-    if (!el || isServer || !raw || !props.complete) return
+    if (!code() || isServer || !raw || !props.complete) return
     let live = true
     onCleanup(() => (live = false))
     highlightCode(raw, lang, theme)
       .then((html) => {
-        // Drop a result whose inputs changed (theme toggle, source grew) while
-        // codeToHtml was in flight — Shiki has no abort, so guard at apply time.
+        // Completion flips `complete` and releases the streaming-prefix clamp in
+        // the same tick, so SolidMarkdown is reconciling this fence's <code>
+        // right now. Writing Shiki nodes into it synchronously races that
+        // reconcile and can leave the block blank. Defer the swap to a microtask
+        // so reconcile settles first, then re-read the LIVE node (not a captured
+        // ref that reconcile may have replaced) and drop the result if inputs
+        // moved on (theme toggle, source grew) — Shiki has no abort.
         if (!live) return
-        const tmp = document.createElement("div")
-        tmp.innerHTML = html
-        const shiki = tmp.querySelector("code")
-        if (!shiki) return
-        el.replaceChildren(...Array.from(shiki.childNodes))
-        const pre = el.parentElement
-        const shikiPre = tmp.querySelector("pre")
-        if (pre && shikiPre) {
-          const cls = shikiPre.getAttribute("class")
-          if (cls) pre.setAttribute("class", cls)
-          const style = shikiPre.getAttribute("style")
-          if (style) pre.setAttribute("style", style)
-        }
+        queueMicrotask(() => {
+          const el = code()
+          if (!live || !el || !el.isConnected) return
+          const tmp = document.createElement("div")
+          tmp.innerHTML = html
+          const shiki = tmp.querySelector("code")
+          if (!shiki) return
+          el.replaceChildren(...Array.from(shiki.childNodes))
+          const pre = el.parentElement
+          const shikiPre = tmp.querySelector("pre")
+          if (pre && shikiPre) {
+            const cls = shikiPre.getAttribute("class")
+            if (cls) pre.setAttribute("class", cls)
+            const style = shikiPre.getAttribute("style")
+            if (style) pre.setAttribute("style", style)
+          }
+        })
       })
       .catch(() => {})
   })
@@ -217,7 +225,9 @@ function components(labels: CopyLabels, theme: () => string, complete: () => boo
       // (streaming code output that grows line by line) flow through to
       // CodeBlock. Snapshotting once here froze fenced output at its first line.
       const fence = createMemo(() => fenceSource(props.node as unknown as Hast))
-      return <CodeBlock lang={fence().lang} source={fence().text} labels={labels} theme={theme()} complete={complete()} />
+      return (
+        <CodeBlock lang={fence().lang} source={fence().text} labels={labels} theme={theme()} complete={complete()} />
+      )
     },
     a(props) {
       return (
