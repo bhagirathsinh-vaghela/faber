@@ -42,7 +42,6 @@ import { Button } from "./button"
 import { IconButton } from "./icon-button"
 import { Spinner } from "./spinner"
 import { createStore } from "solid-js/store"
-import { DateTime, DurationUnit, Interval } from "luxon"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 
 type Translator = (key: UiI18nKey, params?: UiI18nParams) => string
@@ -492,23 +491,22 @@ export function SessionTurn(
     root.style.setProperty("--session-turn-sticky-height", `${next}px`)
   }
 
+  // Elapsed turn time, formatted to match luxon's narrow compact output the
+  // full pipeline (Interval -> toDuration -> normalize -> toHuman) produced
+  // before: "45s" at or under a minute, "3m, 20s" past it, the seconds part
+  // dropped when zero ("60m"). Runs once a second while a turn is live, so the
+  // luxon build and the dead zh-locale branch were per-tick waste for the en
+  // case; a couple of divisions replace them.
   function duration() {
     const msg = message()
     if (!msg) return ""
     const completed = lastAssistantMessage()?.time.completed
-    const from = DateTime.fromMillis(msg.time.created)
-    const to = completed ? DateTime.fromMillis(completed) : DateTime.now()
-    const interval = Interval.fromDateTimes(from, to)
-    const unit: DurationUnit[] = interval.length("seconds") > 60 ? ["minutes", "seconds"] : ["seconds"]
-
-    const locale = i18n.locale()
-    const human = interval.toDuration(unit).normalize().reconfigure({ locale }).toHuman({
-      notation: "compact",
-      unitDisplay: "narrow",
-      compactDisplay: "short",
-      showZeros: false,
-    })
-    return locale.startsWith("zh") ? human.replaceAll("、", "") : human
+    const seconds = Math.floor(((completed ?? Date.now()) - msg.time.created) / 1000)
+    if (seconds <= 0) return ""
+    if (seconds <= 60) return `${seconds}s`
+    const minutes = Math.floor(seconds / 60)
+    const rest = seconds % 60
+    return rest === 0 ? `${minutes}m` : `${minutes}m, ${rest}s`
   }
 
   createResizeObserver(

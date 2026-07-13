@@ -493,6 +493,12 @@ export default function Layout(props: ParentProps) {
 
   const workspaceKey = (directory: string) => directory.replace(/[\\/]+$/, "")
 
+  // Session lists re-derive on every session.updated (~6/turn: time.updated,
+  // cost, title), but the rendered order rarely moves. Keying the list memos on
+  // the ordered id sequence suppresses a new array (and the <For> reconcile it
+  // drives) when only the churny fields changed and the order held.
+  const sameOrder = (a: Session[], b: Session[]) => a.length === b.length && a.every((s, i) => s.id === b[i].id)
+
   const currentSessions = createMemo(() => {
     const project = currentProject()
     if (!project) return [] as Session[]
@@ -1929,16 +1935,20 @@ export default function Layout(props: ParentProps) {
       setOpen(false)
     })
 
-    const projectSessions = () => {
-      const directory = props.project.worktree
-      const [data] = globalSync.child(directory, { bootstrap: false })
-      const root = workspaceKey(directory)
-      return data.session
-        .filter((session) => workspaceKey(session.directory) === root)
-        .filter((session) => !session.parentID && !session.time?.archived)
-        .toSorted(sortSessions(Date.now()))
-        .slice(0, 2)
-    }
+    const projectSessions = createMemo(
+      () => {
+        const directory = props.project.worktree
+        const [data] = globalSync.child(directory, { bootstrap: false })
+        const root = workspaceKey(directory)
+        return data.session
+          .filter((session) => workspaceKey(session.directory) === root)
+          .filter((session) => !session.parentID && !session.time?.archived)
+          .toSorted(sortSessions(Date.now()))
+          .slice(0, 2)
+      },
+      [] as Session[],
+      { equals: sameOrder },
+    )
 
     const projectName = () => props.project.name || getFilename(props.project.worktree)
     const Trigger = () => (
@@ -2073,11 +2083,14 @@ export default function Layout(props: ParentProps) {
   const LocalWorkspace = (props: { project: LocalProject; mobile?: boolean }): JSX.Element => {
     const [workspaceStore, setWorkspaceStore] = globalSync.child(props.project.worktree)
     const slug = createMemo(() => base64Encode(props.project.worktree))
-    const sessions = createMemo(() =>
-      workspaceStore.session
-        .filter((session) => session.directory === workspaceStore.path.directory)
-        .filter((session) => !session.parentID && !session.time?.archived)
-        .toSorted(sortSessions(Date.now())),
+    const sessions = createMemo(
+      () =>
+        workspaceStore.session
+          .filter((session) => session.directory === workspaceStore.path.directory)
+          .filter((session) => !session.parentID && !session.time?.archived)
+          .toSorted(sortSessions(Date.now())),
+      [] as Session[],
+      { equals: sameOrder },
     )
     const children = createMemo(() => {
       const map = new Map<string, string[]>()
