@@ -188,13 +188,17 @@ export const BashTool = Tool.define("bash", async () => {
       })
 
       const append = (chunk: Buffer) => {
-        output += chunk.toString()
+        const text = chunk.toString()
+        output += text
         ctx.metadata({
           metadata: {
             // truncate the metadata to avoid GIANT blobs of data (has nothing to do w/ what agent can access)
             output: output.length > MAX_METADATA_LENGTH ? output.slice(0, MAX_METADATA_LENGTH) + "\n\n..." : output,
             description: params.description,
           },
+          // The web wire blanks the full output and ships only this chunk, which
+          // the client appends. In-process consumers still get the full output.
+          delta: text,
         })
       }
 

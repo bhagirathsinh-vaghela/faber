@@ -23,7 +23,7 @@ export namespace Tool {
     callID?: string
     extra?: { [key: string]: any }
     messages: MessageV2.WithParts[]
-    metadata(input: { title?: string; metadata?: M }): void
+    metadata(input: { title?: string; metadata?: M; delta?: string }): void
     ask(input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">): Promise<void>
   }
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {

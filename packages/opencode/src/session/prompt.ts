@@ -862,21 +862,25 @@ export namespace SessionPrompt {
       extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck },
       agent: input.agent.name,
       messages: input.messages,
-      metadata: async (val: { title?: string; metadata?: any }) => {
+      metadata: async (val: { title?: string; metadata?: any; delta?: string }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {
-          await Session.updatePart({
+          const part = {
             ...match,
             state: {
               title: val.title,
               metadata: val.metadata,
-              status: "running",
+              status: "running" as const,
               input: args,
               time: {
                 start: Date.now(),
               },
             },
-          })
+          }
+          // A tool that streams its output (bash, per chunk) passes the new chunk
+          // as `delta`, so the wire blanks state.metadata.output and the client
+          // appends. Without a delta the full part ships (seed + heal).
+          await Session.updatePart(val.delta !== undefined ? { part, delta: val.delta } : part)
         }
       },
       async ask(req) {

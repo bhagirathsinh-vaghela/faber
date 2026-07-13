@@ -154,6 +154,13 @@ type ChildOptions = {
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
+// Mirror bash.ts's metadata cap: when appending streamed tool-output deltas the
+// client must apply the same 30KB display truncation the server does, so the
+// mid-stream store matches the capped full output the completion event ships.
+const MAX_TOOL_OUTPUT = 30_000
+const capOutput = (output: string) =>
+  output.length > MAX_TOOL_OUTPUT ? output.slice(0, MAX_TOOL_OUTPUT) + "\n\n..." : output
+
 function normalizeProviderList(input: ProviderListResponse): ProviderListResponse {
   return {
     ...input,
@@ -1114,10 +1121,19 @@ function createGlobalSync() {
       case "message.part.updated": {
         const part = event.properties.part
         const delta = event.properties.delta
-        // Deltas only ride on text/reasoning parts (the only parts with a text
-        // field the server blanks to keep the wire O(n) instead of O(n^2)).
+        // Deltas ride on text/reasoning parts (a blanked text field) and on tool
+        // parts (a blanked state.metadata.output, bash streaming its chunks). In
+        // both the server keeps the wire O(n) instead of O(n^2) and the client
+        // appends the delta to the field it holds.
         const isText = part.type === "text" || part.type === "reasoning"
         const textDelta = delta !== undefined && isText ? delta : undefined
+        const toolDelta = delta !== undefined && part.type === "tool" ? delta : undefined
+        // Seed a tool part whose output the server blanked: the delta IS the
+        // output so far. Same 30KB display cap the server applies (bash.ts).
+        const seedTool = (p: typeof part) =>
+          toolDelta !== undefined && p.type === "tool" && p.state.status === "running"
+            ? { ...p, state: { ...p.state, metadata: { ...p.state.metadata, output: capOutput(toolDelta) } } }
+            : p
         const parts = store.part[part.messageID]
         if (!parts) {
           // Same guard as message.updated: a part for a message we don't hold is
@@ -1128,14 +1144,14 @@ function createGlobalSync() {
           const seed =
             textDelta !== undefined && (part.type === "text" || part.type === "reasoning")
               ? { ...part, text: textDelta }
-              : part
+              : seedTool(part)
           setStore("part", part.messageID, [seed])
           break
         }
         const result = Binary.search(parts, part.id, (p) => p.id)
         if (result.found) {
-          // Delta path: server sent an empty text + the increment. Append it to
-          // the text we already hold instead of overwriting with the blank.
+          // Delta path: server sent an empty field + the increment. Append it to
+          // what we already hold instead of overwriting with the blank.
           if (textDelta !== undefined) {
             setStore(
               "part",
@@ -1147,16 +1163,31 @@ function createGlobalSync() {
             )
             break
           }
+          if (toolDelta !== undefined) {
+            // Append to the output we hold, then re-cap. Keep the rest of the
+            // blanked part's state (title/status/input/time) off the wire copy
+            // so a mid-stream reconcile can't clobber running fields.
+            setStore(
+              "part",
+              part.messageID,
+              result.index,
+              produce((p) => {
+                if (p.type === "tool" && p.state.status === "running")
+                  p.state.metadata = { ...p.state.metadata, output: capOutput((p.state.metadata?.output ?? "") + toolDelta) }
+              }),
+            )
+            break
+          }
           setStore("part", part.messageID, result.index, reconcile(part, { merge: true }))
           break
         }
         // First chunk of a new part on a message that already holds parts: the
-        // server blanked text, so the delta is the text so far. Insert with it,
-        // else the first chunk is lost and streaming starts one delta short.
+        // server blanked the field, so the delta is the content so far. Insert
+        // with it, else the first chunk is lost and streaming starts one short.
         const inserted =
           textDelta !== undefined && (part.type === "text" || part.type === "reasoning")
             ? { ...part, text: textDelta }
-            : part
+            : seedTool(part)
         setStore(
           "part",
           part.messageID,

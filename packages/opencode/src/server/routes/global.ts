@@ -29,11 +29,28 @@ const log = Log.create({ service: "server" })
 function blankStreamedText(event: any) {
   const p = event?.payload
   if (p?.type !== "message.part.updated") return event
-  if (p.properties?.delta === undefined || typeof p.properties?.part?.text !== "string") return event
-  return {
-    ...event,
-    payload: { ...p, properties: { ...p.properties, part: { ...p.properties.part, text: "" } } },
+  const part = p.properties?.part
+  if (p.properties?.delta === undefined || !part) return event
+  // Text/reasoning: blank the accumulated text; the client appends the delta.
+  if (typeof part.text === "string") {
+    return { ...event, payload: { ...p, properties: { ...p.properties, part: { ...part, text: "" } } } }
   }
+  // Tool: the growing field is state.metadata.output (bash streams it per chunk).
+  // Blank it the same way so an n-chunk command is O(n) on the wire, not O(n^2);
+  // the client appends the delta chunk. Full output still ships at completion.
+  if (part.type === "tool" && typeof part.state?.metadata?.output === "string") {
+    return {
+      ...event,
+      payload: {
+        ...p,
+        properties: {
+          ...p.properties,
+          part: { ...part, state: { ...part.state, metadata: { ...part.state.metadata, output: "" } } },
+        },
+      },
+    }
+  }
+  return event
 }
 
 const host = os.hostname()
