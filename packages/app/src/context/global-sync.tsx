@@ -271,6 +271,19 @@ function createGlobalSync() {
 
   const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
+  // Run non-critical work after the browser has a moment to paint. Prefer the
+  // Scheduler API's background priority (Chrome/Firefox), fall back to a macro
+  // task on Safari/iOS where postTask isn't shipped yet. Used to hold the heavy
+  // per-directory bootstrap off the boot moment so a deep-linked session's tail
+  // fetch isn't contending with ~17 sidebar/status requests for the connection
+  // pool.
+  const scheduler = (globalThis as { scheduler?: { postTask?: (cb: () => void, opts?: { priority?: string }) => void } })
+    .scheduler
+  const idle = (fn: () => void) => {
+    if (scheduler?.postTask) return scheduler.postTask(fn, { priority: "background" })
+    setTimeout(fn, 0)
+  }
+
   const take = (count: number) => {
     if (queued.size === 0) return [] as string[]
     const items: string[] = []
@@ -509,8 +522,16 @@ function createGlobalSync() {
   function child(directory: string, options: ChildOptions = {}) {
     const childStore = ensureChild(directory)
     const shouldBootstrap = options.bootstrap ?? true
+    // Defer the per-directory fan-out (~17 requests: session list, status,
+    // mcp/lsp/vcs, permissions) to idle so it doesn't race the open session's
+    // tail fetch on a deep-linked cold open. Re-check status inside
+    // idle: a caller that needs it now (an explicit bootstrapInstance) still
+    // runs synchronously and this defers into its in-flight promise via booting.
     if (shouldBootstrap && childStore[0].status === "loading") {
-      void bootstrapInstance(directory)
+      idle(() => {
+        if (childStore[0].status !== "loading") return
+        void bootstrapInstance(directory)
+      })
     }
     return childStore
   }
@@ -1345,7 +1366,13 @@ function createGlobalSync() {
       return
     }
 
-    const tasks = [
+    // Critical boot: path + config only. Mounting providers read these
+    // synchronously, and `ready` (which unblocks the app tree) must not wait on
+    // the sidebar/overview fetches. Everything else is below-the-fold for a
+    // deep-linked session open — deferred behind first paint so it stops
+    // saturating the 6-connection pool ahead of the target transcript's tail
+    // fetch.
+    const critical = [
       retry(() =>
         globalSDK.client.path.get().then((x) => {
           setGlobalStore("path", x.data!)
@@ -1356,6 +1383,9 @@ function createGlobalSync() {
           setGlobalStore("config", x.data!)
         }),
       ),
+    ]
+
+    const deferred = () => [
       retry(() =>
         globalSDK.client.project.list().then(async (x) => {
           const projects = (x.data ?? [])
@@ -1394,20 +1424,22 @@ function createGlobalSync() {
       ),
     ]
 
-    const results = await Promise.allSettled(tasks)
-    const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason)
-
-    if (errors.length) {
-      const message = errors[0] instanceof Error ? errors[0].message : String(errors[0])
-      const more = errors.length > 1 ? ` (+${errors.length - 1} more)` : ""
-      showToast({
-        variant: "error",
-        title: language.t("common.requestFailed"),
-        description: message + more,
+    const report = (tasks: Promise<unknown>[]) =>
+      Promise.allSettled(tasks).then((results) => {
+        const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason)
+        if (!errors.length) return
+        const message = errors[0] instanceof Error ? errors[0].message : String(errors[0])
+        const more = errors.length > 1 ? ` (+${errors.length - 1} more)` : ""
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: message + more,
+        })
       })
-    }
 
+    await report(critical)
     setGlobalStore("ready", true)
+    idle(() => void report(deferred()))
   }
 
   onMount(() => {
