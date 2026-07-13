@@ -2,7 +2,7 @@ import { createMemo } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useTicker } from "./ticker"
-import { CACHE_TTL, beforeExpiryMs, cacheCountdownUntil } from "@/utils/cache-countdown"
+import { beforeExpiryMs, pingCountdown } from "@/utils/cache-countdown"
 
 export type OverviewRow = {
   sessionID: string
@@ -85,19 +85,15 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     // passed row if the session already left the hub.
     const live = (row: OverviewRow) => rows().find((r) => r.sessionID === row.sessionID) ?? row
 
-    const countdown = (row: OverviewRow) => cacheCountdownUntil(live(row).pingAt, now())
+    // countdown text and ring fraction both come from the ONE shared predicate
+    // (pingCountdown), fed the live row's pingAt — identical logic to the session
+    // statusline, so the two surfaces can never diverge. Re-derive off the live
+    // row each tick so neither lags a re-armed ping.
+    const countdown = (row: OverviewRow) =>
+      pingCountdown(live(row).pingAt, beforeExpiryMs(globalSync.data.config), now()).text
 
-    // The ring next to the countdown, from the SAME anchor (pingAt) and the SAME
-    // shared clock as countdown() above, re-derived from the live row so it can't
-    // lag the text. The window is expiry minus beforeExpiry (the anchor-to-ping
-    // span), matching the statusline ring, so the ring reads full at max and
-    // empties exactly when the countdown hits 00:00.
-    const remaining = (row: OverviewRow) => {
-      const at = live(row).pingAt
-      if (!at) return 0
-      const window = CACHE_TTL - beforeExpiryMs(globalSync.data.config)
-      return Math.max(0, Math.min(1, (at - now()) / window))
-    }
+    const remaining = (row: OverviewRow) =>
+      pingCountdown(live(row).pingAt, beforeExpiryMs(globalSync.data.config), now()).fraction
 
     return { attention, recent, countdown, remaining }
   },

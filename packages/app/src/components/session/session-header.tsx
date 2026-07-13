@@ -6,6 +6,7 @@ import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSync } from "@/context/sync"
 import { useStopSession } from "@/hooks/use-stop-session"
+import { useArmSession } from "@/hooks/use-arm-session"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { getFilename } from "@opencode-ai/util/path"
 import { decode64 } from "@/utils/base64"
@@ -24,6 +25,7 @@ export function SessionHeader() {
   const sync = useSync()
   const language = useLanguage()
   const runStop = useStopSession()
+  const runArm = useArmSession()
   const dialog = useDialog()
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
@@ -47,6 +49,16 @@ export function SessionHeader() {
     const id = params.id
     if (!id) return
     runStop(id, projectDirectory())
+  }
+
+  // The keep-warm button toggles the session's persisted arm intent in place:
+  // arm when cold, disarm when already warm. Reads keepWarm off the live session
+  // record so both clients reflect the same state.
+  function toggleWarm() {
+    const id = params.id
+    if (!id) return
+    if (currentSession()?.keepWarm) runArm.disarm(id, projectDirectory())
+    else runArm.arm(id, projectDirectory())
   }
 
   // Alt+Q stops the open session, matching the header stop button and the
@@ -101,7 +113,30 @@ export function SessionHeader() {
             <div class="flex items-center gap-3">
               <StatusPopover />
               <Show when={currentSession()}>
-                <div class="hidden md:flex items-center ml-2 shrink-0">
+                <div class="hidden md:flex items-center ml-2 shrink-0 gap-1">
+                  <Tooltip
+                    value={
+                      currentSession()?.keepWarm
+                        ? language.t("session.keepWarm.armed")
+                        : language.t("session.keepWarm.arm")
+                    }
+                    placement="top"
+                    gutter={8}
+                  >
+                    <button
+                      type="button"
+                      onClick={toggleWarm}
+                      aria-label={language.t("session.keepWarm.arm")}
+                      aria-pressed={currentSession()?.keepWarm === true}
+                      class="flex items-center justify-center size-6 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover"
+                      classList={{
+                        "opacity-100": currentSession()?.keepWarm === true,
+                        "opacity-40": !currentSession()?.keepWarm,
+                      }}
+                    >
+                      🔥
+                    </button>
+                  </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton
                       icon="circle-ban-sign"

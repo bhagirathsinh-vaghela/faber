@@ -1292,7 +1292,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           })
           return undefined
         })
-      if (session) navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      if (session) {
+        // Creating a session is an explicit open — declare keep-warm intent up
+        // front (same client + directory used to create it). The organic turn
+        // about to run also sets it, but only on completion; arming here closes
+        // the gap so a concurrent client can't read it cold in between.
+        void client.session.arm({ sessionID: session.id, directory: sessionDirectory })
+        navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+      }
     }
     if (!session) return
 

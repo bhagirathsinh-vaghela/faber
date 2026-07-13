@@ -1,5 +1,3 @@
-import type { Session } from "@opencode-ai/sdk/v2/client"
-
 // Mirrors the server's session/ping CACHE_TTL (5 minutes).
 export const CACHE_TTL = 5 * 60 * 1000
 
@@ -7,31 +5,27 @@ export function beforeExpiryMs(config: unknown): number {
   return ((config as any)?.ping?.before_expiry ?? 10) * 1000
 }
 
-// The single source for "is a cache ping coming, and when" — shared by the
-// session statusline and the home hub so they never disagree. Returns the
-// mm:ss until the next ping, or null when no ping will fire (no cache anchor,
-// window expired, or ping disabled so the anchor never refreshes).
-export function cacheCountdown(session: Session | undefined, beforeExpiry: number, now: number): string | null {
-  return cacheCountdownFrom(session?.cache?.lastRequestAt, beforeExpiry, now)
-}
-
-// Same countdown from the raw cache anchor, for callers (the home overview) that
-// hold lastRequestAt directly instead of a full session object.
-export function cacheCountdownFrom(base: number | undefined, beforeExpiry: number, now: number): string | null {
-  if (!base) return null
-  if (base + CACHE_TTL <= now) return null
-  const remaining = base + CACHE_TTL - beforeExpiry - now
-  if (remaining <= 0) return null
-  return format(remaining)
-}
-
-// Countdown to an absolute deadline the server already resolved (the overview's
-// next-ping timestamp). The client just renders time-remaining against its clock.
+// Countdown to an absolute deadline the server already resolved (the next-ping
+// timestamp). The client just renders time-remaining against its clock.
 export function cacheCountdownUntil(at: number | undefined, now: number): string | null {
   if (!at) return null
   const remaining = at - now
   if (remaining <= 0) return null
   return format(remaining)
+}
+
+// The ONE source of truth for the cache-ping countdown display, shared by the
+// session statusline and the home overview so they can never diverge. Both feed
+// it the SAME input — the live pingAt the server publishes (the actual scheduled
+// ping, cleared server-side the instant the daemon disarms) — and get back the
+// same { text, fraction }. A session with no scheduled ping (stopped, or window
+// lapsed) yields null text + 0 fraction, so a stopped session shows "--" and an
+// empty ring on both surfaces. Callers differ only in styling, never in logic.
+export function pingCountdown(pingAt: number | undefined, beforeExpiry: number, now: number) {
+  const text = cacheCountdownUntil(pingAt, now)
+  const window = CACHE_TTL - beforeExpiry
+  const fraction = pingAt ? Math.max(0, Math.min(1, (pingAt - now) / window)) : 0
+  return { text, fraction }
 }
 
 function format(remaining: number): string {

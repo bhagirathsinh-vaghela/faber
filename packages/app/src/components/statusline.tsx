@@ -1,10 +1,11 @@
 import { createMemo, Show } from "solid-js"
 import { CountdownRing } from "@opencode-ai/ui/countdown-ring"
 import { useSync } from "@/context/sync"
+import { useGlobalSync } from "@/context/global-sync"
 import { useTicker } from "@/context/ticker"
 import { useParams } from "@solidjs/router"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
-import { CACHE_TTL, beforeExpiryMs, cacheCountdown as computeCountdown } from "@/utils/cache-countdown"
+import { beforeExpiryMs, pingCountdown } from "@/utils/cache-countdown"
 
 function clock(ms: number): string {
   const d = new Date(ms)
@@ -13,32 +14,30 @@ function clock(ms: number): string {
 
 export function Statusline() {
   const sync = useSync()
+  const globalSync = useGlobalSync()
   const params = useParams()
 
   const session = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
 
   const { now } = useTicker()
 
-  const cacheCountdown = createMemo(() => computeCountdown(session(), beforeExpiryMs(sync.data.config), now()))
+  // The live scheduled-ping deadline from the hub — the SAME source the overview
+  // reads, and cleared server-side the instant the daemon disarms. Gating the
+  // countdown on this (not the raw cache anchor) is what makes a stopped session
+  // read "--" here just as it does in the overview: no daemon, no pingAt, no
+  // countdown, even though cache.lastRequestAt still lingers.
+  const pingAt = createMemo(() => globalSync.data.recent_hub.find((r) => r.sessionID === params.id)?.pingAt)
 
-  // Absolute time of the next ping (expiry minus beforeExpiry), the same deadline
-  // the countdown and ring target — so the tooltip agrees with the number.
+  // countdown text + ring fraction from the ONE shared predicate, identical to
+  // the overview. Differ only in styling below.
+  const ping = createMemo(() => pingCountdown(pingAt(), beforeExpiryMs(sync.data.config), now()))
+  const cacheCountdown = createMemo(() => ping().text)
+  const cacheFraction = createMemo(() => ping().fraction)
+
   const pingAbsolute = createMemo(() => {
-    const base = session()?.cache?.lastRequestAt
-    const at = base ? base + CACHE_TTL - beforeExpiryMs(sync.data.config) : undefined
+    const at = pingAt()
     if (!at || at <= now()) return null
     return clock(at)
-  })
-
-  // Fraction remaining, tracking the SAME deadline as the countdown text: the
-  // ping moment (expiry minus beforeExpiry), not raw expiry. Both the numerator
-  // and the window subtract beforeExpiry, so the ring reads full at the max the
-  // text shows and empties exactly when the text hits 00:00 — they can't drift.
-  const cacheFraction = createMemo(() => {
-    const base = session()?.cache?.lastRequestAt
-    if (!base) return 0
-    const window = CACHE_TTL - beforeExpiryMs(sync.data.config)
-    return Math.max(0, Math.min(1, (base + window - now()) / window))
   })
 
   const pingPending = createMemo(() => session()?.ping?.pending ?? false)

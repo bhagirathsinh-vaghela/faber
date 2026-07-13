@@ -1679,6 +1679,13 @@ export default function Layout(props: ParentProps) {
         onFocus={() => prefetchSession(props.session, "high")}
         onClick={() => {
           setState("hoverSession", undefined)
+          // Clicking a sidebar row is an explicit open — declare keep-warm
+          // intent so the ping daemon arms. A plain reload/reconnect (which
+          // also navigates here) never fires this handler, so it can't arm.
+          void globalSDK.client.session.arm({
+            sessionID: props.session.id,
+            directory: props.session.directory,
+          })
           if (layout.sidebar.opened()) return
           queueMicrotask(() => setState("hoverProject", undefined))
         }}
@@ -1694,7 +1701,9 @@ export default function Layout(props: ParentProps) {
                   <Spinner
                     class="size-[15px]"
                     style={{
-                      color: busyFacts().busySelf ? (tint() ?? "var(--icon-interactive-base)") : "var(--box-accent-task)",
+                      color: busyFacts().busySelf
+                        ? (tint() ?? "var(--icon-interactive-base)")
+                        : "var(--box-accent-task)",
                     }}
                   />
                   <Show when={mixing()}>
@@ -2284,9 +2293,7 @@ export default function Layout(props: ParentProps) {
               <div
                 class="h-full w-full flex flex-col items-center gap-3 px-3 py-2 overflow-y-auto no-scrollbar"
                 style={{
-                  "padding-top": layout.zen.opened()
-                    ? "calc(0.5rem + env(titlebar-area-height, 0px))"
-                    : undefined,
+                  "padding-top": layout.zen.opened() ? "calc(0.5rem + env(titlebar-area-height, 0px))" : undefined,
                 }}
               >
                 <SortableProvider ids={layout.projects.list().map((p) => p.worktree)}>

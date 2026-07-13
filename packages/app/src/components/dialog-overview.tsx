@@ -206,6 +206,9 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
 
   const open = (row: OverviewRow) => {
     void sdk.client.session.seen({ directory: row.directory, sessionID: row.sessionID })
+    // Opening from the overview is an explicit open — declare keep-warm intent
+    // so the ping daemon arms. A plain reload/reconnect does not hit this path.
+    void sdk.client.session.arm({ directory: row.directory, sessionID: row.sessionID })
     navigate(`/${base64Encode(row.directory)}/session/${row.sessionID}`)
     props.onOpen?.()
   }
