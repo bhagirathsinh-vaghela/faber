@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { useNavigate } from "@solidjs/router"
+import { useLocation, useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
@@ -168,6 +168,7 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
 export function Overview(props: { onOpen?: () => void; attention?: boolean; advance?: boolean; switcher?: boolean }) {
   const frozen = useFrozen()
   const sdk = useGlobalSDK()
+  const location = useLocation<{ stopped?: string }>()
   const navigate = useNavigate()
   const runStop = useStopSession()
   const language = useLanguage()
@@ -202,7 +203,20 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   // Ctrl+Tab advances one step on the opening press (highlight the next session,
   // position 1), so two live sessions flip with a single tap. Ctrl+Shift+Tab and
   // the home page rest on the current session (position 0). Further taps cycle.
-  const initial = !props.attention ? undefined : props.advance ? (items()[1] ?? items()[0]) : items()[0]
+  // Landing here from a stop (navigate carried the stopped id) skips that row: at
+  // mount the abort hasn't resolved, so the stopped session is still busy and
+  // still sits atop attention — without the skip the cursor would seed on it and,
+  // via preserveActive, trail it down into recent. Skip only on the home-page
+  // stop path (attention, not the Ctrl+Tab switcher), and fall back to items()[0]
+  // when the stopped row is the only one.
+  const stopped = props.attention && !props.advance && !props.switcher ? location.state?.stopped : undefined
+  const initial = !props.attention
+    ? undefined
+    : props.advance
+      ? (items()[1] ?? items()[0])
+      : stopped
+        ? (items().find((row) => row.sessionID !== stopped) ?? items()[0])
+        : items()[0]
 
   const open = (row: OverviewRow) => {
     void sdk.client.session.seen({ directory: row.directory, sessionID: row.sessionID })

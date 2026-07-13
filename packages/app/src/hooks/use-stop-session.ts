@@ -17,7 +17,7 @@ export function useStopSession() {
   // (abort the turn, which server-side also stops the ping daemon).
   return (sessionID: string, directory: string) => {
     const onScreen = params.id === sessionID
-    if (onScreen) navigate("/")
+    if (onScreen) navigate("/", { state: { stopped: sessionID } })
     void sdk.client.session.abort({ sessionID, directory }).catch(() => {})
     return onScreen
   }
