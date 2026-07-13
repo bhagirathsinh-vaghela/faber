@@ -2045,8 +2045,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               hidden: zen(),
             }}
           >
-            <Show when={working()}>
-              {/* Working indicator: the spinner sits ON TOP of a soft, diffuse
+            {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
+                which is now the single busy cue in both modes. Kept (gated false,
+                not deleted) so it can be restored by dropping the `false &&`. */}
+            <Show when={false && working()}>
+              {/* Busy indicator: the spinner sits ON TOP of a soft, diffuse
                   glow that pulses behind it. Base tint follows the three-state
                   table (agent when own turn, task accent when child-only); when
                   BOTH run, a task-accent copy of both layers cross-fades over the

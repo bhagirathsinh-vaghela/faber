@@ -2645,15 +2645,15 @@ export default function Page() {
 
               <QuestionPanel onClose={() => command.trigger("prompt.focus")} />
 
-              {/* Zen busy bar sits below the question block, in the gap between the
-                  message boxes and the input. Zen hides the dock's own working
-                  spinner (dock-line1), so this is the busy cue in zen. */}
-              <Show when={layout.zen.opened() && titleWorking()}>
+              {/* Busy-turn bar in the gap between the message boxes and the dock,
+                  the busy cue in BOTH modes. The dock's own busy spinner
+                  (dock-line1) is suppressed, so this bar is the single indicator. */}
+              <Show when={titleWorking()}>
                 <div class="w-full px-3 mb-2">
-                  <div class="zen-working-bar" style={{ "--stream-accent": baseTint() }}>
-                    <span class="zen-working-bar-fill" />
+                  <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
+                    <span class="busy-bar-fill" />
                     <Show when={mixing()}>
-                      <span class="zen-working-bar-fill zen-working-bar-fill-task" />
+                      <span class="busy-bar-fill busy-bar-fill-task" />
                     </Show>
                   </div>
                 </div>
