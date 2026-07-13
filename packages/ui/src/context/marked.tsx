@@ -1,10 +1,25 @@
 import { marked } from "marked"
-import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
-import katex from "katex"
 import { bundledLanguages, type BundledLanguage } from "shiki"
 import { createSimpleContext } from "./helper"
 import { getSharedHighlighter } from "@pierre/diffs"
+
+// KaTeX (the engine plus the marked extension) is ~280KB and only needed when a
+// message actually contains math, which is rare. Both are imported on demand so
+// they stay out of the initial chunk; the promises are cached so repeated math
+// pays the load once. Mirrors how Shiki is already loaded lazily via
+// getSharedHighlighter. The literal below is the ASCII dollar sign.
+const DELIM = "\u0024"
+
+let katexModule: Promise<typeof import("katex").default> | undefined
+function loadKatex() {
+  return (katexModule ??= import("katex").then((m) => m.default))
+}
+
+let markedKatexModule: Promise<typeof import("marked-katex-extension").default> | undefined
+function loadMarkedKatex() {
+  return (markedKatexModule ??= import("marked-katex-extension").then((m) => m.default))
+}
 
 // Highlighted-HTML cache keyed on (code, lang, theme). A fenced block re-mounts
 // on every virtua scroll-in and every theme toggle-back; Shiki's codeToHtml is
@@ -54,51 +69,52 @@ export async function themeColors(theme = "github-dark"): Promise<{ bg: string; 
   return { bg: resolved.bg, fg: resolved.fg }
 }
 
-function renderMathInText(text: string): string {
+async function renderMathInText(text: string): Promise<string> {
+  // No delimiter at all: skip the katex load entirely (the common case).
+  if (!text.includes(DELIM)) return text
+  const katex = await loadKatex()
   let result = text
 
-  // Display math: $$...$$
+  // Display math: paired double-delimiter.
   const displayMathRegex = /\$\$([\s\S]*?)\$\$/g
-  result = result.replace(displayMathRegex, (_, math) => {
+  result = result.replace(displayMathRegex, (whole, math) => {
     try {
       return katex.renderToString(math, {
         displayMode: true,
         throwOnError: false,
       })
     } catch {
-      return `$$${math}$$`
+      return whole
     }
   })
 
-  // Inline math: $...$
+  // Inline math: single-delimiter span.
   const inlineMathRegex = /(?<!\$)\$(?!\$)((?:[^$\\]|\\.)+?)\$(?!\$)/g
-  result = result.replace(inlineMathRegex, (_, math) => {
+  result = result.replace(inlineMathRegex, (whole, math) => {
     try {
       return katex.renderToString(math, {
         displayMode: false,
         throwOnError: false,
       })
     } catch {
-      return `$${math}$`
+      return whole
     }
   })
 
   return result
 }
 
-function renderMathExpressions(html: string): string {
-  // Split on code/pre/kbd tags to avoid processing their contents
+async function renderMathExpressions(html: string): Promise<string> {
+  // Split on code/pre/kbd tags to avoid processing their contents.
   const codeBlockPattern = /(<(?:pre|code|kbd)[^>]*>[\s\S]*?<\/(?:pre|code|kbd)>)/gi
   const parts = html.split(codeBlockPattern)
 
-  return parts
-    .map((part, i) => {
-      // Odd indices are the captured code blocks - leave them alone
-      if (i % 2 === 1) return part
-      // Process math only in non-code parts
-      return renderMathInText(part)
-    })
-    .join("")
+  const rendered = await Promise.all(
+    // Odd indices are the captured code blocks - leave them alone; math is only
+    // processed in the non-code parts.
+    parts.map((part, i) => (i % 2 === 1 ? part : renderMathInText(part))),
+  )
+  return rendered.join("")
 }
 
 async function highlightCodeBlocks(html: string): Promise<string> {
@@ -142,6 +158,10 @@ export type NativeMarkdownParser = (markdown: string) => Promise<string>
 export const { use: useMarked, provider: MarkedProvider } = createSimpleContext({
   name: "Marked",
   init: (props: { nativeParser?: NativeMarkdownParser }) => {
+    // Base parser carries only the link renderer and the (already lazy) Shiki
+    // highlighter. The katex marked extension is NOT registered here so its
+    // engine stays out of the initial chunk; it is attached on first sight of a
+    // math delimiter below.
     const jsParser = marked.use(
       {
         renderer: {
@@ -151,10 +171,6 @@ export const { use: useMarked, provider: MarkedProvider } = createSimpleContext(
           },
         },
       },
-      markedKatex({
-        throwOnError: false,
-        nonStandard: true,
-      }),
       markedShiki({
         async highlight(code, lang) {
           const highlighter = await getSharedHighlighter({ themes: ["github-dark"], langs: [] })
@@ -178,12 +194,26 @@ export const { use: useMarked, provider: MarkedProvider } = createSimpleContext(
       return {
         async parse(markdown: string): Promise<string> {
           const html = await nativeParser(markdown)
-          const withMath = renderMathExpressions(html)
+          const withMath = await renderMathExpressions(html)
           return highlightCodeBlocks(withMath)
         },
       }
     }
 
-    return jsParser
+    // Register the katex extension once, the first time a parsed string actually
+    // contains a delimiter. marked.use is cumulative, so after the first math
+    // input every later parse (math or not) sees the extension already attached.
+    let katexReady: Promise<void> | undefined
+    return {
+      async parse(markdown: string): Promise<string> {
+        if (markdown.includes(DELIM)) {
+          katexReady ??= loadMarkedKatex().then((markedKatex) => {
+            jsParser.use(markedKatex({ throwOnError: false, nonStandard: true }))
+          })
+          await katexReady
+        }
+        return jsParser.parse(markdown)
+      },
+    }
   },
 })

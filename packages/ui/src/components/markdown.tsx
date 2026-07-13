@@ -7,9 +7,31 @@ import { SolidMarkdown, type SolidMarkdownComponents } from "solid-markdown"
 import remarkGfm from "remark-gfm"
 import remarkBreaks from "remark-breaks"
 import remarkMath from "remark-math"
-import rehypeKatex from "rehype-katex"
 import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
 import { isServer } from "solid-js/web"
+
+// rehype-katex statically pulls the whole KaTeX engine (~280KB) into the initial
+// chunk, but most messages carry no math. Load it on demand the first time a
+// rendered message actually holds a dollar-delimited math span, then cache it in
+// a signal so every later math message reuses it. Until it resolves, remark-math
+// still tokenizes the math (it carries no katex), so the raw source shows briefly
+// and the KaTeX layout swaps in once the chunk lands. Shiki is lazy the same way.
+const [katexPlugin, setKatexPlugin] = createSignal<unknown>()
+let katexPending = false
+function loadKatex() {
+  if (katexPending) return
+  katexPending = true
+  import("rehype-katex").then((m) => setKatexPlugin(() => m.default)).catch(() => (katexPending = false))
+}
+
+// Cheap pre-check so a math-free message never triggers the import. A lone
+// dollar (currency) must not match: display math is a paired double-dollar, and
+// inline math needs a non-space right after the opening dollar and before the
+// closing one, mirroring remark-math's own delimiter guard.
+const MATH = /\$\$[\s\S]+?\$\$|(?<!\$)\$(?!\s)[^$\n]+?(?<!\s)\$(?!\$)/
+function hasMath(text: string) {
+  return MATH.test(text)
+}
 
 const iconPaths = {
   copy: '<path d="M6.2513 6.24935V2.91602H17.0846V13.7493H13.7513M13.7513 6.24935V17.0827H2.91797V6.24935H13.7513Z" stroke="currentColor" stroke-linecap="round"/>',
@@ -268,6 +290,20 @@ export function Markdown(
     return local.text.slice(0, renderableLength(local.text))
   })
 
+  // Only the messages that actually contain math pay for KaTeX. Kick off the
+  // lazy import when math first appears; until the plugin resolves the array is
+  // empty (remark-math still parsed the nodes, so the source renders and the
+  // KaTeX pass applies on the next tick once loaded).
+  const rehype = createMemo(() => {
+    if (!hasMath(rendered())) return []
+    const plugin = katexPlugin()
+    if (!plugin) {
+      loadKatex()
+      return []
+    }
+    return [plugin]
+  })
+
   const labels = { copy: i18n.t("ui.message.copy"), copied: i18n.t("ui.message.copied") }
 
   let copyCleanup: (() => void) | undefined
@@ -314,7 +350,7 @@ export function Markdown(
         renderingStrategy="reconcile"
         skipHtml
         remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={rehype()}
         components={components(labels, theme, complete)}
       >
         {rendered()}
