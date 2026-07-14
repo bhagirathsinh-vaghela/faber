@@ -55,7 +55,7 @@ export interface SessionReviewProps {
   actions?: JSX.Element
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
   onViewFile?: (file: string) => void
-  onOpenFile?: (file: string) => void
+  onOpenFile?: (file: string) => Promise<void> | void
   readFile?: (path: string) => Promise<FileContent | undefined>
 }
 
@@ -183,7 +183,7 @@ export const SessionReview = (props: SessionReviewProps) => {
   const [commenting, setCommenting] = createSignal<SessionReviewSelection | null>(null)
   const [opened, setOpened] = createSignal<SessionReviewFocus | null>(null)
 
-  const open = () => props.open ?? store.open
+  const open = () => props.open ?? store.open ?? []
   const diffStyle = () => props.diffStyle ?? (props.split ? "split" : "unified")
 
   const handleChange = (open: string[]) => {
@@ -197,16 +197,38 @@ export const SessionReview = (props: SessionReviewProps) => {
     handleChange(next)
   }
 
-  // lazy-load each file's diff bodies the first time its accordion item opens
+  // lazy-load each file's diff bodies the first time its accordion item opens.
+  // Expand-All opens every file at once, so drain the requests through a small
+  // pool instead of firing one HTTP request per file synchronously.
   const requested = new Set<string>()
-  createEffect(() => {
+  const pending: string[] = []
+  let active = 0
+  const limit = 6
+
+  const pump = () => {
     const handler = props.onOpenFile
     if (!handler) return
+
+    while (active < limit) {
+      const file = pending.shift()
+      if (!file) return
+
+      active++
+      Promise.resolve(handler(file)).finally(() => {
+        active--
+        pump()
+      })
+    }
+  }
+
+  createEffect(() => {
+    if (!props.onOpenFile) return
     for (const file of open()) {
       if (requested.has(file)) continue
       requested.add(file)
-      handler(file)
+      pending.push(file)
     }
+    pump()
   })
 
   const selectionLabel = (range: SelectedLineRange) => {

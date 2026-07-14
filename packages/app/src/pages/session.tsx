@@ -365,7 +365,9 @@ export default function Page() {
     tabs().open(next)
 
     const path = file.pathFromTab(next)
-    if (path) file.load(path)
+    if (!path) return
+    file.load(path)
+    showAllFiles()
   }
 
   createEffect(() => {
@@ -1461,19 +1463,6 @@ export default function Page() {
         </Switch>
       </div>
     </div>
-  )
-
-  createEffect(
-    on(
-      () => tabs().active(),
-      (active) => {
-        if (!active) return
-        if (fileTreeTab() !== "changes") return
-        if (!file.pathFromTab(active)) return
-        showAllFiles()
-      },
-      { defer: true },
-    ),
   )
 
   const setFileTreeTabValue = (value: string) => {

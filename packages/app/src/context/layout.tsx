@@ -589,16 +589,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             open: createMemo(() => s().reviewOpen),
             setOpen(open: string[]) {
               const session = key()
-              const current = store.sessionView[session]
-              if (!current) {
-                setStore("sessionView", session, {
-                  scroll: {},
-                  reviewOpen: open,
-                })
-                return
-              }
-
-              if (same(current.reviewOpen, open)) return
+              if (same(store.sessionView[session]?.reviewOpen, open)) return
               setStore("sessionView", session, "reviewOpen", open)
             },
           },
