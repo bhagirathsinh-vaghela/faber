@@ -73,6 +73,25 @@
       flex: 1 0 0;
       max-height: 20px;
 
+      /* The TextField root must fill the container so its wrapper spans the row
+         and the keyboard toggle can pin to the right edge. */
+      [data-component="input"] {
+        flex: 1 0 0;
+        min-width: 0;
+      }
+
+      [data-slot="input-wrapper"] {
+        width: 100%;
+      }
+
+      /* The keyboard toggle must sit inline at the right edge of the 20px search
+         row, not wrap to a new line; keep it compact so it clears the max-height. */
+      [data-slot="input-keyboard-button"] {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+
       [data-slot="list-search-input"] {
         width: 100%;
 
