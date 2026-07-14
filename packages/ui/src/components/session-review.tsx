@@ -176,7 +176,8 @@ export const SessionReview = (props: SessionReviewProps) => {
   const diffComponent = useDiffComponent()
   const anchors = new Map<string, HTMLElement>()
   // Default: expand everything on a small review, collapse everything on a big
-  // one so the panel does not render dozens of diffs at once.
+  // one so the panel does not render dozens of diffs at once. Used only when
+  // uncontrolled (e.g. the share page); the app controls open via props.open.
   const fallback = () => (props.diffs.length > 10 ? [] : props.diffs.map((d) => d.file))
 
   const [store, setStore] = createStore({
@@ -187,13 +188,16 @@ export const SessionReview = (props: SessionReviewProps) => {
   const [commenting, setCommenting] = createSignal<SessionReviewSelection | null>(null)
   const [opened, setOpened] = createSignal<SessionReviewFocus | null>(null)
 
-  const open = () => props.open ?? store.open ?? fallback()
+  // Controlled and uncontrolled are kept strictly separate so the internal
+  // store can never shadow a controlled value: when props.open is provided it
+  // is the sole authority, otherwise the internal store is.
+  const controlled = () => props.open !== undefined
+  const open = () => (controlled() ? props.open! : (store.open ?? fallback()))
   const diffStyle = () => props.diffStyle ?? (props.split ? "split" : "unified")
 
   const handleChange = (open: string[]) => {
     props.onOpenChange?.(open)
-    if (props.open !== undefined) return
-    setStore("open", open)
+    if (!controlled()) setStore("open", open)
   }
 
   const handleExpandOrCollapseAll = () => {

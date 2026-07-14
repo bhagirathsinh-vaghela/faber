@@ -149,6 +149,13 @@ function StickyAddButton(props: { children: JSX.Element }) {
   )
 }
 
+// Size-based default open set: small reviews expanded, large ones collapsed so
+// the panel does not render dozens of diffs at once. Applied only until the
+// user first toggles (layout reviewOpen is undefined).
+function defaultReviewOpen(files: string[]) {
+  return files.length > 10 ? [] : files
+}
+
 function SessionReviewTab(props: SessionReviewTabProps) {
   let scroll: HTMLDivElement | undefined
   let frame: number | undefined
@@ -162,6 +169,12 @@ function SessionReviewTab(props: SessionReviewTabProps) {
       .then((x) => x.data)
       .catch(() => undefined)
   }
+
+  // Single source of truth for expand/collapse: the layout store. Until the
+  // user has ever toggled (reviewOpen undefined), fall back to the size-based
+  // default — small reviews expanded, large ones collapsed — computed live from
+  // the current diff list so it is never a stale mount-time snapshot.
+  const open = () => props.view().review.open() ?? defaultReviewOpen(props.diffs().map((d) => d.file))
 
   const restoreScroll = () => {
     const el = scroll
@@ -216,7 +229,7 @@ function SessionReviewTab(props: SessionReviewTabProps) {
       }}
       onScroll={handleScroll}
       onDiffRendered={() => requestAnimationFrame(restoreScroll)}
-      open={props.view().review.open()}
+      open={open()}
       onOpenChange={props.view().review.setOpen}
       classes={{
         root: props.classes?.root ?? "pb-40",
@@ -1505,7 +1518,9 @@ export default function Page() {
   }
 
   const focusReviewDiff = (path: string) => {
-    const current = view().review.open() ?? []
+    // Honor the size-based default when the user has not toggled yet, so
+    // focusing a file does not collapse the rest of a small (all-open) review.
+    const current = view().review.open() ?? defaultReviewOpen(diffs().map((d) => d.file))
     if (!current.includes(path)) view().review.setOpen([...current, path])
     setActiveDiff(path)
     setPendingDiff(path)
