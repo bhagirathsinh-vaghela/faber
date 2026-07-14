@@ -109,6 +109,16 @@ export function clonePrompt(prompt: Prompt): Prompt {
   return prompt.map(clonePart)
 }
 
+// Snapshot context items (line-comments) for stashing. Drops the internal
+// `key` — it is recomputed by `context.add` on restore — and deep-clones the
+// selection so the stashed copy is decoupled from the live tray.
+export function cloneContext(items: ContextItem[]): ContextItem[] {
+  return items.map(({ selection, ...rest }) => {
+    delete (rest as { key?: string }).key
+    return { ...rest, selection: cloneSelection(selection) }
+  })
+}
+
 const WORKSPACE_KEY = "__workspace__"
 const MAX_PROMPT_SESSIONS = 20
 
@@ -170,6 +180,9 @@ function createPromptSession() {
       },
       remove(key: string) {
         setStore("context", "items", (items) => items.filter((x) => x.key !== key))
+      },
+      clear() {
+        setStore("context", "items", [])
       },
     },
     set(prompt: Prompt, cursorPosition?: number) {
@@ -244,6 +257,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
         items: () => session().context.items(),
         add: (item: ContextItem) => session().context.add(item),
         remove: (key: string) => session().context.remove(key),
+        clear: () => session().context.clear(),
       },
       set: (prompt: Prompt, cursorPosition?: number) => session().set(prompt, cursorPosition),
       reset: () => session().reset(),

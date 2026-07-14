@@ -1224,6 +1224,7 @@ export type EventThemePreferenceActiveUpdated = {
 
 export type StashEntry = {
   prompt: Array<unknown>
+  context?: Array<unknown>
   timestamp: number
 }
 

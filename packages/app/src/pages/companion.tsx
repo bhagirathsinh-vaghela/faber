@@ -40,7 +40,10 @@ export default function Companion() {
         <h1 class="text-16-medium text-text-strong">{language.t("companion.title")}</h1>
         <p class="text-13-regular text-text-weak max-w-xs">{language.t("companion.hint")}</p>
       </div>
-      <Show when={dictation.supported()} fallback={<p class="text-13-regular text-text-weak">{language.t("companion.unsupported")}</p>}>
+      <Show
+        when={dictation.supported()}
+        fallback={<p class="text-13-regular text-text-weak">{language.t("companion.unsupported")}</p>}
+      >
         <Button
           type="button"
           variant="primary"
@@ -55,12 +58,7 @@ export default function Companion() {
         </Button>
       </Show>
       <Show when={dictating()}>
-        <DictationOverlay
-          dictation={dictation}
-          onAccept={send}
-          onStash={send}
-          onClose={() => setDictating(false)}
-        />
+        <DictationOverlay dictation={dictation} onAccept={send} onStash={send} onClose={() => setDictating(false)} />
       </Show>
     </div>
   )

@@ -1210,8 +1210,9 @@ export default function Page() {
       keybind: "ctrl+s",
       disabled: !prompt.dirty(),
       onSelect: () => {
-        stash.push(prompt.current())
+        stash.push(prompt.current(), prompt.context.items())
         prompt.reset()
+        prompt.context.clear()
       },
     },
     {
@@ -3459,9 +3460,7 @@ export default function Page() {
                                 </div>
                               </Show>
                               <Switch>
-                                <Match when={state()?.loaded && showDiff() && diffReady()}>
-                                  {renderDiff("pb-40")}
-                                </Match>
+                                <Match when={state()?.loaded && showDiff() && diffReady()}>{renderDiff("pb-40")}</Match>
                                 <Match when={state()?.loaded && isImage()}>
                                   <div class="px-6 py-4 pb-40">
                                     <img

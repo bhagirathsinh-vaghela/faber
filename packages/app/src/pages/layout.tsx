@@ -1995,10 +1995,7 @@ export default function Layout(props: ParentProps) {
 
     const projectName = () => props.project.name || getFilename(props.project.worktree)
     const Trigger = () => (
-      <ContextMenu
-        modal={!flyoutOpen()}
-        onOpenChange={(value) => setMenu(value)}
-      >
+      <ContextMenu modal={!flyoutOpen()} onOpenChange={(value) => setMenu(value)}>
         <ContextMenu.Trigger
           as="button"
           type="button"

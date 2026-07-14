@@ -10,10 +10,12 @@ export namespace Stash {
 
   // The prompt is a client-side content-part array. The server never inspects
   // it, so it stays an opaque passthrough blob rather than coupling to the web
-  // ContentPart union.
+  // ContentPart union. `context` is the same: an opaque snapshot of the prompt's
+  // attached context items (line-comments), optional so old entries pop fine.
   export const Entry = z
     .object({
       prompt: z.any().array(),
+      context: z.any().array().optional(),
       timestamp: z.number(),
     })
     .meta({

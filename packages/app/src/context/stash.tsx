@@ -1,7 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { clonePrompt, type Prompt } from "./prompt"
+import { clonePrompt, cloneContext, type ContextItem, type Prompt } from "./prompt"
 
 // Manual prompt stash, owned by the server and shared across all sessions and
 // clients. Push throws the current prompt in; the stash dialog lists entries
@@ -18,9 +18,15 @@ export const { use: useStash, provider: StashProvider } = createSimpleContext({
       list() {
         return store.stash
       },
-      push(prompt: Prompt) {
+      push(prompt: Prompt, context: ContextItem[] = []) {
         sdk.client.preference.stash
-          .push({ stashEntry: { prompt: clonePrompt(prompt), timestamp: Date.now() } })
+          .push({
+            stashEntry: {
+              prompt: clonePrompt(prompt),
+              context: context.length ? cloneContext(context) : undefined,
+              timestamp: Date.now(),
+            },
+          })
           .catch(() => undefined)
       },
       removeAt(index: number) {

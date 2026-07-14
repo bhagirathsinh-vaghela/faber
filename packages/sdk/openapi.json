@@ -12772,6 +12772,10 @@
             "type": "array",
             "items": {}
           },
+          "context": {
+            "type": "array",
+            "items": {}
+          },
           "timestamp": {
             "type": "number"
           }

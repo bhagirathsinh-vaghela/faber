@@ -4,7 +4,7 @@ import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { useStash } from "@/context/stash"
-import { usePrompt, type Prompt } from "@/context/prompt"
+import { usePrompt, type ContextItem, type Prompt } from "@/context/prompt"
 import { useLanguage } from "@/context/language"
 import { useCommand } from "@/context/command"
 
@@ -13,6 +13,7 @@ interface StashItem {
   text: string
   time: string
   prompt: Prompt
+  context: ContextItem[]
 }
 
 function preview(prompt: Prompt): string {
@@ -49,6 +50,7 @@ export const DialogStash: Component = () => {
           text: preview(prompt) || language.t("dialog.stash.empty.item"),
           time: formatTime(entry.timestamp),
           prompt,
+          context: (entry.context ?? []) as ContextItem[],
         }
       })
       .reverse(),
@@ -56,15 +58,19 @@ export const DialogStash: Component = () => {
 
   const restore = (item: StashItem | undefined) => {
     if (!item) return
-    // No data loss: if the input has unsaved text, stash it before restoring
-    // the selected entry, so the current draft is swapped into the stash rather
-    // than clobbered.
-    const current = prompt.dirty() ? prompt.current() : undefined
+    // No data loss: if the input has unsaved text or attached comments, stash
+    // them before restoring the selected entry, so the current draft is swapped
+    // into the stash rather than clobbered.
+    const currentItems = prompt.context.items()
+    const current = prompt.dirty() || currentItems.length ? prompt.current() : undefined
+    const currentContext = current ? currentItems.slice() : []
     const end = item.prompt.reduce((len, p) => len + ("content" in p ? p.content.length : 0), 0)
     dialog.close()
     prompt.set(item.prompt, end)
+    prompt.context.clear()
+    for (const contextItem of item.context) prompt.context.add(contextItem)
     stash.removeAt(item.index)
-    if (current) stash.push(current)
+    if (current) stash.push(current, currentContext)
     // The stash content is now in the dock, so put the caret there at the end.
     // Deferred so it runs after the dialog tears down, otherwise Kobalte
     // restores focus to the trigger on close and clobbers this.
