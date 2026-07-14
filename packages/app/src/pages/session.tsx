@@ -3155,6 +3155,15 @@ export default function Page() {
                             requestAnimationFrame(() => comments.clearFocus())
                           })
 
+                          // Dismiss a draft comment without submitting: close the
+                          // editor AND clear the drag selection so the highlighted
+                          // lines do not linger after clicking away.
+                          const dismissComment = () => {
+                            setCommenting(null)
+                            const p = path()
+                            if (p) file.setSelectedLines(p, null)
+                          }
+
                           // Shared shell for both the raw code viewer and the
                           // diff viewer. Both mount a `diffs-container` shadow
                           // root, so the comment overlay/anchor machinery below
@@ -3199,7 +3208,7 @@ export default function Page() {
                                       value={draft()}
                                       selection={commentLabel(range())}
                                       onInput={(value) => setDraft(value)}
-                                      onCancel={() => setCommenting(null)}
+                                      onCancel={dismissComment}
                                       onSubmit={(value) => {
                                         const p = path()
                                         if (!p) return
@@ -3218,7 +3227,7 @@ export default function Page() {
 
                                         setTimeout(() => {
                                           if (!document.activeElement || !current.contains(document.activeElement)) {
-                                            setCommenting(null)
+                                            dismissComment()
                                           }
                                         }, 0)
                                       }}
