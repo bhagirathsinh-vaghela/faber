@@ -1,4 +1,5 @@
 import { createMemo, onCleanup, onMount, Show } from "solid-js"
+import { createMediaQuery } from "@solid-primitives/media"
 import { Portal } from "solid-js/web"
 import { useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
@@ -44,6 +45,12 @@ export function SessionHeader() {
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const view = createMemo(() => layout.view(sessionKey))
+  const isDesktop = createMediaQuery("(min-width: 768px)")
+
+  // The review toggle drives the desktop split panel; on mobile there is no
+  // split, so it flips the session panel between transcript and changes.
+  const toggleReview = () => (isDesktop() ? layout.fileTree.toggle() : view().mobileChanges.toggle())
+  const reviewActive = () => (isDesktop() ? layout.fileTree.opened() : view().mobileChanges.opened())
 
   function stopSession() {
     const id = params.id
@@ -148,7 +155,7 @@ export function SessionHeader() {
                   </Tooltip>
                 </div>
               </Show>
-              <div class="flex items-center gap-3 ml-2 shrink-0">
+              <div class="hidden md:flex items-center gap-3 ml-2 shrink-0">
                 <TooltipKeybind
                   title={language.t("command.terminal.toggle")}
                   keybind={command.keybind("terminal.toggle")}
@@ -186,15 +193,15 @@ export function SessionHeader() {
                   <Button
                     variant="ghost"
                     class="group/file-tree-toggle size-6 p-0"
-                    onClick={() => layout.fileTree.toggle()}
+                    onClick={toggleReview}
                     aria-label={language.t("command.review.toggle")}
-                    aria-expanded={layout.fileTree.opened()}
+                    aria-expanded={reviewActive()}
                     aria-controls="review-panel"
                   >
                     <div class="relative flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
                       <Icon
                         size="small"
-                        name={layout.fileTree.opened() ? "layout-right-full" : "layout-right"}
+                        name={reviewActive() ? "layout-right-full" : "layout-right"}
                         class="group-hover/file-tree-toggle:hidden"
                       />
                       <Icon
@@ -204,7 +211,7 @@ export function SessionHeader() {
                       />
                       <Icon
                         size="small"
-                        name={layout.fileTree.opened() ? "layout-right" : "layout-right-full"}
+                        name={reviewActive() ? "layout-right" : "layout-right-full"}
                         class="hidden group-active/file-tree-toggle:inline-block"
                       />
                     </div>

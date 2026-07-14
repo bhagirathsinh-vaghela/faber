@@ -268,34 +268,6 @@
     }
   }
 
-  /* Compact variant for the mobile session tabs living inside the 40px
-     titlebar. Fills the bar height, drops the full-width filler + list
-     background so it blends into the titlebar, and tightens padding. */
-  &[data-slot="mobile-session-tabs"] {
-    width: fit-content;
-    height: 32px;
-    background-color: transparent;
-
-    [data-slot="tabs-list"] {
-      height: 32px;
-      width: fit-content;
-      background-color: transparent;
-
-      &::after {
-        display: none;
-      }
-    }
-
-    [data-slot="tabs-trigger-wrapper"] {
-      border-bottom: none;
-      background-color: transparent;
-
-      [data-slot="tabs-trigger"] {
-        padding: 0 12px;
-      }
-    }
-  }
-
   &[data-variant="pill"][data-orientation="horizontal"][data-scope="filetree"] {
     [data-slot="tabs-list"] {
       height: 48px;

@@ -88,6 +88,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           height: 280,
           opened: false,
         },
+        // Mobile-only: whether the session panel shows the changes/diff view
+        // instead of the transcript. Desktop uses fileTree.opened instead; on
+        // mobile the header's review toggle flips this.
+        mobileChanges: false,
         review: {
           diffStyle: "split" as ReviewDiffStyle,
         },
@@ -544,6 +548,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("terminal", "opened", next)
         }
 
+        const mobileChangesOpened = createMemo(() => store.mobileChanges ?? false)
+        function setMobileChanges(next: boolean) {
+          if ((store.mobileChanges ?? false) === next) return
+          setStore("mobileChanges", next)
+        }
+
         return {
           scroll(tab: string) {
             return scroll.scroll(key(), tab)
@@ -561,6 +571,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             toggle() {
               setTerminalOpened(!terminalOpened())
+            },
+          },
+          mobileChanges: {
+            opened: mobileChangesOpened,
+            open() {
+              setMobileChanges(true)
+            },
+            close() {
+              setMobileChanges(false)
+            },
+            toggle() {
+              setMobileChanges(!mobileChangesOpened())
             },
           },
           review: {

@@ -342,7 +342,6 @@ export default function Page() {
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const centered = createMemo(() => isDesktop() && !layout.fileTree.opened())
-  const tabMount = createMemo(() => document.getElementById("opencode-titlebar-center") ?? undefined)
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -494,7 +493,6 @@ export default function Page() {
     activeTerminalDraggable: undefined as string | undefined,
     expanded: {} as Record<string, boolean>,
     messageId: undefined as string | undefined,
-    mobileTab: "session" as "session" | "changes",
     newSessionWorktree: "main",
     promptHeight: 0,
   })
@@ -1401,7 +1399,7 @@ export default function Page() {
       .filter((tab) => tab !== "context"),
   )
 
-  const mobileChanges = createMemo(() => !isDesktop() && store.mobileTab === "changes")
+  const mobileChanges = createMemo(() => !isDesktop() && view().mobileChanges.opened())
 
   const fileTreeTab = () => layout.fileTree.tab()
   const setFileTreeTab = (value: "changes" | "all") => layout.fileTree.setTab(value)
@@ -1590,7 +1588,7 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const wants = isDesktop() ? layout.fileTree.opened() && fileTreeTab() === "changes" : store.mobileTab === "changes"
+    const wants = isDesktop() ? layout.fileTree.opened() && fileTreeTab() === "changes" : view().mobileChanges.opened()
     if (!wants) return
     if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
@@ -2203,41 +2201,6 @@ export default function Page() {
         </button>
       </Portal>
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
-        {/* Mobile tab bar — portaled into the titlebar center so it shares the
-            top row instead of taking a dedicated band below it. */}
-        <Show when={!isDesktop() && params.id && !layout.zen.opened() ? tabMount() : undefined}>
-          {(mount) => (
-            <Portal mount={mount()}>
-              <Tabs value={store.mobileTab} class="h-auto" data-slot="mobile-session-tabs">
-                <Tabs.List>
-                  <Tabs.Trigger
-                    value="session"
-                    classes={{ button: "px-3" }}
-                    onClick={() => setStore("mobileTab", "session")}
-                    aria-label={language.t("session.tab.session")}
-                  >
-                    <Icon name="comment" size="small" />
-                  </Tabs.Trigger>
-                  <Tabs.Trigger
-                    value="changes"
-                    class="!border-r-0"
-                    classes={{ button: "px-3" }}
-                    onClick={() => setStore("mobileTab", "changes")}
-                    aria-label={language.t("session.review.filesChanged", { count: reviewCount() })}
-                  >
-                    <span class="flex items-center gap-1.5">
-                      <Icon name="branch" size="small" />
-                      <Show when={hasReview()}>
-                        <span class="text-12-medium">{reviewCount()}</span>
-                      </Show>
-                    </span>
-                  </Tabs.Trigger>
-                </Tabs.List>
-              </Tabs>
-            </Portal>
-          )}
-        </Show>
-
         {/* Session panel */}
         <div
           classList={{
