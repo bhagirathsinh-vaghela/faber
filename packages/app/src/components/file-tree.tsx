@@ -109,12 +109,18 @@ export default function FileTree(props: {
     return out
   })
 
+  // Auto-expand a changed directory once, the first time it appears in the
+  // filter. Tracking seen dirs lets a later manual collapse stick instead of
+  // springing back open on the next reactive run (e.g. new diffs streaming in).
+  const autoExpanded = new Set<string>()
   createEffect(() => {
     const current = filter()
     if (!current) return
     if (level !== 0) return
 
     for (const dir of current.dirs) {
+      if (autoExpanded.has(dir)) continue
+      autoExpanded.add(dir)
       const expanded = untrack(() => file.tree.state(dir)?.expanded) ?? false
       if (expanded) continue
       file.tree.expand(dir)

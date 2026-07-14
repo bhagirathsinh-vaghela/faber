@@ -94,6 +94,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         mobileChanges: false,
         review: {
           diffStyle: "split" as ReviewDiffStyle,
+          mobileDiffStyle: "unified" as ReviewDiffStyle,
         },
         fileTree: {
           opened: true,
@@ -440,6 +441,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             return
           }
           setStore("review", "diffStyle", diffStyle)
+        },
+        // Mobile has no split layout, so it defaults to unified but stays
+        // switchable, tracked separately from the desktop preference.
+        mobileDiffStyle: createMemo(() => store.review?.mobileDiffStyle ?? "unified"),
+        setMobileDiffStyle(diffStyle: ReviewDiffStyle) {
+          if (!store.review) {
+            setStore("review", { mobileDiffStyle: diffStyle })
+            return
+          }
+          setStore("review", "mobileDiffStyle", diffStyle)
         },
       },
       fileTree: {

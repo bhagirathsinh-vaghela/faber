@@ -1519,7 +1519,10 @@ export default function Page() {
 
     const attempt = (count: number) => {
       if (pendingDiff() !== pending) return
-      if (count > 60) {
+      // A large diff body can take well over a second to render; keep
+      // retrying against the moving target so focus lands on the right file
+      // instead of giving up at a stale offset.
+      if (count > 180) {
         setPendingDiff(undefined)
         return
       }
@@ -2237,7 +2240,8 @@ export default function Page() {
                               <SessionReviewTab
                                 diffs={diffs}
                                 view={view}
-                                diffStyle="unified"
+                                diffStyle={layout.review.mobileDiffStyle()}
+                                onDiffStyleChange={layout.review.setMobileDiffStyle}
                                 focusedFile={activeDiff()}
                                 onOpenFile={(path) => params.id && sync.session.diffFile(params.id, path)}
                                 onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}

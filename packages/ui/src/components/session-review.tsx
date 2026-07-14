@@ -175,15 +175,19 @@ export const SessionReview = (props: SessionReviewProps) => {
   const i18n = useI18n()
   const diffComponent = useDiffComponent()
   const anchors = new Map<string, HTMLElement>()
+  // Default: expand everything on a small review, collapse everything on a big
+  // one so the panel does not render dozens of diffs at once.
+  const fallback = () => (props.diffs.length > 10 ? [] : props.diffs.map((d) => d.file))
+
   const [store, setStore] = createStore({
-    open: props.diffs.length > 10 ? [] : props.diffs.map((d) => d.file),
+    open: fallback(),
   })
 
   const [selection, setSelection] = createSignal<SessionReviewSelection | null>(null)
   const [commenting, setCommenting] = createSignal<SessionReviewSelection | null>(null)
   const [opened, setOpened] = createSignal<SessionReviewFocus | null>(null)
 
-  const open = () => props.open ?? store.open ?? []
+  const open = () => props.open ?? store.open ?? fallback()
   const diffStyle = () => props.diffStyle ?? (props.split ? "split" : "unified")
 
   const handleChange = (open: string[]) => {
