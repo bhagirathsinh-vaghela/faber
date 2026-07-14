@@ -188,6 +188,13 @@ export const SessionReview = (props: SessionReviewProps) => {
   const [commenting, setCommenting] = createSignal<SessionReviewSelection | null>(null)
   const [opened, setOpened] = createSignal<SessionReviewFocus | null>(null)
 
+  // Dismiss a draft comment without submitting: close the editor AND clear the
+  // drag selection so the highlighted lines do not linger after clicking away.
+  const dismissComment = () => {
+    setCommenting(null)
+    setSelection(null)
+  }
+
   // Controlled and uncontrolled are kept strictly separate so the internal
   // store can never shadow a controlled value: when props.open is provided it
   // is the sole authority, otherwise the internal store is.
@@ -677,7 +684,7 @@ export const SessionReview = (props: SessionReviewProps) => {
                               value={draft()}
                               selection={selectionLabel(range())}
                               onInput={setDraft}
-                              onCancel={() => setCommenting(null)}
+                              onCancel={dismissComment}
                               onSubmit={(comment) => {
                                 props.onLineComment?.({
                                   file: diff.file,
@@ -685,7 +692,18 @@ export const SessionReview = (props: SessionReviewProps) => {
                                   comment,
                                   preview: selectionPreview(diff, range()),
                                 })
-                                setCommenting(null)
+                                dismissComment()
+                              }}
+                              onPopoverFocusOut={(e: FocusEvent) => {
+                                const current = e.currentTarget as HTMLDivElement
+                                const target = e.relatedTarget
+                                if (target instanceof Node && current.contains(target)) return
+
+                                setTimeout(() => {
+                                  if (!document.activeElement || !current.contains(document.activeElement)) {
+                                    dismissComment()
+                                  }
+                                }, 0)
                               }}
                             />
                           </Show>
