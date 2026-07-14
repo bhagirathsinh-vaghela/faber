@@ -5,6 +5,7 @@ import { useSDK } from "@/context/sdk"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useQuestion } from "@/context/question"
+import { useLocal } from "@/context/local"
 import { showToast } from "@opencode-ai/ui/toast"
 
 // The prompt action bar, ported from the TUI prompt footer
@@ -18,6 +19,7 @@ export function PromptActionBar() {
   const command = useCommand()
   const language = useLanguage()
   const question = useQuestion()
+  const local = useLocal()
   const params = useParams()
 
   const [running, setRunning] = createSignal(0)
@@ -98,28 +100,34 @@ export function PromptActionBar() {
       <ChipGroup>
         {/* pending: display-only (no onClick), but same weight/color as its
             interactive siblings. */}
-        <Chip
-          accent={running() > 0 ? "usage-cache-write" : "usage-context-start"}
-          tooltip={language.t("actionbar.pending.tooltip")}
-        >
-          <span class="text-text-base">pending</span> {running()}
-        </Chip>
+        <Show when={local.dock.isVisible("pending")}>
+          <Chip
+            accent={running() > 0 ? "usage-cache-write" : "usage-context-start"}
+            tooltip={language.t("actionbar.pending.tooltip")}
+          >
+            <span class="text-text-base">pending</span> {running()}
+          </Chip>
+        </Show>
 
-        <Chip
-          accent={available() > 0 ? "usage-cache-write" : "usage-context-start"}
-          onClick={() => command.trigger("task.pending", "keybind")}
-          tooltip={availableTip()}
-        >
-          <span class="text-text-base">available</span> {available()}
-        </Chip>
+        <Show when={local.dock.isVisible("available")}>
+          <Chip
+            accent={available() > 0 ? "usage-cache-write" : "usage-context-start"}
+            onClick={() => command.trigger("task.pending", "keybind")}
+            tooltip={availableTip()}
+          >
+            <span class="text-text-base">available</span> {available()}
+          </Chip>
+        </Show>
 
-        <Chip
-          accent={autoInject() ? "usage-context-start" : "usage-cache-write"}
-          onClick={() => command.trigger("background.autoinject.toggle", "keybind")}
-          tooltip={autoinjectTip()}
-        >
-          <span class="text-text-base">auto-inject</span> {autoInject() ? "on" : "off"}
-        </Chip>
+        <Show when={local.dock.isVisible("auto-inject")}>
+          <Chip
+            accent={autoInject() ? "usage-context-start" : "usage-cache-write"}
+            onClick={() => command.trigger("background.autoinject.toggle", "keybind")}
+            tooltip={autoinjectTip()}
+          >
+            <span class="text-text-base">auto-inject</span> {autoInject() ? "on" : "off"}
+          </Chip>
+        </Show>
 
         <Show when={questions() > 0}>
           <Chip

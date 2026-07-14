@@ -40,8 +40,11 @@ export namespace Dock {
       "output",
       "session-cache-write",
       "cost",
+      "pending",
+      "available",
+      "auto-inject",
     ],
-    mobile: ["agent", "model", "cwd", "branch", "context", "cost"],
+    mobile: ["agent", "model", "cwd", "branch", "context", "cost", "pending", "available", "auto-inject"],
   }
 
   // Lives beside skill.json in the global state dir, so every client on one

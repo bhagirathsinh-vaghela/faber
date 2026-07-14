@@ -34,6 +34,14 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
       { id: "cost", label: "Cost" },
     ],
   },
+  {
+    title: "Tasks",
+    fields: [
+      { id: "pending", label: "Pending (subtasks running)" },
+      { id: "available", label: "Available (results to accept)" },
+      { id: "auto-inject", label: "Auto-inject" },
+    ],
+  },
 ]
 
 // Show/hide config dialog. Per-surface checkboxes — a desktop/mobile
