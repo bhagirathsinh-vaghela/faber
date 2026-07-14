@@ -1485,7 +1485,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         }
     > = []
 
-    const commentNote = (path: string, selection: FileSelection | undefined, comment: string) => {
+    const commentNote = (
+      path: string,
+      selection: FileSelection | undefined,
+      comment: string,
+      snippet: string | undefined,
+    ) => {
+      if (snippet) return `The user commented on this diff in ${path}:\n${snippet}\nComment: ${comment}`
+
       const start = selection ? Math.min(selection.startLine, selection.endLine) : undefined
       const end = selection ? Math.max(selection.startLine, selection.endLine) : undefined
       const range =
@@ -1498,7 +1505,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return `The user made the following comment regarding ${range} of ${path}: ${comment}`
     }
 
-    const addContextFile = (input: { path: string; selection?: FileSelection; comment?: string }) => {
+    const addContextFile = (input: {
+      path: string
+      selection?: FileSelection
+      comment?: string
+      snippet?: string
+      deletionOnly?: boolean
+    }) => {
       const absolute = toAbsolutePath(input.path)
       const query = input.selection ? `?start=${input.selection.startLine}&end=${input.selection.endLine}` : ""
       const url = `file://${absolute}${query}`
@@ -1511,10 +1524,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         contextParts.push({
           id: Identifier.ascending("part"),
           type: "text",
-          text: commentNote(input.path, input.selection, comment),
+          text: commentNote(input.path, input.selection, comment, input.snippet),
           synthetic: true,
         })
       }
+
+      // A deletion-only selection references old-file lines. Slicing the current
+      // file at those numbers would attach the wrong content, so skip the attach:
+      // the snippet in the note already carries the exact deleted text.
+      if (input.deletionOnly) return
 
       contextParts.push({
         id: Identifier.ascending("part"),
@@ -1527,7 +1545,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     for (const item of context) {
       if (item.type !== "file") continue
-      addContextFile({ path: item.path, selection: item.selection, comment: item.comment })
+      addContextFile({
+        path: item.path,
+        selection: item.selection,
+        comment: item.comment,
+        snippet: item.snippet,
+        deletionOnly: item.deletionOnly,
+      })
     }
 
     const imageAttachmentParts = images.map((attachment) => ({
@@ -1942,6 +1966,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <Show when={item.selection}>
                             {(sel) => (
                               <span class="text-text-weak whitespace-nowrap shrink-0">
+                                {sel().side === "before" ? "\u2212" : ""}
                                 {sel().startLine === sel().endLine
                                   ? `:${sel().startLine}`
                                   : `:${sel().startLine}-${sel().endLine}`}

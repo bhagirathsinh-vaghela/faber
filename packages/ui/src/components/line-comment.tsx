@@ -1,4 +1,5 @@
 import { onMount, Show, splitProps, type JSX } from "solid-js"
+import { Popover } from "@kobalte/core/popover"
 import { Button } from "./button"
 import { Icon } from "./icon"
 import { useI18n } from "../context/i18n"
@@ -10,15 +11,19 @@ export type LineCommentAnchorProps = {
   top?: number
   open: boolean
   variant?: LineCommentVariant
+  onOpenChange?: (open: boolean) => void
   onClick?: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>
   onMouseEnter?: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>
-  onPopoverFocusOut?: JSX.EventHandlerUnion<HTMLDivElement, FocusEvent>
   class?: string
   popoverClass?: string
   children: JSX.Element
 }
 
 export const LineCommentAnchor = (props: LineCommentAnchorProps) => {
+  // The small marker button stays line-anchored via `top` (20px, never
+  // overflows). Only the card is a Kobalte popover: portaled out of the diff
+  // wrapper's overflow:hidden and reactively placed (flip/shift) against the
+  // button, so a narrow column can no longer push it over the code or clip it.
   const hidden = () => props.top === undefined
   const variant = () => props.variant ?? "default"
 
@@ -37,20 +42,36 @@ export const LineCommentAnchor = (props: LineCommentAnchorProps) => {
         "pointer-events": hidden() ? "none" : "auto",
       }}
     >
-      <button type="button" data-slot="line-comment-button" onClick={props.onClick} onMouseEnter={props.onMouseEnter}>
-        <Icon name="comment" size="small" />
-      </button>
-      <Show when={props.open}>
-        <div
-          data-slot="line-comment-popover"
-          classList={{
-            [props.popoverClass ?? ""]: !!props.popoverClass,
-          }}
-          onFocusOut={props.onPopoverFocusOut}
+      <Popover
+        open={props.open}
+        onOpenChange={props.onOpenChange}
+        placement="bottom-start"
+        gutter={6}
+        overflowPadding={12}
+        flip
+        modal={false}
+      >
+        <Popover.Anchor
+          as="button"
+          type="button"
+          data-slot="line-comment-button"
+          onClick={props.onClick}
+          onMouseEnter={props.onMouseEnter}
         >
-          {props.children}
-        </div>
-      </Show>
+          <Icon name="comment" size="small" />
+        </Popover.Anchor>
+        <Popover.Portal>
+          <Popover.Content
+            data-slot="line-comment-popover"
+            data-variant={variant()}
+            classList={{
+              [props.popoverClass ?? ""]: !!props.popoverClass,
+            }}
+          >
+            {props.children}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover>
     </div>
   )
 }
@@ -124,7 +145,15 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
   })
 
   return (
-    <LineCommentAnchor {...rest} open={true} variant="editor" onClick={() => focus()}>
+    <LineCommentAnchor
+      {...rest}
+      open={true}
+      variant="editor"
+      onClick={() => focus()}
+      onOpenChange={(open) => {
+        if (!open) split.onCancel()
+      }}
+    >
       <div data-slot="line-comment-editor">
         <textarea
           ref={(el) => {

@@ -15,6 +15,10 @@ export type FileSelection = {
   startChar: number
   endLine: number
   endChar: number
+  // "before" (old file) when the selection is on deleted lines, "after"
+  // (new file) otherwise. Kept as a fallback label when no diff snippet is
+  // computed (e.g. an unmodified file). Derived from the selection endpoint.
+  side?: "before" | "after"
 }
 
 export type SelectedLineRange = {
@@ -124,11 +128,13 @@ function unquoteGitPath(input: string) {
 export function selectionFromLines(range: SelectedLineRange): FileSelection {
   const startLine = Math.min(range.start, range.end)
   const endLine = Math.max(range.start, range.end)
+  const endpoint = range.endSide ?? range.side
   return {
     startLine,
     endLine,
     startChar: 0,
     endChar: 0,
+    side: endpoint === "deletions" ? "before" : "after",
   }
 }
 

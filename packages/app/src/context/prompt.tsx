@@ -45,6 +45,12 @@ export type FileContextItem = {
   commentID?: string
   commentOrigin?: "review" | "file"
   preview?: string
+  // Unified-diff snippet of the commented lines with exact old/new numbers and
+  // -/+ classification. Present only for comments on a modified file's diff.
+  snippet?: string
+  // The selection is deletion-only (old file), so a current-file attach at these
+  // line numbers would show the wrong content.
+  deletionOnly?: boolean
 }
 
 export type ContextItem = FileContextItem

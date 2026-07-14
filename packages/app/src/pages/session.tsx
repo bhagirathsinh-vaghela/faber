@@ -17,6 +17,7 @@ import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
 import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
+import { diffSnippet, isDeletionOnly, previewLines } from "@/context/diff-snippet"
 import { createStore } from "solid-js/store"
 import { PromptInput } from "@/components/prompt-input"
 import { QuestionPanel } from "@/components/question-panel"
@@ -33,6 +34,7 @@ import { RadioGroup } from "@opencode-ai/ui/radio-group"
 import { useCodeComponent } from "@opencode-ai/ui/context/code"
 import { useDiffComponent } from "@opencode-ai/ui/context/diff"
 import { LineComment as LineCommentView, LineCommentEditor } from "@opencode-ai/ui/line-comment"
+import { findMarker } from "@opencode-ai/ui/diff-marker"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { BasicTool } from "@opencode-ai/ui/basic-tool"
 import { SessionReview } from "@opencode-ai/ui/session-review"
@@ -858,7 +860,16 @@ export default function Page() {
     origin?: "review" | "file"
   }) => {
     const selection = selectionFromLines(input.selection)
-    const preview = input.preview ?? selectionPreview(input.file, selection)
+    const diff = diffs().find((d) => d.file === input.file)
+    const hasBodies = typeof diff?.before === "string" && typeof diff?.after === "string"
+    const snippet = hasBodies ? diffSnippet(diff!.before!, diff!.after!, input.selection) : undefined
+    const deletionOnly = snippet ? isDeletionOnly(input.selection) : undefined
+    // Preview from the correct side: a deletion selection indexes the old file,
+    // so slicing the current (new) file would show the wrong lines.
+    const side = deletionOnly ? diff!.before! : hasBodies ? diff!.after! : undefined
+    const preview =
+      input.preview ??
+      (side !== undefined ? previewLines(side, input.selection) : selectionPreview(input.file, selection))
     const saved = comments.add({
       file: input.file,
       selection: input.selection,
@@ -872,6 +883,8 @@ export default function Page() {
       commentID: saved.id,
       commentOrigin: input.origin,
       preview,
+      snippet,
+      deletionOnly,
     })
   }
 
@@ -3092,13 +3105,6 @@ export default function Page() {
                             return root
                           }
 
-                          const findMarker = (root: ShadowRoot, range: SelectedLineRange) => {
-                            const line = Math.max(range.start, range.end)
-                            const node = root.querySelector(`[data-line="${line}"]`)
-                            if (!(node instanceof HTMLElement)) return
-                            return node
-                          }
-
                           const markerTop = (wrapper: HTMLElement, marker: HTMLElement) => {
                             const wrapperRect = wrapper.getBoundingClientRect()
                             const rect = marker.getBoundingClientRect()
@@ -3212,6 +3218,9 @@ export default function Page() {
                                       setOpenedComment((current) => (current === comment.id ? null : comment.id))
                                       file.setSelectedLines(p, comment.selection)
                                     }}
+                                    onOpenChange={(open) => {
+                                      if (!open && openedComment() === comment.id) setOpenedComment(null)
+                                    }}
                                   />
                                 )}
                               </For>
@@ -3234,17 +3243,6 @@ export default function Page() {
                                           origin: "file",
                                         })
                                         setCommenting(null)
-                                      }}
-                                      onPopoverFocusOut={(e: FocusEvent) => {
-                                        const current = e.currentTarget as HTMLDivElement
-                                        const target = e.relatedTarget
-                                        if (target instanceof Node && current.contains(target)) return
-
-                                        setTimeout(() => {
-                                          if (!document.activeElement || !current.contains(document.activeElement)) {
-                                            dismissComment()
-                                          }
-                                        }, 0)
                                       }}
                                     />
                                   </Show>

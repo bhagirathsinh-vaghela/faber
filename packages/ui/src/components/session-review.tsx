@@ -5,6 +5,7 @@ import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { LineComment, LineCommentEditor } from "./line-comment"
+import { findMarker } from "./diff-marker"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { useDiffComponent } from "../context/diff"
 import { useI18n } from "../context/i18n"
@@ -130,37 +131,6 @@ function diffId(file: string): string | undefined {
 type SessionReviewSelection = {
   file: string
   range: SelectedLineRange
-}
-
-function findSide(element: HTMLElement): "additions" | "deletions" | undefined {
-  const typed = element.closest("[data-line-type]")
-  if (typed instanceof HTMLElement) {
-    const type = typed.dataset.lineType
-    if (type === "change-deletion") return "deletions"
-    if (type === "change-addition" || type === "change-additions") return "additions"
-  }
-
-  const code = element.closest("[data-code]")
-  if (!(code instanceof HTMLElement)) return
-  return code.hasAttribute("data-deletions") ? "deletions" : "additions"
-}
-
-function findMarker(root: ShadowRoot, range: SelectedLineRange) {
-  const marker = (line: number, side?: "additions" | "deletions") => {
-    const nodes = Array.from(root.querySelectorAll(`[data-line="${line}"], [data-alt-line="${line}"]`)).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement,
-    )
-    if (nodes.length === 0) return
-    if (!side) return nodes[0]
-    const match = nodes.find((node) => findSide(node) === side)
-    return match ?? nodes[0]
-  }
-
-  const a = marker(range.start, range.side)
-  const b = marker(range.end, range.endSide ?? range.side)
-  if (!a) return b
-  if (!b) return a
-  return a.getBoundingClientRect().top > b.getBoundingClientRect().top ? a : b
 }
 
 function markerTop(wrapper: HTMLElement, marker: HTMLElement) {
@@ -683,6 +653,9 @@ export const SessionReview = (props: SessionReviewProps) => {
                               openComment(comment)
                             }}
                             open={isCommentOpen(comment)}
+                            onOpenChange={(open) => {
+                              if (!open && isCommentOpen(comment)) setOpened(null)
+                            }}
                             comment={comment.comment}
                             selection={selectionLabel(comment.selection)}
                           />
@@ -706,17 +679,6 @@ export const SessionReview = (props: SessionReviewProps) => {
                                   preview: selectionPreview(diff, range()),
                                 })
                                 dismissComment()
-                              }}
-                              onPopoverFocusOut={(e: FocusEvent) => {
-                                const current = e.currentTarget as HTMLDivElement
-                                const target = e.relatedTarget
-                                if (target instanceof Node && current.contains(target)) return
-
-                                setTimeout(() => {
-                                  if (!document.activeElement || !current.contains(document.activeElement)) {
-                                    dismissComment()
-                                  }
-                                }, 0)
                               }}
                             />
                           </Show>

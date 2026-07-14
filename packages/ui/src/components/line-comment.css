@@ -33,33 +33,34 @@
   box-shadow: var(--shadow-xs-border-focus);
 }
 
-[data-component="line-comment"] [data-slot="line-comment-popover"] {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: -8px;
-  z-index: var(--line-comment-popover-z, 40);
+/* The card is a portaled Kobalte popover: floating-ui sets its position via
+   inline styles and clamps it to the viewport (overflowPadding), so it needs no
+   absolute/right/top here. It lives at the document root (portal), so it is
+   selected by data-slot directly, not by ancestry under the line-comment host. */
+[data-slot="line-comment-popover"] {
+  z-index: var(--line-comment-popover-z, 100);
   min-width: 200px;
-  max-width: min(320px, calc(100vw - 48px));
+  max-width: min(320px, calc(100vw - 24px));
   border-radius: 8px;
   background: var(--surface-raised-stronger-non-alpha);
   box-shadow: var(--shadow-lg-border-base);
   padding: 12px;
 }
 
-[data-component="line-comment"][data-variant="editor"] [data-slot="line-comment-popover"] {
+[data-slot="line-comment-popover"][data-variant="editor"] {
   width: 380px;
-  max-width: min(380px, calc(100vw - 48px));
+  max-width: min(380px, calc(100vw - 24px));
   padding: 8px;
   border-radius: 14px;
 }
 
-[data-component="line-comment"] [data-slot="line-comment-content"] {
+[data-slot="line-comment-popover"] [data-slot="line-comment-content"] {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-[data-component="line-comment"] [data-slot="line-comment-text"] {
+[data-slot="line-comment-popover"] [data-slot="line-comment-text"] {
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-regular);
@@ -69,8 +70,8 @@
   white-space: pre-wrap;
 }
 
-[data-component="line-comment"] [data-slot="line-comment-label"],
-[data-component="line-comment"] [data-slot="line-comment-editor-label"] {
+[data-slot="line-comment-popover"] [data-slot="line-comment-label"],
+[data-slot="line-comment-popover"] [data-slot="line-comment-editor-label"] {
   font-family: var(--font-family-sans);
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
@@ -80,13 +81,13 @@
   white-space: nowrap;
 }
 
-[data-component="line-comment"] [data-slot="line-comment-editor"] {
+[data-slot="line-comment-popover"] [data-slot="line-comment-editor"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-[data-component="line-comment"] [data-slot="line-comment-textarea"] {
+[data-slot="line-comment-popover"] [data-slot="line-comment-textarea"] {
   width: 100%;
   resize: vertical;
   padding: 8px;
@@ -99,17 +100,17 @@
   line-height: var(--line-height-large);
 }
 
-[data-component="line-comment"] [data-slot="line-comment-textarea"]:focus {
+[data-slot="line-comment-popover"] [data-slot="line-comment-textarea"]:focus {
   outline: none;
   box-shadow: var(--shadow-xs-border-select);
 }
 
-[data-component="line-comment"] [data-slot="line-comment-actions"] {
+[data-slot="line-comment-popover"] [data-slot="line-comment-actions"] {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-[data-component="line-comment"] [data-slot="line-comment-editor-label"] {
+[data-slot="line-comment-popover"] [data-slot="line-comment-editor-label"] {
   margin-right: auto;
 }
