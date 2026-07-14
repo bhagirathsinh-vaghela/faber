@@ -16,6 +16,7 @@ import { agentColor } from "@/utils/agent"
 import { createDictation, dictationActive } from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
+import { DictationPoolButton } from "@/components/dictation-pool-button"
 import { clonePrompt, usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
 
@@ -763,6 +764,7 @@ function Panel(props: {
                         <Icon name="keyboard" class="size-4.5" />
                       </Button>
                     </Show>
+                    <DictationPoolButton onInsert={acceptDictation} />
                     <Show when={dictation.supported()}>
                       <Button
                         type="button"

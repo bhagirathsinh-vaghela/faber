@@ -536,6 +536,107 @@
         ]
       }
     },
+    "/dictation/pool": {
+      "get": {
+        "operationId": "dictation.pool.list",
+        "summary": "List dictation pool entries",
+        "description": "Get the server-owned in-memory pool of transcripts captured from companion devices.",
+        "responses": {
+          "200": {
+            "description": "Pool entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DictationPoolEntry"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.pool.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "dictation.pool.append",
+        "summary": "Append a dictation pool entry",
+        "description": "Append a captured transcript to the server-owned dictation pool.",
+        "responses": {
+          "200": {
+            "description": "Entry appended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.pool.append({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/dictation/pool/{id}": {
+      "delete": {
+        "operationId": "dictation.pool.remove",
+        "summary": "Remove a dictation pool entry",
+        "description": "Remove a transcript from the server-owned dictation pool by id.",
+        "responses": {
+          "200": {
+            "description": "Entry removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.pool.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/auth/{providerID}": {
       "put": {
         "operationId": "auth.set",
@@ -12707,6 +12808,43 @@
           "properties"
         ]
       },
+      "DictationPoolEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "text", "timestamp"]
+      },
+      "Event.dictation.pool.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.pool.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DictationPoolEntry"
+                }
+              }
+            },
+            "required": ["entries"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event": {
         "anyOf": [
           {
@@ -12888,6 +13026,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.stash.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.dictation.pool.updated"
           }
         ]
       },

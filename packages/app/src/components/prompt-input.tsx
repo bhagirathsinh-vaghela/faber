@@ -58,6 +58,7 @@ import { Identifier } from "@/utils/id"
 import { createDictation } from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
+import { DictationPoolButton } from "@/components/dictation-pool-button"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
 import { PromptActionBar } from "@/components/prompt-actionbar"
@@ -2309,6 +2310,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
             />
             <div class="flex items-center gap-1 mr-1">
+              <Show when={store.mode === "normal"}>
+                <DictationPoolButton onInsert={insertDictation} />
+              </Show>
               <Show when={suppressKeyboard()}>
                 <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
                   <Button

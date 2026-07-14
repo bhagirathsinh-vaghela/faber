@@ -1234,6 +1234,19 @@ export type EventStashUpdated = {
   }
 }
 
+export type DictationPoolEntry = {
+  id: string
+  text: string
+  timestamp: number
+}
+
+export type EventDictationPoolUpdated = {
+  type: "dictation.pool.updated"
+  properties: {
+    entries: Array<DictationPoolEntry>
+  }
+}
+
 export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
@@ -1295,6 +1308,7 @@ export type Event =
   | EventThemePreferenceUpdated
   | EventThemePreferenceActiveUpdated
   | EventStashUpdated
+  | EventDictationPoolUpdated
 
 export type GlobalEvent = {
   directory: string
@@ -3012,6 +3026,58 @@ export type DictationConnectResponses = {
 }
 
 export type DictationConnectResponse = DictationConnectResponses[keyof DictationConnectResponses]
+
+export type DictationPoolListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/dictation/pool"
+}
+
+export type DictationPoolListResponses = {
+  /**
+   * Pool entries
+   */
+  200: Array<DictationPoolEntry>
+}
+
+export type DictationPoolListResponse = DictationPoolListResponses[keyof DictationPoolListResponses]
+
+export type DictationPoolAppendData = {
+  body?: {
+    text: string
+  }
+  path?: never
+  query?: never
+  url: "/dictation/pool"
+}
+
+export type DictationPoolAppendResponses = {
+  /**
+   * Entry appended
+   */
+  200: boolean
+}
+
+export type DictationPoolAppendResponse = DictationPoolAppendResponses[keyof DictationPoolAppendResponses]
+
+export type DictationPoolRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/dictation/pool/{id}"
+}
+
+export type DictationPoolRemoveResponses = {
+  /**
+   * Entry removed
+   */
+  200: boolean
+}
+
+export type DictationPoolRemoveResponse = DictationPoolRemoveResponses[keyof DictationPoolRemoveResponses]
 
 export type AuthRemoveData = {
   body?: never

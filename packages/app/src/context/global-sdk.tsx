@@ -68,7 +68,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (nextDelta === undefined) return { keep: next, drop: true }
       if (prevDelta === undefined) return { keep: next, drop: false }
       return {
-        keep: { directory: next.directory, payload: { ...b, properties: { ...b.properties, delta: prevDelta + nextDelta } } },
+        keep: {
+          directory: next.directory,
+          payload: { ...b, properties: { ...b.properties, delta: prevDelta + nextDelta } },
+        },
         drop: true,
       }
     }

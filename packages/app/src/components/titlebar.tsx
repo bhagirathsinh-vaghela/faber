@@ -329,6 +329,17 @@ export function Titlebar() {
         }}
         onMouseDown={drag}
       >
+        <Show when={onHome()}>
+          <div class="xl:hidden shrink-0 flex items-center justify-center">
+            <IconButton
+              icon="mic"
+              variant="primary"
+              class="size-8 rounded-full"
+              onClick={() => navigate("/companion")}
+              aria-label={language.t("companion.open")}
+            />
+          </div>
+        </Show>
         <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end" />
         <Show when={windows()}>
           <div class="w-6 shrink-0" />

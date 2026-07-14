@@ -44,6 +44,7 @@ import { Suspense } from "solid-js"
 // transcript can't paint until this chunk is loaded
 const sessionChunk = () => import("@/pages/session")
 const Home = lazy(() => import("@/pages/home"))
+const Companion = lazy(() => import("@/pages/companion"))
 const Session = lazy(sessionChunk)
 sessionChunk()
 const Loading = () => <div class="size-full" />
@@ -185,6 +186,14 @@ export function AppInterface(props: { defaultUrl?: string }) {
                 component={() => (
                   <Suspense fallback={<Loading />}>
                     <Home />
+                  </Suspense>
+                )}
+              />
+              <Route
+                path="/companion"
+                component={() => (
+                  <Suspense fallback={<Loading />}>
+                    <Companion />
                   </Suspense>
                 )}
               />

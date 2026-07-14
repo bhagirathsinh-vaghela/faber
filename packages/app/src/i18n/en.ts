@@ -244,6 +244,15 @@ export const dict = {
   "dictation.discard": "Discard",
   "dictation.stashed.title": "Dictation saved",
   "dictation.stashed.description": "The transcript was added to the end of your prompt draft.",
+  "dictation.pool.button": "Insert dictation",
+  "dictation.pool.empty": "No dictation waiting.",
+
+  "companion.open": "Companion dictation",
+  "companion.title": "Companion dictation",
+  "companion.hint": "Tap the mic and speak. Your transcript goes to a shared pool any session can pull from.",
+  "companion.unsupported": "This device can't record audio.",
+  "companion.toast.sent.title": "Sent to pool",
+  "companion.toast.sendFailed.title": "Couldn't send dictation",
 
   "prompt.toast.pasteUnsupported.title": "Unsupported paste",
   "prompt.toast.pasteUnsupported.description": "Only images or PDFs can be pasted here.",

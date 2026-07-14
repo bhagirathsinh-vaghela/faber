@@ -39,6 +39,9 @@ import type {
   ConfigUpdateErrors,
   ConfigUpdateResponses,
   DictationConnectResponses,
+  DictationPoolAppendResponses,
+  DictationPoolListResponses,
+  DictationPoolRemoveResponses,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -532,6 +535,63 @@ export class Global extends HeyApiClient {
   }
 }
 
+export class Pool extends HeyApiClient {
+  /**
+   * List dictation pool entries
+   *
+   * Get the server-owned in-memory pool of transcripts captured from companion devices.
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<DictationPoolListResponses, unknown, ThrowOnError>({
+      url: "/dictation/pool",
+      ...options,
+    })
+  }
+
+  /**
+   * Append a dictation pool entry
+   *
+   * Append a captured transcript to the server-owned dictation pool.
+   */
+  public append<ThrowOnError extends boolean = false>(
+    parameters?: {
+      text?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "text" }] }])
+    return (options?.client ?? this.client).post<DictationPoolAppendResponses, unknown, ThrowOnError>({
+      url: "/dictation/pool",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a dictation pool entry
+   *
+   * Remove a transcript from the server-owned dictation pool by id.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).delete<DictationPoolRemoveResponses, unknown, ThrowOnError>({
+      url: "/dictation/pool/{id}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Dictation extends HeyApiClient {
   /**
    * Connect dictation stream
@@ -543,6 +603,11 @@ export class Dictation extends HeyApiClient {
       url: "/dictation/connect",
       ...options,
     })
+  }
+
+  private _pool?: Pool
+  get pool(): Pool {
+    return (this._pool ??= new Pool({ client: this.client }))
   }
 }
 

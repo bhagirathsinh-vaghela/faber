@@ -11,6 +11,7 @@ import {
   type SessionStatus,
   type ModelPreference,
   type StashEntry,
+  type DictationPoolEntry,
   type ProviderListResponse,
   type ProviderAuthResponse,
   type Command,
@@ -222,6 +223,10 @@ function createGlobalSync() {
     config: Config
     model_preference: ModelPreference
     stash: StashEntry[]
+    // Global in-memory dictation pool (transcripts from companion devices),
+    // streamed via dictation.pool.updated. Not directory-scoped like stash, so
+    // it lives only on the global store, not the per-directory child stores.
+    pool: DictationPoolEntry[]
     reload: undefined | "pending" | "complete"
     // The complete home overview, server-owned so every client renders the same
     // list without opening any directory. Seeded once at bootstrap, then replaced
@@ -253,6 +258,7 @@ function createGlobalSync() {
     config: {},
     model_preference: { user: [], recent: [], variant: {} },
     stash: [],
+    pool: [],
     reload: undefined,
     recent_hub: [],
     open_projects: [],
@@ -277,8 +283,9 @@ function createGlobalSync() {
   // per-directory bootstrap off the boot moment so a deep-linked session's tail
   // fetch isn't contending with ~17 sidebar/status requests for the connection
   // pool.
-  const scheduler = (globalThis as { scheduler?: { postTask?: (cb: () => void, opts?: { priority?: string }) => void } })
-    .scheduler
+  const scheduler = (
+    globalThis as { scheduler?: { postTask?: (cb: () => void, opts?: { priority?: string }) => void } }
+  ).scheduler
   const idle = (fn: () => void) => {
     if (scheduler?.postTask) return scheduler.postTask(fn, { priority: "background" })
     setTimeout(fn, 0)
@@ -919,6 +926,10 @@ function createGlobalSync() {
             set("stash", reconcile(event.properties.entries, { key: "timestamp" }))
           return
         }
+        case "dictation.pool.updated": {
+          setGlobalStore("pool", reconcile(event.properties.entries, { key: "id" }))
+          return
+        }
         case "recent.updated": {
           setGlobalStore("recent_hub", reconcile(event.properties.entries, { key: "sessionID" }))
           // Feed the one operative busy store from the aggregated hub channel:
@@ -1194,7 +1205,10 @@ function createGlobalSync() {
               result.index,
               produce((p) => {
                 if (p.type === "tool" && p.state.status === "running")
-                  p.state.metadata = { ...p.state.metadata, output: capOutput((p.state.metadata?.output ?? "") + toolDelta) }
+                  p.state.metadata = {
+                    ...p.state.metadata,
+                    output: capOutput((p.state.metadata?.output ?? "") + toolDelta),
+                  }
               }),
             )
             break
@@ -1420,6 +1434,11 @@ function createGlobalSync() {
       retry(() =>
         globalSDK.client.preference.stash.list().then((x) => {
           setGlobalStore("stash", x.data ?? [])
+        }),
+      ),
+      retry(() =>
+        globalSDK.client.dictation.pool.list().then((x) => {
+          setGlobalStore("pool", x.data ?? [])
         }),
       ),
     ]
