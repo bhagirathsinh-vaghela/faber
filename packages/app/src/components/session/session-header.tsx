@@ -113,7 +113,7 @@ export function SessionHeader() {
             <div class="flex items-center gap-3">
               <StatusPopover />
               <Show when={currentSession()}>
-                <div class="hidden md:flex items-center ml-2 shrink-0 gap-1">
+                <div class="flex items-center ml-2 shrink-0 gap-1">
                   <Tooltip
                     value={
                       currentSession()?.keepWarm
@@ -148,7 +148,7 @@ export function SessionHeader() {
                   </Tooltip>
                 </div>
               </Show>
-              <div class="hidden md:flex items-center gap-3 ml-2 shrink-0">
+              <div class="flex items-center gap-3 ml-2 shrink-0">
                 <TooltipKeybind
                   title={language.t("command.terminal.toggle")}
                   keybind={command.keybind("terminal.toggle")}
@@ -181,7 +181,7 @@ export function SessionHeader() {
                   </Button>
                 </TooltipKeybind>
               </div>
-              <div class="hidden md:block shrink-0">
+              <div class="block shrink-0">
                 <TooltipKeybind title={language.t("command.review.toggle")} keybind={command.keybind("review.toggle")}>
                   <Button
                     variant="ghost"

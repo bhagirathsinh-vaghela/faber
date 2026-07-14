@@ -2214,21 +2214,23 @@ export default function Page() {
                     value="session"
                     classes={{ button: "px-3" }}
                     onClick={() => setStore("mobileTab", "session")}
+                    aria-label={language.t("session.tab.session")}
                   >
-                    {language.t("session.tab.session")}
+                    <Icon name="comment" size="small" />
                   </Tabs.Trigger>
                   <Tabs.Trigger
                     value="changes"
                     class="!border-r-0"
                     classes={{ button: "px-3" }}
                     onClick={() => setStore("mobileTab", "changes")}
+                    aria-label={language.t("session.review.filesChanged", { count: reviewCount() })}
                   >
-                    <Switch>
-                      <Match when={hasReview()}>
-                        {language.t("session.review.filesChanged", { count: reviewCount() })}
-                      </Match>
-                      <Match when={true}>{language.t("session.review.change.other")}</Match>
-                    </Switch>
+                    <span class="flex items-center gap-1.5">
+                      <Icon name="branch" size="small" />
+                      <Show when={hasReview()}>
+                        <span class="text-12-medium">{reviewCount()}</span>
+                      </Show>
+                    </span>
                   </Tabs.Trigger>
                 </Tabs.List>
               </Tabs>
