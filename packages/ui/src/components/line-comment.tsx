@@ -129,6 +129,7 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
 
   const refs = {
     textarea: undefined as HTMLTextAreaElement | undefined,
+    editor: undefined as HTMLDivElement | undefined,
   }
 
   const focus = () => refs.textarea?.focus()
@@ -137,6 +138,17 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
     const value = split.value.trim()
     if (!value) return
     split.onSubmit(value)
+  }
+
+  // A draft only survives while it is being composed. The moment focus leaves
+  // the editor without a submit (click into the diff, scroll away, focus
+  // elsewhere), drop it so the highlight and marker never linger unposted.
+  // A blur into the editor's own buttons (Cancel/Submit) stays: their click
+  // handlers own the outcome.
+  const dismissOnBlur = (e: FocusEvent) => {
+    const next = e.relatedTarget
+    if (next instanceof Node && refs.editor?.contains(next)) return
+    split.onCancel()
   }
 
   onMount(() => {
@@ -154,7 +166,12 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
         if (!open) split.onCancel()
       }}
     >
-      <div data-slot="line-comment-editor">
+      <div
+        data-slot="line-comment-editor"
+        ref={(el) => {
+          refs.editor = el
+        }}
+      >
         <textarea
           ref={(el) => {
             refs.textarea = el
@@ -164,6 +181,7 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
           placeholder={split.placeholder ?? i18n.t("ui.lineComment.placeholder")}
           value={split.value}
           onInput={(e) => split.onInput(e.currentTarget.value)}
+          onBlur={dismissOnBlur}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.preventDefault()
