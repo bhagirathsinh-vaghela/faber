@@ -2302,10 +2302,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               ref={fileInputRef}
               type="file"
               accept={ACCEPTED_FILE_TYPES.join(",")}
+              multiple
               class="hidden"
               onChange={(e) => {
-                const file = e.currentTarget.files?.[0]
-                if (file) addImageAttachment(file)
+                for (const file of Array.from(e.currentTarget.files ?? [])) addImageAttachment(file)
                 e.currentTarget.value = ""
               }}
             />
