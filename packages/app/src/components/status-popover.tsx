@@ -14,7 +14,11 @@ import { showToast } from "@opencode-ai/ui/toast"
 
 type ServerStatus = { healthy: boolean; version?: string; host?: string }
 
-async function checkHealth(url: string, platform: ReturnType<typeof usePlatform>): Promise<ServerStatus> {
+async function checkHealth(
+  url: string,
+  platform: ReturnType<typeof usePlatform>,
+  lastHost?: string,
+): Promise<ServerStatus> {
   const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(3000)
   const sdk = createOpencodeClient({
     baseUrl: url,
@@ -24,7 +28,7 @@ async function checkHealth(url: string, platform: ReturnType<typeof usePlatform>
   return sdk.global
     .health()
     .then((x) => ({ healthy: x.data?.healthy === true, version: x.data?.version, host: x.data?.host }))
-    .catch(() => ({ healthy: false }))
+    .catch(() => ({ healthy: false, host: lastHost }))
 }
 
 export function StatusPopover() {
@@ -45,7 +49,7 @@ export function StatusPopover() {
   async function refreshHealth() {
     const url = server.url
     if (!url) return
-    setStore("status", reconcile({ [url]: await checkHealth(url, platform) }))
+    setStore("status", reconcile({ [url]: await checkHealth(url, platform, store.status[url]?.host) }))
   }
 
   createEffect(() => {
