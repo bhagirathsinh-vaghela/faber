@@ -8,6 +8,16 @@
   --sar: env(safe-area-inset-right);
   --sab: env(safe-area-inset-bottom);
   --sal: env(safe-area-inset-left);
+  /* Right-edge gutter occupied by the PWA window-controls-overlay (the floating
+     minimize/maximize/close cluster). It is the strip between the right end of
+     the draggable titlebar area and the window's right edge:
+     100vw - (titlebar-area-x + titlebar-area-width). In a normal browser the
+     env() vars fall back (x=0, width=100%), so this resolves to 0px and reserves
+     nothing. Content that would otherwise flow under the controls (e.g. the zen
+     collapsed-prompt bar, where the titlebar is display:none) reserves this on
+     its right edge instead of fighting a z-index it can never win — the controls
+     are OS-composited, outside the document stack. */
+  --wco-inset-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
 }
 
 /* Box-defaults matrix: the shared Checkbox's checked state (faint --surface-weak

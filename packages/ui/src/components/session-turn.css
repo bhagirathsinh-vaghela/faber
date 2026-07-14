@@ -150,11 +150,13 @@
     }
 
     /* Actions row carries only the chevron now; pin it to the box's right edge,
-       vertically centered on the one-line bar. */
+       vertically centered on the one-line bar. --wco-inset-right pushes it in by
+       the PWA window-controls-overlay gutter so the chevron never sits under the
+       OS-painted minimize/maximize/close cluster (0px in a normal browser). */
     [data-slot="message-box-actions"] {
       position: absolute;
       top: 50%;
-      right: 0.75rem;
+      right: calc(0.75rem + var(--wco-inset-right, 0px));
       transform: translateY(-50%);
       z-index: 2;
     }
@@ -191,8 +193,9 @@
       gap: 6px;
       overflow: hidden;
       /* Clear the chevron pill pinned at right:0.75rem (~26px wide) so the
-         one-line text never runs underneath it. */
-      padding-right: 44px;
+         one-line text never runs underneath it. Add the WCO gutter so the text
+         also stops before the OS window controls (0px outside a PWA). */
+      padding-right: calc(44px + var(--wco-inset-right, 0px));
     }
 
     /* Text clamps to a single line. Covers user prompts and task-result bodies. */
