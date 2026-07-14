@@ -40,7 +40,6 @@ export default function FileTree(props: {
 
   _filter?: Filter
   _marks?: Set<string>
-  _deeps?: Map<string, number>
   _kinds?: ReadonlyMap<string, Kind>
 }) {
   const file = useFile()
@@ -82,31 +81,6 @@ export default function FileTree(props: {
   const kinds = createMemo(() => {
     if (props._kinds) return props._kinds
     return props.kinds
-  })
-
-  const deeps = createMemo(() => {
-    if (props._deeps) return props._deeps
-
-    const out = new Map<string, number>()
-
-    const visit = (dir: string, lvl: number): number => {
-      const expanded = file.tree.state(dir)?.expanded ?? false
-      if (!expanded) return -1
-
-      const nodes = file.tree.children(dir)
-      const max = nodes.reduce((max, node) => {
-        if (node.type !== "directory") return max
-        const open = file.tree.state(node.path)?.expanded ?? false
-        if (!open) return max
-        return Math.max(max, visit(node.path, lvl + 1))
-      }, lvl)
-
-      out.set(dir, max)
-      return max
-    }
-
-    visit(props.path, level - 1)
-    return out
   })
 
   // Auto-expand a changed directory once, the first time it appears in the
@@ -305,7 +279,6 @@ export default function FileTree(props: {
       <For each={nodes()}>
         {(node) => {
           const expanded = () => file.tree.state(node.path)?.expanded ?? false
-          const deep = () => deeps().get(node.path) ?? -1
           const Wrapper = (p: ParentProps) => {
             if (!tooltip()) return p.children
 
@@ -384,11 +357,7 @@ export default function FileTree(props: {
                   </Collapsible.Trigger>
                   <Collapsible.Content class="relative pt-0.5">
                     <div
-                      classList={{
-                        "absolute top-0 bottom-0 w-px pointer-events-none bg-border-weak-base opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none": true,
-                        "group-hover/filetree:opacity-100": expanded() && deep() === level,
-                        "group-hover/filetree:opacity-50": !(expanded() && deep() === level),
-                      }}
+                      class="absolute top-0 bottom-0 w-px pointer-events-none bg-border-weak-base opacity-0 group-hover/filetree:opacity-100 transition-opacity duration-150 ease-out motion-reduce:transition-none"
                       style={`left: ${Math.max(0, 8 + level * 12 - 4) + 8}px`}
                     />
                     <FileTree
@@ -403,7 +372,6 @@ export default function FileTree(props: {
                       onFileClick={props.onFileClick}
                       _filter={filter()}
                       _marks={marks()}
-                      _deeps={deeps()}
                       _kinds={kinds()}
                     />
                   </Collapsible.Content>
