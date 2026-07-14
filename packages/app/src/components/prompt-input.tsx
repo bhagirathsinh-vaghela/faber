@@ -2434,7 +2434,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           >
             <div class="border-t border-border-weak-base px-3 py-0 md:py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
               <Statusline />
-              <div class="flex flex-row flex-wrap items-center gap-1.5">
+              <div class="flex flex-row flex-wrap items-center gap-1.5 ml-auto">
                 <PromptActionBar />
                 <Tooltip value={language.t("dock.hide")} placement="top" gutter={8}>
                   <IconButton
