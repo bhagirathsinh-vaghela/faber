@@ -192,7 +192,15 @@ export const SessionReview = (props: SessionReviewProps) => {
   // store can never shadow a controlled value: when props.open is provided it
   // is the sole authority, otherwise the internal store is.
   const controlled = () => props.open !== undefined
-  const open = () => (controlled() ? props.open! : (store.open ?? fallback()))
+  const raw = () => (controlled() ? props.open! : (store.open ?? fallback()))
+  // Reconcile the open set against the live file list. While a turn is busy the
+  // diff list grows/shrinks, but the persisted open set is a snapshot — without
+  // this intersection stale paths inflate the count so the collapse/expand
+  // label desyncs from what the accordion actually shows.
+  const open = createMemo(() => {
+    const files = new Set(props.diffs.map((d) => d.file))
+    return raw().filter((file) => files.has(file))
+  })
   const diffStyle = () => props.diffStyle ?? (props.split ? "split" : "unified")
 
   const handleChange = (open: string[]) => {
@@ -200,9 +208,12 @@ export const SessionReview = (props: SessionReviewProps) => {
     if (!controlled()) setStore("open", open)
   }
 
+  // Expand-all is "not everything is open" → open every current file; otherwise
+  // collapse. Comparing against the live file count (not just length > 0) keeps
+  // the button correct when new files stream in mid-review.
+  const allOpen = () => open().length === props.diffs.length && props.diffs.length > 0
   const handleExpandOrCollapseAll = () => {
-    const next = open().length > 0 ? [] : props.diffs.map((d) => d.file)
-    handleChange(next)
+    handleChange(allOpen() ? [] : props.diffs.map((d) => d.file))
   }
 
   // lazy-load each file's diff bodies the first time its accordion item opens.
