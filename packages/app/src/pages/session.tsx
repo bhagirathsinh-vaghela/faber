@@ -29,7 +29,9 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Tabs } from "@opencode-ai/ui/tabs"
+import { RadioGroup } from "@opencode-ai/ui/radio-group"
 import { useCodeComponent } from "@opencode-ai/ui/context/code"
+import { useDiffComponent } from "@opencode-ai/ui/context/diff"
 import { LineComment as LineCommentView, LineCommentEditor } from "@opencode-ai/ui/line-comment"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { BasicTool } from "@opencode-ai/ui/basic-tool"
@@ -261,6 +263,7 @@ export default function Page() {
   const terminal = useTerminal()
   const dialog = useDialog()
   const codeComponent = useCodeComponent()
+  const diffComponent = useDiffComponent()
   const command = useCommand()
   const language = useLanguage()
   const params = useParams()
@@ -2922,6 +2925,32 @@ export default function Page() {
                             if (!p) return
                             return file.get(p)
                           })
+
+                          // Modified files render as a diff (GitHub-style) by
+                          // default, with a toggle to the raw file. Reuses the
+                          // same per-file diff data as the review panel.
+                          const diff = createMemo(() => {
+                            const p = path()
+                            if (!p) return
+                            return diffs().find((d) => d.file === p)
+                          })
+                          const isModified = () => diff() !== undefined
+                          const [viewMode, setViewMode] = createSignal<"diff" | "raw">("diff")
+                          const showDiff = () => isModified() && viewMode() === "diff"
+                          const diffReady = () =>
+                            typeof diff()?.before === "string" || typeof diff()?.after === "string"
+
+                          // Lazily fetch this file's before/after the first time
+                          // its diff view is shown (dedup + cache in diffFile).
+                          createEffect(() => {
+                            if (!showDiff()) return
+                            if (diffReady()) return
+                            const id = params.id
+                            const p = path()
+                            if (!id || !p) return
+                            void sync.session.diffFile(id, p)
+                          })
+
                           const contents = createMemo(() => state()?.content?.content ?? "")
                           const cacheKey = createMemo(() => checksum(contents()))
                           const isImage = createMemo(() => {
@@ -3126,7 +3155,11 @@ export default function Page() {
                             requestAnimationFrame(() => comments.clearFocus())
                           })
 
-                          const renderCode = (source: string, wrapperClass: string) => (
+                          // Shared shell for both the raw code viewer and the
+                          // diff viewer. Both mount a `diffs-container` shadow
+                          // root, so the comment overlay/anchor machinery below
+                          // is identical; only the inner renderer differs.
+                          const renderViewer = (inner: JSX.Element, wrapperClass: string) => (
                             <div
                               ref={(el) => {
                                 wrap = el
@@ -3134,38 +3167,7 @@ export default function Page() {
                               }}
                               class={`relative overflow-hidden ${wrapperClass}`}
                             >
-                              <Dynamic
-                                component={codeComponent}
-                                file={{
-                                  name: path() ?? "",
-                                  contents: source,
-                                  cacheKey: cacheKey(),
-                                }}
-                                enableLineSelection
-                                selectedLines={selectedLines()}
-                                commentedLines={commentedLines()}
-                                onRendered={() => {
-                                  requestAnimationFrame(restoreScroll)
-                                  requestAnimationFrame(scheduleComments)
-                                }}
-                                onLineSelected={(range: SelectedLineRange | null) => {
-                                  const p = path()
-                                  if (!p) return
-                                  file.setSelectedLines(p, range)
-                                  if (!range) setCommenting(null)
-                                }}
-                                onLineSelectionEnd={(range: SelectedLineRange | null) => {
-                                  if (!range) {
-                                    setCommenting(null)
-                                    return
-                                  }
-
-                                  setOpenedComment(null)
-                                  setCommenting(range)
-                                }}
-                                overflow="scroll"
-                                class="select-text"
-                              />
+                              {inner}
                               <For each={fileComments()}>
                                 {(comment) => (
                                   <LineCommentView
@@ -3226,6 +3228,61 @@ export default function Page() {
                               </Show>
                             </div>
                           )
+
+                          const onLineSelected = (range: SelectedLineRange | null) => {
+                            const p = path()
+                            if (!p) return
+                            file.setSelectedLines(p, range)
+                            if (!range) setCommenting(null)
+                          }
+                          const onLineSelectionEnd = (range: SelectedLineRange | null) => {
+                            if (!range) {
+                              setCommenting(null)
+                              return
+                            }
+                            setOpenedComment(null)
+                            setCommenting(range)
+                          }
+                          const onViewerRendered = () => {
+                            requestAnimationFrame(restoreScroll)
+                            requestAnimationFrame(scheduleComments)
+                          }
+
+                          const renderCode = (source: string, wrapperClass: string) =>
+                            renderViewer(
+                              <Dynamic
+                                component={codeComponent}
+                                file={{ name: path() ?? "", contents: source, cacheKey: cacheKey() }}
+                                enableLineSelection
+                                selectedLines={selectedLines()}
+                                commentedLines={commentedLines()}
+                                onRendered={onViewerRendered}
+                                onLineSelected={onLineSelected}
+                                onLineSelectionEnd={onLineSelectionEnd}
+                                overflow="scroll"
+                                class="select-text"
+                              />,
+                              wrapperClass,
+                            )
+
+                          // Same shell as renderCode but drives the pierre diff
+                          // renderer with this file's before/after.
+                          const renderDiff = (wrapperClass: string) =>
+                            renderViewer(
+                              <Dynamic
+                                component={diffComponent}
+                                before={{ name: path() ?? "", contents: diff()?.before ?? "" }}
+                                after={{ name: path() ?? "", contents: diff()?.after ?? "" }}
+                                diffStyle={layout.review.diffStyle()}
+                                enableLineSelection
+                                selectedLines={selectedLines()}
+                                commentedLines={commentedLines()}
+                                onRendered={onViewerRendered}
+                                onLineSelected={onLineSelected}
+                                onLineSelectionEnd={onLineSelectionEnd}
+                              />,
+                              wrapperClass,
+                            )
 
                           const getCodeScroll = () => {
                             const el = scroll
@@ -3368,7 +3425,21 @@ export default function Page() {
                               }}
                               onScroll={handleScroll}
                             >
+                              <Show when={state()?.loaded && isModified()}>
+                                <div class="absolute right-4 top-2 z-10">
+                                  <RadioGroup
+                                    options={["diff", "raw"] as const}
+                                    current={viewMode()}
+                                    value={(mode) => mode}
+                                    label={(mode) => (mode === "diff" ? "Diff" : "Raw")}
+                                    onSelect={(mode) => mode && setViewMode(mode)}
+                                  />
+                                </div>
+                              </Show>
                               <Switch>
+                                <Match when={state()?.loaded && showDiff() && diffReady()}>
+                                  {renderDiff("pb-40")}
+                                </Match>
                                 <Match when={state()?.loaded && isImage()}>
                                   <div class="px-6 py-4 pb-40">
                                     <img
