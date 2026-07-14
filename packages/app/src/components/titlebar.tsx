@@ -28,13 +28,7 @@ export function Titlebar() {
     navigate("/")
   }
 
-  // The overview is already the home page's inline content, so opening the
-  // dialog on top of it would just duplicate the list.
   const onHome = () => location.pathname === "/"
-  const openOverview = () => {
-    if (onHome()) return
-    command.trigger("overview.open")
-  }
 
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
@@ -210,17 +204,6 @@ export function Titlebar() {
             aria-label={language.t("common.home")}
           />
         </div>
-        <Show when={!onHome()}>
-          <div class="xl:hidden shrink-0 flex items-center justify-center">
-            <IconButton
-              icon="bullet-list"
-              variant="ghost"
-              class="size-8 rounded-md"
-              onClick={openOverview}
-              aria-label={language.t("home.title")}
-            />
-          </div>
-        </Show>
         <div
           class="xl:hidden shrink-0 flex items-center justify-center"
           classList={{ "w-10": mac(), "w-[48px]": !mac() }}
@@ -248,22 +231,6 @@ export function Titlebar() {
               aria-label={language.t("common.home")}
             />
           </Tooltip>
-          <Show when={!onHome()}>
-            <Tooltip
-              class="hidden xl:flex shrink-0"
-              placement="bottom"
-              value={language.t("home.title")}
-              openDelay={2000}
-            >
-              <Button
-                variant="ghost"
-                icon="bullet-list"
-                class="size-6 p-0"
-                onClick={openOverview}
-                aria-label={language.t("home.title")}
-              />
-            </Tooltip>
-          </Show>
           <TooltipKeybind
             class="hidden xl:flex shrink-0"
             placement="bottom"
