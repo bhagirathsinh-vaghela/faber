@@ -50,15 +50,17 @@ export function Tooltip(props: TooltipProps) {
   const c = children(() => local.children)
 
   // Touch long-press support: mobile browsers have no hover, so a tooltip would
-  // otherwise never appear. We open it after a ~500ms press and close it on the
-  // next touch anywhere. The timer is armed only on touchstart, so desktop hover
-  // is untouched. touchmove/touchend/touchcancel before the threshold cancel it
-  // (a scroll or quick tap is not a long-press).
+  // otherwise never appear. We open it after a ~1500ms press (Material's value)
+  // and close it on the next touch anywhere. The timer is armed only on
+  // touchstart, so desktop hover is untouched. touchmove/touchend/touchcancel
+  // before the threshold cancel it (a scroll or quick tap is not a long-press).
+  //
+  // We deliberately DO NOT swallow the tap's click. Matching Material and native
+  // icon-button behavior, a tap always activates the button on the first try;
+  // long-press only reveals the tooltip. A held tap that crosses the threshold
+  // both shows the tooltip and (on release) fires the button — the accepted
+  // trade for never eating a first tap.
   let pressTimer: ReturnType<typeof setTimeout> | undefined
-  // True once a press crosses the long-press threshold, so the synthesized
-  // click that fires on touchend can be swallowed — a deliberate long-press
-  // shows the tooltip only, it must NOT activate the button underneath.
-  let longPressed = false
   const cancelPress = () => {
     if (pressTimer === undefined) return
     clearTimeout(pressTimer)
@@ -66,12 +68,21 @@ export function Tooltip(props: TooltipProps) {
   }
   const startPress = () => {
     cancelPress()
-    longPressed = false
     pressTimer = setTimeout(() => {
-      longPressed = true
       setPinned(true)
       setOpen(true)
-    }, 500)
+    }, 1500)
+  }
+  // On release (lift, slide-off, or cancel): drop the pending timer AND close an
+  // already-shown tooltip. Matching Material — the tooltip lives only while the
+  // finger is down. Without this, holding to show then lifting (or sliding the
+  // finger off the button) would leave the tooltip stuck open until a tap
+  // elsewhere. Sliding off before touchend fires no synthesized click, so the
+  // button correctly does not activate — only the tooltip needs closing.
+  const endPress = () => {
+    cancelPress()
+    setPinned(false)
+    setOpen(false)
   }
 
   onMount(() => {
@@ -92,22 +103,11 @@ export function Tooltip(props: TooltipProps) {
       el.addEventListener("focusin", () => setOpen(true))
       el.addEventListener("focusout", () => setOpen(false))
       el.addEventListener("touchstart", startPress, { passive: true })
-      el.addEventListener("touchend", cancelPress, { passive: true })
+      el.addEventListener("touchend", endPress, { passive: true })
+      // A slide before the tooltip opens is a scroll, not a long-press — cancel
+      // the pending timer but don't force-close (it isn't open yet).
       el.addEventListener("touchmove", cancelPress, { passive: true })
-      el.addEventListener("touchcancel", cancelPress, { passive: true })
-      // Swallow the synthesized click after a long-press so the button under
-      // the trigger does not activate. Capture phase runs before the button's
-      // own handler. Reset the flag so the next normal tap clicks through.
-      el.addEventListener(
-        "click",
-        (e) => {
-          if (!longPressed) return
-          e.stopPropagation()
-          e.preventDefault()
-          longPressed = false
-        },
-        true,
-      )
+      el.addEventListener("touchcancel", endPress, { passive: true })
     }
     if (childElements instanceof HTMLElement) arm(childElements)
     else if (Array.isArray(childElements))
