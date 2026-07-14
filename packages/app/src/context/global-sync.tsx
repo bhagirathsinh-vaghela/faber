@@ -1213,6 +1213,20 @@ function createGlobalSync() {
             )
             break
           }
+          // Streamed text only ever grows. A full-snapshot part carrying text
+          // shorter than what deltas already appended is behind the stream
+          // (mid-stream timing or coalescer ordering); taking it would blank the
+          // block for a frame until the next delta rebuilds it. Keep the longer
+          // text, reconcile the rest of the fields.
+          const held = parts[result.index]
+          if (
+            (part.type === "text" || part.type === "reasoning") &&
+            (held.type === "text" || held.type === "reasoning") &&
+            part.text.length < held.text.length
+          ) {
+            setStore("part", part.messageID, result.index, reconcile({ ...part, text: held.text }, { merge: true }))
+            break
+          }
           setStore("part", part.messageID, result.index, reconcile(part, { merge: true }))
           break
         }
