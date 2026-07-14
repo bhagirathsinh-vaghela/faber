@@ -2076,7 +2076,12 @@ export default function Page() {
   // changes, and window resize.
   const [dockRect, setDockRect] = createSignal<{ right: number; top: number } | null>(null)
   const measureDock = () => {
-    const el = promptInner
+    // Anchor to the input box itself, not promptInner (the dock content column).
+    // promptInner stacks the question panel, permission prompt, and busy bar
+    // ABOVE the input, so its top edge rises when any of those appear and the
+    // pill would ride up with it. In the slim zen dock that also lands the pill
+    // on top of the submit/stop button. The input box's top edge is stable.
+    const el = inputRef
     if (!el) return
     const r = el.getBoundingClientRect()
     if (r.width === 0) return
@@ -2114,9 +2119,10 @@ export default function Page() {
   })
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
-  // Gap between the pill and the input box's top edge — the pill hovers fully
-  // above the border, never overlapping it.
-  const PILL_GAP = 6
+  // Gap between the pill and the input box's top edge. Kept large enough that
+  // the pill clears the submit/stop button's tap zone at the box's right edge,
+  // so a tap on the pill never lands on the stop button (and vice versa).
+  const PILL_GAP = 24
   // Nudge the pill's right edge past the box's right edge into the gutter, so it
   // sits at the true screen corner rather than leaving a gap. Clamped to the
   // viewport so it can't run off-screen.
