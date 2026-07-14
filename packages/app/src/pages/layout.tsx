@@ -115,7 +115,7 @@ export default function Layout(props: ParentProps) {
   const [state, setState] = createStore({
     busyWorkspaces: new Set<string>(),
     hoverSession: undefined as string | undefined,
-    hoverProject: undefined as string | undefined,
+    previewProject: undefined as string | undefined,
     scrollSessionKey: undefined as string | undefined,
     nav: undefined as HTMLElement | undefined,
   })
@@ -136,39 +136,94 @@ export default function Layout(props: ParentProps) {
   const isBusy = (directory: string) => state.busyWorkspaces.has(workspaceKey(directory))
   const editorRef = { current: undefined as HTMLInputElement | undefined }
 
-  const navLeave = { current: undefined as number | undefined }
+  // On the collapsed rail the flyout panel is open when a project is previewed.
+  const flyoutOpen = createMemo(() => !layout.sidebar.opened() && state.previewProject !== undefined)
+  const sidebarExpanded = createMemo(() => layout.sidebar.opened() || flyoutOpen())
 
-  onCleanup(() => {
-    if (navLeave.current === undefined) return
-    clearTimeout(navLeave.current)
-  })
-
-  const sidebarHovering = createMemo(() => !layout.sidebar.opened() && state.hoverProject !== undefined)
-  const sidebarExpanded = createMemo(() => layout.sidebar.opened() || sidebarHovering())
-
-  const hoverProjectData = createMemo(() => {
-    const id = state.hoverProject
+  // The project the collapsed-rail flyout is showing (only while collapsed).
+  const flyoutProject = createMemo(() => {
+    if (layout.sidebar.opened()) return
+    const id = state.previewProject
     if (!id) return
     return layout.projects.list().find((project) => project.worktree === id)
   })
 
-  createEffect(() => {
-    if (!layout.sidebar.opened()) return
-    setState("hoverProject", undefined)
-  })
-
+  // Closing the mobile drawer clears the previewed project, so reopening starts
+  // on the current project rather than a stale preview. Scoped to the drawer's
+  // open→close transition: a plain createEffect would fire on desktop too (where
+  // mobileSidebar is always closed) and wipe every icon click.
   createEffect(
     on(
-      () => ({ dir: params.dir, id: params.id }),
-      () => {
-        if (layout.sidebar.opened()) return
-        if (!state.hoverProject) return
-        setState("hoverSession", undefined)
-        setState("hoverProject", undefined)
+      () => layout.mobileSidebar.opened(),
+      (opened) => {
+        if (opened) return
+        setState("previewProject", undefined)
       },
       { defer: true },
     ),
   )
+
+  // Navigating (route change) clears any preview so the panel follows the new
+  // route rather than the project icon last clicked. Also collapse the mobile
+  // drawer on any navigation — doing it here (one place, on the route change)
+  // instead of in each nav handler guarantees it closes no matter how the
+  // navigation happened, so it can't get stuck open.
+  createEffect(
+    on(
+      () => ({ dir: params.dir, id: params.id }),
+      () => {
+        setState("previewProject", undefined)
+        layout.mobileSidebar.hide()
+      },
+      { defer: true },
+    ),
+  )
+
+  // Toggling the sidebar between docked and collapsed clears any preview: docking
+  // starts the panel on the current route project, and collapsing shows the bare
+  // rail (no leftover flyout auto-popping open).
+  createEffect(
+    on(
+      () => layout.sidebar.opened(),
+      () => setState("previewProject", undefined),
+      { defer: true },
+    ),
+  )
+
+  // Clicking anywhere outside the collapsed-rail flyout (and its icons)
+  // dismisses it. The nav holds both the icons and the flyout panel, so a click
+  // there is left alone. A click anywhere else ONLY closes the flyout and is
+  // swallowed — it must not trigger whatever sits under the pointer.
+  //
+  // Desktop only: this keys off state.nav (the desktop nav). The mobile drawer
+  // is a separate <nav> with its own backdrop, so its icons aren't in state.nav
+  // and would be wrongly treated as "outside" — swallowing every icon tap.
+  createEffect(() => {
+    if (layout.mobileSidebar.opened()) return
+    if (!flyoutOpen()) return
+    const outside = (event: Event) => {
+      const target = event.target as Node | null
+      return !(target && state.nav?.contains(target))
+    }
+    const dismiss = (event: PointerEvent) => {
+      if (!outside(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      // Swallow the click that follows this pointerdown so the element under the
+      // pointer never receives it — the first outside click only closes the
+      // flyout. Registered here (not in the effect body) so tearing down the
+      // effect when the flyout closes can't remove it before the click lands.
+      const swallow = (click: MouseEvent) => {
+        click.preventDefault()
+        click.stopPropagation()
+        document.removeEventListener("click", swallow, true)
+      }
+      document.addEventListener("click", swallow, true)
+      setState("previewProject", undefined)
+    }
+    document.addEventListener("pointerdown", dismiss, true)
+    onCleanup(() => document.removeEventListener("pointerdown", dismiss, true))
+  })
 
   const editorOpen = (id: string) => editor.active === id
   const editorValue = () => editor.value
@@ -489,6 +544,16 @@ export default function Layout(props: ParentProps) {
     if (!directory) return
 
     return layout.projects.list().find((p) => p.worktree === directory)
+  })
+
+  // Clicking a project icon (mobile drawer, or the expanded desktop sidebar)
+  // previews its sessions in the panel without navigating. previewProject holds
+  // that selection; it falls back to the routed project so the panel opens on
+  // the current project.
+  const previewProject = createMemo(() => {
+    const id = state.previewProject
+    const previewed = id ? layout.projects.list().find((p) => p.worktree === id) : undefined
+    return previewed ?? currentProject()
   })
 
   const workspaceKey = (directory: string) => directory.replace(/[\\/]+$/, "")
@@ -1049,10 +1114,7 @@ export default function Layout(props: ParentProps) {
 
   function navigateToProject(directory: string | undefined) {
     if (!directory) return
-    if (!layout.sidebar.opened()) {
-      setState("hoverSession", undefined)
-      setState("hoverProject", undefined)
-    }
+    if (!layout.sidebar.opened()) setState("hoverSession", undefined)
     // Opening a project lands on the sessions list, never a session. Opening a
     // session is a separate, explicit action; project-open must not arm a ping.
     navigate(`/${base64Encode(directory)}`)
@@ -1061,10 +1123,7 @@ export default function Layout(props: ParentProps) {
 
   function navigateToSession(session: Session | undefined) {
     if (!session) return
-    if (!layout.sidebar.opened()) {
-      setState("hoverSession", undefined)
-      setState("hoverProject", undefined)
-    }
+    if (!layout.sidebar.opened()) setState("hoverSession", undefined)
     navigate(`/${base64Encode(session.directory)}/session/${session.id}`)
     layout.mobileSidebar.hide()
   }
@@ -1526,7 +1585,6 @@ export default function Layout(props: ParentProps) {
   function handleDragStart(event: unknown) {
     const id = getDraggableId(event)
     if (!id) return
-    setState("hoverProject", undefined)
     setStore("activeProject", id)
   }
 
@@ -1545,13 +1603,6 @@ export default function Layout(props: ParentProps) {
   function handleDragEnd() {
     setStore("activeProject", undefined)
   }
-
-  const sidebarProject = createMemo(() => {
-    if (layout.sidebar.opened()) return currentProject()
-    const hovered = hoverProjectData()
-    if (hovered) return hovered
-    return currentProject()
-  })
 
   const ProjectIcon = (props: { project: LocalProject; class?: string; notify?: boolean }): JSX.Element => {
     const notification = useNotification()
@@ -1693,7 +1744,7 @@ export default function Layout(props: ParentProps) {
             directory: props.session.directory,
           })
           if (layout.sidebar.opened()) return
-          queueMicrotask(() => setState("hoverProject", undefined))
+          queueMicrotask(() => setState("previewProject", undefined))
         }}
       >
         <div class="flex items-center gap-1 w-full">
@@ -1763,7 +1814,7 @@ export default function Layout(props: ParentProps) {
         >
           <HoverCard
             openDelay={1000}
-            closeDelay={sidebarHovering() ? 600 : 0}
+            closeDelay={flyoutOpen() ? 600 : 0}
             placement="right-start"
             gutter={16}
             shift={-2}
@@ -1806,7 +1857,7 @@ export default function Layout(props: ParentProps) {
             "group-focus-within/session:opacity-100 group-focus-within/session:pointer-events-auto": true,
           }}
         >
-          <DropdownMenu modal={!sidebarHovering()} open={menu.open} onOpenChange={(open) => setMenu("open", open)}>
+          <DropdownMenu modal={!flyoutOpen()} open={menu.open} onOpenChange={(open) => setMenu("open", open)}>
             <Tooltip value={language.t("common.moreOptions")} placement="top">
               <DropdownMenu.Trigger
                 as={IconButton}
@@ -1859,7 +1910,7 @@ export default function Layout(props: ParentProps) {
         onClick={() => {
           setState("hoverSession", undefined)
           if (layout.sidebar.opened()) return
-          queueMicrotask(() => setState("hoverProject", undefined))
+          queueMicrotask(() => setState("previewProject", undefined))
         }}
       >
         <div class="flex items-center gap-1 w-full">
@@ -1916,48 +1967,37 @@ export default function Layout(props: ParentProps) {
   const SortableProject = (props: { project: LocalProject; mobile?: boolean }): JSX.Element => {
     const sortable = createSortable(props.project.worktree)
     const selected = createMemo(() => {
+      // Mobile drawer and the expanded desktop sidebar highlight the previewed
+      // project; the collapsed rail highlights the routed one.
+      if (props.mobile || layout.sidebar.opened()) return props.project.worktree === previewProject()?.worktree
       const current = decode64(params.dir) ?? ""
       return props.project.worktree === current
     })
 
-    const [open, setOpen] = createSignal(false)
     const [menu, setMenu] = createSignal(false)
 
-    const preview = createMemo(() => !props.mobile && layout.sidebar.opened())
-    const overlay = createMemo(() => !props.mobile && !layout.sidebar.opened())
-    const active = createMemo(
-      () => menu() || (preview() ? open() : overlay() && state.hoverProject === props.project.worktree),
-    )
+    // Highlight the icon when its context menu is open, or when the collapsed
+    // rail flyout is currently showing this project.
+    const active = createMemo(() => menu() || state.previewProject === props.project.worktree)
 
-    createEffect(() => {
-      if (preview()) return
-      if (!open()) return
-      setOpen(false)
-    })
-
-    const projectSessions = createMemo(
-      () => {
-        const directory = props.project.worktree
-        const [data] = globalSync.child(directory, { bootstrap: false })
-        const root = workspaceKey(directory)
-        return data.session
-          .filter((session) => workspaceKey(session.directory) === root)
-          .filter((session) => !session.parentID && !session.time?.archived)
-          .toSorted(sortSessions(Date.now()))
-          .slice(0, 2)
-      },
-      [] as Session[],
-      { equals: sameOrder },
-    )
+    // Clicking a project icon only previews its sessions; it never navigates or
+    // opens a session. On the collapsed rail a second click on the same icon
+    // dismisses the flyout (toggle).
+    const handleClick = () => {
+      if (!props.mobile && !layout.sidebar.opened() && state.previewProject === props.project.worktree) {
+        setState("previewProject", undefined)
+        return
+      }
+      globalSync.child(props.project.worktree)
+      setState("previewProject", props.project.worktree)
+      setState("hoverSession", undefined)
+    }
 
     const projectName = () => props.project.name || getFilename(props.project.worktree)
     const Trigger = () => (
       <ContextMenu
-        modal={!sidebarHovering()}
-        onOpenChange={(value) => {
-          setMenu(value)
-          if (value) setOpen(false)
-        }}
+        modal={!flyoutOpen()}
+        onOpenChange={(value) => setMenu(value)}
       >
         <ContextMenu.Trigger
           as="button"
@@ -1972,20 +2012,7 @@ export default function Layout(props: ParentProps) {
               !selected() && !active(),
             "bg-surface-base-hover border border-border-weak-base": !selected() && active(),
           }}
-          onMouseEnter={() => {
-            if (!overlay()) return
-            globalSync.child(props.project.worktree)
-            setState("hoverProject", props.project.worktree)
-            setState("hoverSession", undefined)
-          }}
-          onFocus={() => {
-            if (!overlay()) return
-            globalSync.child(props.project.worktree)
-            setState("hoverProject", props.project.worktree)
-            setState("hoverSession", undefined)
-          }}
-          onClick={() => navigateToProject(props.project.worktree)}
-          onBlur={() => setOpen(false)}
+          onClick={handleClick}
         >
           <ProjectIcon project={props.project} notify />
         </ContextMenu.Trigger>
@@ -2010,72 +2037,7 @@ export default function Layout(props: ParentProps) {
     return (
       // @ts-ignore
       <div use:sortable classList={{ "opacity-30": sortable.isActiveDraggable }}>
-        <Show when={preview()} fallback={<Trigger />}>
-          <HoverCard
-            open={open() && !menu()}
-            openDelay={0}
-            closeDelay={0}
-            placement="right-start"
-            gutter={6}
-            trigger={<Trigger />}
-            onOpenChange={(value) => {
-              if (menu()) return
-              setOpen(value)
-              if (value) setState("hoverSession", undefined)
-            }}
-          >
-            <div class="-m-3 p-2 flex flex-col w-72">
-              <div class="px-4 pt-2 pb-1 flex items-center gap-2">
-                <div class="text-14-medium text-text-strong truncate grow">{displayName(props.project)}</div>
-                <Tooltip value={language.t("common.close")} placement="top" gutter={6}>
-                  <IconButton
-                    icon="circle-x"
-                    variant="ghost"
-                    class="shrink-0"
-                    data-action="project-close-hover"
-                    data-project={base64Encode(props.project.worktree)}
-                    aria-label={language.t("common.close")}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setOpen(false)
-                      closeProject(props.project.worktree)
-                    }}
-                  />
-                </Tooltip>
-              </div>
-              <div class="px-4 pb-2 text-12-medium text-text-weak">{language.t("sidebar.project.recentSessions")}</div>
-              <div class="px-2 pb-2 flex flex-col gap-2">
-                <For each={projectSessions()}>
-                  {(session) => (
-                    <SessionItem
-                      session={session}
-                      slug={base64Encode(props.project.worktree)}
-                      dense
-                      mobile={props.mobile}
-                      popover={false}
-                    />
-                  )}
-                </For>
-              </div>
-              <div class="px-2 py-2 border-t border-border-weak-base">
-                <Button
-                  variant="ghost"
-                  class="flex w-full text-left justify-start text-text-base px-2 hover:bg-transparent active:bg-transparent"
-                  onClick={() => {
-                    layout.sidebar.open()
-                    setOpen(false)
-                    if (selected()) {
-                      return
-                    }
-                    navigateToProject(props.project.worktree)
-                  }}
-                >
-                  {language.t("sidebar.project.viewAllSessions")}
-                </Button>
-              </div>
-            </div>
-          </HoverCard>
-        </Show>
+        <Trigger />
       </div>
     )
   }
@@ -2195,7 +2157,7 @@ export default function Layout(props: ParentProps) {
                     </Tooltip>
                   </div>
 
-                  <DropdownMenu modal={!sidebarHovering()}>
+                  <DropdownMenu modal={!flyoutOpen()}>
                     <DropdownMenu.Trigger
                       as={IconButton}
                       icon="dot-grid"
@@ -2238,7 +2200,7 @@ export default function Layout(props: ParentProps) {
                       onClick={() => {
                         if (!layout.sidebar.opened()) {
                           setState("hoverSession", undefined)
-                          setState("hoverProject", undefined)
+                          setState("previewProject", undefined)
                         }
                         navigate(`/${base64Encode(p().worktree)}/session`)
                         layout.mobileSidebar.hide()
@@ -2365,8 +2327,16 @@ export default function Layout(props: ParentProps) {
           </div>
         </div>
 
-        <Show when={expanded()}>
-          <SidebarPanel project={currentProject()} mobile={sidebarProps.mobile} />
+        {/* Keyed on the project so switching projects recreates the panel (and
+            its LocalWorkspace, which subscribes to globalSync.child once at
+            creation). Without the key the session list stays bound to the first
+            project even though the header updates.
+            previewProject() falls back to currentProject(): on a session page
+            the drawer opens on that session's project; on the overview (no
+            current project) it resolves to undefined, so the mobile drawer
+            shows just the bare rail. */}
+        <Show when={expanded() ? previewProject() : undefined} keyed>
+          {(project) => <SidebarPanel project={project} mobile={sidebarProps.mobile} />}
         </Show>
       </div>
     )
@@ -2387,28 +2357,13 @@ export default function Layout(props: ParentProps) {
           ref={(el) => {
             setState("nav", el)
           }}
-          onMouseEnter={() => {
-            if (navLeave.current === undefined) return
-            clearTimeout(navLeave.current)
-            navLeave.current = undefined
-          }}
-          onMouseLeave={() => {
-            if (!sidebarHovering()) return
-
-            if (navLeave.current !== undefined) clearTimeout(navLeave.current)
-            navLeave.current = window.setTimeout(() => {
-              navLeave.current = undefined
-              setState("hoverProject", undefined)
-              setState("hoverSession", undefined)
-            }, 300)
-          }}
         >
           <div class="@container w-full h-full contain-strict">
             <SidebarContent />
           </div>
-          <Show when={!layout.sidebar.opened() ? hoverProjectData() : undefined} keyed>
+          <Show when={flyoutProject()} keyed>
             {(project) => (
-              <div class="absolute inset-y-0 left-16 z-50 flex">
+              <div data-component="sidebar-flyout" class="absolute inset-y-0 left-16 z-50 flex">
                 <SidebarPanel project={project} />
               </div>
             )}
@@ -2440,7 +2395,11 @@ export default function Layout(props: ParentProps) {
             aria-label={language.t("sidebar.nav.projectsAndSessions")}
             data-component="sidebar-nav-mobile"
             classList={{
-              "@container fixed top-10 bottom-0 left-0 z-50 w-72 bg-background-base transition-transform duration-200 ease-out": true,
+              "@container fixed top-10 bottom-0 left-0 z-50 bg-background-base transition-transform duration-200 ease-out": true,
+              // Rail-only width when no project panel is showing (overview, no
+              // current project); expand to fit the session panel once one is.
+              "w-72": previewProject() !== undefined,
+              "w-16": previewProject() === undefined,
               "translate-x-0": layout.mobileSidebar.opened(),
               "-translate-x-full": !layout.mobileSidebar.opened(),
             }}
