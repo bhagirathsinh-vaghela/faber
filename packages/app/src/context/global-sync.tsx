@@ -162,6 +162,23 @@ const MAX_TOOL_OUTPUT = 30_000
 const capOutput = (output: string) =>
   output.length > MAX_TOOL_OUTPUT ? output.slice(0, MAX_TOOL_OUTPUT) + "\n\n..." : output
 
+// A summary diff payload carries no `before`/`after` bodies — those are
+// lazy-fetched per file by sync.session.diffFile. When a fresh summary arrives
+// mid-turn we must NOT drop bodies already fetched for open files, otherwise the
+// review accordion loses its rendered content and the rows remount (collapsing
+// what the user expanded). Carry any previously-fetched body forward onto the
+// matching new row before reconciling.
+export function mergeDiffBodies(prev: FileDiff[] | undefined, next: FileDiff[]): FileDiff[] {
+  if (!prev?.length) return next
+  const bodies = new Map(prev.map((d) => [d.file, d]))
+  return next.map((d) => {
+    const old = bodies.get(d.file)
+    if (old && typeof old.before === "string" && typeof old.after === "string")
+      return { ...d, before: old.before, after: old.after }
+    return d
+  })
+}
+
 function normalizeProviderList(input: ProviderListResponse): ProviderListResponse {
   return {
     ...input,
@@ -1077,17 +1094,17 @@ function createGlobalSync() {
         setStore("sessionTotal", (value) => Math.max(0, value - 1))
         break
       }
-      case "session.diff":
-        // keep the store bodyless (summary tier); bodies are lazy-fetched per file
-        setStore(
-          "session_diff",
-          event.properties.sessionID,
-          reconcile(
-            event.properties.diff.map(({ before, after, ...rest }) => rest),
-            { key: "file" },
-          ),
+      case "session.diff": {
+        // Summary tier: the store stays bodyless for files never opened, but
+        // preserve bodies already lazy-fetched for open files so their diff view
+        // does not blank out (and remount, collapsing the accordion) mid-turn.
+        const merged = mergeDiffBodies(
+          store.session_diff[event.properties.sessionID],
+          event.properties.diff.map(({ before, after, ...rest }) => rest),
         )
+        setStore("session_diff", event.properties.sessionID, reconcile(merged, { key: "file" }))
         break
+      }
       case "todo.updated":
         setStore("todo", event.properties.sessionID, reconcile(event.properties.todos, { key: "id" }))
         break

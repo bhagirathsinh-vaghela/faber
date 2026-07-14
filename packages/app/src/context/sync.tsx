@@ -396,9 +396,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const diff = await retry(() => client.session.diff({ sessionID, file }))
           const body = diff.data?.[0]
           if (!body) return
-          setStore("session_diff", sessionID, (list) =>
-            (list ?? []).map((d) => (d.file === file ? { ...d, before: body.before, after: body.after } : d)),
-          )
+          const list = store.session_diff[sessionID]
+          const index = list?.findIndex((d) => d.file === file) ?? -1
+          if (index === -1) return
+          // Path-targeted write: only this row's body fields change, so the array
+          // and every row's object identity stay stable. Rebuilding the array with
+          // .map() would give the row a new identity and remount its accordion
+          // item, collapsing what the user expanded.
+          setStore("session_diff", sessionID, index, { before: body.before, after: body.after })
         },
         async todo(sessionID: string) {
           const directory = sdk.directory
