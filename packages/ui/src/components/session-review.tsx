@@ -199,28 +199,41 @@ export const SessionReview = (props: SessionReviewProps) => {
   // store can never shadow a controlled value: when props.open is provided it
   // is the sole authority, otherwise the internal store is.
   const controlled = () => props.open !== undefined
-  const raw = () => (controlled() ? props.open! : (store.open ?? fallback()))
-  // Reconcile the open set against the live file list. While a turn is busy the
-  // diff list grows/shrinks, but the persisted open set is a snapshot — without
-  // this intersection stale paths inflate the count so the collapse/expand
-  // label desyncs from what the accordion actually shows.
-  const open = createMemo(() => {
+  // The persisted open intent — pure client state, NEVER reconciled against the
+  // diff list. This is the single source of truth for the toggle button, so a
+  // mid-turn diff refetch cannot change what the button does.
+  const open = () => (controlled() ? props.open! : (store.open ?? fallback()))
+  // Lazily reconcile against the live file list ONLY for the accordion's value
+  // prop: Kobalte would otherwise carry a key for an unrendered file. The button
+  // does not read this, so diff churn cannot desync the toggle.
+  const rendered = createMemo(() => {
     const files = new Set(props.diffs.map((d) => d.file))
-    return raw().filter((file) => files.has(file))
+    return open().filter((file) => files.has(file))
   })
   const diffStyle = () => props.diffStyle ?? (props.split ? "split" : "unified")
 
-  const handleChange = (open: string[]) => {
-    props.onOpenChange?.(open)
-    if (!controlled()) setStore("open", open)
+  const commit = (next: string[]) => {
+    props.onOpenChange?.(next)
+    if (!controlled()) setStore("open", next)
   }
 
-  // Expand-all is "not everything is open" → open every current file; otherwise
-  // collapse. Comparing against the live file count (not just length > 0) keeps
-  // the button correct when new files stream in mid-review.
-  const allOpen = () => open().length === props.diffs.length && props.diffs.length > 0
+  // Kobalte reports the toggle relative to the rendered (filtered) set, so it
+  // only ever knows about currently-live files. Merge that delta back into the
+  // full persisted intent instead of overwriting it — otherwise a toggle would
+  // drop intent for any file not currently rendered (the strip, moved to write
+  // time). Keep intent for non-live files, then apply the rendered set verbatim.
+  const handleChange = (next: string[]) => {
+    const live = new Set(props.diffs.map((d) => d.file))
+    const preserved = open().filter((file) => !live.has(file))
+    commit([...preserved, ...next])
+  }
+
+  // Toggle target from the persisted intent's own emptiness, independent of the
+  // diff store: anything open → collapse; nothing open → expand every file.
+  // These write the whole set directly (not a rendered-relative delta).
+  const anyOpen = () => open().length > 0
   const handleExpandOrCollapseAll = () => {
-    handleChange(allOpen() ? [] : props.diffs.map((d) => d.file))
+    commit(anyOpen() ? [] : props.diffs.map((d) => d.file))
   }
 
   // lazy-load each file's diff bodies the first time its accordion item opens.
@@ -292,7 +305,7 @@ export const SessionReview = (props: SessionReviewProps) => {
 
     const current = open()
     if (!current.includes(focus.file)) {
-      handleChange([...current, focus.file])
+      commit([...current, focus.file])
     }
 
     const scrollTo = (attempt: number) => {
@@ -376,7 +389,7 @@ export const SessionReview = (props: SessionReviewProps) => {
           [props.classes?.container ?? ""]: !!props.classes?.container,
         }}
       >
-        <Accordion multiple value={open()} onChange={handleChange}>
+        <Accordion multiple value={rendered()} onChange={handleChange}>
           <For each={props.diffs}>
             {(diff) => {
               let wrapper: HTMLDivElement | undefined

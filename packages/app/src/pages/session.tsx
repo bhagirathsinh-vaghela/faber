@@ -174,9 +174,24 @@ function SessionReviewTab(props: SessionReviewTabProps) {
 
   // Single source of truth for expand/collapse: the layout store. Until the
   // user has ever toggled (reviewOpen undefined), fall back to the size-based
-  // default — small reviews expanded, large ones collapsed — computed live from
-  // the current diff list so it is never a stale mount-time snapshot.
-  const open = () => props.view().review.open() ?? defaultReviewOpen(props.diffs().map((d) => d.file))
+  // default — small reviews expanded, large ones collapsed. Snapshot that
+  // default from the FIRST non-empty diff list and freeze it: computing it live
+  // would let files streaming across the >10 boundary mid-turn flip the default
+  // out from under the user during the pre-toggle window. Once frozen, the memo
+  // never recomputes; any user toggle sets reviewOpen and the fallback stops.
+  let snapshotted = false
+  const defaultOpen = createMemo<string[]>(
+    (prev) => {
+      if (snapshotted) return prev
+      const files = props.diffs().map((d) => d.file)
+      if (!files.length) return prev
+      snapshotted = true
+      return defaultReviewOpen(files)
+    },
+    [],
+    { equals: (a, b) => a === b },
+  )
+  const open = () => props.view().review.open() ?? defaultOpen()
 
   const restoreScroll = () => {
     const el = scroll
