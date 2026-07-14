@@ -14,6 +14,7 @@ import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
 import { createDictation, dictationActive } from "@/utils/dictation"
+import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { clonePrompt, usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -179,6 +180,22 @@ function Panel(props: {
   })
 
   let input: HTMLTextAreaElement | undefined
+
+  // Soft-keyboard suppression on touch devices, mirroring the prompt input: the
+  // custom-answer textarea is dictation-first on mobile, so inputmode="none"
+  // keeps the OS keyboard down (it fights the dictation overlay) while the
+  // keyboard-toggle button opts in per edit session. Reset when editing ends.
+  const coarse = createCoarsePointer()
+  const [keyboardWanted, setKeyboardWanted] = createSignal(false)
+  const suppressKeyboard = () => coarse() && !keyboardWanted()
+  const requestKeyboard = () => {
+    setKeyboardWanted(true)
+    requestAnimationFrame(() => input?.focus())
+  }
+  // Leaving edit mode resets the opt-in so the next edit is suppressed again.
+  createEffect(() => {
+    if (!store.editing) setKeyboardWanted(false)
+  })
 
   const promptDraft = usePrompt()
   const promptEmpty = () => promptDraft.current().every((part) => part.type === "text" && part.content.trim() === "")
@@ -720,6 +737,7 @@ function Panel(props: {
                       placeholder="Type your own answer"
                       value={customText()}
                       rows={1}
+                      inputmode={suppressKeyboard() ? "none" : undefined}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault()
@@ -731,6 +749,20 @@ function Panel(props: {
                         }
                       }}
                     />
+                    <Show when={suppressKeyboard()}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class="size-6 px-1"
+                        onMouseDown={(e: MouseEvent) => {
+                          e.preventDefault()
+                          requestKeyboard()
+                        }}
+                        aria-label={language.t("prompt.action.showKeyboard")}
+                      >
+                        <Icon name="keyboard" class="size-4.5" />
+                      </Button>
+                    </Show>
                     <Show when={dictation.supported()}>
                       <Button
                         type="button"

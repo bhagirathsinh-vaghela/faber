@@ -56,6 +56,7 @@ import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { createDictation } from "@/utils/dictation"
+import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
@@ -324,6 +325,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // crowded viewport without per-component logic.
   const [dockHidden, setDockHidden] = createSignal(false)
 
+  // Soft-keyboard suppression (touch devices only). On a phone/tablet, focusing
+  // the editor otherwise raises the OS keyboard — which fights dictation and
+  // shoves the layout around. inputmode="none" keeps the editor focusable (caret
+  // shows, dictation writes land) without the keyboard. A keyboard-toggle button
+  // opts in per focus session: keyboardWanted flips inputmode back to text and
+  // refocuses so the keyboard rises, then resets on blur/submit so the next
+  // focus is suppressed again.
+  const coarse = createCoarsePointer()
+  const [keyboardWanted, setKeyboardWanted] = createSignal(false)
+  const suppressKeyboard = () => coarse() && !keyboardWanted()
+  const requestKeyboard = () => {
+    setKeyboardWanted(true)
+    requestAnimationFrame(() => {
+      editorRef.focus()
+      setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current()))
+    })
+  }
+
   const addImageAttachment = async (file: File) => {
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) return
 
@@ -440,6 +459,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // This handles edge cases where compositionend event may not fire
   createEffect(() => {
     if (!isFocused()) setComposing(false)
+  })
+
+  // Blur resets the keyboard opt-in so the next focus is suppressed again
+  // (dictation-first default). Focusing to type still needs the toggle.
+  createEffect(() => {
+    if (!isFocused()) setKeyboardWanted(false)
   })
 
   type AtOption =
@@ -2005,6 +2030,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     : language.t("prompt.placeholder.normal")
             }
             contenteditable="true"
+            inputmode={suppressKeyboard() ? "none" : undefined}
             onInput={handleInput}
             onPaste={handlePaste}
             onCompositionStart={() => setComposing(true)}
@@ -2283,6 +2309,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
             />
             <div class="flex items-center gap-1 mr-1">
+              <Show when={suppressKeyboard()}>
+                <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class="size-6 px-1"
+                    // mousedown, not click: taking focus on click would race the
+                    // requestKeyboard refocus. Prevent the default focus shift and
+                    // drive it ourselves so the editor keeps the caret.
+                    onMouseDown={(e: MouseEvent) => {
+                      e.preventDefault()
+                      requestKeyboard()
+                    }}
+                    aria-label={language.t("prompt.action.showKeyboard")}
+                  >
+                    <Icon name="keyboard" class="size-4.5" />
+                  </Button>
+                </Tooltip>
+              </Show>
               <Show when={store.mode === "normal" && dictation.supported()}>
                 <Tooltip
                   placement="top"

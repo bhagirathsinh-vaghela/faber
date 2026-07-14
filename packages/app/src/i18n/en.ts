@@ -237,6 +237,7 @@ export const dict = {
   "prompt.action.stop": "Stop",
   "prompt.action.dictate": "Dictate",
   "prompt.action.dictateStop": "Stop dictation",
+  "prompt.action.showKeyboard": "Show keyboard",
   "prompt.toast.dictationFailed.title": "Dictation failed",
   "dictation.listening": "Listening",
   "dictation.accept": "Accept",
