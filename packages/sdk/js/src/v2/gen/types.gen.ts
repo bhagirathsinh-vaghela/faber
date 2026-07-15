@@ -691,6 +691,13 @@ export type EventMcpToolsChanged = {
   }
 }
 
+export type EventMcpWhitelistChanged = {
+  type: "mcp.whitelist.changed"
+  properties: {
+    server: string
+  }
+}
+
 export type EventMcpBrowserOpenFailed = {
   type: "mcp.browser.open.failed"
   properties: {
@@ -1026,6 +1033,7 @@ export type Session = {
         paths: Array<string>
       }
   >
+  mcpEnabled?: boolean
 }
 
 export type EventSessionCreated = {
@@ -1276,6 +1284,7 @@ export type Event =
   | EventTuiToastShow
   | EventTuiSessionSelect
   | EventMcpToolsChanged
+  | EventMcpWhitelistChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
   | EventQuestionAsked
@@ -1989,6 +1998,11 @@ export type ProviderConfig = {
   }
 }
 
+/**
+ * Progressive-disclosure detail level for this server in the MCP tool catalog. "name" (default) lists only tool names; "description" adds each tool's description; "full" adds the input schema. Lower tiers shrink the steady-state request; the model recovers omitted detail on demand via the mcp_search tool. Applies to every session (never per-session) so the shared catalog cache stays byte-identical.
+ */
+export type McpTier = "name" | "description" | "full"
+
 export type McpLocalConfig = {
   /**
    * Type of MCP server connection
@@ -2008,10 +2022,7 @@ export type McpLocalConfig = {
    * Enable or disable the MCP server on startup
    */
   enabled?: boolean
-  /**
-   * Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).
-   */
-  deny?: Array<string>
+  tier?: McpTier
   /**
    * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
    */
@@ -2046,10 +2057,7 @@ export type McpRemoteConfig = {
    * Enable or disable the MCP server on startup
    */
   enabled?: boolean
-  /**
-   * Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).
-   */
-  deny?: Array<string>
+  tier?: McpTier
   /**
    * Headers to send with the request
    */
@@ -3848,6 +3856,10 @@ export type SessionUpdateData = {
     }
     cacheProbeIndex?: number
     cacheProbeMessageID?: string
+    /**
+     * Enable MCP for this session. One-way: cannot be turned back off.
+     */
+    mcpEnabled?: true
   }
   path: {
     sessionID: string
@@ -5867,6 +5879,127 @@ export type McpDisconnectResponses = {
 }
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
+
+export type McpToolsData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/tools"
+}
+
+export type McpToolsResponses = {
+  /**
+   * Advertised tools and server status
+   */
+  200: {
+    status: McpStatus
+    tools: Array<{
+      name: string
+      description?: string
+    }>
+  }
+}
+
+export type McpToolsResponse = McpToolsResponses[keyof McpToolsResponses]
+
+export type McpWhitelistRemoveData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/whitelist"
+}
+
+export type McpWhitelistRemoveResponses = {
+  /**
+   * Whitelist cleared
+   */
+  200: {
+    success: true
+  }
+}
+
+export type McpWhitelistRemoveResponse = McpWhitelistRemoveResponses[keyof McpWhitelistRemoveResponses]
+
+export type McpWhitelistGetData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/whitelist"
+}
+
+export type McpWhitelistGetResponses = {
+  /**
+   * Whitelisted tool names
+   */
+  200: Array<string>
+}
+
+export type McpWhitelistGetResponse = McpWhitelistGetResponses[keyof McpWhitelistGetResponses]
+
+export type McpWhitelistSetData = {
+  body?: {
+    names: Array<string>
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}/whitelist"
+}
+
+export type McpWhitelistSetResponses = {
+  /**
+   * Whitelist updated
+   */
+  200: Array<string>
+}
+
+export type McpWhitelistSetResponse = McpWhitelistSetResponses[keyof McpWhitelistSetResponses]
+
+export type McpRemoveData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/{name}"
+}
+
+export type McpRemoveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpRemoveError = McpRemoveErrors[keyof McpRemoveErrors]
+
+export type McpRemoveResponses = {
+  /**
+   * MCP server removed
+   */
+  200: {
+    success: true
+  }
+}
+
+export type McpRemoveResponse = McpRemoveResponses[keyof McpRemoveResponses]
 
 export type BackgroundListData = {
   body?: never

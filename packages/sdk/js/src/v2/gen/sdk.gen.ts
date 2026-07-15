@@ -91,7 +91,13 @@ import type {
   McpDisconnectResponses,
   McpLocalConfig,
   McpRemoteConfig,
+  McpRemoveErrors,
+  McpRemoveResponses,
   McpStatusResponses,
+  McpToolsResponses,
+  McpWhitelistGetResponses,
+  McpWhitelistRemoveResponses,
+  McpWhitelistSetResponses,
   ModelPreference,
   Part as Part2,
   PartDeleteErrors,
@@ -1426,6 +1432,7 @@ export class Session extends HeyApiClient {
       }
       cacheProbeIndex?: number
       cacheProbeMessageID?: string
+      mcpEnabled?: true
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1440,6 +1447,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "time" },
             { in: "body", key: "cacheProbeIndex" },
             { in: "body", key: "cacheProbeMessageID" },
+            { in: "body", key: "mcpEnabled" },
           ],
         },
       ],
@@ -3440,6 +3448,105 @@ export class Auth2 extends HeyApiClient {
   }
 }
 
+export class Whitelist extends HeyApiClient {
+  /**
+   * Clear MCP tool whitelist
+   *
+   * Remove the curated tool-name whitelist for a Model Context Protocol (MCP) server.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<McpWhitelistRemoveResponses, unknown, ThrowOnError>({
+      url: "/mcp/{name}/whitelist",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get MCP tool whitelist
+   *
+   * Get the curated tool-name whitelist for a Model Context Protocol (MCP) server.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpWhitelistGetResponses, unknown, ThrowOnError>({
+      url: "/mcp/{name}/whitelist",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set MCP tool whitelist
+   *
+   * Replace the curated tool-name whitelist for a Model Context Protocol (MCP) server.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      names?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "names" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<McpWhitelistSetResponses, unknown, ThrowOnError>({
+      url: "/mcp/{name}/whitelist",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Mcp extends HeyApiClient {
   /**
    * Get MCP status
@@ -3553,9 +3660,74 @@ export class Mcp extends HeyApiClient {
     })
   }
 
+  /**
+   * List advertised MCP tools
+   *
+   * Fetch the live advertised tools for a Model Context Protocol (MCP) server (connecting if needed). Surfaces the server status when it needs auth instead of triggering interactive OAuth.
+   */
+  public tools<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpToolsResponses, unknown, ThrowOnError>({
+      url: "/mcp/{name}/tools",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove MCP server
+   *
+   * Remove a Model Context Protocol (MCP) server: delete it from the global config, disconnect it, and clear its tool whitelist.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<McpRemoveResponses, McpRemoveErrors, ThrowOnError>({
+      url: "/mcp/{name}",
+      ...options,
+      ...params,
+    })
+  }
+
   private _auth?: Auth2
   get auth(): Auth2 {
     return (this._auth ??= new Auth2({ client: this.client }))
+  }
+
+  private _whitelist?: Whitelist
+  get whitelist(): Whitelist {
+    return (this._whitelist ??= new Whitelist({ client: this.client }))
   }
 }
 

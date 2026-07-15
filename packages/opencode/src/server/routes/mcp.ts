@@ -221,5 +221,144 @@ export const McpRoutes = lazy(() =>
         await MCP.disconnect(name)
         return c.json(true)
       },
+    )
+    .get(
+      "/:name/tools",
+      describeRoute({
+        summary: "List advertised MCP tools",
+        description:
+          "Fetch the live advertised tools for a Model Context Protocol (MCP) server (connecting if needed). Surfaces the server status when it needs auth instead of triggering interactive OAuth.",
+        operationId: "mcp.tools",
+        responses: {
+          200: {
+            description: "Advertised tools and server status",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    status: MCP.Status,
+                    tools: z
+                      .object({
+                        name: z.string(),
+                        description: z.string().optional(),
+                      })
+                      .array(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      async (c) => {
+        const { name } = c.req.valid("param")
+        const result = await MCP.listLive(name)
+        return c.json({
+          status: result.status,
+          tools: result.tools.map((t) => ({ name: t.name, description: t.description ?? undefined })),
+        })
+      },
+    )
+    .get(
+      "/:name/whitelist",
+      describeRoute({
+        summary: "Get MCP tool whitelist",
+        description: "Get the curated tool-name whitelist for a Model Context Protocol (MCP) server.",
+        operationId: "mcp.whitelist.get",
+        responses: {
+          200: {
+            description: "Whitelisted tool names",
+            content: {
+              "application/json": {
+                schema: resolver(z.string().array()),
+              },
+            },
+          },
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      async (c) => {
+        const { name } = c.req.valid("param")
+        return c.json(await MCP.whitelist(name))
+      },
+    )
+    .put(
+      "/:name/whitelist",
+      describeRoute({
+        summary: "Set MCP tool whitelist",
+        description: "Replace the curated tool-name whitelist for a Model Context Protocol (MCP) server.",
+        operationId: "mcp.whitelist.set",
+        responses: {
+          200: {
+            description: "Whitelist updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.string().array()),
+              },
+            },
+          },
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      validator("json", z.object({ names: z.string().array() })),
+      async (c) => {
+        const { name } = c.req.valid("param")
+        const { names } = c.req.valid("json")
+        await MCP.setWhitelist(name, names)
+        return c.json(await MCP.whitelist(name))
+      },
+    )
+    .delete(
+      "/:name/whitelist",
+      describeRoute({
+        summary: "Clear MCP tool whitelist",
+        description: "Remove the curated tool-name whitelist for a Model Context Protocol (MCP) server.",
+        operationId: "mcp.whitelist.remove",
+        responses: {
+          200: {
+            description: "Whitelist cleared",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.literal(true) })),
+              },
+            },
+          },
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      async (c) => {
+        const { name } = c.req.valid("param")
+        await MCP.removeWhitelist(name)
+        return c.json({ success: true as const })
+      },
+    )
+    .delete(
+      "/:name",
+      describeRoute({
+        summary: "Remove MCP server",
+        description:
+          "Remove a Model Context Protocol (MCP) server: delete it from the global config, disconnect it, and clear its tool whitelist.",
+        operationId: "mcp.remove",
+        responses: {
+          200: {
+            description: "MCP server removed",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.literal(true) })),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      async (c) => {
+        const { name } = c.req.valid("param")
+        await MCP.disconnect(name)
+        await MCP.removeWhitelist(name)
+        await Config.removeMcp(name)
+        return c.json({ success: true as const })
+      },
     ),
 )

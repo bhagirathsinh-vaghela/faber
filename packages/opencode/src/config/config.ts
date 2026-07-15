@@ -1629,6 +1629,40 @@ export namespace Config {
     return next
   }
 
+  // Delete an MCP server from the global config. Separate from updateGlobal
+  // because mergeDeep can only add/overwrite keys, never remove one. Rewrites
+  // the global file (jsonc key-delete or json object-delete), then resets the
+  // memo and signals clients to refetch, same as updateGlobal.
+  export async function removeMcp(name: string) {
+    const filepath = globalConfigFile()
+    const before = await Bun.file(filepath)
+      .text()
+      .catch((err) => {
+        if (err.code === "ENOENT") return "{}"
+        throw new JsonError({ path: filepath }, { cause: err })
+      })
+
+    if (filepath.endsWith(".jsonc")) {
+      const edits = modify(before, ["mcp", name], undefined, {
+        formattingOptions: { insertSpaces: true, tabSize: 2 },
+      })
+      await Bun.write(filepath, applyEdits(before, edits))
+    } else {
+      const existing = parseConfig(before, filepath)
+      delete existing.mcp?.[name]
+      await Bun.write(filepath, JSON.stringify(existing, null, 2))
+    }
+
+    global.reset()
+    GlobalBus.emit("event", {
+      directory: "global",
+      payload: {
+        type: Event.Disposed.type,
+        properties: {},
+      },
+    })
+  }
+
   export async function directories() {
     return state().then((x) => x.directories)
   }

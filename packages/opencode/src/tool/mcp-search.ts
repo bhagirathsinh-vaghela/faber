@@ -19,7 +19,7 @@ export const McpSearchTool = Tool.define("mcp_search", async () => {
           .array(z.string())
           .optional()
           .describe(
-            "Exact tool key(s) to disclose (as shown in the mcp_tool_catalog, e.g. \"notion_search\"). Use when you already know which tool you want.",
+            'Exact tool key(s) to disclose (as shown in the mcp_tool_catalog, e.g. "notion_search"). Use when you already know which tool you want.',
           ),
         query: z
           .string()
@@ -64,10 +64,7 @@ export const McpSearchTool = Tool.define("mcp_search", async () => {
       }
 
       if (params.query) {
-        const terms = params.query
-          .toLowerCase()
-          .split(/\s+/)
-          .filter(Boolean)
+        const terms = params.query.toLowerCase().split(/\s+/).filter(Boolean)
         for (const entry of corpus) {
           const haystack = `${entry.key} ${entry.name} ${entry.description}`.toLowerCase()
           if (terms.every((term) => haystack.includes(term))) selected.set(entry.key, entry)
