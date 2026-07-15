@@ -141,6 +141,46 @@ export namespace MCP {
     })
   }
 
+  // Coerce a single value toward the JSON-schema type. When the model calls an
+  // MCP tool from the catalog without its full schema in view, it often emits
+  // stringly-typed args ("17" instead of 17, "true" instead of true). The MCP
+  // server then rejects them on its own validation.
+  // We DO hold the real schema here, so coerce string-encoded primitives back to
+  // the declared type before the call. Non-string values and unknown types pass
+  // through untouched.
+  function coerceValue(value: unknown, schema: JSONSchema7 | undefined): unknown {
+    if (!schema || typeof schema !== "object") return value
+    const type = Array.isArray(schema.type) ? schema.type[0] : schema.type
+
+    if ((type === "number" || type === "integer") && typeof value === "string" && value.trim() !== "") {
+      const n = Number(value)
+      if (!Number.isNaN(n)) return type === "integer" ? Math.trunc(n) : n
+    }
+    if (type === "boolean" && typeof value === "string") {
+      if (value === "true") return true
+      if (value === "false") return false
+    }
+    if (type === "object" && value && typeof value === "object" && schema.properties) {
+      return coerceArgs(value as Record<string, unknown>, schema)
+    }
+    if (type === "array" && Array.isArray(value) && schema.items && typeof schema.items === "object") {
+      const items = schema.items as JSONSchema7
+      return value.map((v) => coerceValue(v, items))
+    }
+    return value
+  }
+
+  export function coerceArgs(args: Record<string, unknown>, schema: JSONSchema7): Record<string, unknown> {
+    const props = schema.properties
+    if (!props) return args
+    const out: Record<string, unknown> = { ...args }
+    for (const [key, value] of Object.entries(args)) {
+      const propSchema = props[key]
+      if (propSchema && typeof propSchema === "object") out[key] = coerceValue(value, propSchema as JSONSchema7)
+    }
+    return out
+  }
+
   // Convert MCP tool definition to AI SDK Tool type
   async function convertMcpTool(mcpTool: MCPToolDef, client: MCPClient, timeout?: number): Promise<Tool> {
     const inputSchema = mcpTool.inputSchema
@@ -157,10 +197,11 @@ export namespace MCP {
       description: mcpTool.description ?? "",
       inputSchema: jsonSchema(schema),
       execute: async (args: unknown) => {
+        const coerced = args && typeof args === "object" ? coerceArgs(args as Record<string, unknown>, schema) : args
         return client.callTool(
           {
             name: mcpTool.name,
-            arguments: (args || {}) as Record<string, unknown>,
+            arguments: (coerced || {}) as Record<string, unknown>,
           },
           CallToolResultSchema,
           {
@@ -292,6 +333,12 @@ export namespace MCP {
   }
 
   export async function add(name: string, mcp: Config.Mcp) {
+    // The UI writes the server to global config, then calls this. That global
+    // write cannot reset THIS instance's config cache (it runs in a context-less
+    // global route), so drop the cache here — we ARE in an instance context —
+    // so the subsequent status()/corpus() reads (which key off Config.get(), the
+    // single source of truth) see the just-written server instead of stale config.
+    Config.state.reset()
     const s = await state()
     const result = await create(name, mcp)
     if (!result) {
@@ -324,6 +371,10 @@ export namespace MCP {
     } else {
       delete s.tools[name]
     }
+
+    // Tell every connected client to refetch MCP status so their server list and
+    // the dock MCP chip update live, without a page reload.
+    Bus.publish(ToolsChanged, { server: name })
 
     return {
       status: s.status,
@@ -542,7 +593,9 @@ export namespace MCP {
     const config = cfg.mcp ?? {}
     const result: Record<string, Status> = {}
 
-    // Include all configured MCPs from config, not just connected ones
+    // Config is the SINGLE source of truth for which servers exist. Live status
+    // (s.status) only supplies the runtime state of a configured server; it never
+    // invents a server that config does not list.
     for (const [key, mcp] of Object.entries(config)) {
       if (!isMcpConfigured(mcp)) continue
       result[key] = s.status[key] ?? { status: "disabled" }
@@ -597,6 +650,7 @@ export namespace MCP {
         delete s.tools[name]
       }
     }
+    Bus.publish(ToolsChanged, { server: name })
   }
 
   export async function disconnect(name: string) {
@@ -610,6 +664,7 @@ export namespace MCP {
     }
     delete s.tools[name]
     s.status[name] = { status: "disabled" }
+    Bus.publish(ToolsChanged, { server: name })
   }
 
   // Derive the globally-unique tool key exposed to the model
@@ -645,13 +700,30 @@ export namespace MCP {
     return Storage.read<string[]>(["mcp_whitelist", name]).catch(() => [])
   }
 
+  // Global, persisted, monotonic whitelist version. Bumped on every whitelist
+  // mutation. A session records the version its catalog last reflected; on a
+  // turn, a version mismatch is the O(1) gate that decides whether to even
+  // consider re-injecting the catalog (see insertMcpCatalog). Global (no project
+  // id) because the whitelist itself is global.
+  export async function whitelistVersion(): Promise<number> {
+    return Storage.read<number>(["mcp_whitelist_version"]).catch(() => 0)
+  }
+
+  async function bumpWhitelistVersion() {
+    const next = (await whitelistVersion()) + 1
+    await Storage.write(["mcp_whitelist_version"], next)
+    return next
+  }
+
   export async function setWhitelist(name: string, names: string[]) {
     await Storage.write(["mcp_whitelist", name], [...new Set(names)].sort())
+    await bumpWhitelistVersion()
     Bus.publish(WhitelistChanged, { server: name })
   }
 
   export async function removeWhitelist(name: string) {
     await Storage.remove(["mcp_whitelist", name])
+    await bumpWhitelistVersion()
     Bus.publish(WhitelistChanged, { server: name })
   }
 

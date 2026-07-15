@@ -1492,22 +1492,57 @@ export namespace SessionPrompt {
     userMessage.parts.push(part)
   }
 
-  const MCP_CATALOG_MARKER = "<mcp_tool_catalog>"
-
-  // Inject the progressive-disclosure MCP catalog ONCE, as durable history, on
-  // the first turn after MCP is enabled. The catalog text becomes a synthetic
-  // TextPart on the latest user message and persists; the <mcp_tool_catalog>
-  // text is its own idempotency marker (scanned across all messages so we never
-  // re-inject). NOT wrapped in <system-reminder>: that would make
-  // provider/transform.ts treat it as a meta message.
+  // Inject the progressive-disclosure MCP catalog as durable history when a
+  // session's catalog is out of date with the global whitelist. The catalog text
+  // becomes a synthetic TextPart on the latest user message and persists.
+  //
+  // Refresh model (whitelist can change mid-session; MCP is a one-way latch so an
+  // enabled session stays enabled): a GLOBAL monotonic whitelist version bumps on
+  // every whitelist change. Each session records the version its catalog last
+  // reflected (mcpCatalogVersion) and a copy of that catalog text (mcpCatalogText).
+  //   1. version match  -> O(1) no-op (the common case; no history scan, no build).
+  //   2. version moved but the freshly-built catalog is byte-identical to the last
+  //      one this session saw -> bump the session version, inject NOTHING (avoids a
+  //      redundant block when e.g. two edits cancel out).
+  //   3. version moved and the catalog differs -> append a FRESH FULL catalog block
+  //      at the tail. Recency wins: the newest block supersedes the older one, so
+  //      the model uses the current whitelist. Old blocks stay as inert history.
+  //
+  // NOT wrapped in <system-reminder> (that would make provider/transform.ts
+  // treat it as a meta message).
   async function insertMcpCatalog(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
     if (!input.session.mcpEnabled) return
-    const already = input.messages.some((msg) =>
-      msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(MCP_CATALOG_MARKER)),
-    )
-    if (already) return
+
+    const version = await MCP.whitelistVersion()
+    // O(1) gate: the session's catalog already reflects the current whitelist.
+    if (input.session.mcpCatalogVersion === version) return
+
     const catalog = McpCatalog.build(await MCP.corpus())
-    if (!catalog) return
+
+    // Version moved but the catalog content is unchanged from what this session
+    // last saw (e.g. an edit that netted no change): sync the version, inject nothing.
+    if ((catalog ?? "") === (input.session.mcpCatalogText ?? "")) {
+      await Session.update(input.session.id, (draft) => void (draft.mcpCatalogVersion = version), { touch: false })
+      input.session.mcpCatalogVersion = version
+      return
+    }
+
+    // Nothing to show (empty whitelist / corpus): record the version so we do not
+    // re-check every turn, but append no block.
+    if (!catalog) {
+      await Session.update(
+        input.session.id,
+        (draft) => {
+          draft.mcpCatalogVersion = version
+          draft.mcpCatalogText = ""
+        },
+        { touch: false },
+      )
+      input.session.mcpCatalogVersion = version
+      input.session.mcpCatalogText = ""
+      return
+    }
+
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return
     const userInfo = userMessage.info as MessageV2.User
@@ -1521,6 +1556,16 @@ export namespace SessionPrompt {
     }
     await Session.updatePart(part)
     userMessage.parts.push(part)
+    await Session.update(
+      input.session.id,
+      (draft) => {
+        draft.mcpCatalogVersion = version
+        draft.mcpCatalogText = catalog
+      },
+      { touch: false },
+    )
+    input.session.mcpCatalogVersion = version
+    input.session.mcpCatalogText = catalog
   }
 
   async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {

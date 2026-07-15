@@ -1034,6 +1034,8 @@ export type Session = {
       }
   >
   mcpEnabled?: boolean
+  mcpCatalogVersion?: number
+  mcpCatalogText?: string
 }
 
 export type EventSessionCreated = {

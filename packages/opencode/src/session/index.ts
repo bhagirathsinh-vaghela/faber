@@ -189,6 +189,15 @@ export namespace Session {
       // and no catalog block is injected. Enabling injects the catalog once as
       // durable history. Set via Session.update.
       mcpEnabled: z.boolean().optional(),
+      // The global whitelist version this session's catalog last reflected. On a
+      // turn, if it lags MCP.whitelistVersion(), the catalog may need a refresh
+      // (see insertMcpCatalog). This is the O(1) gate that avoids scanning
+      // history every turn. Absent = never synced (pre-feature or freshly enabled).
+      mcpCatalogVersion: z.number().optional(),
+      // The catalog block text this session last injected. Compared against a
+      // freshly-built catalog when the version moved, so a version bump whose
+      // actual whitelist content is unchanged does NOT append a redundant block.
+      mcpCatalogText: z.string().optional(),
     })
     .meta({
       ref: "Session",

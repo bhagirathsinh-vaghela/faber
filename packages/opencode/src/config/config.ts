@@ -1615,6 +1615,19 @@ export namespace Config {
 
     global.reset()
 
+    // The instance config (state) merges global config in (precedence order,
+    // step 2), so a global write leaves state stale until it re-reads. Reset it
+    // too, otherwise Config.get() — and everything keyed off it, e.g.
+    // MCP.status() — keeps serving the pre-write config until a full restart.
+    // Config stays the single source of truth; this just refreshes its cache.
+    // state.reset() reads Instance.directory, which throws when called outside an
+    // instance context (the global config route has none). In that case there is
+    // no per-call instance cache to drop here; the Disposed event below plus each
+    // instance's own re-read cover it. Guard so the write never 500s.
+    try {
+      state.reset()
+    } catch {}
+
     // Signal clients to refetch the changed config. NOT a dispose: the pin
     // system re-fingerprints per session on next touch, so running sessions
     // keep their pinned config and no in-flight turn is aborted.
@@ -1654,6 +1667,12 @@ export namespace Config {
     }
 
     global.reset()
+    // Same as updateGlobal: refresh the instance config cache too so Config.get()
+    // (and MCP.status(), which iterates it) stops serving the removed server.
+    // Guarded — removeMcp may run outside an instance context.
+    try {
+      state.reset()
+    } catch {}
     GlobalBus.emit("event", {
       directory: "global",
       payload: {
