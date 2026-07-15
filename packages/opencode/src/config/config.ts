@@ -506,6 +506,11 @@ export namespace Config {
     return uniqueSpecifiers.toReversed()
   }
 
+  export const McpTier = z.enum(["name", "description", "full"]).meta({
+    ref: "McpTier",
+  })
+  export type McpTier = z.infer<typeof McpTier>
+
   export const McpLocal = z
     .object({
       type: z.literal("local").describe("Type of MCP server connection"),
@@ -515,12 +520,9 @@ export namespace Config {
         .optional()
         .describe("Environment variables to set when running the MCP server"),
       enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-      deny: z
-        .array(z.string())
-        .optional()
-        .describe(
-          "Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).",
-        ),
+      tier: McpTier.optional().describe(
+        'Progressive-disclosure detail level for this server in the MCP tool catalog. "name" (default) lists only tool names; "description" adds each tool\'s description; "full" adds the input schema. Lower tiers shrink the steady-state request; the model recovers omitted detail on demand via the mcp_search tool. Applies to every session (never per-session) so the shared catalog cache stays byte-identical.',
+      ),
       timeout: z
         .number()
         .int()
@@ -553,12 +555,9 @@ export namespace Config {
       type: z.literal("remote").describe("Type of MCP server connection"),
       url: z.string().describe("URL of the remote MCP server"),
       enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-      deny: z
-        .array(z.string())
-        .optional()
-        .describe(
-          "Tool names to exclude from this MCP server. Matching tools are not registered, reducing request size and context usage. Names match the tool's native name as reported by the server (without the client-name prefix).",
-        ),
+      tier: McpTier.optional().describe(
+        'Progressive-disclosure detail level for this server in the MCP tool catalog. "name" (default) lists only tool names; "description" adds each tool\'s description; "full" adds the input schema. Lower tiers shrink the steady-state request; the model recovers omitted detail on demand via the mcp_search tool. Applies to every session (never per-session) so the shared catalog cache stays byte-identical.',
+      ),
       headers: z.record(z.string(), z.string()).optional().describe("Headers to send with the request"),
       oauth: z
         .union([McpOAuth, z.literal(false)])

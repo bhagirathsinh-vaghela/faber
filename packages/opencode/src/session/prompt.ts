@@ -29,6 +29,7 @@ import { defer } from "../util/defer"
 import { clone } from "remeda"
 import { ToolRegistry } from "../tool/registry"
 import { MCP } from "../mcp"
+import { McpCatalog } from "../mcp/catalog"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
 import { ListTool } from "../tool/ls"
@@ -841,6 +842,17 @@ export namespace SessionPrompt {
     return `Tool "${id}" is restricted to ${entry.paths.join(", ")} for this task. "${filePath}" is not allowed.`
   }
 
+  // Per-session MCP latch, enforced at execute time so tools[] stays
+  // byte-identical whether a session has MCP on or off (gating via the wire
+  // would churn the cache). MCP is OFF by default; until the session enables it
+  // mcp_search and every MCP server tool are denied here. Returns a denial
+  // message the model can read, or undefined once MCP is enabled.
+  const MCP_SEARCH_TOOL = "mcp_search"
+  function mcpDenied(session: Session.Info, id: string): string | undefined {
+    if (session.mcpEnabled) return undefined
+    return `MCP is not enabled for this session. The "${id}" tool cannot be used here.`
+  }
+
   export async function resolveTools(input: {
     agent: Agent.Info
     model: Provider.Model
@@ -918,7 +930,9 @@ export namespace SessionPrompt {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const ctx = context(args, options)
-          const denial = toolDenial(allowedTools, item.id, args)
+          const denial =
+            (item.id === MCP_SEARCH_TOOL ? mcpDenied(input.session, item.id) : undefined) ??
+            toolDenial(allowedTools, item.id, args)
           if (denial) {
             return {
               title: item.id,
@@ -962,7 +976,7 @@ export namespace SessionPrompt {
       item.execute = async (args, opts) => {
         const ctx = context(args, opts)
 
-        const denial = toolDenial(allowedTools, key, args)
+        const denial = mcpDenied(input.session, key) ?? toolDenial(allowedTools, key, args)
         if (denial) return { content: [{ type: "text" as const, text: denial }] }
 
         await Plugin.trigger(
@@ -1478,7 +1492,40 @@ export namespace SessionPrompt {
     userMessage.parts.push(part)
   }
 
+  const MCP_CATALOG_MARKER = "<mcp_tool_catalog>"
+
+  // Inject the progressive-disclosure MCP catalog ONCE, as durable history, on
+  // the first turn after MCP is enabled. The catalog text becomes a synthetic
+  // TextPart on the latest user message and persists; the <mcp_tool_catalog>
+  // text is its own idempotency marker (scanned across all messages so we never
+  // re-inject). NOT wrapped in <system-reminder>: that would make
+  // provider/transform.ts treat it as a meta message.
+  async function insertMcpCatalog(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
+    if (!input.session.mcpEnabled) return
+    const already = input.messages.some((msg) =>
+      msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(MCP_CATALOG_MARKER)),
+    )
+    if (already) return
+    const catalog = McpCatalog.build(await MCP.corpus())
+    if (!catalog) return
+    const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
+    if (!userMessage) return
+    const userInfo = userMessage.info as MessageV2.User
+    const part: MessageV2.TextPart = {
+      id: Identifier.ascending("part"),
+      messageID: userInfo.id,
+      sessionID: userInfo.sessionID,
+      type: "text",
+      text: catalog,
+      synthetic: true,
+    }
+    await Session.updatePart(part)
+    userMessage.parts.push(part)
+  }
+
   async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
+    await insertMcpCatalog(input)
+
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 

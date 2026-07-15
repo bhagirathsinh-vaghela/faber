@@ -1,0 +1,13 @@
+Disclose details for MCP (Model Context Protocol) tools that the mcp_tool_catalog block lists without full detail.
+
+The mcp_tool_catalog block in this conversation lists every available MCP tool, grouped by server. To keep requests small, most servers list only tool names (or names + short descriptions) there — the full description and input schema are not shown until you ask for them.
+
+Use mcp_search to retrieve what the catalog omitted, BEFORE calling an MCP tool whose description or input schema you have not yet seen:
+
+- To fetch details for tools you already know by name: pass `select` with the exact tool key(s) from the catalog (e.g. ["notion_search"]).
+- To discover tools when the names alone are uninformative: pass `query` with keywords. The search matches every MCP tool's name and description across all servers, regardless of how much detail the catalog shows.
+- Control how much comes back with `want`: "description" (name + description), "schema" (name + input schema), or "full" (both, the default).
+
+The result contains the requested tool details as JSON. Once disclosed, they remain in the conversation, so you do not need to search again for the same tool. After you have a tool's input schema, call the tool directly with a standard tool_use block using its name from the catalog.
+
+You can combine `select` and `query` in one call; results are merged and de-duplicated.

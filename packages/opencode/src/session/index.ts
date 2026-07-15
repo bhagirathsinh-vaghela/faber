@@ -182,6 +182,13 @@ export namespace Session {
       cacheProbeIndex: z.number().optional(),
       cacheProbeMessageID: z.string().optional(),
       allowedTools: AllowedTool.array().optional(),
+      // Per-session MCP latch. One-way: absent/false = MCP off (the default for
+      // every session, incl. pre-feature ones); flips to true once when the user
+      // enables MCP and NEVER reverts. While off, mcp_search and every MCP tool
+      // are denied at the execute gate (a runtime block, never a wire change)
+      // and no catalog block is injected. Enabling injects the catalog once as
+      // durable history. Set via Session.update.
+      mcpEnabled: z.boolean().optional(),
     })
     .meta({
       ref: "Session",

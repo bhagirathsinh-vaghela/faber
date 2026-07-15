@@ -31,6 +31,7 @@ import { Truncate } from "./truncation"
 import { PlanExitTool, PlanEnterTool } from "./plan"
 import { ApplyPatchTool } from "./apply_patch"
 import { Auth } from "../auth"
+import { McpSearchTool } from "./mcp-search"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -144,6 +145,11 @@ export namespace ToolRegistry {
       ApplyPatchTool,
       ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
+      // Progressive-disclosure companion to the MCP catalog. Only
+      // load it when at least one MCP server is configured — with no MCP
+      // servers there is nothing to disclose, and adding it would needlessly
+      // change the tools[] prefix for MCP-less setups.
+      ...(config.mcp && Object.keys(config.mcp).length > 0 ? [McpSearchTool] : []),
       PlanExitTool,
       PlanEnterTool,
       ...custom,

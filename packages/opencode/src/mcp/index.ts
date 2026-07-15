@@ -10,6 +10,7 @@ import {
   ToolListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js"
 import { Config } from "../config/config"
+import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { NamedError } from "@opencode-ai/util/error"
 import z from "zod/v4"
@@ -58,6 +59,13 @@ export namespace MCP {
 
   export const ToolsChanged = BusEvent.define(
     "mcp.tools.changed",
+    z.object({
+      server: z.string(),
+    }),
+  )
+
+  export const WhitelistChanged = BusEvent.define(
+    "mcp.whitelist.changed",
     z.object({
       server: z.string(),
     }),
@@ -604,6 +612,121 @@ export namespace MCP {
     s.status[name] = { status: "disabled" }
   }
 
+  // Derive the globally-unique tool key exposed to the model
+  // (sanitizedClientName + "_" + sanitizedToolName), stripping a leading copy
+  // of the client name when the server self-namespaces its tools. This is the
+  // single source of truth for the key so the executable tool map (tools()),
+  // the raw catalog corpus (corpus()), and the on/off gate all agree.
+  //
+  // Many MCP servers self-namespace their tools with the server name
+  // (datadog -> "datadog_aggregate_logs", notion -> "notion-search"). When the
+  // config key matches that self-prefix, composing clientName + "_" + toolName
+  // double-prefixes ("datadog_datadog_aggregate_logs"). Strip a leading copy of
+  // the client name plus its "_"/"-" separator. The separator check keeps a
+  // short key (e.g. "note") from mangling an unrelated tool ("notebook_create").
+  export function toolKey(clientName: string, toolName: string) {
+    const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
+    const deduped =
+      toolName.startsWith(clientName + "_") || toolName.startsWith(clientName + "-")
+        ? toolName.slice(clientName.length + 1)
+        : toolName
+    const sanitizedToolName = deduped.replace(/[^a-zA-Z0-9_-]/g, "_")
+    return sanitizedClientName + "_" + sanitizedToolName
+  }
+
+  // Curated per-server tool whitelist. Names-only, GLOBAL (no project id): a
+  // server's whitelist is shared across every session/project so the catalog
+  // block stays byte-identical everywhere. Stores each tool's NATIVE name (as
+  // the server reports it, matching mcpTool.name), NOT the derived toolKey.
+  // The whitelist is the catalog's source of truth: only whitelisted names
+  // reach corpus() -> the catalog and mcp_search. An empty (or absent)
+  // whitelist means the server contributes nothing (explicit opt-in).
+  export async function whitelist(name: string): Promise<string[]> {
+    return Storage.read<string[]>(["mcp_whitelist", name]).catch(() => [])
+  }
+
+  export async function setWhitelist(name: string, names: string[]) {
+    await Storage.write(["mcp_whitelist", name], [...new Set(names)].sort())
+    Bus.publish(WhitelistChanged, { server: name })
+  }
+
+  export async function removeWhitelist(name: string) {
+    await Storage.remove(["mcp_whitelist", name])
+    Bus.publish(WhitelistChanged, { server: name })
+  }
+
+  // Live advertised-tools fetch for a single server (the UI "refresh advertised
+  // tools" source and the whitelist-curation substrate). Connects if needed;
+  // when the server needs auth/registration it surfaces that status instead of
+  // triggering interactive OAuth. On success it refreshes the per-client tools
+  // cache and returns the advertised list.
+  export async function listLive(name: string): Promise<{ status: Status; tools: MCPToolDef[] }> {
+    const s = await state()
+    if (!s.clients[name] || s.status[name]?.status !== "connected") {
+      await connect(name)
+    }
+    const status = s.status[name] ?? { status: "disabled" as const }
+    const client = s.clients[name]
+    if (!client || status.status !== "connected") {
+      return { status, tools: [] }
+    }
+    const cfg = await Config.get()
+    const mcp = cfg.mcp?.[name]
+    const timeout = (mcp && isMcpConfigured(mcp) ? mcp.timeout : undefined) ?? DEFAULT_TIMEOUT
+    const result = await withTimeout(client.listTools(), timeout).catch((err) => {
+      log.error("listLive failed to get tools", { name, error: err })
+      return undefined
+    })
+    if (!result) return { status, tools: [] }
+    s.tools[name] = result
+    return { status, tools: result.tools }
+  }
+
+  // Raw metadata for every whitelisted MCP tool, keyed identically to tools().
+  // Unlike tools() (which returns executable AI-SDK tools with opaque wrapped
+  // schemas), corpus() returns the plain name/description/JSON-schema plus the
+  // owning client and its configured catalog tier. This is the substrate the
+  // mcp_search tool searches and the progressive-disclosure catalog is built
+  // from. Filtered to the per-server whitelist (names only); desc/schema are
+  // hydrated from the live/cached tools list.
+  export type CorpusEntry = {
+    key: string
+    client: string
+    tier: Config.McpTier
+    name: string
+    description: string
+    schema: unknown
+  }
+  export async function corpus(): Promise<CorpusEntry[]> {
+    const result: CorpusEntry[] = []
+    const s = await state()
+    const cfg = await Config.get()
+    const config = cfg.mcp ?? {}
+    const clientsSnapshot = await clients()
+
+    for (const clientName of Object.keys(clientsSnapshot)) {
+      if (s.status[clientName]?.status !== "connected") continue
+      const toolsResult = s.tools[clientName]
+      if (!toolsResult) continue
+      const mcpConfig = config[clientName]
+      const entry = isMcpConfigured(mcpConfig) ? mcpConfig : undefined
+      const tier = entry?.tier ?? "name"
+      const allow = new Set(await whitelist(clientName))
+      for (const mcpTool of toolsResult.tools) {
+        if (!allow.has(mcpTool.name)) continue
+        result.push({
+          key: toolKey(clientName, mcpTool.name),
+          client: clientName,
+          tier,
+          name: mcpTool.name,
+          description: mcpTool.description ?? "",
+          schema: mcpTool.inputSchema,
+        })
+      }
+    }
+    return result
+  }
+
   export async function tools() {
     // Serve from the per-client tools cache populated at create() time.
     // We deliberately do NOT call client.listTools() here — that caused MCP
@@ -611,9 +734,10 @@ export namespace MCP {
     // (token rotation, network blip, server restart, timeout). The cached
     // list stays valid for the lifetime of the OpenCode instance.
     //
-    // The deny filter is still applied per-call against current Config.get(),
-    // so mcp.<name>.deny edits take effect on the next tools() call without
-    // a session restart.
+    // Every connected tool stays executable here regardless of the whitelist:
+    // the whitelist gates only what the model SEES (corpus() -> catalog), never
+    // what it can call once a name is disclosed. This keeps disclosed tools
+    // callable while the catalog stays curated.
     const result: Record<string, Tool> = {}
     const s = await state()
     const cfg = await Config.get()
@@ -637,27 +761,8 @@ export namespace MCP {
       const mcpConfig = config[clientName]
       const entry = isMcpConfigured(mcpConfig) ? mcpConfig : undefined
       const timeout = entry?.timeout ?? defaultTimeout
-      const deny = new Set(entry?.deny ?? [])
       for (const mcpTool of toolsResult.tools) {
-        if (deny.has(mcpTool.name)) {
-          log.info("tool excluded by mcp.deny", { clientName, tool: mcpTool.name })
-          continue
-        }
-        const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
-        // Many MCP servers self-namespace their tools with the server name
-        // (datadog -> "datadog_aggregate_logs", notion -> "notion-search").
-        // When the config key matches that self-prefix, composing
-        // clientName + "_" + toolName double-prefixes
-        // ("datadog_datadog_aggregate_logs"). Strip a leading copy of the
-        // client name plus its "_"/"-" separator. The separator check keeps a
-        // short key (e.g. "note") from mangling an unrelated tool
-        // ("notebook_create").
-        const deduped =
-          mcpTool.name.startsWith(clientName + "_") || mcpTool.name.startsWith(clientName + "-")
-            ? mcpTool.name.slice(clientName.length + 1)
-            : mcpTool.name
-        const sanitizedToolName = deduped.replace(/[^a-zA-Z0-9_-]/g, "_")
-        result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(mcpTool, client, timeout)
+        result[toolKey(clientName, mcpTool.name)] = await convertMcpTool(mcpTool, client, timeout)
       }
     }
     return result
