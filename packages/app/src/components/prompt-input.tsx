@@ -29,7 +29,7 @@ import {
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
@@ -120,6 +120,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const zen = () => layout.zen.opened()
   const comments = useComments()
   const params = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const dialog = useDialog()
   const providers = useProviders()
   const command = useCommand()
@@ -215,6 +216,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return paths
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const mcpEnabled = createMemo(() => info()?.mcpEnabled === true)
+  // Flip the one-way MCP latch on the open session. No-op once enabled (the
+  // chip is inert then); the catalog rides the next turn.
+  const enableMcp = () => {
+    const id = params.id
+    if (!id || mcpEnabled()) return
+    void sdk.client.session.update({ sessionID: id, mcpEnabled: true }).catch((err) => {
+      showToast({
+        title: language.t("common.requestFailed"),
+        description: err instanceof Error ? err.message : String(err),
+      })
+    })
+  }
   // The single busy read for this session, from the one operative store.
   // working = effective (own OR any subtask, server-rolled full subtree).
   const busy = createMemo(
@@ -1340,6 +1354,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         // about to run also sets it, but only on completion; arming here closes
         // the gap so a concurrent client can't read it cold in between.
         void client.session.arm({ sessionID: session.id, directory: sessionDirectory })
+        // The "+MCP" new-session entry point navigates here with ?mcp=1, so flip
+        // the one-way MCP latch on the freshly-created session before the first
+        // turn runs (the catalog then rides this turn). Clear the param so a
+        // later plain "new session" from this route doesn't inherit it.
+        if (searchParams.mcp) {
+          void client.session.update({ sessionID: session.id, directory: sessionDirectory, mcpEnabled: true })
+          setSearchParams({ mcp: undefined })
+        }
         navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
       }
     }
@@ -2280,6 +2302,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Show>
           </div>
           <div class="flex items-center gap-1 shrink-0">
+            <Show when={store.mode === "normal" && params.id && !zen()}>
+              <Tooltip
+                placement="top"
+                value={mcpEnabled() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  class="flex size-6 items-center justify-center"
+                  classList={{ "text-icon-success-base": mcpEnabled() }}
+                  disabled={mcpEnabled()}
+                  onClick={enableMcp}
+                  aria-label={mcpEnabled() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
+                >
+                  <Icon name="server" size="small" />
+                </Button>
+              </Tooltip>
+            </Show>
             <Show when={store.mode === "normal" && params.id && !zen()}>
               <Tooltip placement="top" value="Customize fields">
                 <Button

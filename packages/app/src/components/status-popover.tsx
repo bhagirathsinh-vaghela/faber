@@ -4,6 +4,8 @@ import { Popover } from "@opencode-ai/ui/popover"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { Button } from "@opencode-ai/ui/button"
 import { Switch } from "@opencode-ai/ui/switch"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { DialogSettings } from "@/components/dialog-settings"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { serverDisplayName, useServer } from "@/context/server"
@@ -37,6 +39,7 @@ export function StatusPopover() {
   const server = useServer()
   const platform = usePlatform()
   const language = useLanguage()
+  const dialog = useDialog()
 
   const [store, setStore] = createStore({
     status: {} as Record<string, ServerStatus | undefined>,
@@ -218,6 +221,15 @@ export function StatusPopover() {
                   </For>
                 </Show>
               </div>
+              <Button
+                variant="ghost"
+                size="small"
+                icon="sliders"
+                class="mt-1 self-start"
+                onClick={() => dialog.show(() => <DialogSettings initialTab="mcp" />)}
+              >
+                {language.t("settings.mcp.manage")}
+              </Button>
             </div>
           </Tabs.Content>
 

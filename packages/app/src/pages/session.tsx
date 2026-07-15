@@ -57,7 +57,7 @@ import { DialogSelectFile } from "@/components/dialog-select-file"
 import { DialogOverview } from "@/components/dialog-overview"
 import FileTree from "@/components/file-tree"
 import { DialogSelectModel } from "@/components/dialog-select-model"
-import { DialogSelectMcp } from "@/components/dialog-select-mcp"
+import { DialogSettings } from "@/components/dialog-settings"
 import { DialogFork } from "@/components/dialog-fork"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
@@ -898,6 +898,15 @@ export default function Page() {
       onSelect: () => navigate(`/${params.dir}/session`),
     },
     {
+      id: "session.new.mcp",
+      title: language.t("command.session.new.mcp"),
+      description: language.t("command.session.new.mcp.description"),
+      category: language.t("command.category.session"),
+      keybind: "mod+shift+alt+s",
+      slash: "new-mcp",
+      onSelect: () => navigate(`/${params.dir}/session?mcp=1`),
+    },
+    {
       id: "file.open",
       title: language.t("command.file.open"),
       description: language.t("palette.search.placeholder"),
@@ -1049,13 +1058,13 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogSelectModel />),
     },
     {
-      id: "mcp.toggle",
-      title: language.t("command.mcp.toggle"),
-      description: language.t("command.mcp.toggle.description"),
+      id: "mcp.manage",
+      title: language.t("command.mcp.manage"),
+      description: language.t("command.mcp.manage.description"),
       category: language.t("command.category.mcp"),
       keybind: "mod+;",
       slash: "mcp",
-      onSelect: () => dialog.show(() => <DialogSelectMcp />),
+      onSelect: () => dialog.show(() => <DialogSettings initialTab="mcp" />),
     },
     {
       id: "agent.cycle",

@@ -1370,6 +1370,19 @@ function createGlobalSync() {
           .then((x) => setStore("lsp", x.data ?? []))
         break
       }
+      // A server's advertised tools or curated whitelist changed. Both events
+      // carry a server name but the app only holds the coarse status map (the
+      // MCP settings panel fetches per-server tools/whitelist on demand), so
+      // refresh the status map to keep every open client's status dots current.
+      case "mcp.tools.changed":
+      case "mcp.whitelist.changed": {
+        sdkFor(directory)
+          .mcp.status()
+          .then((x) => {
+            if (x.data) setStore("mcp", x.data)
+          })
+        break
+      }
     }
   })
   onCleanup(unsub)
