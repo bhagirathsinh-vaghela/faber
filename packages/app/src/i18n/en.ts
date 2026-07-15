@@ -42,6 +42,7 @@ export const dict = {
   "command.session.new": "New session",
   "command.session.new.mcp": "New session with MCP",
   "command.session.new.mcp.description": "Create a new session with MCP tools enabled",
+  "sidebar.session.new.mcp": "+ MCP",
   "command.file.open": "Open file",
   "command.home.open": "Go to home",
   "command.overview.open": "Open overview",
@@ -269,6 +270,10 @@ export const dict = {
   "dialog.mcp.title": "MCPs",
   "dialog.mcp.description": "{{enabled}} of {{total}} enabled",
   "dialog.mcp.empty": "No MCPs configured",
+
+  "dialog.mcp.enable.title": "Enable MCP for this session?",
+  "dialog.mcp.enable.description": "MCP can only be turned on, not off. Once enabled, this session keeps MCP tools for the rest of its life.",
+  "dialog.mcp.enable.confirm": "Enable MCP",
 
   "dialog.lsp.empty": "LSPs auto-detected from file types",
   "dialog.plugins.empty": "Plugins configured in opencode.json",

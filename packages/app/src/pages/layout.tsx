@@ -2184,11 +2184,12 @@ export default function Layout(props: ParentProps) {
               </div>
 
               <div class="flex-1 min-h-0 flex flex-col">
-                <div class="shrink-0 py-4 px-3">
+                <div class="shrink-0 py-4 px-3 flex items-center gap-2">
                   <TooltipKeybind
                     title={language.t("command.session.new")}
                     keybind={command.keybind("session.new")}
                     placement="top"
+                    class="flex-1 min-w-0"
                   >
                     <Button
                       size="large"
@@ -2204,6 +2205,27 @@ export default function Layout(props: ParentProps) {
                       }}
                     >
                       {language.t("command.session.new")}
+                    </Button>
+                  </TooltipKeybind>
+                  <TooltipKeybind
+                    title={language.t("command.session.new.mcp")}
+                    keybind={command.keybind("session.new.mcp")}
+                    placement="top"
+                  >
+                    <Button
+                      size="large"
+                      variant="secondary"
+                      class="shrink-0 whitespace-nowrap"
+                      onClick={() => {
+                        if (!layout.sidebar.opened()) {
+                          setState("hoverSession", undefined)
+                          setState("previewProject", undefined)
+                        }
+                        navigate(`/${base64Encode(p().worktree)}/session?mcp=1`)
+                        layout.mobileSidebar.hide()
+                      }}
+                    >
+                      {language.t("sidebar.session.new.mcp")}
                     </Button>
                   </TooltipKeybind>
                 </div>

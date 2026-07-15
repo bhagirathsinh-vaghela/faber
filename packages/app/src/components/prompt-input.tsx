@@ -216,19 +216,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return paths
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const mcpEnabled = createMemo(() => info()?.mcpEnabled === true)
-  // Flip the one-way MCP latch on the open session. No-op once enabled (the
-  // chip is inert then); the catalog rides the next turn.
-  const enableMcp = () => {
-    const id = params.id
-    if (!id || mcpEnabled()) return
-    void sdk.client.session.update({ sessionID: id, mcpEnabled: true }).catch((err) => {
-      showToast({
-        title: language.t("common.requestFailed"),
-        description: err instanceof Error ? err.message : String(err),
-      })
-    })
-  }
   // The single busy read for this session, from the one operative store.
   // working = effective (own OR any subtask, server-rolled full subtree).
   const busy = createMemo(
@@ -2302,24 +2289,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Show>
           </div>
           <div class="flex items-center gap-1 shrink-0">
-            <Show when={store.mode === "normal" && params.id && !zen()}>
-              <Tooltip
-                placement="top"
-                value={mcpEnabled() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  class="flex size-6 items-center justify-center"
-                  classList={{ "text-icon-success-base": mcpEnabled() }}
-                  disabled={mcpEnabled()}
-                  onClick={enableMcp}
-                  aria-label={mcpEnabled() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
-                >
-                  <Icon name="server" size="small" />
-                </Button>
-              </Tooltip>
-            </Show>
             <Show when={store.mode === "normal" && params.id && !zen()}>
               <Tooltip placement="top" value="Customize fields">
                 <Button

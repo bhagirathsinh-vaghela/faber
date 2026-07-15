@@ -222,10 +222,10 @@ export function StatusPopover() {
                 </Show>
               </div>
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="small"
                 icon="sliders"
-                class="mt-1 self-start"
+                class="mt-2 w-full justify-center"
                 onClick={() => dialog.show(() => <DialogSettings initialTab="mcp" />)}
               >
                 {language.t("settings.mcp.manage")}

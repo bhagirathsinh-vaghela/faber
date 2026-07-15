@@ -2,11 +2,14 @@ import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useQuestion } from "@/context/question"
 import { useLocal } from "@/context/local"
 import { showToast } from "@opencode-ai/ui/toast"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { DialogEnableMcp } from "@/components/dialog-enable-mcp"
 
 // The prompt action bar, ported from the TUI prompt footer
 // (packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx): pending
@@ -16,11 +19,32 @@ import { showToast } from "@opencode-ai/ui/toast"
 // TUI also listens to; auto-inject toggles through background.toggleAutoInject.
 export function PromptActionBar() {
   const sdk = useSDK()
+  const sync = useSync()
   const command = useCommand()
   const language = useLanguage()
   const question = useQuestion()
   const local = useLocal()
   const params = useParams()
+  const dialog = useDialog()
+
+  // MCP status chip: N = servers in the live status store (not config), so the
+  // count updates live off the mcp.tools.changed bus event — add/connect/remove
+  // reflects here with no page reload. The status store is config-driven server-
+  // side, so it stays the single source of truth.
+  const mcpCount = createMemo(() => Object.keys(sync.data.mcp ?? {}).length)
+  const mcpEnabled = createMemo(() => (params.id ? sync.session.get(params.id)?.mcpEnabled === true : false))
+
+  const enableMcp = () => {
+    const id = params.id
+    if (!id || mcpEnabled()) return
+    dialog.show(() => (
+      <DialogEnableMcp
+        onConfirm={async () => {
+          await sdk.client.session.update({ sessionID: id, mcpEnabled: true })
+        }}
+      />
+    ))
+  }
 
   const [running, setRunning] = createSignal(0)
   const [available, setAvailable] = createSignal(0)
@@ -98,6 +122,19 @@ export function PromptActionBar() {
   return (
     <div class="flex flex-row flex-wrap items-center gap-1.5">
       <ChipGroup>
+        {/* MCP: always shown. N = configured servers. A green dot marks a
+            session that has latched MCP on; otherwise clicking asks to enable
+            (one-way). Disabled sessions with no id (new session) fall through to
+            the sidebar +MCP entry point. */}
+        <Chip
+          icon={mcpEnabled() ? <span class="inline-block size-1.5 rounded-full bg-icon-success-base" /> : undefined}
+          accent="usage-context-start"
+          onClick={mcpEnabled() || !params.id ? undefined : enableMcp}
+          tooltip={mcpEnabled() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
+        >
+          <span class="text-text-base">MCP</span> {mcpCount()}
+        </Chip>
+
         {/* pending: display-only (no onClick), but same weight/color as its
             interactive siblings. */}
         <Show when={local.dock.isVisible("pending")}>

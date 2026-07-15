@@ -1,5 +1,5 @@
-import { Component, createMemo, createSignal, For, Show } from "solid-js"
-import { createStore, produce } from "solid-js/store"
+import { Component, createMemo, createSignal, For, Show, onMount } from "solid-js"
+import { createStore, produce, reconcile } from "solid-js/store"
 import type { McpLocalConfig, McpRemoteConfig, McpStatus } from "@opencode-ai/sdk/v2/client"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -7,8 +7,7 @@ import { Checkbox } from "@opencode-ai/ui/checkbox"
 import { Select } from "@opencode-ai/ui/select"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@opencode-ai/ui/toast"
-import { useSync } from "@/context/sync"
-import { useSDK } from "@/context/sdk"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 
@@ -21,9 +20,14 @@ type ServerConfig = McpLocalConfig | McpRemoteConfig
 // Advertised tools + whitelist, fetched lazily when a server row is expanded.
 type Detail = {
   loading: boolean
+  saving?: boolean
   status?: McpStatus
   tools: { name: string; description?: string }[]
+  // `whitelist` is the saved server truth; `draft` is the local edit the
+  // checkboxes mutate. Nothing persists until Save, matching every other
+  // settings panel (draft + Save/Discard).
   whitelist: string[]
+  draft: string[]
 }
 
 const statusDot = (status: McpStatus["status"] | undefined) => {
@@ -35,11 +39,21 @@ const statusDot = (status: McpStatus["status"] | undefined) => {
 
 export const SettingsMcp: Component = () => {
   const language = useLanguage()
-  const sync = useSync()
-  const sdk = useSDK()
+  const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
 
+  // MCP management is GLOBAL: it reads and writes the global MCP config only,
+  // never a directory-specific one. The server merges global + local config for
+  // an instance's own view, but the UI never touches local/dir config. So this
+  // panel uses the GLOBAL contexts (available everywhere the settings dialog can
+  // open) and the global MCP endpoints (no directory param). Status is fetched
+  // into a local store here rather than the per-directory sync store.
   const t = language.t
+
+  // Live MCP status, fetched on mount + refreshed after mutations. Keyed by
+  // server name. Local to this panel (the per-directory sync store is not in
+  // scope for a global dialog).
+  const [statusMap, setStatusMap] = createStore<Record<string, McpStatus>>({})
 
   const statusLabel = (status: McpStatus["status"] | undefined) => {
     if (status === "connected") return t("mcp.status.connected")
@@ -52,10 +66,10 @@ export const SettingsMcp: Component = () => {
   // Configured servers joined with their live status. Config is the source of
   // truth for what exists; status is the runtime connection state.
   const servers = createMemo(() => {
-    const config = (sync.data.config.mcp ?? {}) as Record<string, ServerConfig>
+    const config = (globalSync.data.config.mcp ?? {}) as Record<string, ServerConfig>
     return Object.keys(config)
       .sort((a, b) => a.localeCompare(b))
-      .map((name) => ({ name, status: sync.data.mcp[name]?.status }))
+      .map((name) => ({ name, status: statusMap[name]?.status }))
   })
 
   const [busy, setBusy] = createSignal<string | null>(null)
@@ -69,9 +83,10 @@ export const SettingsMcp: Component = () => {
   ]
 
   const refreshStatus = async () => {
-    const result = await sdk.client.mcp.status()
-    if (result.data) sync.set("mcp", result.data)
+    const result = await globalSDK.client.mcp.status()
+    if (result.data) setStatusMap(reconcile(result.data))
   }
+  onMount(refreshStatus)
 
   const withBusy = async (name: string, fn: () => Promise<void>) => {
     if (busy()) return
@@ -87,15 +102,20 @@ export const SettingsMcp: Component = () => {
   }
 
   const loadDetail = async (name: string) => {
-    setDetail(name, (prev) => ({ ...(prev ?? { tools: [], whitelist: [] }), loading: true }))
-    const [tools, whitelist] = await Promise.all([sdk.client.mcp.tools({ name }), sdk.client.mcp.whitelist.get({ name })])
+    setDetail(name, (prev) => ({ ...(prev ?? { tools: [], whitelist: [], draft: [] }), loading: true }))
+    const [tools, whitelist] = await Promise.all([
+      globalSDK.client.mcp.tools({ name }),
+      globalSDK.client.mcp.whitelist.get({ name }),
+    ])
+    const saved = whitelist.data ?? []
     setDetail(name, {
       loading: false,
       status: tools.data?.status,
       tools: tools.data?.tools ?? [],
-      whitelist: whitelist.data ?? [],
+      whitelist: saved,
+      draft: [...saved],
     })
-    if (tools.data?.status) sync.set("mcp", name, tools.data.status)
+    if (tools.data?.status) setStatusMap(name, tools.data.status)
   }
 
   const toggleExpanded = (name: string) => {
@@ -109,30 +129,44 @@ export const SettingsMcp: Component = () => {
 
   const connect = (name: string, status: McpStatus["status"] | undefined) =>
     withBusy(name, async () => {
-      if (status === "connected") await sdk.client.mcp.disconnect({ name })
-      else await sdk.client.mcp.connect({ name })
+      if (status === "connected") await globalSDK.client.mcp.disconnect({ name })
+      else await globalSDK.client.mcp.connect({ name })
       await refreshStatus()
     })
 
   const authenticate = (name: string) =>
     withBusy(name, async () => {
-      await sdk.client.mcp.auth.authenticate({ name })
+      await globalSDK.client.mcp.auth.authenticate({ name })
       await refreshStatus()
       if (expanded() === name) await loadDetail(name)
     })
 
   const refreshTools = (name: string) => withBusy(name, () => loadDetail(name))
 
+  // Toggle edits the DRAFT only — no network, no store churn per click (which
+  // also stops the scroll from snapping). Persist happens on Save.
   const toggleWhitelist = (name: string, tool: string, checked: boolean) => {
-    const current = detail[name]?.whitelist ?? []
-    const next = checked ? [...current, tool] : current.filter((x) => x !== tool)
-    setDetail(name, "whitelist", next)
-    void sdk.client.mcp.whitelist.set({ name, names: next }).catch((err) => {
-      // Revert on failure so the checkbox reflects server truth.
-      setDetail(name, "whitelist", current)
-      const message = err instanceof Error ? err.message : String(err)
-      showToast({ title: t("common.requestFailed"), description: message })
+    const current = detail[name]?.draft ?? []
+    setDetail(name, "draft", checked ? [...current, tool] : current.filter((x) => x !== tool))
+  }
+
+  const same = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join() === [...b].sort().join()
+  const dirty = (name: string) => {
+    const d = detail[name]
+    return !!d && !same(d.draft ?? [], d.whitelist ?? [])
+  }
+
+  const saveWhitelist = (name: string) =>
+    withBusy(name, async () => {
+      const names = detail[name]?.draft ?? []
+      const result = await globalSDK.client.mcp.whitelist.set({ name, names })
+      const saved = result.data ?? names
+      setDetail(name, { whitelist: saved, draft: [...saved] })
     })
+
+  const discardWhitelist = (name: string) => {
+    const saved = detail[name]?.whitelist ?? []
+    setDetail(name, "draft", [...saved])
   }
 
   // The server route deletes the server from global config, clears its
@@ -141,7 +175,7 @@ export const SettingsMcp: Component = () => {
   // the reload cycle so the client re-fetches config without the removed server.
   const remove = (name: string) =>
     withBusy(name, async () => {
-      await sdk.client.mcp.remove({ name })
+      await globalSDK.client.mcp.remove({ name })
       await globalSync.updateConfig({})
       setDetail(
         produce((draft) => {
@@ -170,7 +204,7 @@ export const SettingsMcp: Component = () => {
     if (form.saving) return
     const name = form.name.trim()
     if (!name) return setForm("error", t("settings.mcp.add.error.name"))
-    if (sync.data.config.mcp?.[name]) return setForm("error", t("settings.mcp.add.error.exists"))
+    if (globalSync.data.config.mcp?.[name]) return setForm("error", t("settings.mcp.add.error.exists"))
 
     const config: ServerConfig =
       form.type === "local"
@@ -185,7 +219,7 @@ export const SettingsMcp: Component = () => {
     setForm("error", undefined)
     try {
       await globalSync.updateConfig({ mcp: { [name]: config } })
-      await sdk.client.mcp.add({ name, config })
+      await globalSDK.client.mcp.add({ name, config })
       await refreshStatus()
       setForm(blankForm())
     } catch (err) {
@@ -344,7 +378,30 @@ export const SettingsMcp: Component = () => {
                     <Show when={expanded() === server.name}>
                       <div class="flex flex-col gap-2 px-4 pb-4 border-t border-border-weak-base pt-3">
                         <div class="flex items-center justify-between">
-                          <span class="text-12-medium text-text-weak">{t("settings.mcp.whitelist.label")}</span>
+                          <span class="text-12-medium text-text-weak">
+                            {t("settings.mcp.whitelist.label")}
+                            <Show when={dirty(server.name)}>
+                              <span class="text-text-warning-base"> •</span>
+                            </Show>
+                          </span>
+                          <div class="flex items-center gap-2">
+                            <Button
+                              variant="secondary"
+                              size="small"
+                              disabled={!dirty(server.name) || busy() === server.name}
+                              onClick={() => discardWhitelist(server.name)}
+                            >
+                              {t("settings.customization.discard")}
+                            </Button>
+                            <Button
+                              variant="primary"
+                              size="small"
+                              disabled={!dirty(server.name) || busy() === server.name}
+                              onClick={() => saveWhitelist(server.name)}
+                            >
+                              {t("settings.customization.save")}
+                            </Button>
+                          </div>
                         </div>
                         <p class="text-11-regular text-text-weaker">{t("settings.mcp.whitelist.hint")}</p>
                         <Show when={d()?.loading}>
@@ -355,18 +412,15 @@ export const SettingsMcp: Component = () => {
                         </Show>
                         <For each={d()?.tools ?? []}>
                           {(tool) => (
-                            <label class="flex items-start gap-2 py-1 cursor-pointer">
+                            <div class="py-1">
                               <Checkbox
-                                checked={(d()?.whitelist ?? []).includes(tool.name)}
+                                checked={(d()?.draft ?? []).includes(tool.name)}
                                 onChange={(checked) => toggleWhitelist(server.name, tool.name, checked)}
-                              />
-                              <div class="flex flex-col gap-0.5 min-w-0">
-                                <span class="text-13-medium text-text-strong truncate">{tool.name}</span>
-                                <Show when={tool.description}>
-                                  <span class="text-11-regular text-text-weaker line-clamp-2">{tool.description}</span>
-                                </Show>
-                              </div>
-                            </label>
+                                description={tool.description}
+                              >
+                                {tool.name}
+                              </Checkbox>
+                            </div>
                           )}
                         </For>
                       </div>
