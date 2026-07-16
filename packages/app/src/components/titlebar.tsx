@@ -171,7 +171,7 @@ export function Titlebar() {
     <header
       data-slot="titlebar"
       data-wco={overlay() ? "" : undefined}
-      class="h-8 md:h-10 shrink-0 bg-background-base relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center"
+      class="h-12 md:h-10 shrink-0 bg-background-base relative"
       classList={{ hidden: layout.zen.opened() }}
       style={{
         "min-height": minHeight(),
@@ -185,38 +185,42 @@ export function Titlebar() {
           : {}),
       }}
     >
-      <div
-        classList={{
-          "flex items-center min-w-0": true,
-          "pl-2": !mac(),
-        }}
-        onMouseDown={drag}
-      >
-        <Show when={mac()}>
-          <div class="h-full shrink-0" style={{ width: `${72 / zoom()}px` }} />
-        </Show>
-        <div class="xl:hidden shrink-0 flex items-center justify-center">
-          <IconButton
-            icon="house"
-            variant="ghost"
-            class="size-8 rounded-md"
-            onClick={goHome}
-            aria-label={language.t("common.home")}
-          />
-        </div>
+      {/* Mobile header: one flat flex row. Home + Menu here, session controls
+          (search, status, keep-warm, stop, review) portal into
+          #opencode-titlebar-mobile as direct siblings, so justify-between
+          spreads all of them evenly across the width. */}
+      <div class="xl:hidden flex items-center justify-between size-full px-2">
+        <IconButton
+          icon="house-mobile"
+          iconSize="medium"
+          variant="ghost"
+          class="size-11 rounded-md [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+          onClick={goHome}
+          aria-label={language.t("common.home")}
+        />
+        <IconButton
+          icon="menu-mobile"
+          iconSize="medium"
+          variant="ghost"
+          class="size-11 rounded-md [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+          onClick={layout.mobileSidebar.toggle}
+          aria-label={language.t("sidebar.menu.toggle")}
+        />
+        <div id="opencode-titlebar-mobile" class="contents" />
+      </div>
+
+      <div class="hidden xl:grid grid-cols-[auto_minmax(0,1fr)_auto] items-center size-full">
         <div
-          class="xl:hidden shrink-0 flex items-center justify-center"
-          classList={{ "w-10": mac(), "w-[48px]": !mac() }}
+          classList={{
+            "flex items-center min-w-0": true,
+            "pl-2": !mac(),
+          }}
+          onMouseDown={drag}
         >
-          <IconButton
-            icon="menu"
-            variant="ghost"
-            class="size-8 rounded-md"
-            onClick={layout.mobileSidebar.toggle}
-            aria-label={language.t("sidebar.menu.toggle")}
-          />
-        </div>
-        <div class="flex items-center gap-3 shrink-0">
+          <Show when={mac()}>
+            <div class="h-full shrink-0" style={{ width: `${72 / zoom()}px` }} />
+          </Show>
+          <div class="flex items-center gap-3 shrink-0">
           <Tooltip
             class="hidden xl:flex shrink-0 ml-2"
             placement="bottom"
@@ -312,6 +316,7 @@ export function Titlebar() {
           <div class="w-6 shrink-0" />
           <div data-tauri-decorum-tb class="flex flex-row" />
         </Show>
+      </div>
       </div>
     </header>
   )

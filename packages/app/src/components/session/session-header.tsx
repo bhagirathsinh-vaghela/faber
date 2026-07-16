@@ -90,6 +90,7 @@ export function SessionHeader() {
 
   const centerMount = createMemo(() => document.getElementById("opencode-titlebar-center"))
   const rightMount = createMemo(() => document.getElementById("opencode-titlebar-right"))
+  const mobileMount = createMemo(() => document.getElementById("opencode-titlebar-mobile"))
 
   return (
     <>
@@ -114,13 +115,82 @@ export function SessionHeader() {
           </Portal>
         )}
       </Show>
+      {/* Mobile: the controls portal into the titlebar's flat flex row. Solid's
+          Portal always wraps its children in a div (event delegation), so we set
+          that wrapper to display:contents via ref — the controls then become
+          direct flex siblings of Home/Menu and justify-between spreads them all
+          evenly across the width. */}
+      <Show when={mobileMount()}>
+        {(mount) => (
+          <Portal mount={mount()} ref={(el) => (el.style.display = "contents")}>
+            <Tooltip value={language.t("session.header.searchFiles")} placement="bottom" gutter={8}>
+              <IconButton
+                icon="magnifying-glass"
+                iconSize="medium"
+                variant="ghost"
+                class="size-11 p-0 [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+                onClick={() => command.trigger("file.open")}
+                aria-label={language.t("session.header.searchFiles")}
+              />
+            </Tooltip>
+            <StatusPopover />
+            <Show when={currentSession()}>
+              <Tooltip
+                value={
+                  currentSession()?.keepWarm
+                    ? language.t("session.keepWarm.armed")
+                    : language.t("session.keepWarm.arm")
+                }
+                placement="top"
+                gutter={8}
+              >
+                <button
+                  type="button"
+                  onClick={toggleWarm}
+                  aria-label={language.t("session.keepWarm.arm")}
+                  aria-pressed={currentSession()?.keepWarm === true}
+                  class="flex items-center justify-center size-11 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!text-icon-strong-base"
+                  classList={{
+                    "opacity-100": currentSession()?.keepWarm === true,
+                    "opacity-40": !currentSession()?.keepWarm,
+                  }}
+                >
+                  <Icon name="sparkles" size="medium" />
+                </button>
+              </Tooltip>
+              <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
+                <IconButton
+                  icon="stop-mobile"
+                  iconSize="medium"
+                  variant="ghost"
+                  onClick={stopSession}
+                  aria-label={language.t("session.stop")}
+                  class="size-11 [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
+                />
+              </Tooltip>
+            </Show>
+            <Tooltip value={language.t("command.review.toggle")} placement="bottom" gutter={8}>
+              <button
+                type="button"
+                class="group/file-tree-toggle-m flex items-center justify-center size-11 rounded-md leading-none [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+                onClick={toggleReview}
+                aria-label={language.t("command.review.toggle")}
+                aria-expanded={reviewActive()}
+                aria-controls="review-panel"
+              >
+                <Icon name={reviewActive() ? "layout-right-full" : "layout-right"} size="medium" />
+              </button>
+            </Tooltip>
+          </Portal>
+        )}
+      </Show>
       <Show when={rightMount()}>
         {(mount) => (
           <Portal mount={mount()}>
             <div class="flex items-center gap-3">
               <StatusPopover />
               <Show when={currentSession()}>
-                <div class="flex items-center ml-2 shrink-0 gap-1">
+                <div class="flex items-center shrink-0 gap-1">
                   <Tooltip
                     value={
                       currentSession()?.keepWarm
@@ -135,22 +205,23 @@ export function SessionHeader() {
                       onClick={toggleWarm}
                       aria-label={language.t("session.keepWarm.arm")}
                       aria-pressed={currentSession()?.keepWarm === true}
-                      class="flex items-center justify-center size-6 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover"
+                      class="flex items-center justify-center size-6 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!size-4"
                       classList={{
                         "opacity-100": currentSession()?.keepWarm === true,
                         "opacity-40": !currentSession()?.keepWarm,
                       }}
                     >
-                      🔥
+                      <Icon name="sparkles" size="medium" />
                     </button>
                   </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton
-                      icon="circle-ban-sign"
+                      icon="stop-mobile"
+                      iconSize="medium"
                       variant="ghost"
                       onClick={stopSession}
                       aria-label={language.t("session.stop")}
-                      class="[&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
+                      class="size-6 [&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-component=icon]]:!size-4 hover:!bg-surface-critical-weak"
                     />
                   </Tooltip>
                 </div>
