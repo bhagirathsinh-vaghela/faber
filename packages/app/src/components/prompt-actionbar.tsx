@@ -1,6 +1,6 @@
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
-import { useParams } from "@solidjs/router"
+import { useParams, useSearchParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useCommand } from "@/context/command"
@@ -25,14 +25,16 @@ export function PromptActionBar() {
   const question = useQuestion()
   const local = useLocal()
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const dialog = useDialog()
 
-  // MCP status chip: N = servers in the live status store (not config), so the
-  // count updates live off the mcp.tools.changed bus event — add/connect/remove
-  // reflects here with no page reload. The status store is config-driven server-
-  // side, so it stays the single source of truth.
-  const mcpCount = createMemo(() => Object.keys(sync.data.mcp ?? {}).length)
+  // MCP on/off is a per-session latch. A session shows enabled once mcpEnabled
+  // is true; a brand-new session (no id yet) reached via the "+MCP" entry point
+  // carries ?mcp=1, which prompt-input commits to mcpEnabled on the first turn —
+  // treat that as "armed" so the chip reads on before the session exists.
   const mcpEnabled = createMemo(() => (params.id ? sync.session.get(params.id)?.mcpEnabled === true : false))
+  const mcpArmed = createMemo(() => !params.id && !!searchParams.mcp)
+  const mcpOn = createMemo(() => mcpEnabled() || mcpArmed())
 
   const enableMcp = () => {
     const id = params.id
@@ -122,19 +124,6 @@ export function PromptActionBar() {
   return (
     <div class="flex flex-row flex-wrap items-center gap-1.5">
       <ChipGroup>
-        {/* MCP: always shown. N = configured servers. A green dot marks a
-            session that has latched MCP on; otherwise clicking asks to enable
-            (one-way). Disabled sessions with no id (new session) fall through to
-            the sidebar +MCP entry point. */}
-        <Chip
-          icon={mcpEnabled() ? <span class="inline-block size-1.5 rounded-full bg-icon-success-base" /> : undefined}
-          accent="usage-context-start"
-          onClick={mcpEnabled() || !params.id ? undefined : enableMcp}
-          tooltip={mcpEnabled() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
-        >
-          <span class="text-text-base">MCP</span> {mcpCount()}
-        </Chip>
-
         {/* pending: display-only (no onClick), but same weight/color as its
             interactive siblings. */}
         <Show when={local.dock.isVisible("pending")}>
@@ -175,6 +164,20 @@ export function PromptActionBar() {
             <span class="text-text-base">questions</span> {questions()}
           </Chip>
         </Show>
+
+        {/* MCP on/off latch, kept rightmost as the session-level state (the
+            others are per-turn activity). On (enabled or armed) fills the chip
+            green; off is muted text and, on an existing session, clicks to
+            enable (one-way). No count — enablement is a boolean; server detail
+            lives on the MCP settings page. */}
+        <Chip
+          filled={mcpOn()}
+          accent={mcpOn() ? "box-accent-assistant" : undefined}
+          onClick={mcpEnabled() || !params.id ? undefined : enableMcp}
+          tooltip={mcpOn() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
+        >
+          <span classList={{ "text-text-weaker": !mcpOn() }}>MCP</span>
+        </Chip>
       </ChipGroup>
     </div>
   )

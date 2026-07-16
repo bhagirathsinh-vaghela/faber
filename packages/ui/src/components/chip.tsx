@@ -33,6 +33,10 @@ export type ChipProps = {
   valueAccent?: string
   // When set, the chip is interactive (renders a <button>).
   onClick?: (e: MouseEvent) => void
+  // Badge variant: the segment fills with the accent mixed into the panel
+  // backdrop and gains an accent border (the .accent-box recipe), for a strong
+  // on/off state (e.g. MCP enabled) instead of accent-tinted text.
+  filled?: boolean
   // Fraction 0..1 for "value out of a max" metrics (e.g. context). The
   // segment background fills left-to-right to the fraction (the proven
   // Copilot/LibreChat gauge), independent of `accent`. `fillColor` tints the
@@ -65,6 +69,7 @@ export function Chip(props: ChipProps) {
     "accent",
     "valueAccent",
     "onClick",
+    "filled",
     "fill",
     "fillColor",
     "class",
@@ -73,13 +78,25 @@ export function Chip(props: ChipProps) {
     "tooltipPlacement",
   ])
 
+  // Filled variant mirrors the .accent-box recipe (message/tool boxes): the
+  // accent mixed opaquely into the near-black panel for the fill, the accent at
+  // full strength for the border. The 7% box mix is too faint at chip scale, so
+  // fill sits at 18%. Text stays neutral-strong (not inverted) to read over the
+  // dark tint, matching how the boxes keep light text on their green fill.
+  const filledBg = () =>
+    local.filled && local.accent
+      ? `color-mix(in srgb, var(--${local.accent}) 18%, var(--color-background-strong))`
+      : undefined
+  const filledBorder = () => (local.filled && local.accent ? `var(--${local.accent})` : undefined)
   const iconTone = () => (local.accent ? `var(--${local.accent})` : "var(--color-text-strong)")
   const valueTone = () =>
-    local.valueAccent
-      ? `var(--${local.valueAccent})`
-      : local.accent
-        ? `var(--${local.accent})`
-        : "var(--color-text-strong)"
+    local.filled
+      ? "var(--color-text-strong)"
+      : local.valueAccent
+        ? `var(--${local.valueAccent})`
+        : local.accent
+          ? `var(--${local.accent})`
+          : "var(--color-text-strong)"
 
   // Utilization as a percentage 0..100, or undefined for non-gauge chips.
   const gaugePct = () => (local.fill === undefined ? undefined : Math.max(0, Math.min(1, local.fill)) * 100)
@@ -109,14 +126,17 @@ export function Chip(props: ChipProps) {
   }
 
   // Every chip stacks value above the bar (real on gauge chips, transparent on
-  // plain ones) so the layout — and thus the value baseline — is identical.
+  // plain ones) so the layout — and thus the value baseline — is identical. A
+  // filled chip is never a gauge chip and its background makes the box edges
+  // visible, so the transparent spacer would push its value off-center; drop it
+  // there and center the value on the full chip height instead.
   const value = () => (
     <Show when={local.children !== undefined}>
       <span class="inline-flex flex-col justify-center gap-0 leading-none">
         <span data-slot="chip-content" class="leading-none" style={{ color: valueTone() }}>
           {local.children}
         </span>
-        {gaugeBar()}
+        <Show when={!local.filled}>{gaugeBar()}</Show>
       </span>
     </Show>
   )
@@ -138,11 +158,20 @@ export function Chip(props: ChipProps) {
 
   const cls = `${seg} relative overflow-hidden ${local.class ?? ""}`
 
+  const filledStyle = () =>
+    local.filled
+      ? {
+          "background-color": filledBg(),
+          border: `1px solid ${filledBorder()}`,
+          "border-radius": "4px",
+        }
+      : {}
+
   const chip = (
     <Show
       when={local.onClick}
       fallback={
-        <span data-slot="chip" title={local.title} class={cls} {...rest}>
+        <span data-slot="chip" title={local.title} class={cls} style={filledStyle()} {...rest}>
           {content}
         </span>
       }
@@ -154,6 +183,7 @@ export function Chip(props: ChipProps) {
         title={local.title}
         onClick={local.onClick}
         class={`${cls} cursor-pointer hover:bg-surface-raised-base-hover`}
+        style={filledStyle()}
         {...rest}
       >
         {content}

@@ -2260,7 +2260,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
               </Match>
             </Switch>
-            <Show when={store.mode === "normal" && params.id && local.dock.isVisible("cwd")}>
+            <Show when={store.mode === "normal" && local.dock.isVisible("cwd")}>
               <span class="inline-flex min-w-0 items-center text-12-regular leading-tight">
                 <Show
                   when={
@@ -2289,7 +2289,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Show>
           </div>
           <div class="flex items-center gap-1 shrink-0">
-            <Show when={store.mode === "normal" && params.id && !zen()}>
+            <Show when={store.mode === "normal" && !zen()}>
               <Tooltip placement="top" value="Customize fields">
                 <Button
                   type="button"
@@ -2449,7 +2449,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Tooltip>
           </div>
         </div>
-        <Show when={params.id && !zen()}>
+        <Show when={!zen()}>
           <Show
             when={!dockHidden()}
             fallback={
@@ -2467,7 +2467,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             }
           >
             <div class="border-t border-border-weak-base px-3 py-0 md:py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
-              <Statusline />
+              {/* Statusline is runtime telemetry with nothing to show pre-turn;
+                  the action-bar chips (MCP latch especially) matter on a
+                  brand-new session, so only the left side gates on a session id. */}
+              <Show when={params.id}>
+                <Statusline />
+              </Show>
               <div class="flex flex-row flex-wrap items-center gap-1.5 ml-auto">
                 <PromptActionBar />
                 <Tooltip value={language.t("dock.hide")} placement="top" gutter={8}>
