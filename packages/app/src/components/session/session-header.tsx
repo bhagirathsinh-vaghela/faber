@@ -123,17 +123,9 @@ export function SessionHeader() {
       <Show when={mobileMount()}>
         {(mount) => (
           <Portal mount={mount()} ref={(el) => (el.style.display = "contents")}>
-            <Tooltip value={language.t("session.header.searchFiles")} placement="bottom" gutter={8}>
-              <IconButton
-                icon="magnifying-glass"
-                iconSize="medium"
-                variant="ghost"
-                class="size-11 p-0 [&_[data-slot=icon-svg]]:!text-icon-strong-base"
-                onClick={() => command.trigger("file.open")}
-                aria-label={language.t("session.header.searchFiles")}
-              />
-            </Tooltip>
-            <StatusPopover />
+            {/* Search + server indicator now live in the shared Titlebar so
+                they show on every route. Only the session-scoped controls
+                portal here. */}
             <Show when={currentSession()}>
               <Tooltip
                 value={

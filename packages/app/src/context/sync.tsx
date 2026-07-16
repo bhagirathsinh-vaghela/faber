@@ -12,7 +12,7 @@ const keyFor = (directory: string, id: string) => `${directory}\n${id}`
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
-export const { use: useSync, provider: SyncProvider } = createSimpleContext({
+export const { use: useSync, useOptional: useSyncOptional, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
   init: () => {
     const globalSync = useGlobalSync()

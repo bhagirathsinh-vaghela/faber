@@ -6,8 +6,8 @@ import { Button } from "@opencode-ai/ui/button"
 import { Switch } from "@opencode-ai/ui/switch"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSettings } from "@/components/dialog-settings"
-import { useSync } from "@/context/sync"
-import { useSDK } from "@/context/sdk"
+import { useSyncOptional } from "@/context/sync"
+import { useSDKOptional } from "@/context/sdk"
 import { serverDisplayName, useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
@@ -34,8 +34,11 @@ async function checkHealth(
 }
 
 export function StatusPopover() {
-  const sync = useSync()
-  const sdk = useSDK()
+  // Optional: on the home route this control renders outside the session Sync/SDK
+  // providers, so these are undefined there. The trigger (server name + health)
+  // needs only useServer; the mcp/lsp/plugin panels guard on these being present.
+  const sync = useSyncOptional()
+  const sdk = useSDKOptional()
   const server = useServer()
   const platform = usePlatform()
   const language = useLanguage()
@@ -63,7 +66,7 @@ export function StatusPopover() {
   })
 
   const mcpItems = createMemo(() =>
-    Object.entries(sync.data.mcp ?? {})
+    Object.entries(sync?.data.mcp ?? {})
       .map(([name, status]) => ({ name, status: status.status }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   )
@@ -71,7 +74,7 @@ export function StatusPopover() {
   const mcpConnected = createMemo(() => mcpItems().filter((i) => i.status === "connected").length)
 
   const toggleMcp = async (name: string) => {
-    if (store.loading) return
+    if (store.loading || !sync || !sdk) return
     setStore("loading", name)
 
     try {
@@ -90,9 +93,9 @@ export function StatusPopover() {
     }
   }
 
-  const lspItems = createMemo(() => sync.data.lsp ?? [])
+  const lspItems = createMemo(() => sync?.data.lsp ?? [])
   const lspCount = createMemo(() => lspItems().length)
-  const plugins = createMemo(() => sync.data.config.plugin ?? [])
+  const plugins = createMemo(() => sync?.data.config.plugin ?? [])
   const pluginCount = createMemo(() => plugins().length)
 
   const overallHealthy = createMemo(() => {

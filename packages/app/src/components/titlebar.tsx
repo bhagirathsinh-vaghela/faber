@@ -12,6 +12,7 @@ import { useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
+import { StatusPopover } from "@/components/status-popover"
 
 export function Titlebar() {
   const layout = useLayout()
@@ -206,6 +207,20 @@ export function Titlebar() {
           onClick={layout.mobileSidebar.toggle}
           aria-label={language.t("sidebar.menu.toggle")}
         />
+        {/* Search + server indicator live here (not in SessionHeader) so they
+            show on every route, including home. The session-only controls
+            (keep-warm, stop, review) still portal into the mount below. */}
+        <Tooltip value={language.t("session.header.searchFiles")} placement="bottom" gutter={8}>
+          <IconButton
+            icon="magnifying-glass"
+            iconSize="medium"
+            variant="ghost"
+            class="size-11 p-0 [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+            onClick={() => command.trigger("file.open")}
+            aria-label={language.t("session.header.searchFiles")}
+          />
+        </Tooltip>
+        <StatusPopover />
         <div id="opencode-titlebar-mobile" class="contents" />
       </div>
 

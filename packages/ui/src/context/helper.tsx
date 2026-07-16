@@ -33,5 +33,10 @@ export function createSimpleContext<T, Props extends Record<string, any>>(input:
       if (!value) throw new Error(`${input.name} context must be used within a context provider`)
       return value
     },
+    // Non-throwing read for components that render both inside and outside the
+    // provider (e.g. a titlebar control shared by the home route and a session).
+    useOptional() {
+      return useContext(ctx)
+    },
   }
 }
