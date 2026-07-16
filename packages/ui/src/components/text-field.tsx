@@ -29,10 +29,10 @@ export interface TextFieldProps
   variant?: "normal" | "ghost"
   copyable?: boolean
   multiline?: boolean
-  // On touch devices the OS keyboard is suppressed by default (inputmode=none)
-  // so focusing a field doesn't fight dictation or shove the layout; a toggle
-  // inside the field raises it per focus. Pass false where typing is the point
-  // (e.g. an inline rename) so the keyboard rises normally.
+  // Off by default: a plain field with no dictation option should raise the OS
+  // keyboard on focus like any normal input. Suppression (inputmode=none plus an
+  // in-field keyboard toggle) is opt-in, only worth it where a mic/dictation
+  // path competes for focus — none of these fields have one. Pass true to opt in.
   suppressKeyboard?: boolean
 }
 
@@ -65,7 +65,7 @@ export function TextField(props: TextFieldProps) {
 
   const coarse = createCoarsePointer()
   const [keyboardWanted, setKeyboardWanted] = createSignal(false)
-  const suppress = () => (local.suppressKeyboard ?? true) && coarse() && !keyboardWanted()
+  const suppress = () => (local.suppressKeyboard ?? false) && coarse() && !keyboardWanted()
   let inputRef: HTMLInputElement | HTMLTextAreaElement | undefined
   const captureRef = (el: HTMLInputElement | HTMLTextAreaElement) => {
     inputRef = el
