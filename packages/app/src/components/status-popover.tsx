@@ -51,6 +51,10 @@ export function StatusPopover() {
 
   const connection = createMemo(() => store.status[server.url])
   const machineName = createMemo(() => connection()?.host ?? serverDisplayName(server.url))
+  // Button shows just the first label of the FQDN (my-host.example.ts.net
+  // -> my-host) so a long hostname on disconnect can't overrun the titlebar and
+  // tuck the sibling buttons. The popover still shows the full machineName().
+  const shortName = createMemo(() => machineName().replace(/:\d+$/, "").split(".")[0] || machineName())
 
   async function refreshHealth() {
     const url = server.url
@@ -110,11 +114,11 @@ export function StatusPopover() {
       triggerProps={{
         variant: "ghost",
         class:
-          "rounded-sm h-[24px] max-w-[140px] py-1.5 pr-3 pl-2 gap-2 border-none shadow-none data-[expanded]:bg-surface-raised-base-active",
+          "rounded-sm h-[24px] max-w-[140px] min-w-0 shrink py-1.5 pr-3 pl-2 gap-2 border-none shadow-none data-[expanded]:bg-surface-raised-base-active",
         style: { scale: 1 },
       }}
       trigger={
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1.5 min-w-0">
           <div
             classList={{
               "size-1.5 rounded-full shrink-0": true,
@@ -123,7 +127,7 @@ export function StatusPopover() {
               "bg-border-weak-base": server.healthy() === undefined,
             }}
           />
-          <span class="text-12-regular text-text-strong truncate">{machineName()}</span>
+          <span class="text-12-regular text-text-strong truncate">{shortName()}</span>
         </div>
       }
       class="[&_[data-slot=popover-body]]:p-0 w-[360px] max-w-[calc(100vw-40px)] bg-transparent border-0 shadow-none rounded-xl"
