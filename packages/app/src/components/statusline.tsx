@@ -67,6 +67,7 @@ export function Statusline() {
     <Show when={stats()}>
       {(s) => (
         <UsageLine
+          flat
           class="px-2 py-0 md:py-1"
           stats={s()}
           totals={totals()}

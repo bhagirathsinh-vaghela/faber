@@ -66,6 +66,10 @@ export function UsageLine(props: {
   // sat misaligned.
   leading?: { icon: JSX.Element; value: JSX.Element; tooltip?: JSX.Element; accent?: string }
   class?: string
+  // Dock variant on mobile: the outer wrapper is display:contents so the chip
+  // groups become direct children of the dock chip row and spread evenly with
+  // the action-bar chips (no separate flex box). Desktop keeps the flex row.
+  flat?: boolean
 }) {
   // Context fill color follows the same 75% threshold as utilizationColor:
   // below 75% the start (green) token, at/above the end (red) token.
@@ -82,7 +86,13 @@ export function UsageLine(props: {
   const anySession = () => show("input") || show("output") || show("session-cache-write") || show("cost")
 
   return (
-    <div class={"flex flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5 " + (props.class ?? "pt-0.5")}>
+    <div
+      classList={{
+        "flex flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5": !props.flat,
+        "contents md:flex md:flex-row md:flex-wrap md:items-center md:gap-x-1.5 md:gap-y-0.5": props.flat,
+        [props.class ?? "pt-0.5"]: true,
+      }}
+    >
       <Show when={props.leading}>
         {(l) => (
           <ChipGroup>

@@ -337,6 +337,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const coarse = createCoarsePointer()
   const [keyboardWanted, setKeyboardWanted] = createSignal(false)
   const suppressKeyboard = () => coarse() && !keyboardWanted()
+  // Mobile only: the dock's model/cwd/branch line collapses behind a chevron in
+  // the button row so the footer stays compact; expanding it shows the line
+  // above the buttons. Desktop always shows the line and has no chevron.
+  const [dockInfoOpen, setDockInfoOpen] = createSignal(false)
   const requestKeyboard = () => {
     setKeyboardWanted(true)
     requestAnimationFrame(() => {
@@ -2073,12 +2077,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
-              "w-full px-2 pr-12 text-13-semibold md:px-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
-              // Normal: top-pad the text so the button row hugs beneath it. Zen:
-              // no button row below, so pad both sides equally to vertically
-              // center a single line against the right-edge buttons.
+              "w-full px-2 text-13-semibold md:px-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              // Top-pad the text so the button row hugs beneath it. Desktop zen
+              // is the exception: the buttons pin to the right edge on one line,
+              // so reserve room (pr-12) and vertically center the single line.
               "pt-2 pb-0 md:py-3": !zen(),
-              "py-2 md:py-2.5": zen(),
+              "pt-2 pb-0 md:py-2.5 md:pr-12": zen(),
               "[&_[data-type=file]]:text-syntax-property": true,
               "[&_[data-type=agent]]:text-syntax-type": true,
               "font-mono!": store.mode === "shell",
@@ -2087,11 +2091,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <Show when={!prompt.dirty()}>
             <div
               classList={{
-                "absolute top-0 inset-x-0 px-2 pr-12 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
+                "absolute top-0 inset-x-0 px-2 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
                 // Mirror the editor's vertical padding so the placeholder sits
                 // exactly where typed text will appear.
                 "pt-2 pb-0 md:py-3": !zen(),
-                "py-2 md:py-2.5": zen(),
+                "pt-2 pb-0 md:py-2.5 md:pr-12": zen(),
               }}
             >
               {store.mode === "shell"
@@ -2106,13 +2110,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </div>
         <div
           classList={{
-            "flex items-center justify-between gap-2": true,
-            // Normal: the button row sits below the input. Zen: the model/agent
-            // chrome is gone, so pin attach+submit to the input's right edge,
-            // vertically centered against the text, and let text wrap to their
-            // left (input keeps pr-12).
-            "relative px-3 pt-0 pb-0.5 md:py-1.5": !zen(),
-            "absolute inset-y-0 right-0 px-2": zen(),
+            // Mobile stacks so the dock info line (when expanded) sits above the
+            // flat button row; desktop keeps them side by side.
+            "flex flex-col md:flex-row md:items-center md:justify-between gap-2": true,
+            // Default: the button row sits below the input. The mobile pt-2
+            // mirrors the editor's own pt-2 (symmetric space above/below the
+            // text), and pb-1.5 keeps the buttons off the bottom border. On
+            // mobile this holds in zen too, giving the same two-row layout as
+            // the collapsed dock.
+            "relative px-3 pt-2 pb-1.5 md:pt-0 md:py-1.5": !zen(),
+            "relative px-3 pt-2 pb-1.5 md:pt-0 md:pb-0": zen(),
+            // Desktop zen keeps the original single row: buttons pinned to the
+            // input's right edge (the mobile stack still applies below md).
+            "md:absolute md:inset-y-0 md:right-0 md:px-2 md:pt-0 md:pb-0": zen(),
           }}
         >
           <div
@@ -2120,6 +2130,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!": true,
               // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
               hidden: zen(),
+              // Mobile: hidden unless the chevron expands it. Desktop always shows.
+              "hidden md:flex": !zen() && !dockInfoOpen(),
             }}
           >
             {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
@@ -2288,35 +2300,71 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </span>
             </Show>
           </div>
-          <div class="flex items-center gap-1 shrink-0">
+          <div class="flex items-center justify-between flex-1 md:flex-none md:justify-end md:gap-1 shrink-0">
+            {/* Mobile only: grabber toggles the dock info line + chip row
+                together (both collapsed by default). Outward arrows = expand;
+                inward arrows = collapse. */}
             <Show when={store.mode === "normal" && !zen()}>
-              <Tooltip placement="top" value="Customize fields">
+              <Tooltip placement="top" value={dockInfoOpen() ? "Hide session info" : "Show session info"}>
                 <Button
                   type="button"
                   variant="ghost"
-                  class="flex size-6 items-center justify-center"
-                  onClick={() => dialog.show(() => <DialogDock />)}
-                  aria-label="Customize fields"
+                  class="md:hidden flex size-11 items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+                  onClick={() => setDockInfoOpen((v) => !v)}
+                  aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
+                  aria-expanded={dockInfoOpen()}
                 >
-                  <Icon name="sliders" size="small" />
+                  <Icon
+                    name={dockInfoOpen() ? "chevron-grabber-inward" : "chevron-grabber-vertical"}
+                    size="medium"
+                  />
                 </Button>
               </Tooltip>
             </Show>
-            <Show when={permission.permissionsEnabled() && params.id && !zen()}>
-              <TooltipKeybind
-                placement="top"
-                gutter={8}
-                title={language.t("command.permissions.autoaccept.enable")}
-                keybind={command.keybind("permissions.autoaccept")}
+            {/* Customize configures the dock info line + chip row, so it's only
+                useful when those are visible. On mobile it hides while collapsed
+                (a display:none span leaves no flex slot, so the row still spreads
+                evenly); it's always present on desktop. */}
+            <Show when={store.mode === "normal" && !zen()}>
+              <span
+                classList={{
+                  contents: dockInfoOpen(),
+                  "hidden md:contents": !dockInfoOpen(),
+                }}
               >
-                <Button
-                  variant="ghost"
-                  onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                  classList={{
-                    "flex size-6 items-center justify-center": true,
-                    "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
-                    "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
-                  }}
+                <Tooltip placement="top" value="Customize fields">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class="flex size-11 md:size-6 items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
+                    onClick={() => dialog.show(() => <DialogDock />)}
+                    aria-label="Customize fields"
+                  >
+                    <Icon name="sliders" size="medium" class="md:!size-4" />
+                  </Button>
+                </Tooltip>
+              </span>
+            </Show>
+            {/* Auto-accept is desktop-only in the footer. The whole wrapper is
+                display:none on mobile (md:contents on desktop) so it leaves no
+                flex slot — otherwise its tooltip wrapper would break the mobile
+                row's even spread. */}
+            <Show when={permission.permissionsEnabled() && params.id && !zen()}>
+              <span class="hidden md:contents">
+                <TooltipKeybind
+                  placement="top"
+                  gutter={8}
+                  title={language.t("command.permissions.autoaccept.enable")}
+                  keybind={command.keybind("permissions.autoaccept")}
+                >
+                  <Button
+                    variant="ghost"
+                    onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
+                    classList={{
+                      "flex size-6 items-center justify-center": true,
+                      "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
+                      "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                    }}
                   aria-label={
                     permission.isAutoAccepting(params.id!, sdk.directory)
                       ? language.t("command.permissions.autoaccept.disable")
@@ -2324,13 +2372,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   }
                   aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
                 >
-                  <Icon
-                    name="chevron-double-right"
-                    size="small"
-                    classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
-                  />
-                </Button>
-              </TooltipKeybind>
+                    <Icon
+                      name="chevron-double-right"
+                      size="small"
+                      classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
+                    />
+                  </Button>
+                </TooltipKeybind>
+              </span>
             </Show>
             <input
               ref={fileInputRef}
@@ -2343,7 +2392,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 e.currentTarget.value = ""
               }}
             />
-            <div class="flex items-center gap-1 mr-1">
+            {/* Mobile: contents so keyboard/mic/photo are flat siblings of the
+                chevron/customize/send in one justify-between row. Desktop keeps
+                them grouped. */}
+            <div class="contents md:flex md:items-center md:gap-1 md:mr-1">
               <Show when={store.mode === "normal"}>
                 <DictationPoolButton onInsert={insertDictation} />
               </Show>
@@ -2352,7 +2404,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class="size-6 px-1"
+                    class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
                     // mousedown, not click: taking focus on click would race the
                     // requestKeyboard refocus. Prevent the default focus shift and
                     // drive it ourselves so the editor keeps the caret.
@@ -2362,7 +2414,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     }}
                     aria-label={language.t("prompt.action.showKeyboard")}
                   >
-                    <Icon name="keyboard" class="size-4.5" />
+                    <Icon name="keyboard" class="size-6 md:size-4.5" />
                   </Button>
                 </Tooltip>
               </Show>
@@ -2376,7 +2428,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class="size-6 px-1"
+                    class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
                     data-dictation-toggle
                     onClick={() => {
                       if (store.dictating) {
@@ -2398,7 +2450,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   >
                     <Icon
                       name="mic"
-                      class="size-4.5"
+                      class="size-6 md:size-4.5"
                       classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
                     />
                   </Button>
@@ -2409,11 +2461,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class="size-6 px-1"
+                    class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
                     onClick={() => fileInputRef.click()}
                     aria-label={language.t("prompt.action.attachFile")}
                   >
-                    <Icon name="photo" class="size-4.5" />
+                    <Icon name="photo" class="size-6 md:size-4.5" />
                   </Button>
                 </Tooltip>
               </Show>
@@ -2443,7 +2495,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 disabled={!prompt.dirty() && !working() && commentCount() === 0}
                 icon={working() ? "stop" : "arrow-up"}
                 variant="primary"
-                class="h-6 w-4.5"
+                class="size-11 md:h-6 md:w-4.5"
                 aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
               />
             </Tooltip>
@@ -2466,25 +2518,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </div>
             }
           >
-            <div class="border-t border-border-weak-base px-3 py-0 md:py-1 flex flex-row flex-wrap items-center justify-between gap-1.5">
+            {/* Chip row: on mobile the grabber collapses it with the info line
+                (hidden unless dockInfoOpen); desktop always shows it. The pt-2
+                keeps the chips off the divider. Statusline + PromptActionBar are
+                direct children (their inner wrappers are display:contents on
+                mobile) so every chip group spreads evenly across the width with
+                no left/right split. */}
+            <div
+              classList={{
+                "border-t border-border-weak-base px-3 flex flex-row flex-wrap items-center justify-between gap-1.5": true,
+                "hidden md:flex": !dockInfoOpen(),
+                "pt-2 pb-0 md:py-1": true,
+              }}
+            >
               {/* Statusline is runtime telemetry with nothing to show pre-turn;
                   the action-bar chips (MCP latch especially) matter on a
                   brand-new session, so only the left side gates on a session id. */}
               <Show when={params.id}>
                 <Statusline />
               </Show>
-              <div class="flex flex-row flex-wrap items-center gap-1.5 ml-auto">
-                <PromptActionBar />
-                <Tooltip value={language.t("dock.hide")} placement="top" gutter={8}>
-                  <IconButton
-                    icon="chevron-down"
-                    variant="ghost"
-                    class="size-5 p-0 shrink-0"
-                    onClick={() => setDockHidden(true)}
-                    aria-label={language.t("dock.hide")}
-                  />
-                </Tooltip>
-              </div>
+              <PromptActionBar />
             </div>
           </Show>
         </Show>
