@@ -2133,7 +2133,13 @@ export default function Page() {
     if (!el) return
     const r = el.getBoundingClientRect()
     if (r.width === 0) return
-    setDockRect({ right: r.right, top: r.top })
+    // getBoundingClientRect is visual-viewport-relative, but the pill is
+    // position:fixed (layout-viewport-relative). When the mobile keyboard shifts
+    // the visual viewport, the two diverge by visualViewport.offsetTop/Left —
+    // uncompensated, the pill flies way up. Add the offset so top/right land in
+    // the layout-viewport coordinate space the fixed pill actually uses.
+    const vv = window.visualViewport
+    setDockRect({ right: r.right + (vv?.offsetLeft ?? 0), top: r.top + (vv?.offsetTop ?? 0) })
   }
   createEffect(() => {
     // Depend on the triggers that move the box, then measure post-layout.
@@ -2145,6 +2151,20 @@ export default function Page() {
   onMount(() => {
     window.addEventListener("resize", measureDock)
     onCleanup(() => window.removeEventListener("resize", measureDock))
+    // window "resize" fires when the mobile keyboard opens but often NOT when it
+    // dismisses (iOS restores the visual viewport without one), so the pill's
+    // measured top stays stale-high while the CSS bottom:0 dock snaps back down.
+    // visualViewport fires on both show and hide — re-measure so the pill tracks
+    // the dock back down too.
+    const vv = window.visualViewport
+    if (vv) {
+      vv.addEventListener("resize", measureDock)
+      vv.addEventListener("scroll", measureDock)
+      onCleanup(() => {
+        vv.removeEventListener("resize", measureDock)
+        vv.removeEventListener("scroll", measureDock)
+      })
+    }
   })
 
   const pillSize = () => (isDesktop() ? 40 : 52)

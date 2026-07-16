@@ -131,6 +131,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
+  // Hidden input used only to bounce focus when raising the soft keyboard on an
+  // already-focused editor — see requestKeyboard.
+  let kbdBounceRef!: HTMLInputElement
 
   const mirror = { input: false }
 
@@ -341,12 +344,38 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // the button row so the footer stays compact; expanding it shows the line
   // above the buttons. Desktop always shows the line and has no chevron.
   const [dockInfoOpen, setDockInfoOpen] = createSignal(false)
+  // Set while a keyboard request is in flight so the transient blur below does
+  // not trip the blur-reset effect and clobber the opt-in we just set.
+  let requesting = false
+  const placeCaret = () => setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current()))
+  // Raise the soft keyboard. MUST run synchronously inside the triggering
+  // pointer gesture: both iOS and Android only honor a programmatic focus() as
+  // a keyboard-raising user action within the live user-activation window. A
+  // deferred focus (rAF/timeout) lands in a later task with no activation, so
+  // Android refuses the keyboard and iOS is unreliable — everything here stays
+  // in the same tick.
   const requestKeyboard = () => {
+    requesting = true
     setKeyboardWanted(true)
-    requestAnimationFrame(() => {
-      editorRef.focus()
-      setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current()))
-    })
+    // Raising the soft keyboard reliably on BOTH iOS and Android requires a
+    // focus that (a) is synchronous inside the user gesture — any async hop
+    // (setTimeout/Promise/rAF) drops the user activation — and (b) is a FRESH
+    // focus with inputmode already "text". iOS Safari reads inputmode only at
+    // focus time and never re-reads it while an element stays focused, so
+    // flipping our editor's inputmode "none"->"text" while it is already focused
+    // does nothing (the hit-or-miss failure). The fix (Ben Nadel / Nike
+    // technique): set inputmode first, bounce focus through a hidden text input,
+    // then synchronously refocus the editor — iOS now re-reads inputmode="text"
+    // at this new focus and raises the text keyboard. All in one gesture tick.
+    editorRef.inputMode = "text"
+    kbdBounceRef.focus()
+    editorRef.focus()
+    placeCaret()
+    // Hold `requesting` past the current tick so the blur-reset effect, which
+    // flushes after this returns, can't observe the transient !isFocused from
+    // the bounce and clear keyboardWanted (which would revert inputmode and drop
+    // the keyboard). Clear on the next task, after focus has settled.
+    setTimeout(() => (requesting = false))
   }
 
   const addImageAttachment = async (file: File) => {
@@ -470,7 +499,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // Blur resets the keyboard opt-in so the next focus is suppressed again
   // (dictation-first default). Focusing to type still needs the toggle.
   createEffect(() => {
-    if (!isFocused()) setKeyboardWanted(false)
+    if (!isFocused() && !requesting) setKeyboardWanted(false)
   })
 
   type AtOption =
@@ -2050,6 +2079,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </For>
           </div>
         </Show>
+        {/* Focus bounce target for requestKeyboard. Must stay focusable, so it
+            can't be display:none/visibility:hidden — park it off-screen. tabindex
+            -1 and aria-hidden keep it out of tab order and the a11y tree. */}
+        <input
+          ref={(el) => (kbdBounceRef = el)}
+          type="text"
+          tabindex="-1"
+          aria-hidden="true"
+          class="absolute w-px h-px opacity-0 pointer-events-none"
+          style={{ left: "-9999px", top: "0" }}
+        />
         <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
           <div
             data-component="prompt-input"
@@ -2399,19 +2439,32 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               <Show when={store.mode === "normal"}>
                 <DictationPoolButton onInsert={insertDictation} />
               </Show>
-              <Show when={suppressKeyboard()}>
+              {/* Always shown on a coarse pointer (mobile), never gated on
+                  keyboardWanted — so tapping it can't unmount it mid-gesture and
+                  blur the editor on release. Stable element = stable focus. */}
+              <Show when={coarse()}>
                 <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
                   <Button
                     type="button"
                     variant="ghost"
                     class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
-                    // mousedown, not click: taking focus on click would race the
-                    // requestKeyboard refocus. Prevent the default focus shift and
-                    // drive it ourselves so the editor keeps the caret.
-                    onMouseDown={(e: MouseEvent) => {
+                    // pointerdown, not click/mousedown: on iOS a synthesized
+                    // mousedown fires too late to count as a user gesture, so
+                    // focus() there won't raise the keyboard. pointerdown fires
+                    // on the genuine touch (trusted activation). preventDefault
+                    // stops the button stealing focus so requestKeyboard drives
+                    // the editor focus itself.
+                    onPointerDown={(e: PointerEvent) => {
                       e.preventDefault()
                       requestKeyboard()
                     }}
+                    // Swallow the release sequence too: without this the
+                    // pointerup/mouseup/click on lift pulls focus off the editor,
+                    // blurring it and dropping the keyboard — so it only stayed up
+                    // while the finger held the button.
+                    onPointerUp={(e: PointerEvent) => e.preventDefault()}
+                    onMouseDown={(e: MouseEvent) => e.preventDefault()}
+                    onClick={(e: MouseEvent) => e.preventDefault()}
                     aria-label={language.t("prompt.action.showKeyboard")}
                   >
                     <Icon name="keyboard" class="size-6 md:size-4.5" />
