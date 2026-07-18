@@ -141,7 +141,7 @@ export function SessionHeader() {
                   onClick={toggleWarm}
                   aria-label={language.t("session.keepWarm.arm")}
                   aria-pressed={currentSession()?.keepWarm === true}
-                  class="flex items-center justify-center size-11 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!text-icon-strong-base"
+                  class="flex items-center justify-center size-10 shrink-0 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!text-icon-strong-base"
                   classList={{
                     "opacity-100": currentSession()?.keepWarm === true,
                     "opacity-40": !currentSession()?.keepWarm,
@@ -157,14 +157,14 @@ export function SessionHeader() {
                   variant="ghost"
                   onClick={stopSession}
                   aria-label={language.t("session.stop")}
-                  class="size-11 [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
+                  class="size-10 shrink-0 [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
                 />
               </Tooltip>
             </Show>
             <Tooltip value={language.t("command.review.toggle")} placement="bottom" gutter={8}>
               <button
                 type="button"
-                class="group/file-tree-toggle-m flex items-center justify-center size-11 rounded-md leading-none [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+                class="group/file-tree-toggle-m flex items-center justify-center size-10 shrink-0 rounded-md leading-none [&_[data-slot=icon-svg]]:!text-icon-strong-base"
                 onClick={toggleReview}
                 aria-label={language.t("command.review.toggle")}
                 aria-expanded={reviewActive()}

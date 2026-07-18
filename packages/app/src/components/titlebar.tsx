@@ -196,12 +196,12 @@ export function Titlebar() {
           (search, status, keep-warm, stop, review) portal into
           #opencode-titlebar-mobile as direct siblings, so justify-between
           spreads all of them evenly across the width. */}
-      <div class="xl:hidden flex items-center justify-between size-full px-2">
+      <div class="xl:hidden flex items-center justify-between size-full px-1 min-w-0 overflow-hidden">
         <IconButton
           icon="house-mobile"
           iconSize="medium"
           variant="ghost"
-          class="size-11 rounded-md [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+          class="size-10 shrink-0 rounded-md [&_[data-slot=icon-svg]]:!text-icon-strong-base"
           onClick={goHome}
           aria-label={language.t("common.home")}
         />
@@ -209,7 +209,7 @@ export function Titlebar() {
           icon="menu-mobile"
           iconSize="medium"
           variant="ghost"
-          class="size-11 rounded-md [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+          class="size-10 shrink-0 rounded-md [&_[data-slot=icon-svg]]:!text-icon-strong-base"
           onClick={layout.mobileSidebar.toggle}
           aria-label={language.t("sidebar.menu.toggle")}
         />
@@ -221,7 +221,7 @@ export function Titlebar() {
             icon="magnifying-glass"
             iconSize="medium"
             variant="ghost"
-            class="size-11 p-0 [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+            class="size-10 shrink-0 p-0 [&_[data-slot=icon-svg]]:!text-icon-strong-base"
             onClick={() => command.trigger("file.open")}
             aria-label={language.t("session.header.searchFiles")}
           />
