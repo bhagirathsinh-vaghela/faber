@@ -84,7 +84,15 @@
    portrait. In a normal browser tab Safari's own chrome handles the inset, so
    we gate on (display-mode: standalone) to avoid double-padding there. In
    landscape iOS moves the insets to the sides, so a top/bottom pad would be
-   wrong; desktop has no insets. (hover: none) excludes pointer devices. */
+   wrong; desktop has no insets. (hover: none) excludes pointer devices.
+
+   Dock bottom padding is max(1rem, inset). The viewport meta carries
+   interactive-widget=resizes-content, so the browser shrinks the layout
+   viewport when the soft keyboard opens; the h-dvh root shrinks with it and the
+   bottom:0 dock rides up above the keyboard on its own, no JS. With the keyboard
+   down the inset seats the input above the home indicator; keyboard up, the
+   browser reflow already excludes the occluded strip, so the inset is a no-op
+   there. */
 @media (display-mode: standalone) and (hover: none) and (orientation: portrait) {
   [data-slot="titlebar"] {
     padding-top: env(safe-area-inset-top);
@@ -93,7 +101,15 @@
   }
 
   [data-slot="prompt-dock"] {
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Keyboard up (data-keyboard set by the iOS-standalone viewport fit in
+     entry.tsx): the home indicator is behind the keyboard and iOS's floating
+     form-assistant pill already separates the dock from the keyboard, so any
+     padding here is a dead band. Keep a hairline. */
+  #root[data-keyboard] [data-slot="prompt-dock"] {
+    padding-bottom: 4px;
   }
 }
 

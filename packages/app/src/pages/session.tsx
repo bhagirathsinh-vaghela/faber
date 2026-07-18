@@ -617,6 +617,8 @@ export default function Page() {
   // A signal (not a plain ref) so the tail-follow ResizeObserver attaches
   // whenever the transcript (re)mounts; a bare `let` is invisible to it.
   const [content, setContent] = createSignal<HTMLDivElement>()
+  // Same signal-mirror for `scroller`, for the keyboard re-pin observer.
+  const [scrollerBox, setScrollerBox] = createSignal<HTMLDivElement>()
 
   const scrollGestureWindowMs = 250
 
@@ -1724,6 +1726,21 @@ export default function Page() {
     pinToBottom()
   })
 
+  // The soft keyboard resizes the scroller under the tail in BOTH directions
+  // (on iOS standalone the root height tracks the visual viewport); nothing
+  // else observes that, so the last card slides under the dock. Observe the
+  // scroller's own box instead of viewport/focus events — iOS drops those
+  // across some keyboard transitions, but the DOM resize is unmissable
+  // whatever triggered it. Like the zen re-pin: a fresh following() read is
+  // unreliable here (the transition's programmatic scroll churn can drop it),
+  // so consult the pre-reflow tailVisible snapshot, re-assert, then settle.
+  createResizeObserver(scrollerBox, (_, el) => {
+    if (el !== scrollerBox()) return
+    if (!following() && !tailVisible) return
+    setFollowing(true)
+    settleToBottom()
+  })
+
   // A brand-new turn changes the list length before any content resize; settle
   // (not bare pin) because the new tail may mount with only an estimated size.
   createEffect(
@@ -1756,6 +1773,7 @@ export default function Page() {
 
   const setScrollRef = (el: HTMLDivElement | undefined) => {
     scroller = el
+    setScrollerBox(el)
   }
 
   // virtua owns turn windowing: it keeps only the visible range (+overscan)
@@ -1782,10 +1800,15 @@ export default function Page() {
 
   createResizeObserver(
     () => promptDock,
-    ({ height }) => {
-      const next = Math.ceil(height)
-
-      if (next === store.promptHeight) return
+    () => {
+      if (!promptDock) return
+      // Clearance = the dock's OPAQUE footprint = border-box height minus the
+      // pt-12 transparent gradient top (the transcript scrolls under that). The
+      // border box includes the dock's bottom padding (which carries the
+      // safe-area inset in standalone), so the last card clears the input.
+      const padTop = parseFloat(getComputedStyle(promptDock).paddingTop) || 0
+      const next = Math.ceil(promptDock.offsetHeight - padTop)
+      if (next <= 0 || next === store.promptHeight) return
 
       setStore("promptHeight", next)
 
@@ -2331,7 +2354,7 @@ export default function Page() {
                                   file.load(path)
                                 }}
                                 classes={{
-                                  root: "pb-[calc(var(--prompt-height,8rem)+32px)]",
+                                  root: "pb-[calc(var(--prompt-height,8rem)+12px)]",
                                   header: "px-4",
                                   container: "px-4",
                                 }}
@@ -2352,7 +2375,7 @@ export default function Page() {
                   >
                     <div class="relative w-full h-full min-w-0">
                       <div
-                        class="absolute left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+32px)] z-[60] pointer-events-none transition-all duration-200 ease-out"
+                        class="absolute left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+12px)] z-[60] pointer-events-none transition-all duration-200 ease-out"
                         classList={{
                           "opacity-100 translate-y-0 scale-100": !following(),
                           "opacity-0 translate-y-2 scale-95 pointer-events-none": !!following(),
@@ -2630,7 +2653,7 @@ export default function Page() {
                                   // The last turn carries the floating-dock
                                   // clearance so virtua's align:"end" lands the
                                   // message above the dock, not under it.
-                                  "!pb-[calc(var(--prompt-height,8rem)+32px)] md:!pb-[calc(var(--prompt-height,10rem)+32px)]":
+                                  "!pb-[calc(var(--prompt-height,8rem)+12px)] md:!pb-[calc(var(--prompt-height,10rem)+12px)]":
                                     index() === lastIndex(),
                                 }}
                               >
@@ -2722,9 +2745,14 @@ export default function Page() {
 
               {/* Busy-turn bar in the gap between the message boxes and the dock,
                   the busy cue in BOTH modes. The dock's own busy spinner
-                  (dock-line1) is suppressed, so this bar is the single indicator. */}
+                  (dock-line1) is suppressed, so this bar is the single indicator.
+                  mt-2 matters: the bar is the dock's FIRST child, sitting in the
+                  pt-12 transparent gradient zone the transcript scrolls under.
+                  The clearance math (offsetHeight - padTop) only reserves space
+                  BELOW that zone, so without its own top offset the bar overlays
+                  the last box instead of the gap. */}
               <Show when={titleWorking()}>
-                <div class="w-full px-3 mb-2">
+                <div class="w-full px-3 mt-2 mb-2">
                   <div class="busy-bar-track">
                     <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
                       <span class="busy-bar-fill" />
