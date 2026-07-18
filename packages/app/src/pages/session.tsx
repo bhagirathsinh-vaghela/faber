@@ -2637,7 +2637,7 @@ export default function Page() {
                             ref={setTurnList}
                             scrollRef={scroller}
                             data={visibleUserMessages()}
-                            overscan={4}
+                            bufferSize={600}
                             // shift only when turns PREPEND (history load-earlier):
                             // it anchors the view by unshifting virtua's size
                             // cache. Left on for appends it slides every cached
