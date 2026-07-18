@@ -206,6 +206,7 @@ export const dict = {
   "common.home": "Home",
   "common.goBack": "Back",
   "common.goForward": "Forward",
+  "common.reload": "Reload",
   "common.loading": "Loading",
   "common.loading.ellipsis": "...",
   "common.cancel": "Cancel",

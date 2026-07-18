@@ -13,6 +13,7 @@ import { usePlatform } from "@/context/platform"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { StatusPopover } from "@/components/status-popover"
+import { createStandalone } from "@/utils/mobile"
 
 export function Titlebar() {
   const layout = useLayout()
@@ -30,6 +31,11 @@ export function Titlebar() {
   }
 
   const onHome = () => location.pathname === "/"
+
+  // Installed PWA has no browser chrome, so no address-bar reload. Surface a
+  // reload button in the mobile row only in that mode; a normal tab already has
+  // the browser's own reload.
+  const standalone = createStandalone()
 
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
@@ -222,6 +228,20 @@ export function Titlebar() {
         </Tooltip>
         <StatusPopover />
         <div id="opencode-titlebar-mobile" class="contents" />
+        {/* Reload pinned rightmost: installed PWA has no address-bar reload, so
+            this is the in-app substitute, placed at the end of the row. */}
+        <Show when={standalone()}>
+          <Tooltip value={language.t("common.reload")} placement="bottom" gutter={8}>
+            <IconButton
+              icon="rotate-right"
+              iconSize="medium"
+              variant="ghost"
+              class="size-10 shrink-0 p-0 [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+              onClick={() => platform.restart()}
+              aria-label={language.t("common.reload")}
+            />
+          </Tooltip>
+        </Show>
       </div>
 
       <div class="hidden xl:grid grid-cols-[auto_minmax(0,1fr)_auto] items-center size-full">
