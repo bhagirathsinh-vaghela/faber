@@ -2550,6 +2550,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 variant="primary"
                 class="size-11 md:h-6 md:w-4.5"
                 aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+                onPointerDown={
+                  // iOS: with the keyboard up the editor holds focus, so tapping
+                  // this button first blurs the editor to dismiss the keyboard
+                  // and the native click->submit gets swallowed in that
+                  // transition — the user has to tap again. Drive the submit off
+                  // pointerdown (the trusted first touch) and preventDefault so
+                  // the button never steals focus / triggers the
+                  // blur-then-lose-click race. Coarse pointer only; desktop
+                  // keeps the native type="submit" + Enter path.
+                  coarse()
+                    ? (e: PointerEvent) => {
+                        if (!prompt.dirty() && !working() && commentCount() === 0) return
+                        e.preventDefault()
+                        handleSubmit(e)
+                      }
+                    : undefined
+                }
               />
             </Tooltip>
           </div>
