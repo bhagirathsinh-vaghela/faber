@@ -27,3 +27,7 @@ target
 opencode-dev
 logs/
 *.bun-build
+
+# Playwright / scratch screenshots (local UI debugging), repo root only
+/*.png
+.playwright-mcp/
