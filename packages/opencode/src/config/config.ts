@@ -1363,12 +1363,17 @@ export namespace Config {
   export type Info = z.output<typeof Info>
 
   export const global = lazy(async () => {
+    // opencode.local.json is an optional per-machine override, loaded last so it
+    // wins. Useful when the config dir is shared or version-controlled: keep
+    // machine-specific settings (e.g. MCP servers with per-machine credentials)
+    // here. No env var or launch flag needed; it merges automatically.
     let result: Info = pipe(
       {},
       mergeDeep(await loadFile(path.join(Global.Path.config, "config.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.jsonc"))),
     )
+    result = mergeDeep(result, await loadFile(path.join(Global.Path.config, "opencode.local.json")))
 
     const legacy = path.join(Global.Path.config, "config")
     if (existsSync(legacy)) {
