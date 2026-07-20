@@ -20,8 +20,12 @@ export function DialogMcpCorpus() {
   })
 
   return (
-    <Dialog title={t("dialog.mcp.corpus.title")} class="w-full max-w-[520px] mx-auto">
-      <div class="flex flex-col gap-4 p-6 pt-0 max-h-[60vh] overflow-y-auto no-scrollbar">
+    <Dialog
+      title={t("dialog.mcp.corpus.title")}
+      description={t("dialog.mcp.corpus.subtitle")}
+      class="w-full max-w-[560px] mx-auto"
+    >
+      <div class="flex flex-col gap-6 p-6 pt-2 max-h-[60vh] overflow-y-auto no-scrollbar">
         <Show
           when={!corpus.loading}
           fallback={<p class="text-14-regular text-text-weak">{t("common.loading.ellipsis")}</p>}
@@ -33,17 +37,24 @@ export function DialogMcpCorpus() {
             <For each={corpus()}>
               {(group) => (
                 <div class="flex flex-col gap-2">
-                  <div class="flex items-baseline justify-between gap-3">
-                    <span class="text-14-medium text-text-strong">{group.server}</span>
-                    <span class="text-11-regular text-text-weaker">{t(`dialog.mcp.corpus.tier.${group.tier}`)}</span>
+                  {/* Server header: name + tool count, and what the MODEL gets
+                      at this server's tier (the viewer always shows more). */}
+                  <div class="flex items-baseline justify-between gap-3 pb-1 border-b border-border-weak-base">
+                    <div class="flex items-baseline gap-2 min-w-0">
+                      <span class="text-14-medium text-text-strong truncate">{group.server}</span>
+                      <span class="text-11-regular text-text-weaker shrink-0">
+                        {t("dialog.mcp.corpus.server.count", { count: group.tools.length })}
+                      </span>
+                    </div>
+                    <span class="text-11-regular text-text-weaker shrink-0">{t(`dialog.mcp.corpus.model.${group.tier}`)}</span>
                   </div>
-                  <div class="flex flex-col gap-1 pl-1">
+                  <div class="flex flex-col gap-2.5">
                     <For each={group.tools}>
                       {(tool) => (
-                        <div class="flex flex-col">
-                          <span class="text-12-medium text-text-base">{tool.key}</span>
+                        <div class="flex flex-col gap-0.5">
+                          <span class="text-13-medium text-text-base font-mono">{tool.key}</span>
                           <Show when={tool.description}>
-                            <span class="text-11-regular text-text-weaker line-clamp-2">{tool.description}</span>
+                            <span class="text-12-regular text-text-weak">{tool.description}</span>
                           </Show>
                         </div>
                       )}

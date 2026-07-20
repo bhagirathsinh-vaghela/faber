@@ -270,10 +270,12 @@ export const dict = {
   "dialog.mcp.empty": "No MCPs configured",
 
   "dialog.mcp.corpus.title": "MCP tools",
+  "dialog.mcp.corpus.subtitle": "Tools available to the model, grouped by server. Manage servers and disable tools in opencode.json.",
   "dialog.mcp.corpus.empty": "No MCP tools. Configure a server in opencode.json.",
-  "dialog.mcp.corpus.tier.name": "names only",
-  "dialog.mcp.corpus.tier.description": "names + descriptions",
-  "dialog.mcp.corpus.tier.full": "names + schemas",
+  "dialog.mcp.corpus.server.count": "{{count}} tools",
+  "dialog.mcp.corpus.model.name": "model sees: names",
+  "dialog.mcp.corpus.model.description": "model sees: names + descriptions",
+  "dialog.mcp.corpus.model.full": "model sees: names + schemas",
 
   "dialog.lsp.empty": "LSPs auto-detected from file types",
   "dialog.plugins.empty": "Plugins configured in opencode.json",
