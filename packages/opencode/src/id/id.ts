@@ -55,13 +55,24 @@ export namespace Identifier {
   export function create(prefix: keyof typeof prefixes, descending: boolean, timestamp?: number): string {
     const currentTimestamp = timestamp ?? Date.now()
 
-    if (currentTimestamp !== lastTimestamp) {
+    // Monotonic guard: ascending IDs must strictly increase in creation order so
+    // that sorting by ID equals sorting by creation time (message-v2 orders the
+    // wire array this way). Date.now() is NOT monotonic — an NTP correction or a
+    // backward clock read between two mints can hand a causally-later ID a
+    // smaller timestamp, sorting it before an earlier one (observed: an assistant
+    // message sorting before its own parent user message, which then breaks
+    // downstream cache-marker ordering). Only advance lastTimestamp when the
+    // clock moves forward; if it is equal or has gone backward, hold the previous
+    // timestamp and keep incrementing the counter so the encoded value never
+    // decreases. The counter is shared across all prefixes, which is what keeps
+    // interleaved message/part mints globally ordered.
+    if (currentTimestamp > lastTimestamp) {
       lastTimestamp = currentTimestamp
       counter = 0
     }
     counter++
 
-    let now = BigInt(currentTimestamp) * BigInt(0x1000) + BigInt(counter)
+    let now = BigInt(lastTimestamp) * BigInt(0x1000) + BigInt(counter)
 
     now = descending ? ~now : now
 
