@@ -10,7 +10,6 @@ import {
   ToolListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js"
 import { Config } from "../config/config"
-import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { NamedError } from "@opencode-ai/util/error"
 import z from "zod/v4"
@@ -59,13 +58,6 @@ export namespace MCP {
 
   export const ToolsChanged = BusEvent.define(
     "mcp.tools.changed",
-    z.object({
-      server: z.string(),
-    }),
-  )
-
-  export const WhitelistChanged = BusEvent.define(
-    "mcp.whitelist.changed",
     z.object({
       server: z.string(),
     }),
@@ -286,6 +278,22 @@ export namespace MCP {
       pendingOAuthTransports.clear()
     },
   )
+
+  // Close the current MCP clients and drop the memo so the next read rebuilds
+  // from fresh config (reconnecting servers, applying add/remove). Called from
+  // SessionPin.reset on Stop->reopen: unlike a bare state.reset() (which only
+  // evicts the memo and would orphan the live stdio subprocesses / HTTP
+  // connections), this closes them first, then rebuilds lazily on next access.
+  export async function reset() {
+    const s = await state()
+    await Promise.all(
+      Object.values(s.clients).map((client) =>
+        client.close().catch((error) => log.error("Failed to close MCP client", { error })),
+      ),
+    )
+    pendingOAuthTransports.clear()
+    state.reset()
+  }
 
   // Helper function to fetch prompts for a specific client
   async function fetchPromptsForClient(clientName: string, client: Client) {
@@ -689,44 +697,6 @@ export namespace MCP {
     return sanitizedClientName + "_" + sanitizedToolName
   }
 
-  // Curated per-server tool whitelist. Names-only, GLOBAL (no project id): a
-  // server's whitelist is shared across every session/project so the catalog
-  // block stays byte-identical everywhere. Stores each tool's NATIVE name (as
-  // the server reports it, matching mcpTool.name), NOT the derived toolKey.
-  // The whitelist is the catalog's source of truth: only whitelisted names
-  // reach corpus() -> the catalog and mcp_search. An empty (or absent)
-  // whitelist means the server contributes nothing (explicit opt-in).
-  export async function whitelist(name: string): Promise<string[]> {
-    return Storage.read<string[]>(["mcp_whitelist", name]).catch(() => [])
-  }
-
-  // Global, persisted, monotonic whitelist version. Bumped on every whitelist
-  // mutation. A session records the version its catalog last reflected; on a
-  // turn, a version mismatch is the O(1) gate that decides whether to even
-  // consider re-injecting the catalog (see insertMcpCatalog). Global (no project
-  // id) because the whitelist itself is global.
-  export async function whitelistVersion(): Promise<number> {
-    return Storage.read<number>(["mcp_whitelist_version"]).catch(() => 0)
-  }
-
-  async function bumpWhitelistVersion() {
-    const next = (await whitelistVersion()) + 1
-    await Storage.write(["mcp_whitelist_version"], next)
-    return next
-  }
-
-  export async function setWhitelist(name: string, names: string[]) {
-    await Storage.write(["mcp_whitelist", name], [...new Set(names)].sort())
-    await bumpWhitelistVersion()
-    Bus.publish(WhitelistChanged, { server: name })
-  }
-
-  export async function removeWhitelist(name: string) {
-    await Storage.remove(["mcp_whitelist", name])
-    await bumpWhitelistVersion()
-    Bus.publish(WhitelistChanged, { server: name })
-  }
-
   // Live advertised-tools fetch for a single server (the UI "refresh advertised
   // tools" source and the whitelist-curation substrate). Connects if needed;
   // when the server needs auth/registration it surfaces that status instead of
@@ -759,8 +729,10 @@ export namespace MCP {
   // schemas), corpus() returns the plain name/description/JSON-schema plus the
   // owning client and its configured catalog tier. This is the substrate the
   // mcp_search tool searches and the progressive-disclosure catalog is built
-  // from. Filtered to the per-server whitelist (names only); desc/schema are
-  // hydrated from the live/cached tools list.
+  // from. Every tool a connected server advertises is included by default; a
+  // name listed in the server's `disabled` config is dropped (desc/schema are
+  // hydrated from the live/cached tools list). `disabled` is read from the
+  // merged config, so a project override can hide a different set than global.
   export type CorpusEntry = {
     key: string
     client: string
@@ -783,9 +755,9 @@ export namespace MCP {
       const mcpConfig = config[clientName]
       const entry = isMcpConfigured(mcpConfig) ? mcpConfig : undefined
       const tier = entry?.tier ?? "name"
-      const allow = new Set(await whitelist(clientName))
+      const disabled = new Set(entry?.disabled ?? [])
       for (const mcpTool of toolsResult.tools) {
-        if (!allow.has(mcpTool.name)) continue
+        if (disabled.has(mcpTool.name)) continue
         result.push({
           key: toolKey(clientName, mcpTool.name),
           client: clientName,
@@ -799,6 +771,23 @@ export namespace MCP {
     return result
   }
 
+  // Whether an executable tool key is denied by config. The catalog gate
+  // (corpus, above) and the execution gate must agree, so both consult the
+  // server's `disabled` list — corpus by native name pre-toolKey, this by the
+  // derived toolKey the model actually calls. Returns true when the tool's
+  // server lists its native name in `disabled`.
+  export async function isDisabled(key: string): Promise<boolean> {
+    const cfg = await Config.get()
+    const config = cfg.mcp ?? {}
+    for (const [clientName, mcpConfig] of Object.entries(config)) {
+      if (!isMcpConfigured(mcpConfig)) continue
+      const disabled = mcpConfig.disabled
+      if (!disabled?.length) continue
+      for (const name of disabled) if (toolKey(clientName, name) === key) return true
+    }
+    return false
+  }
+
   export async function tools() {
     // Serve from the per-client tools cache populated at create() time.
     // We deliberately do NOT call client.listTools() here — that caused MCP
@@ -806,10 +795,11 @@ export namespace MCP {
     // (token rotation, network blip, server restart, timeout). The cached
     // list stays valid for the lifetime of the OpenCode instance.
     //
-    // Every connected tool stays executable here regardless of the whitelist:
-    // the whitelist gates only what the model SEES (corpus() -> catalog), never
-    // what it can call once a name is disclosed. This keeps disclosed tools
-    // callable while the catalog stays curated.
+    // Every connected tool is registered here regardless of `disabled`: this map
+    // is the executable substrate. A `disabled` tool is both hidden from the
+    // catalog (corpus) and denied at the execute gate (SessionPrompt.mcpDenied ->
+    // MCP.isDisabled), so it never runs even though it is registered. Registering
+    // uniformly keeps tools[] byte-stable on the wire; the deny is a runtime guard.
     const result: Record<string, Tool> = {}
     const s = await state()
     const cfg = await Config.get()

@@ -345,10 +345,6 @@ export const SessionRoutes = lazy(() =>
             .optional(),
           cacheProbeIndex: z.number().optional(),
           cacheProbeMessageID: z.string().optional(),
-          mcpEnabled: z
-            .literal(true)
-            .optional()
-            .describe("Enable MCP for this session. One-way: cannot be turned back off."),
         }),
       ),
       async (c) => {
@@ -364,8 +360,6 @@ export const SessionRoutes = lazy(() =>
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
             if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
             if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID
-            // One-way latch: only ever set to true, never cleared.
-            if (updates.mcpEnabled === true) session.mcpEnabled = true
           },
           { touch: false },
         )

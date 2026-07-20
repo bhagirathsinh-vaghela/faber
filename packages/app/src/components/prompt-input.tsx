@@ -2354,10 +2354,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                   aria-expanded={dockInfoOpen()}
                 >
-                  <Icon
-                    name={dockInfoOpen() ? "chevron-grabber-inward" : "chevron-grabber-vertical"}
-                    size="medium"
-                  />
+                  <Icon name={dockInfoOpen() ? "chevron-grabber-inward" : "chevron-grabber-vertical"} size="medium" />
                 </Button>
               </Tooltip>
             </Show>
@@ -2405,13 +2402,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
                       "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
                     }}
-                  aria-label={
-                    permission.isAutoAccepting(params.id!, sdk.directory)
-                      ? language.t("command.permissions.autoaccept.disable")
-                      : language.t("command.permissions.autoaccept.enable")
-                  }
-                  aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
-                >
+                    aria-label={
+                      permission.isAutoAccepting(params.id!, sdk.directory)
+                        ? language.t("command.permissions.autoaccept.disable")
+                        : language.t("command.permissions.autoaccept.enable")
+                    }
+                    aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
+                  >
                     <Icon
                       name="chevron-double-right"
                       size="small"

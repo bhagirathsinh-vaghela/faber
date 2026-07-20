@@ -273,7 +273,8 @@ export const dict = {
   "dialog.mcp.empty": "No MCPs configured",
 
   "dialog.mcp.enable.title": "Enable MCP for this session?",
-  "dialog.mcp.enable.description": "MCP can only be turned on, not off. Once enabled, this session keeps MCP tools for the rest of its life.",
+  "dialog.mcp.enable.description":
+    "MCP can only be turned on, not off. Once enabled, this session keeps MCP tools for the rest of its life.",
   "dialog.mcp.enable.confirm": "Enable MCP",
 
   "dialog.lsp.empty": "LSPs auto-detected from file types",
@@ -780,7 +781,8 @@ export const dict = {
   "settings.mcp.action.refresh": "Refresh advertised tools",
   "settings.mcp.action.remove": "Remove server",
   "settings.mcp.whitelist.label": "Whitelisted tools",
-  "settings.mcp.whitelist.hint": "Only checked tools appear in the model's catalog. An empty whitelist means this server contributes nothing.",
+  "settings.mcp.whitelist.hint":
+    "Only checked tools appear in the model's catalog. An empty whitelist means this server contributes nothing.",
   "settings.mcp.whitelist.none": "No advertised tools. Connect the server and refresh to list them.",
 
   "settings.permissions.title": "Permissions",

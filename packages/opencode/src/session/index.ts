@@ -182,21 +182,15 @@ export namespace Session {
       cacheProbeIndex: z.number().optional(),
       cacheProbeMessageID: z.string().optional(),
       allowedTools: AllowedTool.array().optional(),
-      // Per-session MCP latch. One-way: absent/false = MCP off (the default for
-      // every session, incl. pre-feature ones); flips to true once when the user
-      // enables MCP and NEVER reverts. While off, mcp_search and every MCP tool
-      // are denied at the execute gate (a runtime block, never a wire change)
-      // and no catalog block is injected. Enabling injects the catalog once as
-      // durable history. Set via Session.update.
-      mcpEnabled: z.boolean().optional(),
-      // The global whitelist version this session's catalog last reflected. On a
-      // turn, if it lags MCP.whitelistVersion(), the catalog may need a refresh
-      // (see insertMcpCatalog). This is the O(1) gate that avoids scanning
-      // history every turn. Absent = never synced (pre-feature or freshly enabled).
-      mcpCatalogVersion: z.number().optional(),
-      // The catalog block text this session last injected. Compared against a
-      // freshly-built catalog when the version moved, so a version bump whose
-      // actual whitelist content is unchanged does NOT append a redundant block.
+      // The MCP catalog block text this session last injected as durable history.
+      // Each turn, insertMcpCatalog rebuilds the catalog for this session's
+      // instance (servers + `disabled` + tier, all from merged config) and
+      // compares: differs -> append a fresh block and store it here; identical ->
+      // no-op. This single field is the whole refresh mechanism (no version
+      // counter). Absent on pre-feature sessions -> treated as "" -> a non-empty
+      // catalog is injected on the next turn (backfill). Reset to "" on compaction
+      // so the post-summary turn re-injects (the block is dropped at the summary
+      // boundary). Set via Session.update with { touch: false }.
       mcpCatalogText: z.string().optional(),
     })
     .meta({

@@ -129,9 +129,7 @@ export function SessionHeader() {
             <Show when={currentSession()}>
               <Tooltip
                 value={
-                  currentSession()?.keepWarm
-                    ? language.t("session.keepWarm.armed")
-                    : language.t("session.keepWarm.arm")
+                  currentSession()?.keepWarm ? language.t("session.keepWarm.armed") : language.t("session.keepWarm.arm")
                 }
                 placement="top"
                 gutter={8}

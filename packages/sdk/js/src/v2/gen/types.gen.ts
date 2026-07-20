@@ -691,13 +691,6 @@ export type EventMcpToolsChanged = {
   }
 }
 
-export type EventMcpWhitelistChanged = {
-  type: "mcp.whitelist.changed"
-  properties: {
-    server: string
-  }
-}
-
 export type EventMcpBrowserOpenFailed = {
   type: "mcp.browser.open.failed"
   properties: {
@@ -1033,8 +1026,6 @@ export type Session = {
         paths: Array<string>
       }
   >
-  mcpEnabled?: boolean
-  mcpCatalogVersion?: number
   mcpCatalogText?: string
 }
 
@@ -1286,7 +1277,6 @@ export type Event =
   | EventTuiToastShow
   | EventTuiSessionSelect
   | EventMcpToolsChanged
-  | EventMcpWhitelistChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
   | EventQuestionAsked
@@ -2026,6 +2016,10 @@ export type McpLocalConfig = {
   enabled?: boolean
   tier?: McpTier
   /**
+   * Native tool names to hide from this server. Every tool the server advertises is available by default; listing a name here removes it from the catalog AND denies it at execution. Lives with the server config, so a project override can disable a different set than the global config for the same server.
+   */
+  disabled?: Array<string>
+  /**
    * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
    */
   timeout?: number
@@ -2060,6 +2054,10 @@ export type McpRemoteConfig = {
    */
   enabled?: boolean
   tier?: McpTier
+  /**
+   * Native tool names to hide from this server. Every tool the server advertises is available by default; listing a name here removes it from the catalog AND denies it at execution. Lives with the server config, so a project override can disable a different set than the global config for the same server.
+   */
+  disabled?: Array<string>
   /**
    * Headers to send with the request
    */
@@ -3858,10 +3856,6 @@ export type SessionUpdateData = {
     }
     cacheProbeIndex?: number
     cacheProbeMessageID?: string
-    /**
-     * Enable MCP for this session. One-way: cannot be turned back off.
-     */
-    mcpEnabled?: true
   }
   path: {
     sessionID: string
@@ -5907,70 +5901,6 @@ export type McpToolsResponses = {
 }
 
 export type McpToolsResponse = McpToolsResponses[keyof McpToolsResponses]
-
-export type McpWhitelistRemoveData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/whitelist"
-}
-
-export type McpWhitelistRemoveResponses = {
-  /**
-   * Whitelist cleared
-   */
-  200: {
-    success: true
-  }
-}
-
-export type McpWhitelistRemoveResponse = McpWhitelistRemoveResponses[keyof McpWhitelistRemoveResponses]
-
-export type McpWhitelistGetData = {
-  body?: never
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/whitelist"
-}
-
-export type McpWhitelistGetResponses = {
-  /**
-   * Whitelisted tool names
-   */
-  200: Array<string>
-}
-
-export type McpWhitelistGetResponse = McpWhitelistGetResponses[keyof McpWhitelistGetResponses]
-
-export type McpWhitelistSetData = {
-  body?: {
-    names: Array<string>
-  }
-  path: {
-    name: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/mcp/{name}/whitelist"
-}
-
-export type McpWhitelistSetResponses = {
-  /**
-   * Whitelist updated
-   */
-  200: Array<string>
-}
-
-export type McpWhitelistSetResponse = McpWhitelistSetResponses[keyof McpWhitelistSetResponses]
 
 export type McpRemoveData = {
   body?: never

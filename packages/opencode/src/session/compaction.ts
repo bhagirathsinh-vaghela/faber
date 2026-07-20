@@ -238,6 +238,11 @@ export namespace SessionCompaction {
       })
     }
     if (processor.message.error) return "stop"
+    // filterCompacted drops all pre-summary history, including the durable
+    // <mcp_tool_catalog> block. Clear the session's last-injected catalog text so
+    // the content-compare in insertMcpCatalog differs on the next (post-summary)
+    // turn and re-injects a fresh block.
+    await Session.update(input.sessionID, (draft) => void (draft.mcpCatalogText = ""), { touch: false })
     Bus.publish(Event.Compacted, { sessionID: input.sessionID })
     return "continue"
   }

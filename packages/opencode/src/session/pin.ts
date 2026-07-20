@@ -7,6 +7,7 @@ import { Command } from "../command"
 import { Config } from "../config/config"
 import { InstructionPrompt } from "./instruction"
 import { ToolRegistry } from "../tool/registry"
+import { MCP } from "../mcp"
 import type { Tool } from "../tool/tool"
 import { Global } from "../global"
 import { Flag } from "../flag/flag"
@@ -53,8 +54,11 @@ export namespace SessionPin {
   // Re-read the snapshot inputs from disk WITHOUT Instance.dispose(): dispose
   // is directory-wide and its SessionPrompt callback aborts every running
   // turn — a new session opening after a disk edit must never kill a busy
-  // sibling. These caches are lazy, so build() repopulates them.
-  function reset() {
+  // sibling. These caches are lazy, so build() repopulates them. MCP.reset is
+  // awaited because, unlike the pure in-memory memo-drops, it closes the live
+  // MCP clients before dropping the memo so a config change picks up added/
+  // removed servers on the next read (see MCP.reset).
+  async function reset() {
     Config.global.reset()
     Config.state.reset()
     InstructionPrompt.reset()
@@ -62,6 +66,7 @@ export namespace SessionPin {
     Skill.state.reset()
     Command.reset()
     ToolRegistry.state.reset()
+    await MCP.reset()
   }
 
   // Mirror of the scan surface in config.ts (loadCommand/loadAgent/loadMode/
@@ -210,7 +215,7 @@ export namespace SessionPin {
     // The input caches were built from an older disk state; reset them so the
     // builders re-read disk.
     if (built.get(Instance.directory) !== digest) {
-      reset()
+      await reset()
       built.set(Instance.directory, digest)
     }
     const snapshot = await build()

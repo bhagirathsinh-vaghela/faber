@@ -2189,11 +2189,6 @@
                   },
                   "cacheProbeMessageID": {
                     "type": "string"
-                  },
-                  "mcpEnabled": {
-                    "description": "Enable MCP for this session. One-way: cannot be turned back off.",
-                    "type": "boolean",
-                    "const": true
                   }
                 }
               }
@@ -6678,159 +6673,6 @@
         ]
       }
     },
-    "/mcp/{name}/whitelist": {
-      "get": {
-        "operationId": "mcp.whitelist.get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Get MCP tool whitelist",
-        "description": "Get the curated tool-name whitelist for a Model Context Protocol (MCP) server.",
-        "responses": {
-          "200": {
-            "description": "Whitelisted tool names",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.whitelist.get({\n  ...\n})"
-          }
-        ]
-      },
-      "put": {
-        "operationId": "mcp.whitelist.set",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Set MCP tool whitelist",
-        "description": "Replace the curated tool-name whitelist for a Model Context Protocol (MCP) server.",
-        "responses": {
-          "200": {
-            "description": "Whitelist updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "names": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": ["names"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.whitelist.set({\n  ...\n})"
-          }
-        ]
-      },
-      "delete": {
-        "operationId": "mcp.whitelist.remove",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Clear MCP tool whitelist",
-        "description": "Remove the curated tool-name whitelist for a Model Context Protocol (MCP) server.",
-        "responses": {
-          "200": {
-            "description": "Whitelist cleared",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": ["success"]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.whitelist.remove({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/mcp/{name}": {
       "delete": {
         "operationId": "mcp.remove",
@@ -6852,7 +6694,7 @@
           }
         ],
         "summary": "Remove MCP server",
-        "description": "Remove a Model Context Protocol (MCP) server: delete it from the global config, disconnect it, and clear its tool whitelist.",
+        "description": "Remove a Model Context Protocol (MCP) server: delete it from the global config and disconnect it.",
         "responses": {
           "200": {
             "description": "MCP server removed",
@@ -11212,25 +11054,6 @@
           "properties"
         ]
       },
-      "Event.mcp.whitelist.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.whitelist.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": ["server"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.mcp.browser.open.failed": {
         "type": "object",
         "properties": {
@@ -12340,8 +12163,8 @@
               ]
             }
           },
-          "mcpEnabled": {
-            "type": "boolean"
+          "mcpCatalogText": {
+            "type": "string"
           }
         },
         "required": [
@@ -13233,9 +13056,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.whitelist.changed"
           },
           {
             "$ref": "#/components/schemas/Event.mcp.browser.open.failed"
@@ -14476,6 +14296,13 @@
           "tier": {
             "$ref": "#/components/schemas/McpTier"
           },
+          "disabled": {
+            "description": "Native tool names to hide from this server. Every tool the server advertises is available by default; listing a name here removes it from the catalog AND denies it at execution. Lives with the server config, so a project override can disable a different set than the global config for the same server.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "timeout": {
             "description": "Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.",
             "type": "integer",
@@ -14525,6 +14352,13 @@
           },
           "tier": {
             "$ref": "#/components/schemas/McpTier"
+          },
+          "disabled": {
+            "description": "Native tool names to hide from this server. Every tool the server advertises is available by default; listing a name here removes it from the catalog AND denies it at execution. Lives with the server config, so a project override can disable a different set than the global config for the same server.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "headers": {
             "description": "Headers to send with the request",

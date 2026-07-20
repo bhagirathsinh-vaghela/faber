@@ -356,7 +356,9 @@ export const SettingsMcp: Component = () => {
                           disabled={busy() === server.name}
                           onClick={() => connect(server.name, server.status)}
                         >
-                          {server.status === "connected" ? t("settings.mcp.action.disconnect") : t("settings.mcp.action.connect")}
+                          {server.status === "connected"
+                            ? t("settings.mcp.action.disconnect")
+                            : t("settings.mcp.action.connect")}
                         </Button>
                         <IconButton
                           icon="download"

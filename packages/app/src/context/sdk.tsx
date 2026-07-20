@@ -5,7 +5,11 @@ import { createEffect, createMemo, onCleanup } from "solid-js"
 import { useGlobalSDK } from "./global-sdk"
 import { usePlatform } from "./platform"
 
-export const { use: useSDK, useOptional: useSDKOptional, provider: SDKProvider } = createSimpleContext({
+export const {
+  use: useSDK,
+  useOptional: useSDKOptional,
+  provider: SDKProvider,
+} = createSimpleContext({
   name: "SDK",
   init: (props: { directory: string }) => {
     const platform = usePlatform()

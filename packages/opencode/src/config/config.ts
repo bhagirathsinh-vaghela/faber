@@ -523,6 +523,13 @@ export namespace Config {
       tier: McpTier.optional().describe(
         'Progressive-disclosure detail level for this server in the MCP tool catalog. "name" (default) lists only tool names; "description" adds each tool\'s description; "full" adds the input schema. Lower tiers shrink the steady-state request; the model recovers omitted detail on demand via the mcp_search tool. Applies to every session (never per-session) so the shared catalog cache stays byte-identical.',
       ),
+      disabled: z
+        .string()
+        .array()
+        .optional()
+        .describe(
+          "Native tool names to hide from this server. Every tool the server advertises is available by default; listing a name here removes it from the catalog AND denies it at execution. Lives with the server config, so a project override can disable a different set than the global config for the same server.",
+        ),
       timeout: z
         .number()
         .int()
@@ -558,6 +565,13 @@ export namespace Config {
       tier: McpTier.optional().describe(
         'Progressive-disclosure detail level for this server in the MCP tool catalog. "name" (default) lists only tool names; "description" adds each tool\'s description; "full" adds the input schema. Lower tiers shrink the steady-state request; the model recovers omitted detail on demand via the mcp_search tool. Applies to every session (never per-session) so the shared catalog cache stays byte-identical.',
       ),
+      disabled: z
+        .string()
+        .array()
+        .optional()
+        .describe(
+          "Native tool names to hide from this server. Every tool the server advertises is available by default; listing a name here removes it from the catalog AND denies it at execution. Lives with the server config, so a project override can disable a different set than the global config for the same server.",
+        ),
       headers: z.record(z.string(), z.string()).optional().describe("Headers to send with the request"),
       oauth: z
         .union([McpOAuth, z.literal(false)])

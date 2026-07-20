@@ -843,14 +843,15 @@ export namespace SessionPrompt {
   }
 
   // Per-session MCP latch, enforced at execute time so tools[] stays
-  // byte-identical whether a session has MCP on or off (gating via the wire
-  // would churn the cache). MCP is OFF by default; until the session enables it
-  // mcp_search and every MCP server tool are denied here. Returns a denial
-  // message the model can read, or undefined once MCP is enabled.
-  const MCP_SEARCH_TOOL = "mcp_search"
-  function mcpDenied(session: Session.Info, id: string): string | undefined {
-    if (session.mcpEnabled) return undefined
-    return `MCP is not enabled for this session. The "${id}" tool cannot be used here.`
+  // byte-identical whether or not a tool is disabled (gating via the wire would
+  // churn the cache). MCP is always on; mcp_search is always available. An
+  // individual MCP server tool is denied here iff its native name is in the
+  // owning server's `disabled` config — the execution counterpart to corpus()
+  // hiding it from the catalog. Returns a denial message the model can read, or
+  // undefined when the tool is allowed.
+  async function mcpDenied(id: string): Promise<string | undefined> {
+    if (await MCP.isDisabled(id)) return `The "${id}" tool is disabled by configuration and cannot be used.`
+    return undefined
   }
 
   export async function resolveTools(input: {
@@ -930,9 +931,7 @@ export namespace SessionPrompt {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const ctx = context(args, options)
-          const denial =
-            (item.id === MCP_SEARCH_TOOL ? mcpDenied(input.session, item.id) : undefined) ??
-            toolDenial(allowedTools, item.id, args)
+          const denial = toolDenial(allowedTools, item.id, args)
           if (denial) {
             return {
               title: item.id,
@@ -976,7 +975,7 @@ export namespace SessionPrompt {
       item.execute = async (args, opts) => {
         const ctx = context(args, opts)
 
-        const denial = mcpDenied(input.session, key) ?? toolDenial(allowedTools, key, args)
+        const denial = (await mcpDenied(key)) ?? toolDenial(allowedTools, key, args)
         if (denial) return { content: [{ type: "text" as const, text: denial }] }
 
         await Plugin.trigger(
@@ -1492,53 +1491,40 @@ export namespace SessionPrompt {
     userMessage.parts.push(part)
   }
 
-  // Inject the progressive-disclosure MCP catalog as durable history when a
-  // session's catalog is out of date with the global whitelist. The catalog text
-  // becomes a synthetic TextPart on the latest user message and persists.
+  // Inject the progressive-disclosure MCP catalog as durable history when this
+  // session's last-injected catalog no longer matches the catalog its instance
+  // currently produces. The catalog text becomes a synthetic TextPart on the
+  // latest user message and persists.
   //
-  // Refresh model (whitelist can change mid-session; MCP is a one-way latch so an
-  // enabled session stays enabled): a GLOBAL monotonic whitelist version bumps on
-  // every whitelist change. Each session records the version its catalog last
-  // reflected (mcpCatalogVersion) and a copy of that catalog text (mcpCatalogText).
-  //   1. version match  -> O(1) no-op (the common case; no history scan, no build).
-  //   2. version moved but the freshly-built catalog is byte-identical to the last
-  //      one this session saw -> bump the session version, inject NOTHING (avoids a
-  //      redundant block when e.g. two edits cancel out).
-  //   3. version moved and the catalog differs -> append a FRESH FULL catalog block
-  //      at the tail. Recency wins: the newest block supersedes the older one, so
-  //      the model uses the current whitelist. Old blocks stay as inert history.
+  // Refresh model (MCP is always on; the catalog for a session is a pure function
+  // of its INSTANCE — global+project servers, each server's `disabled` and tier,
+  // and the connected set). Each session stores the catalog text it last injected
+  // (mcpCatalogText); no version counter. Every turn:
+  //   1. build the catalog for this instance and compare to mcpCatalogText.
+  //      equal -> no-op (the common case).
+  //   2. differ, new catalog empty (no servers / all disabled) -> store "" and
+  //      append nothing.
+  //   3. differ, new catalog non-empty -> append a FRESH FULL block at the tail
+  //      and store it. Recency wins: the newest block supersedes any older one,
+  //      which stays as inert history.
+  //
+  // Backfill: a pre-feature session has mcpCatalogText === undefined, treated as
+  // "" -> a non-empty catalog injects on the next turn. Config changes take effect
+  // on Stop->reopen (SessionPin.reset re-reads config AND resets MCP.state), which
+  // rebuilds the corpus so the compare differs and re-injects.
   //
   // NOT wrapped in <system-reminder> (that would make provider/transform.ts
   // treat it as a meta message).
   async function insertMcpCatalog(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
-    if (!input.session.mcpEnabled) return
-
-    const version = await MCP.whitelistVersion()
-    // O(1) gate: the session's catalog already reflects the current whitelist.
-    if (input.session.mcpCatalogVersion === version) return
-
     const catalog = McpCatalog.build(await MCP.corpus())
 
-    // Version moved but the catalog content is unchanged from what this session
-    // last saw (e.g. an edit that netted no change): sync the version, inject nothing.
-    if ((catalog ?? "") === (input.session.mcpCatalogText ?? "")) {
-      await Session.update(input.session.id, (draft) => void (draft.mcpCatalogVersion = version), { touch: false })
-      input.session.mcpCatalogVersion = version
-      return
-    }
+    // Already reflects the current instance catalog (incl. both being empty).
+    if ((catalog ?? "") === (input.session.mcpCatalogText ?? "")) return
 
-    // Nothing to show (empty whitelist / corpus): record the version so we do not
-    // re-check every turn, but append no block.
+    // Nothing to show (no servers / everything disabled): record "" so we do not
+    // rebuild-and-compare fruitlessly, append no block.
     if (!catalog) {
-      await Session.update(
-        input.session.id,
-        (draft) => {
-          draft.mcpCatalogVersion = version
-          draft.mcpCatalogText = ""
-        },
-        { touch: false },
-      )
-      input.session.mcpCatalogVersion = version
+      await Session.update(input.session.id, (draft) => void (draft.mcpCatalogText = ""), { touch: false })
       input.session.mcpCatalogText = ""
       return
     }
@@ -1556,15 +1542,7 @@ export namespace SessionPrompt {
     }
     await Session.updatePart(part)
     userMessage.parts.push(part)
-    await Session.update(
-      input.session.id,
-      (draft) => {
-        draft.mcpCatalogVersion = version
-        draft.mcpCatalogText = catalog
-      },
-      { touch: false },
-    )
-    input.session.mcpCatalogVersion = version
+    await Session.update(input.session.id, (draft) => void (draft.mcpCatalogText = catalog), { touch: false })
     input.session.mcpCatalogText = catalog
   }
 

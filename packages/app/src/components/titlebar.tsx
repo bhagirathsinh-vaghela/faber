@@ -256,102 +256,106 @@ export function Titlebar() {
             <div class="h-full shrink-0" style={{ width: `${72 / zoom()}px` }} />
           </Show>
           <div class="flex items-center gap-3 shrink-0">
-          <Tooltip
-            class="hidden xl:flex shrink-0 ml-2"
-            placement="bottom"
-            value={language.t("common.home")}
-            openDelay={2000}
-          >
-            <Button
-              variant="ghost"
-              icon="house"
-              class="size-6 p-0"
-              onClick={goHome}
-              aria-label={language.t("common.home")}
-            />
-          </Tooltip>
-          <TooltipKeybind
-            class="hidden xl:flex shrink-0"
-            placement="bottom"
-            title={language.t("command.sidebar.toggle")}
-            keybind={command.keybind("sidebar.toggle")}
-          >
-            <Button
-              variant="ghost"
-              class="group/sidebar-toggle size-6 p-0"
-              onClick={layout.sidebar.toggle}
-              aria-label={language.t("command.sidebar.toggle")}
-              aria-expanded={layout.sidebar.opened()}
+            <Tooltip
+              class="hidden xl:flex shrink-0 ml-2"
+              placement="bottom"
+              value={language.t("common.home")}
+              openDelay={2000}
             >
-              <div class="relative flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
-                <Icon
-                  size="small"
-                  name={layout.sidebar.opened() ? "layout-left-full" : "layout-left"}
-                  class="group-hover/sidebar-toggle:hidden"
-                />
-                <Icon size="small" name="layout-left-partial" class="hidden group-hover/sidebar-toggle:inline-block" />
-                <Icon
-                  size="small"
-                  name={layout.sidebar.opened() ? "layout-left" : "layout-left-full"}
-                  class="hidden group-active/sidebar-toggle:inline-block"
-                />
-              </div>
-            </Button>
-          </TooltipKeybind>
-          <div class="hidden xl:flex items-center gap-1 shrink-0">
-            <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={2000}>
               <Button
                 variant="ghost"
-                icon="arrow-left"
+                icon="house"
                 class="size-6 p-0"
-                disabled={!canBack()}
-                onClick={back}
-                aria-label={language.t("common.goBack")}
+                onClick={goHome}
+                aria-label={language.t("common.home")}
               />
             </Tooltip>
-            <Tooltip placement="bottom" value={language.t("common.goForward")} openDelay={2000}>
+            <TooltipKeybind
+              class="hidden xl:flex shrink-0"
+              placement="bottom"
+              title={language.t("command.sidebar.toggle")}
+              keybind={command.keybind("sidebar.toggle")}
+            >
               <Button
                 variant="ghost"
-                icon="arrow-right"
-                class="size-6 p-0"
-                disabled={!canForward()}
-                onClick={forward}
-                aria-label={language.t("common.goForward")}
-              />
-            </Tooltip>
+                class="group/sidebar-toggle size-6 p-0"
+                onClick={layout.sidebar.toggle}
+                aria-label={language.t("command.sidebar.toggle")}
+                aria-expanded={layout.sidebar.opened()}
+              >
+                <div class="relative flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
+                  <Icon
+                    size="small"
+                    name={layout.sidebar.opened() ? "layout-left-full" : "layout-left"}
+                    class="group-hover/sidebar-toggle:hidden"
+                  />
+                  <Icon
+                    size="small"
+                    name="layout-left-partial"
+                    class="hidden group-hover/sidebar-toggle:inline-block"
+                  />
+                  <Icon
+                    size="small"
+                    name={layout.sidebar.opened() ? "layout-left" : "layout-left-full"}
+                    class="hidden group-active/sidebar-toggle:inline-block"
+                  />
+                </div>
+              </Button>
+            </TooltipKeybind>
+            <div class="hidden xl:flex items-center gap-1 shrink-0">
+              <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={2000}>
+                <Button
+                  variant="ghost"
+                  icon="arrow-left"
+                  class="size-6 p-0"
+                  disabled={!canBack()}
+                  onClick={back}
+                  aria-label={language.t("common.goBack")}
+                />
+              </Tooltip>
+              <Tooltip placement="bottom" value={language.t("common.goForward")} openDelay={2000}>
+                <Button
+                  variant="ghost"
+                  icon="arrow-right"
+                  class="size-6 p-0"
+                  disabled={!canForward()}
+                  onClick={forward}
+                  aria-label={language.t("common.goForward")}
+                />
+              </Tooltip>
+            </div>
           </div>
+          <div id="opencode-titlebar-left" class="flex items-center gap-3 min-w-0 px-2" />
         </div>
-        <div id="opencode-titlebar-left" class="flex items-center gap-3 min-w-0 px-2" />
-      </div>
 
-      <div class="min-w-0 flex items-center justify-center pointer-events-none lg:absolute lg:inset-0 lg:flex lg:items-center lg:justify-center">
-        <div id="opencode-titlebar-center" class="pointer-events-auto w-full min-w-0 flex justify-center lg:w-fit" />
-      </div>
+        <div class="min-w-0 flex items-center justify-center pointer-events-none lg:absolute lg:inset-0 lg:flex lg:items-center lg:justify-center">
+          <div id="opencode-titlebar-center" class="pointer-events-auto w-full min-w-0 flex justify-center lg:w-fit" />
+        </div>
 
-      <div
-        classList={{
-          "flex items-center min-w-0 justify-end": true,
-          "pr-6": !windows(),
-        }}
-        onMouseDown={drag}
-      >
-        <Show when={onHome()}>
-          <div class="xl:hidden shrink-0 flex items-center justify-center">
-            <IconButton
-              icon="mic"
-              variant="primary"
-              class="size-8 rounded-full"
-              onClick={() => navigate("/companion")}
-              aria-label={language.t("companion.open")}
-            />
-          </div>
-        </Show>
-        <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end" />
-        <Show when={windows()}>
-          <div class="w-6 shrink-0" />
-          <div data-tauri-decorum-tb class="flex flex-row" />
-        </Show>
-      </div>
+        <div
+          classList={{
+            "flex items-center min-w-0 justify-end": true,
+            "pr-6": !windows(),
+          }}
+          onMouseDown={drag}
+        >
+          <Show when={onHome()}>
+            <div class="xl:hidden shrink-0 flex items-center justify-center">
+              <IconButton
+                icon="mic"
+                variant="primary"
+                class="size-8 rounded-full"
+                onClick={() => navigate("/companion")}
+                aria-label={language.t("companion.open")}
+              />
+            </div>
+          </Show>
+          <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end" />
+          <Show when={windows()}>
+            <div class="w-6 shrink-0" />
+            <div data-tauri-decorum-tb class="flex flex-row" />
+          </Show>
+        </div>
       </div>
     </header>
   )
