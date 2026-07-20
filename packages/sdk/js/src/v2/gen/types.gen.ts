@@ -5696,6 +5696,32 @@ export type McpAddResponses = {
 
 export type McpAddResponse = McpAddResponses[keyof McpAddResponses]
 
+export type McpCorpusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/corpus"
+}
+
+export type McpCorpusResponses = {
+  /**
+   * MCP tool catalog grouped by server
+   */
+  200: Array<{
+    server: string
+    tier: McpTier
+    tools: Array<{
+      key: string
+      name: string
+      description: string
+    }>
+  }>
+}
+
+export type McpCorpusResponse = McpCorpusResponses[keyof McpCorpusResponses]
+
 export type McpAuthRemoveData = {
   body?: never
   path: {

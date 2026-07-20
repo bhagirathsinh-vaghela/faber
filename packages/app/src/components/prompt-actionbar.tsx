@@ -1,15 +1,14 @@
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
-import { useParams, useSearchParams } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
-import { useSync } from "@/context/sync"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useQuestion } from "@/context/question"
 import { useLocal } from "@/context/local"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { DialogEnableMcp } from "@/components/dialog-enable-mcp"
+import { DialogMcpCorpus } from "@/components/dialog-mcp-corpus"
 
 // The prompt action bar, ported from the TUI prompt footer
 // (packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx): pending
@@ -19,34 +18,17 @@ import { DialogEnableMcp } from "@/components/dialog-enable-mcp"
 // TUI also listens to; auto-inject toggles through background.toggleAutoInject.
 export function PromptActionBar() {
   const sdk = useSDK()
-  const sync = useSync()
   const command = useCommand()
   const language = useLanguage()
   const question = useQuestion()
   const local = useLocal()
   const params = useParams()
-  const [searchParams] = useSearchParams()
   const dialog = useDialog()
 
-  // MCP on/off is a per-session latch. A session shows enabled once mcpEnabled
-  // is true; a brand-new session (no id yet) reached via the "+MCP" entry point
-  // carries ?mcp=1, which prompt-input commits to mcpEnabled on the first turn —
-  // treat that as "armed" so the chip reads on before the session exists.
-  const mcpEnabled = createMemo(() => (params.id ? sync.session.get(params.id)?.mcpEnabled === true : false))
-  const mcpArmed = createMemo(() => !params.id && !!searchParams.mcp)
-  const mcpOn = createMemo(() => mcpEnabled() || mcpArmed())
-
-  const enableMcp = () => {
-    const id = params.id
-    if (!id || mcpEnabled()) return
-    dialog.show(() => (
-      <DialogEnableMcp
-        onConfirm={async () => {
-          await sdk.client.session.update({ sessionID: id, mcpEnabled: true })
-        }}
-      />
-    ))
-  }
+  // MCP is always on. The chip opens a read-only view of the tools the model
+  // sees for this session's instance (post-`disabled`, at each server's tier).
+  // Server management is config-file + `opencode mcp auth`, not UI.
+  const viewMcp = () => dialog.show(() => <DialogMcpCorpus />)
 
   const [running, setRunning] = createSignal(0)
   const [available, setAvailable] = createSignal(0)
@@ -168,18 +150,11 @@ export function PromptActionBar() {
           </Chip>
         </Show>
 
-        {/* MCP on/off latch, kept rightmost as the session-level state (the
-            others are per-turn activity). On (enabled or armed) fills the chip
-            green; off is muted text and, on an existing session, clicks to
-            enable (one-way). No count — enablement is a boolean; server detail
-            lives on the MCP settings page. */}
-        <Chip
-          filled={mcpOn()}
-          accent={mcpOn() ? "box-accent-assistant" : undefined}
-          onClick={mcpEnabled() || !params.id ? undefined : enableMcp}
-          tooltip={mcpOn() ? language.t("mcp.chip.enabled") : language.t("mcp.chip.enable")}
-        >
-          <span classList={{ "text-text-weaker": !mcpOn() }}>MCP</span>
+        {/* MCP tools, kept rightmost as session-level state (the others are
+            per-turn activity). Click opens the read-only corpus viewer for this
+            session's instance. Always present; MCP is always on. */}
+        <Chip onClick={viewMcp} tooltip={language.t("mcp.chip.view")}>
+          <span class="text-text-base">MCP</span>
         </Chip>
       </ChipGroup>
     </div>

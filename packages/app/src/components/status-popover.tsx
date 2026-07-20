@@ -3,16 +3,11 @@ import { createStore, reconcile } from "solid-js/store"
 import { Popover } from "@opencode-ai/ui/popover"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { Button } from "@opencode-ai/ui/button"
-import { Switch } from "@opencode-ai/ui/switch"
-import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { DialogSettings } from "@/components/dialog-settings"
 import { useSyncOptional } from "@/context/sync"
-import { useSDKOptional } from "@/context/sdk"
 import { serverDisplayName, useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
-import { showToast } from "@opencode-ai/ui/toast"
 
 type ServerStatus = { healthy: boolean; version?: string; host?: string }
 
@@ -38,15 +33,12 @@ export function StatusPopover() {
   // providers, so these are undefined there. The trigger (server name + health)
   // needs only useServer; the mcp/lsp/plugin panels guard on these being present.
   const sync = useSyncOptional()
-  const sdk = useSDKOptional()
   const server = useServer()
   const platform = usePlatform()
   const language = useLanguage()
-  const dialog = useDialog()
 
   const [store, setStore] = createStore({
     status: {} as Record<string, ServerStatus | undefined>,
-    loading: null as string | null,
   })
 
   const connection = createMemo(() => store.status[server.url])
@@ -76,26 +68,6 @@ export function StatusPopover() {
   )
 
   const mcpConnected = createMemo(() => mcpItems().filter((i) => i.status === "connected").length)
-
-  const toggleMcp = async (name: string) => {
-    if (store.loading || !sync || !sdk) return
-    setStore("loading", name)
-
-    try {
-      const status = sync.data.mcp[name]
-      await (status?.status === "connected" ? sdk.client.mcp.disconnect({ name }) : sdk.client.mcp.connect({ name }))
-      const result = await sdk.client.mcp.status()
-      if (result.data) sync.set("mcp", result.data)
-    } catch (err) {
-      showToast({
-        variant: "error",
-        title: language.t("common.requestFailed"),
-        description: err instanceof Error ? err.message : String(err),
-      })
-    } finally {
-      setStore("loading", null)
-    }
-  }
 
   const lspItems = createMemo(() => sync?.data.lsp ?? [])
   const lspCount = createMemo(() => lspItems().length)
@@ -195,48 +167,27 @@ export function StatusPopover() {
                   }
                 >
                   <For each={mcpItems()}>
-                    {(item) => {
-                      const enabled = () => item.status === "connected"
-                      return (
-                        <button
-                          type="button"
-                          class="flex items-center gap-2 w-full h-8 pl-3 pr-2 py-1 rounded-md hover:bg-surface-raised-base-hover transition-colors text-left"
-                          onClick={() => toggleMcp(item.name)}
-                          disabled={store.loading === item.name}
-                        >
-                          <div
-                            classList={{
-                              "size-1.5 rounded-full shrink-0": true,
-                              "bg-icon-success-base": item.status === "connected",
-                              "bg-icon-critical-base": item.status === "failed",
-                              "bg-border-weak-base": item.status === "disabled",
-                              "bg-icon-warning-base":
-                                item.status === "needs_auth" || item.status === "needs_client_registration",
-                            }}
-                          />
-                          <span class="text-14-regular text-text-base truncate flex-1">{item.name}</span>
-                          <div onClick={(event) => event.stopPropagation()}>
-                            <Switch
-                              checked={enabled()}
-                              disabled={store.loading === item.name}
-                              onChange={() => toggleMcp(item.name)}
-                            />
-                          </div>
-                        </button>
-                      )
-                    }}
+                    {(item) => (
+                      <div class="flex items-center gap-2 w-full h-8 pl-3 pr-2 py-1 rounded-md text-left">
+                        <div
+                          classList={{
+                            "size-1.5 rounded-full shrink-0": true,
+                            "bg-icon-success-base": item.status === "connected",
+                            "bg-icon-critical-base": item.status === "failed",
+                            "bg-border-weak-base": item.status === "disabled",
+                            "bg-icon-warning-base":
+                              item.status === "needs_auth" || item.status === "needs_client_registration",
+                          }}
+                        />
+                        <span class="text-14-regular text-text-base truncate flex-1">{item.name}</span>
+                        <span class="text-11-regular text-text-weaker">
+                          {language.t(`mcp.status.${item.status ?? "disabled"}`)}
+                        </span>
+                      </div>
+                    )}
                   </For>
                 </Show>
               </div>
-              <Button
-                variant="secondary"
-                size="small"
-                icon="sliders"
-                class="mt-2 w-full justify-center"
-                onClick={() => dialog.show(() => <DialogSettings initialTab="mcp" />)}
-              >
-                {language.t("settings.mcp.manage")}
-              </Button>
             </div>
           </Tabs.Content>
 

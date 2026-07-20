@@ -10,7 +10,6 @@ import { SettingsLayout } from "./settings-layout"
 import { SettingsKeybinds } from "./settings-keybinds"
 import { SettingsProviders } from "./settings-providers"
 import { SettingsModels } from "./settings-models"
-import { SettingsMcp } from "./settings-mcp"
 
 export const DialogSettings: Component<{ initialTab?: string }> = (props) => {
   const language = useLanguage()
@@ -61,10 +60,6 @@ export const DialogSettings: Component<{ initialTab?: string }> = (props) => {
                       <Icon name="models" />
                       {language.t("settings.models.title")}
                     </Tabs.Trigger>
-                    <Tabs.Trigger value="mcp">
-                      <Icon name="server" />
-                      {language.t("settings.mcp.title")}
-                    </Tabs.Trigger>
                   </div>
                 </div>
               </div>
@@ -99,9 +94,6 @@ export const DialogSettings: Component<{ initialTab?: string }> = (props) => {
         {/* <Tabs.Content value="commands" class="no-scrollbar"> */}
         {/*   <SettingsCommands /> */}
         {/* </Tabs.Content> */}
-        <Tabs.Content value="mcp" class="no-scrollbar">
-          <SettingsMcp />
-        </Tabs.Content>
       </Tabs>
     </Dialog>
   )

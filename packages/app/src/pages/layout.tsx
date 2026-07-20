@@ -2207,27 +2207,6 @@ export default function Layout(props: ParentProps) {
                       {language.t("command.session.new")}
                     </Button>
                   </TooltipKeybind>
-                  <TooltipKeybind
-                    title={language.t("command.session.new.mcp")}
-                    keybind={command.keybind("session.new.mcp")}
-                    placement="top"
-                  >
-                    <Button
-                      size="large"
-                      variant="secondary"
-                      class="shrink-0 whitespace-nowrap"
-                      onClick={() => {
-                        if (!layout.sidebar.opened()) {
-                          setState("hoverSession", undefined)
-                          setState("previewProject", undefined)
-                        }
-                        navigate(`/${base64Encode(p().worktree)}/session?mcp=1`)
-                        layout.mobileSidebar.hide()
-                      }}
-                    >
-                      {language.t("sidebar.session.new.mcp")}
-                    </Button>
-                  </TooltipKeybind>
                 </div>
                 <div class="flex-1 min-h-0">
                   <LocalWorkspace project={p()} mobile={panelProps.mobile} />

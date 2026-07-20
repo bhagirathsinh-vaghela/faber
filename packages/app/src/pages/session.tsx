@@ -900,15 +900,6 @@ export default function Page() {
       onSelect: () => navigate(`/${params.dir}/session`),
     },
     {
-      id: "session.new.mcp",
-      title: language.t("command.session.new.mcp"),
-      description: language.t("command.session.new.mcp.description"),
-      category: language.t("command.category.session"),
-      keybind: "mod+shift+alt+s",
-      slash: "new-mcp",
-      onSelect: () => navigate(`/${params.dir}/session?mcp=1`),
-    },
-    {
       id: "file.open",
       title: language.t("command.file.open"),
       description: language.t("palette.search.placeholder"),

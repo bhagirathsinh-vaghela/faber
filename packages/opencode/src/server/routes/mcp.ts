@@ -29,6 +29,52 @@ export const McpRoutes = lazy(() =>
         return c.json(await MCP.status())
       },
     )
+    .get(
+      "/corpus",
+      describeRoute({
+        summary: "Get the MCP tool catalog",
+        description:
+          "The MCP tools the model sees for this instance, grouped by server: every connected server's advertised tools minus its `disabled` names, each at the server's catalog tier. This is the read-only view behind the session MCP pill.",
+        operationId: "mcp.corpus",
+        responses: {
+          200: {
+            description: "MCP tool catalog grouped by server",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z
+                    .object({
+                      server: z.string(),
+                      tier: Config.McpTier,
+                      tools: z
+                        .object({
+                          key: z.string(),
+                          name: z.string(),
+                          description: z.string(),
+                        })
+                        .array(),
+                    })
+                    .array(),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const entries = await MCP.corpus()
+        const byServer = new Map<string, { server: string; tier: Config.McpTier; tools: unknown[] }>()
+        for (const entry of entries) {
+          const group = byServer.get(entry.client) ?? { server: entry.client, tier: entry.tier, tools: [] }
+          group.tools.push({ key: entry.key, name: entry.name, description: entry.description })
+          byServer.set(entry.client, group)
+        }
+        const groups = [...byServer.values()]
+          .sort((a, b) => a.server.localeCompare(b.server))
+          .map((g) => ({ ...g, tools: g.tools.sort((a: any, b: any) => a.key.localeCompare(b.key)) }))
+        return c.json(groups)
+      },
+    )
     .post(
       "/",
       describeRoute({

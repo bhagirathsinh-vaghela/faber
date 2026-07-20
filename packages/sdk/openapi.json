@@ -6256,6 +6256,70 @@
         ]
       }
     },
+    "/mcp/corpus": {
+      "get": {
+        "operationId": "mcp.corpus",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get the MCP tool catalog",
+        "description": "The MCP tools the model sees for this instance, grouped by server: every connected server's advertised tools minus its `disabled` names, each at the server's catalog tier. This is the read-only view behind the session MCP pill.",
+        "responses": {
+          "200": {
+            "description": "MCP tool catalog grouped by server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "server": {
+                        "type": "string"
+                      },
+                      "tier": {
+                        "$ref": "#/components/schemas/McpTier"
+                      },
+                      "tools": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["key", "name", "description"]
+                        }
+                      }
+                    },
+                    "required": ["server", "tier", "tools"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.corpus({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/mcp/{name}/auth": {
       "post": {
         "operationId": "mcp.auth.start",

@@ -88,6 +88,7 @@ import type {
   McpAuthStartErrors,
   McpAuthStartResponses,
   McpConnectResponses,
+  McpCorpusResponses,
   McpDisconnectResponses,
   McpLocalConfig,
   McpRemoteConfig,
@@ -3497,6 +3498,25 @@ export class Mcp extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get the MCP tool catalog
+   *
+   * The MCP tools the model sees for this instance, grouped by server: every connected server's advertised tools minus its `disabled` names, each at the server's catalog tier. This is the read-only view behind the session MCP pill.
+   */
+  public corpus<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<McpCorpusResponses, unknown, ThrowOnError>({
+      url: "/mcp/corpus",
+      ...options,
+      ...params,
     })
   }
 

@@ -17,21 +17,15 @@ async function withConfig<T>(mcp: unknown, fn: () => Promise<T>): Promise<T> {
 }
 
 test("isDisabled true for a tool listed in its server's disabled array", async () => {
-  await withConfig(
-    { everything: { type: "local", command: ["noop"], disabled: ["echo"] } },
-    async () => {
-      expect(await MCP.isDisabled("everything_echo")).toBe(true)
-    },
-  )
+  await withConfig({ everything: { type: "local", command: ["noop"], disabled: ["echo"] } }, async () => {
+    expect(await MCP.isDisabled("everything_echo")).toBe(true)
+  })
 })
 
 test("isDisabled false for a tool not in the disabled array", async () => {
-  await withConfig(
-    { everything: { type: "local", command: ["noop"], disabled: ["echo"] } },
-    async () => {
-      expect(await MCP.isDisabled("everything_add")).toBe(false)
-    },
-  )
+  await withConfig({ everything: { type: "local", command: ["noop"], disabled: ["echo"] } }, async () => {
+    expect(await MCP.isDisabled("everything_add")).toBe(false)
+  })
 })
 
 test("isDisabled false when the server has no disabled array", async () => {
