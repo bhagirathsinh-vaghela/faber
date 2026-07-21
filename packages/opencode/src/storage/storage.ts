@@ -183,7 +183,7 @@ export namespace Storage {
       using _ = await Lock.write(target)
       const content = await Bun.file(target).json()
       fn(content)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+      await atomic(target, JSON.stringify(content, null, 2))
       return content as T
     })
   }
@@ -193,7 +193,20 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+      await atomic(target, JSON.stringify(content, null, 2))
+    })
+  }
+
+  // A crash mid-write must never tear a previously-intact file. Write to a temp
+  // sibling then rename: rename is atomic within a filesystem, so a reader sees
+  // either the old file or the fully-written new one, never a truncated blend.
+  // The temp lives beside the target so the rename stays same-filesystem.
+  async function atomic(target: string, content: string) {
+    const tmp = target + "." + Bun.randomUUIDv7() + ".tmp"
+    await Bun.write(tmp, content)
+    await fs.rename(tmp, target).catch(async (e) => {
+      await fs.unlink(tmp).catch(() => {})
+      throw e
     })
   }
 
@@ -208,7 +221,7 @@ export namespace Storage {
     })
   }
 
-  const glob = new Bun.Glob("**/*")
+  const glob = new Bun.Glob("**/*.json")
   export async function list(prefix: string[]) {
     const dir = await state().then((x) => x.dir)
     try {
