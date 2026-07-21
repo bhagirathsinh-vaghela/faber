@@ -338,6 +338,15 @@ export namespace SessionPrompt {
       if (abort.aborted) break
       let msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
 
+      // Raise the ID floor to this session's newest message before minting any
+      // new ids this turn. filterCompacted always keeps the tail, so the max id
+      // here is the session's true newest. This stops a process whose wall clock
+      // is behind the persisted ids (a backward step while the server was down)
+      // from minting an assistant/part that sorts before its own parent — the
+      // inversion that wedged the turn loop. Complements the link-based checks:
+      // those survive an existing inversion, this prevents new ones.
+      for (const msg of msgs) Identifier.seed(Identifier.timestamp(msg.info.id))
+
       // Rebuild the read-time map from durable history. read, edit, and write
       // parts all persist their post-op mtime+hash, and seeding walks them in
       // stream order (last write per file wins), so a file's entry reflects the
@@ -370,29 +379,49 @@ export namespace SessionPrompt {
         ),
       )
 
+      // A compaction or subtask part is satisfied when a finished assistant
+      // message links back to the message that holds it (both branches set the
+      // assistant's parentID to that message's id). Keying "done" on this link
+      // instead of on sort position makes it immune to ID inversion: a mis-timed
+      // clock can reorder the summary before its own request, but the parentID
+      // pointer is unchanged, so a completed task can never look pending again.
+      const satisfied = new Set(
+        msgs.flatMap((msg) =>
+          msg.info.role === "assistant" && msg.info.finish ? [msg.info.parentID] : [],
+        ),
+      )
+
       let lastUser: MessageV2.User | undefined
-      let lastAssistant: MessageV2.Assistant | undefined
       let lastFinished: MessageV2.Assistant | undefined
       let tasks: (MessageV2.CompactionPart | MessageV2.SubtaskPart)[] = []
       for (let i = msgs.length - 1; i >= 0; i--) {
         const msg = msgs[i]
         if (!lastUser && msg.info.role === "user") lastUser = msg.info as MessageV2.User
-        if (!lastAssistant && msg.info.role === "assistant") lastAssistant = msg.info as MessageV2.Assistant
         if (!lastFinished && msg.info.role === "assistant" && msg.info.finish)
           lastFinished = msg.info as MessageV2.Assistant
         if (lastUser && lastFinished) break
+        if (satisfied.has(msg.info.id)) continue
         const task = msg.parts.filter((part) => part.type === "compaction" || part.type === "subtask")
-        if (task && !lastFinished) {
-          tasks.push(...task)
-        }
+        tasks.push(...task)
       }
 
       if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
-      if (
-        lastAssistant?.finish &&
-        !["tool-calls", "unknown"].includes(lastAssistant.finish) &&
-        lastUser.id < lastAssistant.id
-      ) {
+      // The turn is done when the current user message has a terminal response:
+      // a finished assistant that LINKS to it (parentID) with a finish reason
+      // that isn't "tool-calls"/"unknown" (both mean more work is coming). Test
+      // the parentID link, not lastUser.id < lastAssistant.id — the id compare
+      // is a proxy for "the assistant came after this user message" that fails
+      // under clock inversion (a later assistant can carry a smaller id), which
+      // left the loop unable to ever exit. The link is set at creation and can't
+      // invert.
+      const answered = msgs.some(
+        (msg) =>
+          msg.info.role === "assistant" &&
+          msg.info.parentID === lastUser!.id &&
+          msg.info.finish &&
+          !["tool-calls", "unknown"].includes(msg.info.finish),
+      )
+      if (answered) {
         log.info("exiting loop", { sessionID })
         break
       }

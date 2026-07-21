@@ -23,6 +23,20 @@ export namespace Identifier {
   let lastTimestamp = 0
   let counter = 0
 
+  // Raise the monotonic floor so a fresh process can't mint IDs that sort below
+  // what is already on disk. lastTimestamp resets to 0 on every process start;
+  // if the wall clock is currently behind the newest persisted ID (a prior
+  // process held a future timestamp, or the clock stepped back while the server
+  // was down), the first mints would encode a smaller value and sort before
+  // existing messages. Seeding from the newest persisted ID at boot closes that
+  // window. Never lowers the floor — a stale seed is a no-op.
+  export function seed(timestamp: number) {
+    if (timestamp > lastTimestamp) {
+      lastTimestamp = timestamp
+      counter = 0
+    }
+  }
+
   export function ascending(prefix: keyof typeof prefixes, given?: string) {
     return generateID(prefix, false, given)
   }

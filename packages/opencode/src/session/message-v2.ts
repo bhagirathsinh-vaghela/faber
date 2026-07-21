@@ -714,17 +714,40 @@ export namespace MessageV2 {
   )
 
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
-    const result = [] as MessageV2.WithParts[]
-    const completed = new Set<string>()
+    // The stream yields newest-first. The compaction boundary is found by the
+    // parentID LINK, not by whether the summary happens to sort after its
+    // request. Pass 1 collects every compaction request that a finished summary
+    // answered (summary.parentID == request.id). Pass 2 walks newest-first and
+    // stops at the first such answered compaction request: history older than it
+    // is summarized away and dropped. The request's own summary is kept even
+    // when a clock inversion sorts it AFTER the request in the stream (so it
+    // would otherwise fall past the cut) — the summary is the compacted context
+    // the next turn continues from. The old single-pass build-as-you-walk both
+    // missed the boundary under inversion (kept all history) and, once fixed to
+    // break, could drop the summary; keying on the link fixes both.
+    const newestFirst = [] as MessageV2.WithParts[]
+    const answeredBy = new Map<string, string>()
     for await (const msg of stream) {
-      result.push(msg)
-      if (
+      newestFirst.push(msg)
+      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish)
+        answeredBy.set(msg.info.parentID, msg.info.id)
+    }
+    const result = [] as MessageV2.WithParts[]
+    for (const msg of newestFirst) {
+      const boundary =
         msg.info.role === "user" &&
-        completed.has(msg.info.id) &&
+        answeredBy.has(msg.info.id) &&
         msg.parts.some((part) => part.type === "compaction")
-      )
+      if (boundary) {
+        result.push(msg)
+        const summaryID = answeredBy.get(msg.info.id)
+        if (!result.some((m) => m.info.id === summaryID)) {
+          const summary = newestFirst.find((m) => m.info.id === summaryID)
+          if (summary) result.push(summary)
+        }
         break
-      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) completed.add(msg.info.parentID)
+      }
+      result.push(msg)
     }
     result.reverse()
     return result

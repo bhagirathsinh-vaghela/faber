@@ -102,6 +102,67 @@ function basePart(messageID: string, id: string) {
   }
 }
 
+function compactionUser(id: string): MessageV2.WithParts {
+  return {
+    info: userInfo(id),
+    parts: [{ ...basePart(id, id + "-p"), type: "compaction", auto: true }] as MessageV2.Part[],
+  }
+}
+
+function summaryAssistant(id: string, parentID: string): MessageV2.WithParts {
+  return {
+    info: { ...assistantInfo(id, parentID), summary: true, finish: "stop" } as MessageV2.Assistant,
+    parts: [{ ...basePart(id, id + "-p"), type: "text", text: "summary" }] as MessageV2.Part[],
+  }
+}
+
+function plainUser(id: string, text: string): MessageV2.WithParts {
+  return {
+    info: userInfo(id),
+    parts: [{ ...basePart(id, id + "-p"), type: "text", text }] as MessageV2.Part[],
+  }
+}
+
+async function* toStream(msgs: MessageV2.WithParts[]) {
+  for (const msg of msgs) yield msg
+}
+
+describe("session.message-v2.filterCompacted", () => {
+  // Stream is newest-first. A compaction pair: user request U (compaction part)
+  // answered by summary assistant S (summary+finish, parentID=U). Everything
+  // before U should be dropped once S answers U.
+
+  test("drops pre-compaction history when the summary sorts after its request", async () => {
+    // newest-first: S (newest) -> U -> old
+    const stream = toStream([summaryAssistant("s", "u"), compactionUser("u"), plainUser("old", "old turn")])
+    const result = await MessageV2.filterCompacted(stream)
+    // result is oldest-first after reverse; boundary is U, so "old" is dropped.
+    expect(result.map((m) => m.info.id)).toStrictEqual(["u", "s"])
+  })
+
+  test("still finds the boundary when the summary sorts BEFORE its request (id inversion)", async () => {
+    // Inversion: the summary carries a smaller id than its own request, so
+    // newest-first yields U before S. The old single-pass build-as-you-walk
+    // missed the boundary here and kept "old"; the link-based two-pass finds it.
+    const stream = toStream([compactionUser("u"), summaryAssistant("s", "u"), plainUser("old", "old turn")])
+    const result = await MessageV2.filterCompacted(stream)
+    expect(result.map((m) => m.info.id)).toStrictEqual(["s", "u"])
+  })
+
+  test("keeps all history when no compaction has completed", async () => {
+    const stream = toStream([plainUser("u2", "second"), plainUser("u1", "first")])
+    const result = await MessageV2.filterCompacted(stream)
+    expect(result.map((m) => m.info.id)).toStrictEqual(["u1", "u2"])
+  })
+
+  test("does not cut at a compaction request with no matching summary", async () => {
+    // U has a compaction part but no summary answers it yet: history is kept.
+    const stream = toStream([compactionUser("u"), plainUser("old", "old turn")])
+    const result = await MessageV2.filterCompacted(stream)
+    expect(result.map((m) => m.info.id)).toStrictEqual(["old", "u"])
+  })
+})
+
 describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with no parts", () => {
     const input: MessageV2.WithParts[] = [
