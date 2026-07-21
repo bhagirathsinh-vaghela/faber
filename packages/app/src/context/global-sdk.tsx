@@ -148,9 +148,41 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     createEffect(() => {
       if (Visibility.hidden()) attempt?.abort()
     })
+    // Reconnect the instant the network state flips (wifi returns after a flap).
+    // Aborting the current attempt breaks the for-await into the fast backoff
+    // path — a clean reattach if the stream was healthy, recovery if it was dead.
+    // First run only reads the signal to subscribe; there is nothing to recover.
+    let netSeen = false
+    createEffect(() => {
+      Visibility.network()
+      if (!netSeen) {
+        netSeen = true
+        return
+      }
+      attempt?.abort()
+    })
     // Passing a per-attempt signal to the SSE call overrides the client-level
     // lifetime signal, so cascade teardown to whatever stream is live.
     abort.signal.addEventListener("abort", () => attempt?.abort())
+
+    // Read-liveness watchdog. On flaky wifi a connection can go half-open — the
+    // socket is silently dead, so reader.read() never rejects and the for-await
+    // below blocks forever with no reconnect. The server guarantees traffic on a
+    // live link (server.heartbeat every 30s), so treat 60s of total silence (two
+    // missed beats) as dead: abort the attempt to break the for-await into the
+    // backoff+reconnect path. pet() resets it on every received event; the loop
+    // clears it whenever the stream ends.
+    let watchdog: ReturnType<typeof setTimeout> | undefined
+    const IDLE_MS = 60000
+    const pet = () => {
+      if (watchdog) clearTimeout(watchdog)
+      watchdog = setTimeout(() => attempt?.abort(), IDLE_MS)
+    }
+    const rest = () => {
+      if (!watchdog) return
+      clearTimeout(watchdog)
+      watchdog = undefined
+    }
 
     // Thin-client streaming model (like tmux reattach): the stream must run
     // forever. When it drops (server restart, sleep, network blip) reconnect
@@ -164,8 +196,17 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (abort.signal.aborted) break
         attempt = new AbortController()
         try {
-          const events = await eventSdk.global.event({ connectionID }, { signal: attempt.signal })
+          // sseMaxRetryAttempts:1 disables the SDK's own retry loop, which
+          // otherwise swallows a drop and sleeps 3-30s internally before
+          // retrying — the app's for-await never sees the error and this fast
+          // backoff never runs. Capping at one attempt surfaces the error out
+          // of the stream so THIS loop owns reconnection on its own fast clock.
+          const events = await eventSdk.global.event(
+            { connectionID },
+            { signal: attempt.signal, sseMaxRetryAttempts: 1 },
+          )
           backoff = 250
+          pet()
           // Re-declare interest on every (re)attach: the server registry is
           // per-process, so a restart wiped our set and would otherwise fail-open
           // (harmless over-send) until we re-push. Snapshot heals any gap via
@@ -173,6 +214,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           void pushInterest()
           let yielded = Date.now()
           for await (const event of events.stream) {
+            pet()
             const directory = event.directory ?? "global"
             const payload = event.payload
             const k = key(directory, payload)
@@ -198,15 +240,17 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         } catch {
           // stream errored; fall through to backoff + reconnect
         }
+        rest()
         flush()
         if (abort.signal.aborted) break
         await new Promise<void>((resolve) => setTimeout(resolve, backoff))
-        backoff = Math.min(backoff * 2, 5000)
+        backoff = Math.min(backoff * 2, 2000)
       }
     })()
 
     onCleanup(() => {
       abort.abort()
+      rest()
       flush()
     })
 

@@ -15,6 +15,13 @@ const [hidden, setHidden] = createSignal(read())
 const waiters: Array<() => void> = []
 const hiddenWaiters: Array<() => void> = []
 
+// Network transitions, bumped on every online/offline event. navigator.onLine is
+// only a hint (MDN: a true value does not guarantee real connectivity), so the
+// SSE loop treats a bump as "reconnect now" — an opportunistic fast path on top
+// of the read-liveness watchdog, never the authority. A spurious online event
+// just triggers one cheap clean reattach.
+const [network, setNetwork] = createSignal(0)
+
 function read() {
   return typeof document !== "undefined" && document.visibilityState === "hidden"
 }
@@ -32,6 +39,9 @@ function arm() {
   if (armed || typeof document === "undefined") return
   armed = true
   document.addEventListener("visibilitychange", sync)
+  const bump = () => setNetwork((n) => n + 1)
+  window.addEventListener("online", bump)
+  window.addEventListener("offline", bump)
   sync()
 }
 
@@ -55,5 +65,11 @@ export const Visibility = {
     arm()
     if (read()) return Promise.resolve()
     return new Promise<void>((resolve) => hiddenWaiters.push(resolve))
+  },
+  // Reactive: bumps on every online/offline event. Tracks in a reactive scope;
+  // the SSE loop watches it to reconnect the instant the network state changes.
+  network() {
+    arm()
+    return network()
   },
 }
