@@ -824,6 +824,13 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         c.status(200)
         c.header("Content-Type", "application/json")
+        // This route writes nothing until the whole turn finishes, so the global
+        // idleTimeout would reap the socket mid-turn on any long turn. Disable the
+        // timeout for THIS request only (Bun's per-request override); the global
+        // window stays tight for SSE and everything else. c.env is the Bun Server
+        // in the Bun adapter; guard for non-Bun contexts (tests).
+        const server = c.env as { timeout?: (req: Request, seconds: number) => void }
+        server?.timeout?.(c.req.raw, 0)
         return stream(c, async (stream) => {
           const sessionID = c.req.valid("param").sessionID
           const body = c.req.valid("json")

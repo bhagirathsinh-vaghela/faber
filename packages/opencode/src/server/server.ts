@@ -729,6 +729,10 @@ export namespace Server {
       // a half-dead backgrounded socket (no ACKs, no RST) that the heartbeat
       // can no longer reach gets closed instead of lingering with its buffered
       // events pinned in memory. 90s is 3x the heartbeat and under Bun's 255s cap.
+      // The synchronous POST /prompt route, which writes no bytes until the turn
+      // ends, disables this per-request via server.timeout(req, 0) so a long turn
+      // is never reaped mid-flight — the global window stays tight for everything
+      // else.
       idleTimeout: 90,
       fetch: App().fetch,
       websocket: websocket,
