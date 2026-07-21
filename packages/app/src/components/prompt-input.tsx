@@ -2514,7 +2514,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
+                    // The !important icon color is scoped to :not([data-dictation-
+                    // focused]) so that when this mic is the active dictation
+                    // target, the inline agent-color style below wins on mobile
+                    // too (on desktop md:!text-current already lets it through).
+                    // Without the exclusion the !important base color beat the
+                    // inline color and the mic never tinted on touch.
+                    class="size-11 md:size-6 px-1 [&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-icon-strong-base md:[&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-current"
                     data-dictation-toggle
                     data-dictation-focused={dictationTargeted() ? "" : undefined}
                     onClick={toggleDictation}
