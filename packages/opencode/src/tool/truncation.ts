@@ -9,6 +9,11 @@ import { Scheduler } from "../scheduler"
 export namespace Truncate {
   export const MAX_LINES = 2000
   export const MAX_BYTES = 50 * 1024
+  // A persisted diff is display-only metadata (the model reads the tool's
+  // `output` string, never `metadata`), so an unbounded patch on a huge edit is
+  // pure storage/serialization cost. Cap the persisted copy; the renderer shows
+  // a truncation marker for the rest.
+  export const MAX_DIFF_BYTES = 50 * 1024
   export const DIR = path.join(Global.Path.data, "tool-output")
   export const GLOB = path.join(DIR, "*")
   const RETENTION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -53,6 +58,14 @@ export namespace Truncate {
     if (!agent?.permission) return false
     const rule = PermissionNext.evaluate("task", "*", agent.permission)
     return rule.action !== "deny"
+  }
+
+  export function diff(patch: string): string {
+    if (patch.length <= MAX_DIFF_BYTES) return patch
+    const cutoff = patch.lastIndexOf("\n", MAX_DIFF_BYTES)
+    const kept = cutoff > 0 ? patch.slice(0, cutoff) : patch.slice(0, MAX_DIFF_BYTES)
+    const remaining = patch.slice(kept.length).split("\n").length
+    return `${kept}\n\n... [${remaining} lines truncated] ...`
   }
 
   export async function output(text: string, options: Options = {}, agent?: Agent.Info): Promise<Result> {

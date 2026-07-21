@@ -12,6 +12,7 @@ import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "../lsp"
 import { Filesystem } from "../util/filesystem"
+import { Truncate } from "./truncation"
 import DESCRIPTION from "./apply_patch.txt"
 import { File } from "../file"
 
@@ -282,12 +283,26 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
       }
     }
 
+    // Persist only the changed files' diagnostics, keyed by path. The renderers
+    // index this map by the changed path; the whole LSP.diagnostics() map scales
+    // with the repo and no reader wants the other files. The model never reads
+    // metadata — it gets the bounded <diagnostics> block from `output`.
+    const changed: typeof diagnostics = {}
+    for (const change of fileChanges) {
+      if (change.type === "delete") continue
+      const normalized = Filesystem.normalizePath(change.movePath ?? change.filePath)
+      const issues = diagnostics[normalized]
+      if (issues?.length) changed[normalized] = issues
+    }
+    // The before/after whole-file bodies are display-only and unbounded; the
+    // renderer uses the per-file diff. Cap the diff, drop the bodies.
+    const resultFiles = files.map(({ before, after, diff, ...rest }) => ({ ...rest, diff: Truncate.diff(diff) }))
     return {
       title: output,
       metadata: {
-        diff: totalDiff,
-        files,
-        diagnostics,
+        diff: Truncate.diff(totalDiff),
+        files: resultFiles,
+        diagnostics: changed,
       },
       output,
     }

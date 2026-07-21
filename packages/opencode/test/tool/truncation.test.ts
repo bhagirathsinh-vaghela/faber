@@ -153,4 +153,20 @@ describe("Truncate", () => {
       expect(await Bun.file(recentFile).exists()).toBe(true)
     })
   })
+
+  describe("diff", () => {
+    test("returns patch unchanged when under the cap", () => {
+      const patch = "@@ -1,2 +1,2 @@\n-old\n+new"
+      expect(Truncate.diff(patch)).toBe(patch)
+    })
+
+    test("caps an oversized patch at a line boundary with a marker", () => {
+      const patch = Array.from({ length: 20000 }, (_, i) => `+line ${i}`).join("\n")
+      const result = Truncate.diff(patch)
+
+      expect(result.length).toBeLessThan(patch.length)
+      expect(result).toContain("lines truncated] ...")
+      expect(result.endsWith("...")).toBe(true)
+    })
+  })
 })

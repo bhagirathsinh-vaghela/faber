@@ -13,6 +13,7 @@ import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
 import { assertExternalDirectory } from "./external-directory"
 import { applyLineEnding, detectFileProperties, encodeContent } from "../util/encoding"
+import { Truncate } from "./truncation"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 
@@ -163,11 +164,10 @@ export const EditTool = Tool.define("edit", {
       if (change.removed) filediff.deletions += change.count || 0
     }
 
-    // The running event only needs the +/- stat, not the bodies. edit is
-    // synchronous, so this fires microseconds before the completion write that
-    // carries the full filediff + diff; sending the whole before/after (2x the
-    // file) and the unified diff here just doubled the wire cost for a frame the
-    // completion immediately replaces. Ship the counts, defer the bodies.
+    // Neither the running event nor the persisted result carries the before/after
+    // bodies: they are whole-file copies (2x the file) that no renderer needs (the
+    // edit view falls back to input old/new strings) and the model never reads
+    // metadata. Ship only the +/- stat.
     const { before, after, ...stat } = filediff
     ctx.metadata({
       metadata: {
@@ -212,10 +212,16 @@ export const EditTool = Tool.define("edit", {
 
     return {
       metadata: {
-        diagnostics,
-        diff,
-        filediff,
-        hunks,
+        // Persist only the edited file's diagnostics, keyed by its path. The
+        // renderers index this map by the edited path; the whole LSP.diagnostics()
+        // map scales with the repo (tens of MB in a monorepo) and no reader wants
+        // the other files. The model never reads metadata — it gets the bounded
+        // <diagnostics> block from `output`.
+        diagnostics: issues.length ? { [normalizedFilePath]: issues } : {},
+        diff: Truncate.diff(diff),
+        // The +/-/file stat is all any renderer needs; the before/after bodies
+        // were whole-file copies. The one reader falls back to input old/new.
+        filediff: stat,
         // Persisted so seed() can carry this edit's post-write mtime+hash across
         // turns, instead of restoring the stale pre-edit read state.
         mtime: stamp?.mtime,

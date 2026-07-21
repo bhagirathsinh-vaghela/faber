@@ -117,10 +117,16 @@ export const WriteTool = Tool.define("write", {
       output += `\n\nLSP errors detected in other files:\n<diagnostics file="${file}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
     }
 
+    const own = diagnostics[normalizedFilepath]
     return {
       title: path.relative(Instance.worktree, filepath),
       metadata: {
-        diagnostics,
+        // Persist only the written file's diagnostics, keyed by its path. The
+        // renderers index this map by the written path; the whole LSP.diagnostics()
+        // map scales with the repo and no reader wants the other files. The model
+        // never reads metadata — it gets the bounded <diagnostics> block from
+        // `output`, which still surfaces other files' errors as text.
+        diagnostics: own ? { [normalizedFilepath]: own } : {},
         filepath,
         exists: exists,
         // Persisted so seed() can carry this write's post-write mtime+hash
