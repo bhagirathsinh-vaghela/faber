@@ -137,18 +137,39 @@ function balancedInlineLength(tail: string) {
 }
 
 // A fenced code block: <div box><pre><code/></pre> + copy button. The body
-// streams plain (no highlight) for the whole turn, then Shiki-highlights ONCE
-// when the part completes. Highlighting a fence on every append re-lexed the
-// whole block ~10x/second for zero visible gain (the plain text is already on
-// screen); gating on `complete` collapses that to a single highlight per fence.
+// streams plain, then Shiki-highlights once the block SETTLES — either the part
+// completed, or its source stopped growing for one debounce window. The clamp
+// upstream only ever hands a CLOSED fence to CodeBlock, so "source stopped
+// changing" means "this fence is done", even while later blocks keep streaming.
+// That colors each closed block as soon as it settles (responsive) instead of
+// waiting for the whole message, and the debounce caps it at one highlight per
+// settled block (re-highlighting every ~10Hz append is the O(n^2) trap we avoid;
+// the LRU cache in marked.tsx turns the final complete-time pass into a hit).
+const SETTLE_MS = 150
 function CodeBlock(props: { lang: string; source: string; labels: CopyLabels; theme: string; complete?: boolean }) {
   const [code, setCode] = createSignal<HTMLElement>()
+
+  // Track when this block's source last changed. A block is "settled" once the
+  // part completes OR the source has held steady for SETTLE_MS, so a still-open
+  // trailing block highlights on the pause after its fence closes rather than
+  // hanging plain until the entire part finishes.
+  const [settled, setSettled] = createSignal(false)
+  createEffect(() => {
+    props.source
+    if (props.complete) {
+      setSettled(true)
+      return
+    }
+    setSettled(false)
+    const timer = setTimeout(() => setSettled(true), SETTLE_MS)
+    onCleanup(() => clearTimeout(timer))
+  })
 
   createEffect(() => {
     const raw = props.source.replace(/\n$/, "")
     const lang = props.lang
     const theme = props.theme
-    if (!code() || isServer || !raw || !props.complete) return
+    if (!code() || isServer || !raw || !settled()) return
     let live = true
     onCleanup(() => (live = false))
     highlightCode(raw, lang, theme)
