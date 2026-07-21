@@ -19,8 +19,14 @@
       color: var(--icon-invert-base);
     }
 
-    &:hover:not(:disabled) {
-      background-color: var(--icon-strong-hover);
+    /* :hover gated to hover-capable pointers: iOS leaves :hover applied after a
+       tap until focus moves, so on touch it reads as a stuck pressed state. This
+       is the standard sticky-hover fix. :focus and :active are unaffected by it
+       (keyboard focus still shows; :active is the transient press). */
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: var(--icon-strong-hover);
+      }
     }
     &:focus:not(:disabled) {
       background-color: var(--icon-strong-focus);
@@ -46,8 +52,15 @@
       color: var(--icon-base);
     }
 
-    &:hover:not(:disabled) {
-      background-color: var(--surface-raised-base-hover);
+    /* :hover gated to hover-capable pointers: iOS keeps :hover applied after a
+       tap until focus moves, so on touch the ghost background lingered as a stuck
+       pressed look. Standard sticky-hover fix. :focus-visible is unaffected (it
+       only fires for keyboard focus, so it never sticks on a tap) and :active is
+       the transient press effect. */
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: var(--surface-raised-base-hover);
+      }
     }
     &:focus-visible:not(:disabled) {
       background-color: var(--surface-raised-base-hover);
@@ -77,8 +90,12 @@
     color: var(--text-strong);
     box-shadow: var(--shadow-xs-border);
 
-    &:hover:not(:disabled) {
-      background-color: var(--button-secondary-hover);
+    /* :hover gated to hover-capable pointers (standard sticky-hover fix): iOS
+       leaves :hover applied after a tap, which read as a stuck fill on touch. */
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: var(--button-secondary-hover);
+      }
     }
     /* Exclude :hover so a focused-then-hovered button still shows the hover
        background — otherwise these (equal specificity, later in source) win over

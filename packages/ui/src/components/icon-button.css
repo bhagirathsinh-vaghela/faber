@@ -23,8 +23,12 @@
       /* } */
     }
 
-    &:hover:not(:disabled) {
-      background-color: var(--icon-strong-hover);
+    /* :hover gated to hover-capable pointers (standard sticky-hover fix): iOS
+       leaves :hover applied after a tap, reading as a stuck fill on touch. */
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: var(--icon-strong-hover);
+      }
     }
     &:focus:not(:disabled) {
       background-color: var(--icon-strong-focus);
@@ -47,8 +51,10 @@
     color: var(--text-strong);
     box-shadow: var(--shadow-xs-border);
 
-    &:hover:not(:disabled) {
-      background-color: var(--button-secondary-hover);
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: var(--button-secondary-hover);
+      }
     }
     /* Exclude :hover so a focused-then-hovered button still shows the hover
        background — otherwise these (equal specificity, later in source) win over
@@ -86,12 +92,14 @@
       color: var(--icon-base);
     }
 
-    &:hover:not(:disabled) {
-      background-color: var(--surface-raised-base-hover);
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: var(--surface-raised-base-hover);
 
-      /* [data-slot="icon-svg"] { */
-      /*   color: var(--icon-hover); */
-      /* } */
+        /* [data-slot="icon-svg"] { */
+        /*   color: var(--icon-hover); */
+        /* } */
+      }
     }
     &:focus-visible:not(:disabled) {
       background-color: var(--surface-raised-base-hover);
