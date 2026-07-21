@@ -676,18 +676,25 @@ export namespace MessageV2 {
   export const stream = fn(Identifier.schema("session"), async function* (sessionID) {
     const list = await Array.fromAsync(await Storage.list(["message", sessionID]))
     for (let i = list.length - 1; i >= 0; i--) {
-      yield await get({
+      // A torn message-info file must skip that one message, not abort the whole
+      // transcript stream (which would make the session unopenable). get() stays
+      // strict for direct lookups; bulk load tolerates a missing message.
+      const message = await get({
         sessionID,
         messageID: list[i][2],
-      })
+      }).catch(() => undefined)
+      if (message) yield message
     }
   })
 
   export const parts = fn(Identifier.schema("message"), async (messageID) => {
     const result = [] as MessageV2.Part[]
     for (const item of await Storage.list(["part", messageID])) {
-      const read = await Storage.read<MessageV2.Part>(item)
-      result.push(read)
+      // A torn part file (e.g. a process killed mid-write) must drop only that
+      // part, not throw and make the whole session unopenable. Session.list
+      // already guards its per-file reads the same way.
+      const read = await Storage.read<MessageV2.Part>(item).catch(() => undefined)
+      if (read) result.push(read)
     }
     result.sort((a, b) => (a.id > b.id ? 1 : -1))
     return result
