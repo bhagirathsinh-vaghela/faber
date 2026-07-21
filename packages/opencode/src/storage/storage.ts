@@ -153,6 +153,7 @@ export namespace Storage {
       await migration(dir).catch(() => log.error("failed to run migration", { index }))
       await Bun.write(path.join(dir, "migration"), (index + 1).toString())
     }
+    await sweepOrphans(dir)
     return {
       dir,
     }
@@ -208,6 +209,25 @@ export namespace Storage {
       await fs.unlink(tmp).catch(() => {})
       throw e
     })
+  }
+
+  // A .tmp file only exists for the microseconds between write and rename in
+  // atomic() — unless a process is killed mid-rename, which orphans it. Orphans
+  // are inert (list globs *.json, read opens an exact path), just clutter. Sweep
+  // them once at boot. The age guard is a hard safety floor: only reap a .tmp
+  // that has sat untouched for 15 days, far longer than any write, so a sweep
+  // can never race and delete a temp an active turn is renaming. A real orphan
+  // is permanent clutter, so there is no urgency to reap it sooner.
+  const ORPHAN_MIN_AGE_MS = 15 * 24 * 60 * 60 * 1000
+  export async function sweepOrphans(dir: string) {
+    const cutoff = Date.now() - ORPHAN_MIN_AGE_MS
+    const tmpGlob = new Bun.Glob("**/*.tmp")
+    for await (const entry of tmpGlob.scan({ cwd: dir, onlyFiles: true })) {
+      const file = path.join(dir, entry)
+      const stat = await fs.stat(file).catch(() => undefined)
+      if (!stat || stat.mtimeMs >= cutoff) continue
+      await fs.unlink(file).catch(() => {})
+    }
   }
 
   async function withErrorHandling<T>(body: () => Promise<T>) {
