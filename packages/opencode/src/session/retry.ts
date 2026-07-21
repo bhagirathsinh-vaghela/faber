@@ -7,6 +7,15 @@ export namespace SessionRetry {
   export const RETRY_BACKOFF_FACTOR = 2
   export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
   export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
+  // A server-supplied retry-after is advisory, not to be trusted blindly. A 0 or
+  // tiny value would turn the retry loop into a CPU-pegged hot loop; a
+  // pathological multi-day value would wedge the session busy indefinitely. Clamp
+  // every honored delay into a sane band.
+  export const RETRY_MIN_DELAY = 1000 // 1 second floor
+  export const RETRY_MAX_HONORED_DELAY = 60_000 // 60 second ceiling
+  // Cap total attempts so a provider stuck returning retryable errors can't keep
+  // a session busy forever; surface the error instead.
+  export const RETRY_MAX_ATTEMPTS = 10
 
   export async function sleep(ms: number, signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -25,6 +34,10 @@ export namespace SessionRetry {
     })
   }
 
+  function clamp(ms: number) {
+    return Math.min(Math.max(ms, RETRY_MIN_DELAY), RETRY_MAX_HONORED_DELAY)
+  }
+
   export function delay(attempt: number, error?: MessageV2.APIError) {
     if (error) {
       const headers = error.data.responseHeaders
@@ -33,7 +46,7 @@ export namespace SessionRetry {
         if (retryAfterMs) {
           const parsedMs = Number.parseFloat(retryAfterMs)
           if (!Number.isNaN(parsedMs)) {
-            return parsedMs
+            return clamp(parsedMs)
           }
         }
 
@@ -42,12 +55,12 @@ export namespace SessionRetry {
           const parsedSeconds = Number.parseFloat(retryAfter)
           if (!Number.isNaN(parsedSeconds)) {
             // convert seconds to milliseconds
-            return Math.ceil(parsedSeconds * 1000)
+            return clamp(Math.ceil(parsedSeconds * 1000))
           }
           // Try parsing as HTTP date format
           const parsed = Date.parse(retryAfter) - Date.now()
           if (!Number.isNaN(parsed) && parsed > 0) {
-            return Math.ceil(parsed)
+            return clamp(Math.ceil(parsed))
           }
         }
 

@@ -461,7 +461,7 @@ export namespace SessionProcessor {
             })
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
             const retry = SessionRetry.retryable(error)
-            if (retry !== undefined) {
+            if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
               attempt++
               const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
               SessionStatus.set(input.sessionID, {
