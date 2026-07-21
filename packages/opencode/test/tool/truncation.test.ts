@@ -135,24 +135,21 @@ describe("Truncate", () => {
     test("deletes files older than 7 days and preserves recent files", async () => {
       await fs.mkdir(Truncate.DIR, { recursive: true })
 
-      // Create an old file (10 days ago)
-      const oldTimestamp = Date.now() - 10 * DAY_MS
-      const oldId = Identifier.create("tool", false, oldTimestamp)
-      oldFile = path.join(Truncate.DIR, oldId)
+      // Age is the file mtime, so backdate it directly. The id is irrelevant to
+      // cleanup now (Identifier.timestamp is lossy for absolute time).
+      oldFile = path.join(Truncate.DIR, Identifier.ascending("tool"))
       await Bun.write(Bun.file(oldFile), "old content")
+      const old = new Date(Date.now() - 10 * DAY_MS)
+      await fs.utimes(oldFile, old, old)
 
-      // Create a recent file (3 days ago)
-      const recentTimestamp = Date.now() - 3 * DAY_MS
-      const recentId = Identifier.create("tool", false, recentTimestamp)
-      recentFile = path.join(Truncate.DIR, recentId)
+      recentFile = path.join(Truncate.DIR, Identifier.ascending("tool"))
       await Bun.write(Bun.file(recentFile), "recent content")
+      const recent = new Date(Date.now() - 3 * DAY_MS)
+      await fs.utimes(recentFile, recent, recent)
 
       await Truncate.cleanup()
 
-      // Old file should be deleted
       expect(await Bun.file(oldFile).exists()).toBe(false)
-
-      // Recent file should still exist
       expect(await Bun.file(recentFile).exists()).toBe(true)
     })
   })

@@ -32,12 +32,20 @@ export namespace Truncate {
   }
 
   export async function cleanup() {
-    const cutoff = Identifier.timestamp(Identifier.create("tool", false, Date.now() - RETENTION_MS))
+    // Age comes from the file's mtime, not the id. Identifier.timestamp is lossy
+    // for absolute time — the 6-byte time field only holds the low bits of
+    // (ms * 0x1000), so a decoded value is not real milliseconds and wraps every
+    // ~800 days; comparing it to a wall-clock cutoff deleted files at the wrong
+    // age. The filesystem mtime is the real write time and the correct signal for
+    // a retention sweep.
+    const cutoff = Date.now() - RETENTION_MS
     const glob = new Bun.Glob("tool_*")
     const entries = await Array.fromAsync(glob.scan({ cwd: DIR, onlyFiles: true })).catch(() => [] as string[])
     for (const entry of entries) {
-      if (Identifier.timestamp(entry) >= cutoff) continue
-      await fs.unlink(path.join(DIR, entry)).catch(() => {})
+      const file = path.join(DIR, entry)
+      const stat = await fs.stat(file).catch(() => undefined)
+      if (!stat || stat.mtimeMs >= cutoff) continue
+      await fs.unlink(file).catch(() => {})
     }
   }
 
