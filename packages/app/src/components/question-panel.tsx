@@ -13,7 +13,7 @@ import { useLocal } from "@/context/local"
 import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
-import { createDictation, dictationActive } from "@/utils/dictation"
+import { createDictation, dictationActive, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { DictationPoolButton } from "@/components/dictation-pool-button"
@@ -201,6 +201,7 @@ function Panel(props: {
   const promptDraft = usePrompt()
   const promptEmpty = () => promptDraft.current().every((part) => part.type === "text" && part.content.trim() === "")
   const [dictating, setDictating] = createSignal(false)
+  const [inputFocused, setInputFocused] = createSignal(false)
   const dictation = createDictation({
     url: () => sdk.url,
     onError: (message) => {
@@ -211,6 +212,27 @@ function Panel(props: {
       })
     },
   })
+
+  const toggleDictation = () => {
+    if (dictating()) {
+      dictation.stop()
+      setDictating(false)
+      return
+    }
+    setDictating(true)
+    // Keep focus on the textarea so the panel's global key handler (which
+    // yields to editable elements) stays out of the way and accepted text
+    // lands here.
+    input?.focus()
+    dictation.start()
+  }
+
+  // While the custom-answer textarea holds focus, the shortcut targets this
+  // panel's mic instead of the prompt dock, and the mic tints to the agent
+  // color. Keyboard devices only: a touch device has no shortcut, so the cue
+  // would be meaningless.
+  registerDictationTarget({ id: "question", toggle: toggleDictation }, inputFocused)
+  const dictationTargeted = () => !coarse() && dictationTarget()?.id === "question"
   const stashDictation = (text: string) => {
     // The prompt draft outlives this panel, so the transcript survives even
     // when the question is answered or dismissed mid-dictation.
@@ -739,6 +761,8 @@ function Panel(props: {
                       value={customText()}
                       rows={1}
                       inputmode={suppressKeyboard() ? "none" : undefined}
+                      onFocus={() => setInputFocused(true)}
+                      onBlur={() => setInputFocused(false)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault()
@@ -771,19 +795,8 @@ function Panel(props: {
                         variant="ghost"
                         class="size-6 px-1"
                         data-dictation-toggle
-                        onClick={() => {
-                          if (dictating()) {
-                            dictation.stop()
-                            setDictating(false)
-                            return
-                          }
-                          setDictating(true)
-                          // Keep focus on the textarea so the panel's global
-                          // key handler (which yields to editable elements)
-                          // stays out of the way and accepted text lands here.
-                          input?.focus()
-                          dictation.start()
-                        }}
+                        data-dictation-focused={dictationTargeted() ? "" : undefined}
+                        onClick={toggleDictation}
                         aria-label={
                           dictating() ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                         }
@@ -793,6 +806,7 @@ function Panel(props: {
                           name="mic"
                           class="size-4.5"
                           classList={{ "text-icon-critical-base animate-pulse": dictating() }}
+                          style={dictationTargeted() ? { color: accent() } : undefined}
                         />
                       </Button>
                     </Show>

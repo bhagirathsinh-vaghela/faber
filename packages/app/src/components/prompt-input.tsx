@@ -55,7 +55,7 @@ import { useSettings } from "@/context/settings"
 import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
-import { createDictation } from "@/utils/dictation"
+import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { DictationPoolButton } from "@/components/dictation-pool-button"
@@ -1020,7 +1020,36 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     },
   })
 
+  const toggleDictation = () => {
+    if (store.dictating) {
+      dictation.stop()
+      setStore("dictating", false)
+      return
+    }
+    setStore("dictating", true)
+    // Keep focus in the editor: the caret stays where the accepted text will
+    // land, and the question panel's global key handler yields to editable
+    // elements.
+    editorRef.focus()
+    dictation.start()
+  }
+
+  // The prompt dock is the fallback dictation target: the shortcut lands here
+  // whenever no composer is focused. The mic tints to the agent color to show
+  // where the shortcut will land — but only on a keyboard device, since a touch
+  // device has no shortcut and the cue would be meaningless.
+  registerDictationTarget({ id: "prompt", toggle: toggleDictation }, isFocused, "fallback")
+  const dictationTargeted = () => !coarse() && dictationTarget()?.id === "prompt"
+
   command.register(() => [
+    {
+      id: "prompt.dictate",
+      title: language.t("command.prompt.dictate"),
+      description: language.t("command.prompt.dictate.description"),
+      category: language.t("command.category.session"),
+      disabled: !dictation.supported(),
+      onSelect: () => dictationTarget()?.toggle(),
+    },
     {
       id: "prompt.skill",
       title: language.t("command.prompt.skill"),
@@ -2471,19 +2500,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     variant="ghost"
                     class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
                     data-dictation-toggle
-                    onClick={() => {
-                      if (store.dictating) {
-                        dictation.stop()
-                        setStore("dictating", false)
-                        return
-                      }
-                      setStore("dictating", true)
-                      // Keep focus in the editor: the caret stays where the
-                      // accepted text will land, and the question panel's
-                      // global key handler yields to editable elements.
-                      editorRef.focus()
-                      dictation.start()
-                    }}
+                    data-dictation-focused={dictationTargeted() ? "" : undefined}
+                    onClick={toggleDictation}
                     aria-label={
                       store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                     }
@@ -2493,6 +2511,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       name="mic"
                       class="size-6 md:size-4.5"
                       classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
+                      style={dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined}
                     />
                   </Button>
                 </Tooltip>

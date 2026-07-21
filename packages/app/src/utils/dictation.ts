@@ -1,4 +1,4 @@
-import { onCleanup } from "solid-js"
+import { createEffect, createSignal, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 
 // Worklet source is inlined via a Blob URL so no separate asset has to flow
@@ -46,6 +46,33 @@ let active: (() => void) | undefined
 // reactive: for one-shot checks like whether a newly-mounted panel should
 // grab focus.
 export const dictationActive = () => !!active
+
+// A dictation shortcut has to fire against exactly one mic, but two composers
+// (the prompt dock and an expanded question panel) can show one at once. The
+// focused composer registers itself as the target; the prompt dock also
+// registers as the fallback, so the shortcut always has somewhere to land even
+// when nothing is focused. `dictationTarget()` resolves focused-over-fallback,
+// and each mic reads it to paint its focus ring.
+type Target = { id: string; toggle: () => void }
+const [focused, setFocused] = createSignal<Target>()
+const [fallback, setFallback] = createSignal<Target>()
+
+export const dictationTarget = () => focused() ?? fallback()
+
+// Register a composer as the dictation target while its editor holds focus.
+// `role: "fallback"` additionally claims the default slot for its lifetime, so
+// the prompt dock stays the target whenever no composer is focused.
+export function registerDictationTarget(target: Target, active: () => boolean, role?: "fallback") {
+  if (role === "fallback") {
+    setFallback(target)
+    onCleanup(() => setFallback((current) => (current?.id === target.id ? undefined : current)))
+  }
+  createEffect(() => {
+    if (!active()) return
+    setFocused(target)
+    onCleanup(() => setFocused((current) => (current?.id === target.id ? undefined : current)))
+  })
+}
 
 // Transcript accumulates in the store (finals append to committed, interims
 // replace) and is only handed to the host on an explicit accept; stop()

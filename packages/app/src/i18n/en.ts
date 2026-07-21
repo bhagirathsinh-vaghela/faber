@@ -85,6 +85,8 @@ export const dict = {
   "command.prompt.stash.list.description": "Browse stashed prompts and restore one",
   "command.prompt.skill": "Insert skill",
   "command.prompt.skill.description": "Browse skills and insert one into the prompt",
+  "command.prompt.dictate": "Toggle dictation",
+  "command.prompt.dictate.description": "Start or stop dictation on the focused composer",
   "command.prompt.focus": "Focus prompt",
   "command.prompt.focus.description": "Move the cursor into the message input",
   "command.task.list": "Subtasks",
