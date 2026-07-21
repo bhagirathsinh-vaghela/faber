@@ -185,7 +185,7 @@ export const SessionRoutes = lazy(() =>
         // Attaching to a root session opens its project in the shared sidebar
         // set. Tied to session attach (a genuine "open" signal), NOT instance
         // bootstrap, which also fires for incidental re-provides.
-        if (!session.parentID) OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
+        if (!session.parentID) void OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
         // Pin prompt-shaping state at view time, not just first turn — a config
         // reload between opening a session and prompting it must not change
         // what the session was opened against.

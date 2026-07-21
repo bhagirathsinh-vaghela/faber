@@ -145,7 +145,7 @@ export const GlobalRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        return c.json(OpenProjects.list())
+        return c.json(await OpenProjects.list())
       },
     )
     .post(
@@ -171,7 +171,7 @@ export const GlobalRoutes = lazy(() =>
       async (c) => {
         const { project } = await Project.fromDirectory(c.req.valid("json").directory)
         const entry = { id: project.id, worktree: project.worktree }
-        OpenProjects.open(entry)
+        await OpenProjects.open(entry)
         return c.json(entry)
       },
     )
@@ -197,7 +197,7 @@ export const GlobalRoutes = lazy(() =>
       validator("json", z.object({ directory: z.string() })),
       async (c) => {
         const { project } = await Project.fromDirectory(c.req.valid("json").directory)
-        OpenProjects.close(project.id)
+        await OpenProjects.close(project.id)
         return c.json(true)
       },
     )

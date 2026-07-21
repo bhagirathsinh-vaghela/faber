@@ -270,7 +270,8 @@ export const dict = {
   "dialog.mcp.empty": "No MCPs configured",
 
   "dialog.mcp.corpus.title": "MCP tools",
-  "dialog.mcp.corpus.subtitle": "Tools available to the model, grouped by server. Manage servers and disable tools in opencode.json.",
+  "dialog.mcp.corpus.subtitle":
+    "Tools available to the model, grouped by server. Manage servers and disable tools in opencode.json.",
   "dialog.mcp.corpus.empty": "No MCP tools. Configure a server in opencode.json.",
   "dialog.mcp.corpus.server.count": "{{count}} tools",
   "dialog.mcp.corpus.model.name": "model sees: names",
@@ -816,6 +817,8 @@ export const dict = {
   "workspace.delete.confirm": 'Delete workspace "{{name}}"?',
   "workspace.delete.button": "Delete workspace",
   "project.close.failed.title": "Failed to close project",
+  "project.notFound.title": "Directory not found",
+  "project.notFound.description": "This project's directory no longer exists on disk. Close it to remove it from the sidebar.",
   "workspace.reset.title": "Reset workspace",
   "workspace.reset.confirm": 'Reset workspace "{{name}}"?',
   "workspace.reset.button": "Reset workspace",

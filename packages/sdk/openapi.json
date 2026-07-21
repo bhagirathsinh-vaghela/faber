@@ -8829,6 +8829,9 @@
           },
           "worktree": {
             "type": "string"
+          },
+          "exists": {
+            "type": "boolean"
           }
         },
         "required": [

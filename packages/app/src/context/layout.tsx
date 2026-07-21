@@ -35,7 +35,10 @@ type SessionView = {
   reviewOpen?: string[]
 }
 
-export type LocalProject = Partial<Project> & { worktree: string }
+// `exists` originates on the OpenProject sidebar entry (server stats the
+// worktree per emit), not the persisted Project record, so it's declared here
+// rather than inherited from Project. Absent = unknown/assumed present.
+export type LocalProject = Partial<Project> & { worktree: string; exists?: boolean }
 
 export type ReviewDiffStyle = "unified" | "split"
 
@@ -270,7 +273,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return available[Math.floor(Math.random() * available.length)]
     }
 
-    function enrich(project: { worktree: string }) {
+    function enrich(project: { worktree: string; exists?: boolean }) {
       const [childStore] = globalSync.child(project.worktree, { bootstrap: false })
       const projectID = childStore.project
       const metadata = projectID
@@ -315,7 +318,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const order = store.projectOrder
       const rank = new Map(order.map((worktree, index) => [worktree, index]))
       return open
-        .map((project) => ({ worktree: project.worktree }))
+        .map((project) => ({ worktree: project.worktree, exists: project.exists }))
         .sort((a, b) => (rank.get(a.worktree) ?? order.length) - (rank.get(b.worktree) ?? order.length))
     })
 

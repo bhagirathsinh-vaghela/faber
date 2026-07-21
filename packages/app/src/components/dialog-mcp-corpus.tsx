@@ -46,7 +46,9 @@ export function DialogMcpCorpus() {
                         {t("dialog.mcp.corpus.server.count", { count: group.tools.length })}
                       </span>
                     </div>
-                    <span class="text-11-regular text-text-weaker shrink-0">{t(`dialog.mcp.corpus.model.${group.tier}`)}</span>
+                    <span class="text-11-regular text-text-weaker shrink-0">
+                      {t(`dialog.mcp.corpus.model.${group.tier}`)}
+                    </span>
                   </div>
                   <div class="flex flex-col gap-2.5">
                     <For each={group.tools}>

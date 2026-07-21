@@ -1609,19 +1609,31 @@ export default function Layout(props: ParentProps) {
     const notifications = createMemo(() => notification.project.unseen(props.project.worktree))
     const hasError = createMemo(() => notifications().some((n) => n.type === "error"))
     const name = createMemo(() => props.project.name || getFilename(props.project.worktree))
+    // Explicit === false: an absent flag (old client, pre-hydrate) must never
+    // read as missing. Only a server-confirmed missing worktree flags red.
+    const missing = createMemo(() => props.project.exists === false)
 
     return (
       <div class={`relative size-8 shrink-0 rounded ${props.class ?? ""}`}>
-        <div class="size-full rounded overflow-clip">
+        <div
+          class="size-full rounded overflow-clip"
+          classList={{ "ring-2 ring-icon-critical-base": missing() }}
+        >
           <Avatar
             fallback={name()}
             src={props.project.icon?.override}
             {...getAvatarColors(props.project.icon?.color)}
             class="size-full rounded"
-            classList={{ "badge-mask": notifications().length > 0 && props.notify }}
+            classList={{
+              "badge-mask": (notifications().length > 0 && props.notify) || missing(),
+              "opacity-40": missing(),
+            }}
           />
         </div>
-        <Show when={notifications().length > 0 && props.notify}>
+        <Show when={missing()}>
+          <div class="absolute top-px right-px size-1.5 rounded-full z-10 bg-icon-critical-base" />
+        </Show>
+        <Show when={notifications().length > 0 && props.notify && !missing()}>
           <div
             classList={{
               "absolute top-px right-px size-1.5 rounded-full z-10": true,
@@ -2067,42 +2079,65 @@ export default function Layout(props: ParentProps) {
     const booted = createMemo((prev) => prev || workspaceStore.status === "complete", false)
     const loading = createMemo(() => !booted() && sessions().length === 0)
     const hasMore = createMemo(() => workspaceStore.sessionTotal > sessions().length)
+    // Explicit === false so an absent flag never reads as missing (see ProjectIcon).
+    const missing = createMemo(() => props.project.exists === false)
     const loadMore = async () => {
       setWorkspaceStore("limit", (limit) => limit + 5)
       await globalSync.project.loadSessions(props.project.worktree)
     }
 
     return (
-      <div
-        ref={(el) => {
-          if (!props.mobile) scrollContainerRef = el
-        }}
-        class="size-full flex flex-col py-2 overflow-y-auto no-scrollbar [overflow-anchor:none]"
-      >
-        <nav class="flex flex-col gap-1 px-2">
-          <Show when={loading()}>
-            <SessionSkeleton />
-          </Show>
-          <For each={sessions()}>
-            {(session) => <SessionItem session={session} slug={slug()} mobile={props.mobile} children={children()} />}
-          </For>
-          <Show when={hasMore()}>
-            <div class="relative w-full py-1">
-              <Button
-                variant="ghost"
-                class="flex w-full text-left justify-start text-14-regular text-text-weak pl-9 pr-10"
-                size="large"
-                onClick={(e: MouseEvent) => {
-                  loadMore()
-                  ;(e.currentTarget as HTMLButtonElement).blur()
-                }}
-              >
-                {language.t("common.loadMore")}
-              </Button>
+      <Show
+        when={!missing()}
+        fallback={
+          <div class="size-full flex flex-col items-center justify-center gap-3 px-6 text-center">
+            <div class="flex flex-col gap-1">
+              <div class="text-14-medium text-icon-critical-base">{language.t("project.notFound.title")}</div>
+              <div class="text-12-regular text-text-weak">{language.t("project.notFound.description")}</div>
             </div>
-          </Show>
-        </nav>
-      </div>
+            <Button
+              size="large"
+              icon="trash"
+              data-action="project-close-notfound"
+              data-project={base64Encode(props.project.worktree)}
+              onClick={() => closeProject(props.project.worktree)}
+            >
+              {language.t("common.close")}
+            </Button>
+          </div>
+        }
+      >
+        <div
+          ref={(el) => {
+            if (!props.mobile) scrollContainerRef = el
+          }}
+          class="size-full flex flex-col py-2 overflow-y-auto no-scrollbar [overflow-anchor:none]"
+        >
+          <nav class="flex flex-col gap-1 px-2">
+            <Show when={loading()}>
+              <SessionSkeleton />
+            </Show>
+            <For each={sessions()}>
+              {(session) => <SessionItem session={session} slug={slug()} mobile={props.mobile} children={children()} />}
+            </For>
+            <Show when={hasMore()}>
+              <div class="relative w-full py-1">
+                <Button
+                  variant="ghost"
+                  class="flex w-full text-left justify-start text-14-regular text-text-weak pl-9 pr-10"
+                  size="large"
+                  onClick={(e: MouseEvent) => {
+                    loadMore()
+                    ;(e.currentTarget as HTMLButtonElement).blur()
+                  }}
+                >
+                  {language.t("common.loadMore")}
+                </Button>
+              </div>
+            </Show>
+          </nav>
+        </div>
+      </Show>
     )
   }
 

@@ -28,6 +28,7 @@ export type RecentSession = {
 export type OpenProject = {
   id: string
   worktree: string
+  exists?: boolean
 }
 
 export type EventInstallationUpdated = {

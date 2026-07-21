@@ -780,7 +780,7 @@ export namespace SessionPrompt {
       // daemon), and a superseding prompt re-arms via its own start(). So the
       // only thing the tail owns is markUnseen on completion.
       if (!abort.aborted) Session.markUnseen(sessionID)
-      OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
+      void OpenProjects.open({ id: Instance.project.id, worktree: Instance.worktree })
     }
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
