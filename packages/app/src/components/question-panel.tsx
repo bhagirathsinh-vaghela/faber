@@ -229,10 +229,10 @@ function Panel(props: {
 
   // While the custom-answer textarea holds focus, the shortcut targets this
   // panel's mic instead of the prompt dock, and the mic tints to the agent
-  // color. Keyboard devices only: a touch device has no shortcut, so the cue
-  // would be meaningless.
+  // color. Shown on every device, however dictation is reached (keyboard
+  // shortcut, click, or tap): the tint means "this is the active mic".
   registerDictationTarget({ id: "question", toggle: toggleDictation }, inputFocused)
-  const dictationTargeted = () => !coarse() && dictationTarget()?.id === "question"
+  const dictationTargeted = () => dictationTarget()?.id === "question"
   const stashDictation = (text: string) => {
     // The prompt draft outlives this panel, so the transcript survives even
     // when the question is answered or dismissed mid-dictation.

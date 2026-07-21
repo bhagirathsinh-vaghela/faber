@@ -1036,10 +1036,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   // The prompt dock is the fallback dictation target: the shortcut lands here
   // whenever no composer is focused. The mic tints to the agent color to show
-  // where the shortcut will land — but only on a keyboard device, since a touch
-  // device has no shortcut and the cue would be meaningless.
+  // which composer dictation lands on, on every device, however it was reached
+  // (keyboard shortcut, click, or tap). The cue means "this is the active mic",
+  // not "here's your shortcut", so it is NOT gated on a coarse pointer.
   registerDictationTarget({ id: "prompt", toggle: toggleDictation }, isFocused, "fallback")
-  const dictationTargeted = () => !coarse() && dictationTarget()?.id === "prompt"
+  const dictationTargeted = () => dictationTarget()?.id === "prompt"
 
   command.register(() => [
     {
@@ -1296,6 +1297,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
+  // Guards the new-session create window against a double-submit from ANY source
+  // (a touch pointerdown+click pair, a genuine rapid double Enter/tap, a future
+  // handler): two concurrent handleSubmit calls on a session-less view would each
+  // run session.create() and mint two root sessions. The flag is held only across
+  // the await that creates the session; once one is in flight or created, a second
+  // submit is dropped. Not reactive — a plain instance-scoped latch.
+  let creating = false
+
   const handleSubmit = async (event: Event) => {
     event.preventDefault()
 
@@ -1386,6 +1395,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     let session = info()
     if (!session && isNewSession) {
+      // Drop a concurrent submit on a session-less view: the first one owns the
+      // create, a second would mint a duplicate root session.
+      if (creating) return
+      creating = true
       session = await client.session
         .create()
         .then((x) => x.data ?? undefined)
@@ -1395,6 +1408,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             description: errorMessage(err),
           })
           return undefined
+        })
+        .finally(() => {
+          creating = false
         })
       if (session) {
         // Creating a session is an explicit open — declare keep-warm intent up
@@ -2551,7 +2567,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }
             >
               <IconButton
-                type="submit"
+                // This is a FORM SUBMIT button, so it can't use the generic
+                // tapAction() helper (that binds onClick, which would race the
+                // native form onSubmit on desktop). It needs the submit wired to
+                // exactly ONE path per platform:
+                //   desktop — native type="submit" (mouse click + Enter).
+                //   touch   — pointerdown (see below), with type="button" so the
+                //             synthesized click can't ALSO submit the form.
+                // The touch trap: one tap emits pointerdown AND a synthesized
+                // click, and preventDefault on pointerdown does not cancel that
+                // click, so a type="submit" here would submit twice — which on a
+                // brand-new session ran session.create() twice and minted two
+                // sessions per tap. type="button" + the onClick swallow below kill
+                // the second path. handleSubmit also self-guards the create window.
+                type={coarse() ? "button" : "submit"}
                 disabled={!prompt.dirty() && !working() && commentCount() === 0}
                 icon={working() ? "stop" : "arrow-up"}
                 variant="primary"
@@ -2559,13 +2588,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
                 onPointerDown={
                   // iOS: with the keyboard up the editor holds focus, so tapping
-                  // this button first blurs the editor to dismiss the keyboard
-                  // and the native click->submit gets swallowed in that
-                  // transition — the user has to tap again. Drive the submit off
-                  // pointerdown (the trusted first touch) and preventDefault so
-                  // the button never steals focus / triggers the
-                  // blur-then-lose-click race. Coarse pointer only; desktop
-                  // keeps the native type="submit" + Enter path.
+                  // this button first blurs the editor to dismiss the keyboard and
+                  // the native click->submit gets swallowed in that transition —
+                  // the user has to tap again. Drive the submit off pointerdown
+                  // (the trusted first touch). Coarse pointer only.
                   coarse()
                     ? (e: PointerEvent) => {
                         if (!prompt.dirty() && !working() && commentCount() === 0) return
@@ -2574,6 +2600,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       }
                     : undefined
                 }
+                // Swallow the click the same tap synthesizes so it can never
+                // re-enter handleSubmit (mirrors the keyboard-toggle button).
+                onClick={coarse() ? (e: MouseEvent) => e.preventDefault() : undefined}
               />
             </Tooltip>
           </div>
