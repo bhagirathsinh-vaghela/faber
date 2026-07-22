@@ -53,11 +53,21 @@ export function QuestionPanel(props: { onClose?: () => void }) {
     if (settings.boxes.collapsed("question", mode)) question.collapse()
     else question.expand()
   }
+  // Key auto-expand on request IDENTITY, not count. A reconnect refetch (which
+  // heals questions asked while the stream was down) can swap the pending set
+  // without a net length increase — an old request answered server-side while a
+  // new one arrived reconciles as 1→1, which a `len > prev` guard would miss,
+  // leaving the panel stuck on its one-line collapsed bar. Fire whenever an ID
+  // appears that wasn't pending before.
   createEffect(
     on(
-      () => question.pending().length,
-      (len, prev) => {
-        if (len > (prev ?? 0)) applyDefault()
+      () => question.pendingIDs(),
+      (ids, prev) => {
+        for (const id of ids) {
+          if (prev?.has(id)) continue
+          applyDefault()
+          return
+        }
       },
     ),
   )

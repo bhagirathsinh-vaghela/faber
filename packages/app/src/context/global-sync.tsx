@@ -691,64 +691,8 @@ function createGlobalSync() {
           setStore("vcs", next)
           if (next?.branch) cache.setStore("value", next)
         }),
-        sdk.permission.list().then((x) => {
-          const grouped: Record<string, PermissionRequest[]> = {}
-          for (const perm of x.data ?? []) {
-            if (!perm?.id || !perm.sessionID) continue
-            const existing = grouped[perm.sessionID]
-            if (existing) {
-              existing.push(perm)
-              continue
-            }
-            grouped[perm.sessionID] = [perm]
-          }
-
-          batch(() => {
-            for (const sessionID of Object.keys(store.permission)) {
-              if (grouped[sessionID]) continue
-              setStore("permission", sessionID, [])
-            }
-            for (const [sessionID, permissions] of Object.entries(grouped)) {
-              setStore(
-                "permission",
-                sessionID,
-                reconcile(
-                  permissions.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id)),
-                  { key: "id" },
-                ),
-              )
-            }
-          })
-        }),
-        sdk.question.list().then((x) => {
-          const grouped: Record<string, QuestionRequest[]> = {}
-          for (const question of x.data ?? []) {
-            if (!question?.id || !question.sessionID) continue
-            const existing = grouped[question.sessionID]
-            if (existing) {
-              existing.push(question)
-              continue
-            }
-            grouped[question.sessionID] = [question]
-          }
-
-          batch(() => {
-            for (const sessionID of Object.keys(store.question)) {
-              if (grouped[sessionID]) continue
-              setStore("question", sessionID, [])
-            }
-            for (const [sessionID, questions] of Object.entries(grouped)) {
-              setStore(
-                "question",
-                sessionID,
-                reconcile(
-                  questions.filter((q) => !!q?.id).sort((a, b) => cmp(a.id, b.id)),
-                  { key: "id" },
-                ),
-              )
-            }
-          })
-        }),
+        syncPermissions(directory),
+        syncQuestions(directory),
       ]).then(() => {
         setStore("status", "complete")
       })
@@ -912,6 +856,15 @@ function createGlobalSync() {
           // published while the stream was down (no replay). Harmless on the
           // first connect: the force path no-ops until the session is hydrated.
           setReconnect((n) => n + 1)
+          // Same reconnect gap for the blocking overlays: a permission or
+          // question asked while the stream was down never arrives (no replay)
+          // and neither refresh() nor the message/part heal above re-fetches it.
+          // Re-run the instance-wide list for every known directory so the
+          // overlay heals without a page reload.
+          for (const directory of Object.keys(children)) {
+            void syncPermissions(directory).catch(() => {})
+            void syncQuestions(directory).catch(() => {})
+          }
           return
         }
         case "global.disposed": {
@@ -1405,6 +1358,76 @@ function createGlobalSync() {
     // re-derive busy from the authoritative hub snapshot rather than trust the
     // stale pre-hide store.
     seedBusy(recent)
+  }
+
+  // Instance-wide pending permissions/questions, grouped by session and
+  // reconciled by id. Seeded at bootstrap AND re-run on reconnect: like
+  // messages/parts, these blocking overlays have no SSE replay, so a request
+  // asked during the disconnect window is missing from the store until a
+  // refetch heals it (previously only a full page reload did). A session absent
+  // from the snapshot is cleared, so a request answered while offline drops.
+  async function syncPermissions(directory: string) {
+    const [store, setStore] = ensureChild(directory)
+    const x = await sdkFor(directory).permission.list()
+    const grouped: Record<string, PermissionRequest[]> = {}
+    for (const perm of x.data ?? []) {
+      if (!perm?.id || !perm.sessionID) continue
+      const existing = grouped[perm.sessionID]
+      if (existing) {
+        existing.push(perm)
+        continue
+      }
+      grouped[perm.sessionID] = [perm]
+    }
+
+    batch(() => {
+      for (const sessionID of Object.keys(store.permission)) {
+        if (grouped[sessionID]) continue
+        setStore("permission", sessionID, [])
+      }
+      for (const [sessionID, permissions] of Object.entries(grouped)) {
+        setStore(
+          "permission",
+          sessionID,
+          reconcile(
+            permissions.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id)),
+            { key: "id" },
+          ),
+        )
+      }
+    })
+  }
+
+  async function syncQuestions(directory: string) {
+    const [store, setStore] = ensureChild(directory)
+    const x = await sdkFor(directory).question.list()
+    const grouped: Record<string, QuestionRequest[]> = {}
+    for (const question of x.data ?? []) {
+      if (!question?.id || !question.sessionID) continue
+      const existing = grouped[question.sessionID]
+      if (existing) {
+        existing.push(question)
+        continue
+      }
+      grouped[question.sessionID] = [question]
+    }
+
+    batch(() => {
+      for (const sessionID of Object.keys(store.question)) {
+        if (grouped[sessionID]) continue
+        setStore("question", sessionID, [])
+      }
+      for (const [sessionID, questions] of Object.entries(grouped)) {
+        setStore(
+          "question",
+          sessionID,
+          reconcile(
+            questions.filter((q) => !!q?.id).sort((a, b) => cmp(a.id, b.id)),
+            { key: "id" },
+          ),
+        )
+      }
+    })
   }
 
   async function bootstrap() {
