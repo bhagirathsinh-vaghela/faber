@@ -102,6 +102,9 @@ export interface MessageProps {
   // When set, the box header's identity (◈ #N ROLE time) becomes a button that
   // scrolls this message into view. Used by the sticky user-message header.
   onJump?: () => void
+  // How discoverable the jump affordance is: "hover" (default) reveals the arrow
+  // only on hover; "rest" keeps it faintly visible at rest. Threaded to MessageBox.
+  jumpHint?: "rest" | "hover"
 }
 
 function messageTime(ms: number): string {
@@ -418,6 +421,7 @@ export function Message(props: MessageProps) {
               accent={taskAccent(part().backgroundTaskResult!.status)}
               action={props.action}
               onJump={props.onJump}
+              jumpHint={props.jumpHint}
             >
               <TaskResultDisplay part={part()} />
             </MessageBox>
@@ -434,6 +438,7 @@ export function Message(props: MessageProps) {
               message={userMessage() as UserMessage}
               action={props.action}
               onJump={props.onJump}
+              jumpHint={props.jumpHint}
               copy={() =>
                 (props.parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined)
                   ?.text ?? ""
@@ -473,6 +478,10 @@ export function MessageBox(props: {
   // When set, the identity cluster (◈ #N ROLE time) becomes a button that
   // scrolls this message into view.
   onJump?: () => void
+  // Discoverability of the jump affordance: "hover" (default) hides the arrow
+  // until the header is hovered; "rest" keeps it faintly visible at rest and
+  // brightens it on hover. CSS keys both off this via data-jump-hint.
+  jumpHint?: "rest" | "hover"
   children: JSX.Element
 }) {
   const data = useData()
@@ -561,15 +570,14 @@ export function MessageBox(props: {
           // Sibling interactive control, not nested: the sticky bar's own click
           // handler skips [role='button'], so the two never double-fire. Jump
           // scrolls this message into view; the rest of the bar still toggles.
+          // The affordance (jump icon + hover state) lives in CSS, keyed on the
+          // role="button" this sets — the arrow reveals on hover to signal the
+          // cluster is clickable (see message-part.css).
+          data-jump={props.onJump ? "true" : undefined}
+          data-jump-hint={props.onJump ? (props.jumpHint ?? "hover") : undefined}
           role={props.onJump ? "button" : undefined}
           tabindex={props.onJump ? 0 : undefined}
           title={props.onJump ? "Scroll to this message" : undefined}
-          style={{
-            display: "flex",
-            "align-items": "center",
-            gap: "0.5rem",
-            cursor: props.onJump ? "pointer" : undefined,
-          }}
           onClick={
             props.onJump
               ? (event: MouseEvent) => {
@@ -589,6 +597,14 @@ export function MessageBox(props: {
               : undefined
           }
         >
+          {/* Scroll-to signifier, left of the identity: a directional arrow that
+              reveals on hover (per the Slack/Discord jump-to-message pattern).
+              Decorative — the whole identity span is the one button. */}
+          <Show when={props.onJump}>
+            <span data-slot="message-box-jump" aria-hidden="true">
+              <Icon name="arrow-up" size="small" />
+            </span>
+          </Show>
           <span data-slot="message-box-diamond">{"\u25c8"}</span>
           <Show when={number() !== undefined}>
             <span data-slot="message-box-number" style={{ color: "var(--color-text-weak)" }}>
@@ -1239,11 +1255,12 @@ ToolRegistry.register({
       })
     }
 
-    const handleSubtitleClick = () => {
+    // Navigate into the subtask's child session. Rendered as a real button in
+    // the trigger's action slot (right of the title) — a SIBLING of the trigger
+    // button, never a clickable subtitle nested inside it (invalid HTML / a11y).
+    const jumpToChild = () => {
       const sessionId = childSessionId()
-      if (sessionId && data.navigateToSession) {
-        data.navigateToSession(sessionId)
-      }
+      if (sessionId && data.navigateToSession) data.navigateToSession(sessionId)
     }
 
     // Dispatch fields as one markdown block so it themes like the rest of the
@@ -1299,8 +1316,23 @@ ToolRegistry.register({
                       title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
                       titleClass: "capitalize",
                       subtitle: props.input.description,
+                      action: childSessionId() ? (
+                        <button
+                          data-component="icon-button"
+                          data-size="normal"
+                          data-variant="secondary"
+                          data-slot="tool-action"
+                          type="button"
+                          title="Open subtask session"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            jumpToChild()
+                          }}
+                        >
+                          <Icon name="square-arrow-top-right" size="small" />
+                        </button>
+                      ) : undefined,
                     }}
-                    onSubtitleClick={handleSubtitleClick}
                   />
                 }
               >

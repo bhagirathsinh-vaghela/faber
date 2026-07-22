@@ -130,6 +130,9 @@ export function SessionTurn(
     stepsExpanded?: boolean
     onStepsExpandedToggle?: () => void
     onJump?: () => void
+    // Discoverability of the sticky header's jump affordance; forwarded to
+    // Message ("hover" reveal-on-hover by default, "rest" for faint-at-rest).
+    jumpHint?: "rest" | "hover"
     footer?: (message: AssistantMessage) => JSX.Element
     classes?: {
       root?: string
@@ -655,6 +658,7 @@ export function SessionTurn(
                           parts={stickyParts()}
                           boxed
                           onJump={props.onJump}
+                          jumpHint={props.jumpHint}
                           action={
                             /* Collapse/expand affordance, inline in the box's
                                actions row. Uses IconButton (same as the copy

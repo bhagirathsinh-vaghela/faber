@@ -34,6 +34,10 @@ export interface ListAddProps {
 export interface ListProps<T> extends FilteredListProps<T> {
   class?: string
   children: (item: T) => JSX.Element
+  // Per-item interactive controls (toggle, remove, menu). Rendered as a SIBLING
+  // of the item button, never nested inside it, so we don't put a <button> or
+  // form control inside the item <button> (invalid HTML / broken a11y).
+  actions?: (item: T) => JSX.Element
   emptyMessage?: string
   loadingMessage?: string
   onKeyEvent?: (event: KeyboardEvent, item: T | undefined) => void
@@ -332,7 +336,9 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                   <div data-slot="list-items">
                     <For each={group.items}>
                       {(item, i) => {
-                        const node = (
+                        const showDivider = () =>
+                          props.divider && (i() !== group.items.length - 1 || (showAdd() && isLastGroup()))
+                        const button = (
                           <button
                             data-slot="list-item"
                             data-key={props.key(item)}
@@ -364,10 +370,32 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                                 </span>
                               )}
                             </Show>
-                            {props.divider && (i() !== group.items.length - 1 || (showAdd() && isLastGroup())) && (
+                            <Show when={!props.actions && showDivider()}>
                               <span data-slot="list-item-divider" />
-                            )}
+                            </Show>
                           </button>
+                        )
+                        // Actions render as a SIBLING of the item button, inside
+                        // a non-interactive row wrapper, so no interactive
+                        // control is nested inside the item <button>.
+                        const node = props.actions ? (
+                          <div
+                            data-slot="list-item-row"
+                            data-active={props.key(item) === active()}
+                            onMouseMove={(event) => {
+                              if (!moved(event)) return
+                              setStore("mouseActive", true)
+                              setActive(props.key(item))
+                            }}
+                          >
+                            {button}
+                            <div data-slot="list-item-actions">{props.actions(item)}</div>
+                            <Show when={showDivider()}>
+                              <span data-slot="list-item-divider" />
+                            </Show>
+                          </div>
+                        ) : (
+                          button
                         )
                         if (props.itemWrapper) return props.itemWrapper(item, node)
                         return node

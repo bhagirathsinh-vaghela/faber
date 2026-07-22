@@ -408,6 +408,85 @@ export function DialogSelectServer() {
                 }
               : undefined
           }
+          actions={(i) => (
+            <Show when={store.editServer.id !== i}>
+              <div class="flex items-center justify-center gap-5 pl-4">
+                <Show when={current() === i}>
+                  <p class="text-text-weak text-12-regular">{language.t("dialog.server.current")}</p>
+                </Show>
+
+                <DropdownMenu>
+                  <DropdownMenu.Trigger
+                    as={IconButton}
+                    icon="dot-grid"
+                    variant="ghost"
+                    class="shrink-0 size-8 hover:bg-surface-base-hover data-[expanded]:bg-surface-base-active"
+                  />
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content class="mt-1">
+                      <DropdownMenu.Item
+                        onSelect={() => {
+                          setStore("editServer", {
+                            id: i,
+                            value: i,
+                            error: "",
+                            status: store.status[i]?.healthy,
+                          })
+                        }}
+                      >
+                        <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.edit")}</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                      <Show when={canDefault() && defaultUrl() !== i}>
+                        <DropdownMenu.Item
+                          onSelect={async () => {
+                            try {
+                              await platform.setDefaultServerUrl?.(i)
+                              defaultUrlActions.mutate(i)
+                            } catch (err) {
+                              showToast({
+                                variant: "error",
+                                title: language.t("common.requestFailed"),
+                                description: err instanceof Error ? err.message : String(err),
+                              })
+                            }
+                          }}
+                        >
+                          <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.default")}</DropdownMenu.ItemLabel>
+                        </DropdownMenu.Item>
+                      </Show>
+                      <Show when={canDefault() && defaultUrl() === i}>
+                        <DropdownMenu.Item
+                          onSelect={async () => {
+                            try {
+                              await platform.setDefaultServerUrl?.(null)
+                              defaultUrlActions.mutate(null)
+                            } catch (err) {
+                              showToast({
+                                variant: "error",
+                                title: language.t("common.requestFailed"),
+                                description: err instanceof Error ? err.message : String(err),
+                              })
+                            }
+                          }}
+                        >
+                          <DropdownMenu.ItemLabel>
+                            {language.t("dialog.server.menu.defaultRemove")}
+                          </DropdownMenu.ItemLabel>
+                        </DropdownMenu.Item>
+                      </Show>
+                      <DropdownMenu.Separator />
+                      <DropdownMenu.Item
+                        onSelect={() => handleRemove(i)}
+                        class="text-text-on-critical-base hover:bg-surface-critical-weak"
+                      >
+                        <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.delete")}</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu>
+              </div>
+            </Show>
+          )}
         >
           {(i) => {
             const [truncated, setTruncated] = createSignal(false)
@@ -484,87 +563,6 @@ export function DialogSelectServer() {
                       </Show>
                     </div>
                   </Tooltip>
-                </Show>
-                <Show when={store.editServer.id !== i}>
-                  <div class="flex items-center justify-center gap-5 pl-4">
-                    <Show when={current() === i}>
-                      <p class="text-text-weak text-12-regular">{language.t("dialog.server.current")}</p>
-                    </Show>
-
-                    <DropdownMenu>
-                      <DropdownMenu.Trigger
-                        as={IconButton}
-                        icon="dot-grid"
-                        variant="ghost"
-                        class="shrink-0 size-8 hover:bg-surface-base-hover data-[expanded]:bg-surface-base-active"
-                        onClick={(e: MouseEvent) => e.stopPropagation()}
-                        onPointerDown={(e: PointerEvent) => e.stopPropagation()}
-                      />
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content class="mt-1">
-                          <DropdownMenu.Item
-                            onSelect={() => {
-                              setStore("editServer", {
-                                id: i,
-                                value: i,
-                                error: "",
-                                status: store.status[i]?.healthy,
-                              })
-                            }}
-                          >
-                            <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.edit")}</DropdownMenu.ItemLabel>
-                          </DropdownMenu.Item>
-                          <Show when={canDefault() && defaultUrl() !== i}>
-                            <DropdownMenu.Item
-                              onSelect={async () => {
-                                try {
-                                  await platform.setDefaultServerUrl?.(i)
-                                  defaultUrlActions.mutate(i)
-                                } catch (err) {
-                                  showToast({
-                                    variant: "error",
-                                    title: language.t("common.requestFailed"),
-                                    description: err instanceof Error ? err.message : String(err),
-                                  })
-                                }
-                              }}
-                            >
-                              <DropdownMenu.ItemLabel>
-                                {language.t("dialog.server.menu.default")}
-                              </DropdownMenu.ItemLabel>
-                            </DropdownMenu.Item>
-                          </Show>
-                          <Show when={canDefault() && defaultUrl() === i}>
-                            <DropdownMenu.Item
-                              onSelect={async () => {
-                                try {
-                                  await platform.setDefaultServerUrl?.(null)
-                                  defaultUrlActions.mutate(null)
-                                } catch (err) {
-                                  showToast({
-                                    variant: "error",
-                                    title: language.t("common.requestFailed"),
-                                    description: err instanceof Error ? err.message : String(err),
-                                  })
-                                }
-                              }}
-                            >
-                              <DropdownMenu.ItemLabel>
-                                {language.t("dialog.server.menu.defaultRemove")}
-                              </DropdownMenu.ItemLabel>
-                            </DropdownMenu.Item>
-                          </Show>
-                          <DropdownMenu.Separator />
-                          <DropdownMenu.Item
-                            onSelect={() => handleRemove(i)}
-                            class="text-text-on-critical-base hover:bg-surface-critical-weak"
-                          >
-                            <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.delete")}</DropdownMenu.ItemLabel>
-                          </DropdownMenu.Item>
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu>
-                  </div>
                 </Show>
               </div>
             )

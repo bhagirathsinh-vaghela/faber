@@ -248,6 +248,41 @@
         align-items: flex-start;
         align-self: stretch;
 
+        /* Row wrapper used when the list has per-item actions: the selectable
+           button and the action controls sit side by side as siblings. The
+           active highlight and divider live on the row so they span both. */
+        [data-slot="list-item-row"] {
+          display: flex;
+          position: relative;
+          width: 100%;
+          align-items: center;
+
+          > [data-slot="list-item"] {
+            flex: 1;
+            min-width: 0;
+            width: auto;
+          }
+
+          [data-slot="list-item-actions"] {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+            padding-right: 8px;
+          }
+
+          &[data-active="true"] {
+            border-radius: var(--radius-md);
+            background: var(--surface-interactive-base);
+            box-shadow: inset 2px 0 0 0 var(--border-interactive-selected);
+          }
+
+          > [data-slot="list-item"][data-active="true"] {
+            background: transparent;
+            box-shadow: none;
+          }
+        }
+
         [data-slot="list-item"] {
           display: flex;
           position: relative;

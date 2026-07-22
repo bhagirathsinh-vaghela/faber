@@ -87,20 +87,19 @@ export const DialogStash: Component = () => {
         items={items}
         filterKeys={["text"]}
         onSelect={restore}
+        actions={(item) => (
+          <IconButton
+            icon="close"
+            variant="ghost"
+            aria-label={language.t("dialog.stash.remove")}
+            onClick={() => stash.removeAt(item.index)}
+          />
+        )}
       >
         {(item) => (
           <div class="w-full flex items-center gap-2">
             <span class="truncate flex-1 min-w-0 text-left font-normal">{item.text}</span>
             <span class="text-text-weak shrink-0 font-normal">{item.time}</span>
-            <IconButton
-              icon="close"
-              variant="ghost"
-              aria-label={language.t("dialog.stash.remove")}
-              onClick={(e) => {
-                e.stopPropagation()
-                stash.removeAt(item.index)
-              }}
-            />
           </div>
         )}
       </List>

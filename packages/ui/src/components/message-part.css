@@ -163,6 +163,85 @@
   }
 }
 
+/* The identity cluster (◈ #N ROLE time) is the layout base for the header
+   label group; it becomes a jump-to-message button only when data-jump is set
+   (sticky user header). */
+[data-slot="message-box-identity"] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  /* Jump button mode: whole cluster is the click target. A directional arrow is
+     the signifier (per the Slack/Discord jump-to-message pattern); a subtle
+     rounded hover highlight confirms the hit area. */
+  &[data-jump="true"] {
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    /* Negative margin keeps the padded hit area from shifting the header. */
+    margin: -2px -4px;
+    padding: 2px 4px;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--surface-interactive-base);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--border-interactive-selected);
+      outline-offset: 1px;
+    }
+  }
+
+  /* The scroll-to arrow. Two discoverability modes, chosen by data-jump-hint:
+     - "rest": faint at rest, full-strength on hover/focus (default).
+     - "hover": hidden at rest, appears only on hover/focus.
+     On touch (no hover) both modes show it, since there is no hover to reveal. */
+  [data-slot="message-box-jump"] {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-text-weak);
+    transition:
+      opacity 0.12s ease,
+      color 0.12s ease;
+  }
+
+  /* "rest" mode: always in the layout, just dimmed until hover/focus. */
+  &[data-jump-hint="rest"] [data-slot="message-box-jump"] {
+    opacity: 0.45;
+  }
+
+  /* "hover" mode: take NO space at rest so the header sits flush left, then
+     appear on hover/focus and push the identity to the right. display:none
+     removes it from flow entirely (opacity alone would reserve the width +
+     the parent flex gap, leaving a permanent hole). */
+  &[data-jump-hint="hover"] [data-slot="message-box-jump"] {
+    display: none;
+  }
+
+  &[data-jump-hint="hover"]:hover [data-slot="message-box-jump"],
+  &[data-jump-hint="hover"]:focus-visible [data-slot="message-box-jump"] {
+    display: inline-flex;
+  }
+
+  &[data-jump="true"]:hover [data-slot="message-box-jump"],
+  &[data-jump="true"]:focus-visible [data-slot="message-box-jump"] {
+    opacity: 1;
+    color: var(--text-strong);
+  }
+
+  /* No hover (touch): reveal the arrow at rest in both modes, since there is
+     no hover to trigger it. */
+  @media (hover: none) {
+    &[data-jump-hint="hover"] [data-slot="message-box-jump"] {
+      display: inline-flex;
+      opacity: 0.45;
+    }
+  }
+}
+
 /* Box title-bar actions live in the header flow (right-aligned cluster):
    revert (user) then copy. Both reveal only on hover over the box's title bar
    (pointer devices); on touch (hover: none) they stay visible. */

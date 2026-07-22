@@ -34,7 +34,6 @@ export interface BasicToolProps {
   tool?: string
   forceOpen?: boolean
   locked?: boolean
-  onSubtitleClick?: () => void
   // Optional title-bar copy button. Prefer a body-level copy (next to the
   // visible content) instead: fenced-output tools get one free from CodeBlock,
   // and non-fenced tools render their own via the tool-body slot. This prop is
@@ -79,10 +78,15 @@ export function BasicTool(props: BasicToolProps) {
     setManual(value)
   }
 
+  const hasActions = () => (isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action) || props.copy
+
   return (
     <Collapsible open={open()} onOpenChange={handleOpenChange}>
-      <Collapsible.Trigger>
-        <div data-component="tool-trigger">
+      {/* Row wrapper holds the trigger button and the actions as SIBLINGS, so
+          the interactive action controls (open-link, copy) never nest inside
+          the trigger <button> (invalid HTML / a11y). Mirrors Tabs.Trigger. */}
+      <div data-component="tool-trigger">
+        <Collapsible.Trigger>
           <div data-slot="basic-tool-tool-trigger-content">
             <Icon name={props.icon} size="small" />
             <div data-slot="basic-tool-tool-info">
@@ -104,13 +108,6 @@ export function BasicTool(props: BasicToolProps) {
                             data-slot="basic-tool-tool-subtitle"
                             classList={{
                               [trigger().subtitleClass ?? ""]: !!trigger().subtitleClass,
-                              clickable: !!props.onSubtitleClick,
-                            }}
-                            onClick={(e) => {
-                              if (props.onSubtitleClick) {
-                                e.stopPropagation()
-                                props.onSubtitleClick()
-                              }
                             }}
                           >
                             {trigger().subtitle}
@@ -137,22 +134,24 @@ export function BasicTool(props: BasicToolProps) {
                 <Match when={true}>{props.trigger as JSX.Element}</Match>
               </Switch>
             </div>
+            <Show when={body() && !props.hideDetails && !props.locked}>
+              <Collapsible.Arrow />
+            </Show>
           </div>
-          <Show when={(isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action) || props.copy}>
-            <div data-slot="basic-tool-actions">
-              <Show when={isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action}>
-                {(action) => action()}
-              </Show>
-              <Show when={props.copy}>
-                <CopyButton content={props.copy!} class="basic-tool-copy" />
-              </Show>
-            </div>
-          </Show>
-          <Show when={body() && !props.hideDetails && !props.locked}>
-            <Collapsible.Arrow />
-          </Show>
-        </div>
-      </Collapsible.Trigger>
+        </Collapsible.Trigger>
+        {/* Actions live OUTSIDE the trigger button so they are siblings, not
+            interactive elements nested in a <button>. */}
+        <Show when={hasActions()}>
+          <div data-slot="basic-tool-actions">
+            <Show when={isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action}>
+              {(action) => action()}
+            </Show>
+            <Show when={props.copy}>
+              <CopyButton content={props.copy!} class="basic-tool-copy" />
+            </Show>
+          </div>
+        </Show>
+      </div>
       <Show when={!props.hideDetails && body()}>
         <Collapsible.Content>{body()}</Collapsible.Content>
       </Show>

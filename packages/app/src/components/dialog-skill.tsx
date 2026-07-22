@@ -77,25 +77,22 @@ export const DialogSkill: Component<DialogSkillProps> = (props) => {
             setShowDescriptions((prev) => !prev)
           }
         }}
+        actions={(item) => (
+          <IconButton
+            icon="circle-check"
+            variant="ghost"
+            class={item.favorite ? "" : "opacity-30"}
+            aria-label={language.t(item.favorite ? "dialog.skill.unfavorite" : "dialog.skill.favorite")}
+            onClick={() => local.skill.toggleFavorite(item.name)}
+          />
+        )}
       >
         {(item) => (
-          <div class="w-full flex items-center gap-2">
-            <div class="flex-1 min-w-0 flex flex-col text-left">
-              <span class="truncate font-normal">{item.name}</span>
-              <Show when={showDescriptions()}>
-                <span class="truncate text-text-weak font-normal">{item.description}</span>
-              </Show>
-            </div>
-            <IconButton
-              icon="circle-check"
-              variant="ghost"
-              class={item.favorite ? "" : "opacity-30"}
-              aria-label={language.t(item.favorite ? "dialog.skill.unfavorite" : "dialog.skill.favorite")}
-              onClick={(e) => {
-                e.stopPropagation()
-                local.skill.toggleFavorite(item.name)
-              }}
-            />
+          <div class="flex-1 min-w-0 flex flex-col text-left">
+            <span class="truncate font-normal">{item.name}</span>
+            <Show when={showDescriptions()}>
+              <span class="truncate text-text-weak font-normal">{item.description}</span>
+            </Show>
           </div>
         )}
       </List>
