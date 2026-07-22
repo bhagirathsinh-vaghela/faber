@@ -2383,7 +2383,8 @@ export default function Layout(props: ParentProps) {
           aria-label={language.t("sidebar.nav.projectsAndSessions")}
           data-component="sidebar-nav-desktop"
           classList={{
-            "hidden xl:block": true,
+            hidden: true,
+            "xl:block": !layout.zen.opened(),
             "relative shrink-0": true,
           }}
           style={{ width: layout.sidebar.opened() ? `${Math.max(layout.sidebar.width(), 244)}px` : "64px" }}
@@ -2445,7 +2446,7 @@ export default function Layout(props: ParentProps) {
         <main
           classList={{
             "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base": true,
-            "xl:border-l xl:rounded-tl-sm": !layout.sidebar.opened(),
+            "xl:border-l xl:rounded-tl-sm": !layout.sidebar.opened() && !layout.zen.opened(),
           }}
         >
           {props.children}
