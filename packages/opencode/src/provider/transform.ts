@@ -861,7 +861,14 @@ export namespace ProviderTransform {
     return { [key]: options }
   }
 
-  export function anthropicMaxTokens(modelId: string): number {
+  // Per-model output ceilings for ids whose real limit is LOWER than what the
+  // registry advertises. Matching is by id substring, so a model released after
+  // this list was written matches nothing: such a model falls back to
+  // `registryLimit`, the ceiling models.dev reports for it, rather than a
+  // hardcoded number that would silently cap it. claude-opus-5 is the case that
+  // motivated this: it matched neither "opus-4-5" nor "opus-4" and was capped at
+  // 32000 against a real ceiling of 128000.
+  export function anthropicMaxTokens(modelId: string, registryLimit?: number): number {
     const id = modelId.toLowerCase()
     if (id.includes("3-5")) return 8192
     if (id.includes("claude-3-opus")) return 4096
@@ -870,7 +877,7 @@ export namespace ProviderTransform {
     if (id.includes("opus-4-5")) return 64000
     if (id.includes("opus-4")) return 32000
     if (id.includes("sonnet-4") || id.includes("haiku-4")) return 64000
-    return 32000
+    return registryLimit && registryLimit > 0 ? registryLimit : 32000
   }
 
   export function maxOutputTokens(
@@ -883,7 +890,7 @@ export namespace ProviderTransform {
     const modelCap = modelLimit || globalLimit
 
     if (npm === "@ai-sdk/anthropic" || npm === "@ai-sdk/google-vertex/anthropic") {
-      const anthropicDefault = modelId ? anthropicMaxTokens(modelId) : globalLimit
+      const anthropicDefault = modelId ? anthropicMaxTokens(modelId, modelLimit) : globalLimit
       const standardLimit = Math.min(modelCap, anthropicDefault)
 
       const thinking = options?.["thinking"]

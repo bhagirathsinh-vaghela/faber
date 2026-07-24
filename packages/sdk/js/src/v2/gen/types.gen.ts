@@ -1009,6 +1009,8 @@ export type Session = {
     cacheWrite: number
     output: number
     reasoning: number
+    cacheWrite5m?: number
+    cacheWrite1h?: number
   }
   total?: {
     input: number
@@ -2309,6 +2311,33 @@ export type Config = {
      * Auto-inject background task results when they complete (default: false)
      */
     auto_inject?: boolean
+  }
+  /**
+   * Per-million-token prices keyed by model ID, e.g. 'anthropic/claude-opus-5'. Takes precedence over models.dev, which is used for any model absent here. Lives in config so prices can be corrected without shipping a new binary.
+   */
+  pricing?: {
+    [key: string]: {
+      /**
+       * Dollars per million input tokens
+       */
+      input: number
+      /**
+       * Dollars per million output tokens
+       */
+      output: number
+      /**
+       * Dollars per million cache-read tokens (Anthropic bills these at 0.1x input)
+       */
+      cacheRead: number
+      /**
+       * Dollars per million 5-minute-TTL cache-write tokens (Anthropic bills these at 1.25x input)
+       */
+      cacheWrite5m: number
+      /**
+       * Dollars per million 1-hour-TTL cache-write tokens (Anthropic bills these at 2x input)
+       */
+      cacheWrite1h: number
+    }
   }
   anthropic?: {
     /**

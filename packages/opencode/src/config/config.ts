@@ -1260,6 +1260,25 @@ export namespace Config {
             .describe("Auto-inject background task results when they complete (default: false)"),
         })
         .optional(),
+      pricing: z
+        .record(
+          z.string(),
+          z.object({
+            input: z.number().describe("Dollars per million input tokens"),
+            output: z.number().describe("Dollars per million output tokens"),
+            cacheRead: z.number().describe("Dollars per million cache-read tokens (Anthropic bills these at 0.1x input)"),
+            cacheWrite5m: z
+              .number()
+              .describe("Dollars per million 5-minute-TTL cache-write tokens (Anthropic bills these at 1.25x input)"),
+            cacheWrite1h: z
+              .number()
+              .describe("Dollars per million 1-hour-TTL cache-write tokens (Anthropic bills these at 2x input)"),
+          }),
+        )
+        .optional()
+        .describe(
+          "Per-million-token prices keyed by model ID, e.g. 'anthropic/claude-opus-5'. Takes precedence over models.dev, which is used for any model absent here. Lives in config so prices can be corrected without shipping a new binary.",
+        ),
       anthropic: z
         .object({
           beta: z

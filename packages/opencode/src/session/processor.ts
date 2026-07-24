@@ -14,52 +14,9 @@ import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { SessionPing } from "./ping"
+import { SessionPricing } from "./pricing"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
-
-// Anthropic model cost rates ($/million tokens)
-// https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table
-const ANTHROPIC_COST_TIERS: Array<{
-  match: (id: string) => boolean
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-}> = [
-  {
-    match: (id) => id.includes("opus-4-0") || id.includes("opus-4-1"),
-    input: 15,
-    output: 75,
-    cacheRead: 1.5,
-    cacheWrite: 18.75,
-  },
-  { match: (id) => id.includes("opus"), input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-  { match: (id) => id.includes("sonnet"), input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  {
-    match: (id) => id.includes("haiku-4-5") || id.includes("haiku-4.5"),
-    input: 1,
-    output: 5,
-    cacheRead: 0.1,
-    cacheWrite: 1.25,
-  },
-  { match: (id) => id.includes("haiku"), input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 },
-]
-
-export function computeStepCost(
-  providerID: string,
-  modelID: string,
-  tokens: { input: number; output: number; cache: { read: number; write: number } },
-): number {
-  if (providerID !== "anthropic") return 0
-  const tier = ANTHROPIC_COST_TIERS.find((t) => t.match(modelID))
-  if (!tier) return 0
-  return (
-    (tokens.input / 1_000_000) * tier.input +
-    (tokens.output / 1_000_000) * tier.output +
-    (tokens.cache.read / 1_000_000) * tier.cacheRead +
-    (tokens.cache.write / 1_000_000) * tier.cacheWrite
-  )
-}
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -320,17 +277,21 @@ export namespace SessionProcessor {
                     metadata: value.providerMetadata,
                   })
                   input.assistantMessage.finish = value.finishReason
-                  input.assistantMessage.cost += usage.cost
+                  // One pricing call feeds both the message cost and the session
+                  // total, so they cannot drift apart.
+                  const stepCost = await usage.cost
+                  input.assistantMessage.cost += stepCost
                   input.assistantMessage.tokens = usage.tokens
-                  const weightedInput = usage.tokens.cache.read * 0.1 + usage.tokens.cache.write * 1.25
+                  const weightedInput = SessionPricing.weightedInput(usage.tokens)
                   const weightedOutput = usage.tokens.output + usage.tokens.reasoning
-                  const stepCost = computeStepCost(input.model.providerID, input.model.id, usage.tokens)
                   const updated = await Session.update(input.sessionID, (draft) => {
                     draft.tokens.input = usage.tokens.input
                     draft.tokens.cacheRead = usage.tokens.cache.read
                     draft.tokens.cacheWrite = usage.tokens.cache.write
                     draft.tokens.output = usage.tokens.output
                     draft.tokens.reasoning = usage.tokens.reasoning
+                    draft.tokens.cacheWrite5m = usage.tokens.cache.write5m ?? 0
+                    draft.tokens.cacheWrite1h = usage.tokens.cache.write1h ?? 0
                     draft.total.input += weightedInput
                     draft.total.output += weightedOutput
                     draft.total.cacheWrite += usage.tokens.cache.write
@@ -352,7 +313,7 @@ export namespace SessionProcessor {
                     sessionID: input.assistantMessage.sessionID,
                     type: "step-finish",
                     tokens: usage.tokens,
-                    cost: usage.cost,
+                    cost: stepCost,
                   })
                   await Session.updateMessage(input.assistantMessage)
                   if (snapshot) {

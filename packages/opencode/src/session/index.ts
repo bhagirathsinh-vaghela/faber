@@ -24,6 +24,7 @@ import { Snapshot } from "@/snapshot"
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { Global } from "@/global"
+import { SessionPricing } from "./pricing"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
@@ -167,8 +168,22 @@ export namespace Session {
           cacheWrite: z.number(),
           output: z.number(),
           reasoning: z.number(),
+          // TTL breakdown of cacheWrite, which stays the combined total. Added
+          // after the fact, so sessions written before this default to 0 while
+          // their cacheWrite is non-zero: treat cacheWrite as authoritative and
+          // these two as a detail that is only present going forward.
+          cacheWrite5m: z.number().default(0),
+          cacheWrite1h: z.number().default(0),
         })
-        .default({ input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 }),
+        .default({
+          input: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          output: 0,
+          reasoning: 0,
+          cacheWrite5m: 0,
+          cacheWrite1h: 0,
+        }),
       total: z
         .object({
           input: z.number(),
@@ -331,7 +346,7 @@ export namespace Session {
         created: Date.now(),
         updated: Date.now(),
       },
-      tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
+      tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
       total: { input: 0, output: 0, cacheWrite: 0 },
       cost: 0,
     }
@@ -656,6 +671,27 @@ export namespace Session {
         input.metadata?.["venice"]?.["usage"]?.["cacheCreationInputTokens"] ??
         0) as number
 
+      // Anthropic bills cache writes by TTL: 1h at 2x base input, 5m at 1.25x.
+      // The provider only exposes the flattened cacheCreationInputTokens, but its
+      // usage schemas are z.looseObject and it forwards the whole raw usage body
+      // as providerMetadata.anthropic.usage, so the per-TTL breakdown rides along
+      // untouched. Read it from there.
+      //
+      // ON SDK UPGRADE: re-check this. It holds only while (a) the usage schemas
+      // stay looseObject (a switch to strictObject would drop cache_creation) and
+      // (b) the raw usage body is still forwarded verbatim on BOTH paths, i.e.
+      // `usage: response.usage` when not streaming and `rawUsage = {...value.message.usage}`
+      // for message_start / message_delta. If either changes, this silently falls
+      // back to the blended write rate below, which under-bills 1h writes. Verify
+      // with a request carrying a 1h cache_control marker and assert the split is
+      // present. No version through 4.0.20 exposes these as typed fields, so
+      // upgrading is not a fix; patching the schema would be the fallback.
+      const cacheCreation = (input.metadata?.["anthropic"]?.["usage"] as
+        | { cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number } }
+        | undefined)?.cache_creation
+      const cacheWrite5m = cacheCreation?.ephemeral_5m_input_tokens
+      const cacheWrite1h = cacheCreation?.ephemeral_1h_input_tokens
+
       const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
       const adjustedInputTokens = excludesCachedTokens
         ? (input.usage.inputTokens ?? 0)
@@ -672,25 +708,19 @@ export namespace Session {
         cache: {
           write: safe(cacheWriteInputTokens),
           read: safe(cacheReadInputTokens),
+          // Absent when the provider sends no breakdown (non-Anthropic, or the
+          // passthrough above stopped working). Pricing treats undefined as
+          // "unknown split" and falls back to the blended write rate.
+          write5m: cacheWrite5m === undefined ? undefined : safe(cacheWrite5m),
+          write1h: cacheWrite1h === undefined ? undefined : safe(cacheWrite1h),
         },
       }
 
-      const costInfo =
-        input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
-          ? input.model.cost.experimentalOver200K
-          : input.model.cost
+      // Cost is resolved by SessionPricing, which both the per-message cost and
+      // the running session total call, so the two can never disagree. It needs
+      // config (for the price overrides), hence the await at the call sites.
       return {
-        cost: safe(
-          new Decimal(0)
-            .add(new Decimal(tokens.input).mul(costInfo?.input ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
-            // TODO: update models.dev to have better pricing model, for now:
-            // charge reasoning tokens at the same rate as output tokens
-            .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
-            .toNumber(),
-        ),
+        cost: SessionPricing.cost(input.model, tokens),
         tokens,
       }
     },

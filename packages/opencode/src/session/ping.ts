@@ -13,7 +13,7 @@ import { ProviderTransform } from "@/provider/transform"
 import { Plugin } from "@/plugin"
 import { clone } from "remeda"
 import { SessionPrompt } from "./prompt"
-import { computeStepCost } from "./processor"
+import { SessionPricing } from "./pricing"
 import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
 import { Liveness } from "@/project/liveness"
@@ -385,15 +385,19 @@ export namespace SessionPing {
             usage: value.usage,
             metadata: value.providerMetadata,
           })
-          const weightedInput = usage.tokens.cache.read * 0.1 + usage.tokens.cache.write * 1.25
+          const weightedInput = SessionPricing.weightedInput(usage.tokens)
           const weightedOutput = usage.tokens.output + usage.tokens.reasoning
-          const stepCost = computeStepCost(model.providerID, model.id, usage.tokens)
+          // Keepalive pings are real API charges, so they count toward the same
+          // session total as a normal turn, priced by the same function.
+          const stepCost = await usage.cost
           await Session.update(sessionID, (draft) => {
             draft.tokens.input = usage.tokens.input
             draft.tokens.cacheRead = usage.tokens.cache.read
             draft.tokens.cacheWrite = usage.tokens.cache.write
             draft.tokens.output = usage.tokens.output
             draft.tokens.reasoning = usage.tokens.reasoning
+            draft.tokens.cacheWrite5m = usage.tokens.cache.write5m ?? 0
+            draft.tokens.cacheWrite1h = usage.tokens.cache.write1h ?? 0
             draft.total.input += weightedInput
             draft.total.output += weightedOutput
             draft.cost += stepCost
