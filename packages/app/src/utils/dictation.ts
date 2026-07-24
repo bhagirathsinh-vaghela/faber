@@ -97,7 +97,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     session = undefined
     analyser = undefined
     if (active === stop) active = undefined
-    setStore("active", false)
+    setStore({ active: false, committed: "", interim: "" })
     for (const track of stream.getTracks()) track.stop()
     context.close()
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }))
@@ -132,7 +132,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       const socket = new WebSocket(url)
       socket.binaryType = "arraybuffer"
       session = { socket, context, stream }
-      setStore({ active: true, committed: "", interim: "" })
+      setStore("active", true)
 
       const pending: ArrayBuffer[] = []
       const worklet = new AudioWorkletNode(context, "dictation-capture")
