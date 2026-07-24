@@ -246,10 +246,14 @@ function Panel(props: {
   const stashDictation = (text: string) => {
     // The prompt draft outlives this panel, so the transcript survives even
     // when the question is answered or dismissed mid-dictation.
-    promptDraft.set([
+    const next = [
       ...clonePrompt(promptDraft.current()),
-      { type: "text", content: " " + text + " ", start: 0, end: 0 },
-    ])
+      { type: "text" as const, content: " " + text + " ", start: 0, end: 0 },
+    ]
+    promptDraft.set(
+      next,
+      next.reduce((len, part) => len + ("content" in part ? part.content.length : 0), 0),
+    )
     showToast({
       title: language.t("dictation.stashed.title"),
       description: language.t("dictation.stashed.description"),
@@ -263,6 +267,9 @@ function Panel(props: {
     }
     input.value = (input.value ? input.value + " " : "") + text
     input.focus()
+    // focus() alone can restore a prior selection, leaving the caret before the
+    // dictated text. Pin it past the end of what was just inserted.
+    input.setSelectionRange(input.value.length, input.value.length)
   }
 
   // Whether keyboard focus is currently within the panel. Drives the panel

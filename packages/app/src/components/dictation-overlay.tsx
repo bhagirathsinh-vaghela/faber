@@ -1,6 +1,6 @@
 import { Show, createEffect, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
-import { Button } from "@opencode-ai/ui/button"
+import { IconButton } from "@opencode-ai/ui/icon-button"
 import { useLanguage } from "@/context/language"
 import type { createDictation } from "@/utils/dictation"
 import { DictationWaveform } from "./dictation-waveform"
@@ -30,11 +30,16 @@ export function DictationOverlay(props: {
   const finish = (outcome: "accept" | "stash" | "discard") => {
     done = true
     const text = props.dictation.text().trim()
-    props.dictation.stop()
+    // Dismiss and hand off the text first, then tear down the mic. teardown
+    // (AudioContext.close, track.stop, socket close) is slow on mobile Safari;
+    // running it before onClose left the overlay hanging on the tap. The text
+    // is already captured above, so the ordering is safe.
     props.onClose()
-    if (!text) return
-    if (outcome === "accept") props.onAccept(text)
-    if (outcome === "stash") props.onStash(text)
+    if (text && outcome === "accept") props.onAccept(text)
+    if (text && outcome === "stash") props.onStash(text)
+    // Tear the mic down on a later task so it never blocks the dismiss paint.
+    // The user sees the action land instantly; audio cleanup runs after.
+    setTimeout(() => props.dictation.stop())
   }
 
   const handleKey = (event: KeyboardEvent) => {
@@ -134,16 +139,28 @@ export function DictationOverlay(props: {
           </div>
           <div class="shrink-0 flex flex-row items-end justify-end gap-2 px-2 pb-1">
             <div class="flex flex-col items-center gap-0.5">
-              <kbd class="text-11-regular text-text-weak">esc</kbd>
-              <Button type="button" variant="secondary" size="small" onClick={() => finish("discard")}>
-                {language.t("dictation.discard")}
-              </Button>
+              <kbd class="hidden md:block text-11-regular text-text-weak">esc</kbd>
+              <IconButton
+                type="button"
+                variant="secondary"
+                size="large"
+                icon="close"
+                class="size-11 md:size-8"
+                aria-label={language.t("dictation.discard")}
+                onClick={() => finish("discard")}
+              />
             </div>
             <div class="flex flex-col items-center gap-0.5">
-              <kbd class="text-11-regular text-text-weak">↵</kbd>
-              <Button type="button" variant="primary" size="small" onClick={() => finish("accept")}>
-                {language.t("dictation.accept")}
-              </Button>
+              <kbd class="hidden md:block text-11-regular text-text-weak">↵</kbd>
+              <IconButton
+                type="button"
+                variant="primary"
+                size="large"
+                icon="check"
+                class="size-11 md:size-8"
+                aria-label={language.t("dictation.accept")}
+                onClick={() => finish("accept")}
+              />
             </div>
           </div>
         </div>

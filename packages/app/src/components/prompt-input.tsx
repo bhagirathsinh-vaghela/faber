@@ -988,7 +988,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const stashDictation = (text: string) => {
     // Appends to the prompt draft state, which outlives this component, so the
     // transcript never vanishes. The toast tells the user where it went.
-    prompt.set([...clonePrompt(prompt.current()), { type: "text", content: " " + text + " ", start: 0, end: 0 }])
+    const next = [
+      ...clonePrompt(prompt.current()),
+      { type: "text" as const, content: " " + text + " ", start: 0, end: 0 },
+    ]
+    prompt.set(next, promptLength(next))
     showToast({
       title: language.t("dictation.stashed.title"),
       description: language.t("dictation.stashed.description"),
@@ -996,18 +1000,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   }
   const insertDictation = (text: string) => {
-    if (!editorRef?.isConnected) {
-      stashDictation(text)
-      return
-    }
-    // The overlay held focus; restore the caret to the prompt before addPart,
-    // which inserts at the current selection.
-    editorRef.focus()
-    requestAnimationFrame(() => {
-      const cursor = prompt.cursor() ?? promptLength(prompt.current())
-      setCursorPosition(editorRef, cursor)
-      addPart({ type: "text", content: text + " ", start: 0, end: 0 })
-    })
+    // Write straight to prompt state, the way stashDictation does. The old path
+    // focused the editor and deferred addPart to a rAF, because addPart reads
+    // window.getSelection() and needs focus first. On touch that focus raises the
+    // soft keyboard, so the rAF landed behind the viewport resize and the text
+    // visibly lagged the tap. State needs no selection, so it lands immediately.
+    const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: text + " ", start: 0, end: 0 }]
+    const end = promptLength(next)
+    prompt.set(next, end)
+    // The sync effect restores the caret from the live selection, which on the
+    // Enter path still sits at the pre-dictation offset (0 on an empty draft).
+    // Place it after the inserted text once the re-render has run.
+    if (editorRef?.isConnected) requestAnimationFrame(() => setCursorPosition(editorRef, end))
   }
   const dictation = createDictation({
     url: () => sdk.url,
