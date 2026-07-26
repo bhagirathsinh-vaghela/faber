@@ -113,6 +113,11 @@ const icons = {
   mic: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></g>`,
   // Reload (Lucide `rotate-cw`). Scaled ×0.8333.
   "rotate-right": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></g>`,
+  // Companion mode (Lucide `text-cursor-input`): a text field with an I-beam,
+  // for the view that hides the transcript and leaves only the composer. A mic
+  // would collide with the dock's dictation button, and the layout-* family is
+  // already taken by the sidebar/terminal/review panel toggles. Scaled ×0.8333.
+  "text-cursor-input": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"/><path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"/><path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"/><path d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1"/><path d="M9 6v12"/></g>`,
 }
 
 export interface IconProps extends ComponentProps<"svg"> {

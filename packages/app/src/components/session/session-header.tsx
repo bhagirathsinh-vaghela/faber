@@ -148,6 +148,29 @@ export function SessionHeader() {
                   <Icon name="sparkles" size="medium" />
                 </button>
               </Tooltip>
+              {/* Companion toggle sits immediately left of Stop. It lives here
+                  rather than in the shared Titlebar so it can be ordered among
+                  the session-scoped controls, which all portal into this mount. */}
+              <Tooltip
+                value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
+                placement="top"
+                gutter={8}
+              >
+                <IconButton
+                  icon="text-cursor-input"
+                  iconSize="medium"
+                  variant={layout.companion.opened() ? "primary" : "ghost"}
+                  class="size-10 shrink-0 p-0"
+                  classList={{
+                    "[&_[data-slot=icon-svg]]:!text-icon-strong-base": !layout.companion.opened(),
+                  }}
+                  onClick={() => layout.companion.toggle()}
+                  aria-pressed={layout.companion.opened()}
+                  aria-label={
+                    layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")
+                  }
+                />
+              </Tooltip>
               <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                 <IconButton
                   icon="stop-mobile"
@@ -203,6 +226,23 @@ export function SessionHeader() {
                     >
                       <Icon name="sparkles" size="medium" />
                     </button>
+                  </Tooltip>
+                  <Tooltip
+                    value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
+                    placement="top"
+                    gutter={8}
+                  >
+                    <IconButton
+                      icon="text-cursor-input"
+                      iconSize="medium"
+                      variant={layout.companion.opened() ? "primary" : "ghost"}
+                      class="size-6 [&_[data-component=icon]]:!size-4"
+                      onClick={() => layout.companion.toggle()}
+                      aria-pressed={layout.companion.opened()}
+                      aria-label={
+                        layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")
+                      }
+                    />
                   </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton

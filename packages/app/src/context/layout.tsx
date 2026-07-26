@@ -126,6 +126,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // the snapshot to hand focus back to whatever held it when zen opened.
     let zenFocus: (() => boolean) | undefined
     const enterZen = () => {
+      if (companionOpened()) exitCompanion()
       const restore = captureFocus()
       zenFocus = restore
       setZenOpened(true)
@@ -135,6 +136,26 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const restore = zenFocus
       zenFocus = undefined
       setZenOpened(false)
+      restore?.()
+    }
+
+    // Companion mode is zen inverted: zen keeps the transcript and slims the
+    // dock, companion drops the transcript and keeps the dock whole. Ephemeral
+    // for the same reason zen is, and mutually exclusive with it — the two
+    // together would leave a near-blank screen with a slim input.
+    const [companionOpened, setCompanionOpened] = createSignal(false)
+    let companionFocus: (() => boolean) | undefined
+    const enterCompanion = () => {
+      if (zenOpened()) exitZen()
+      const restore = captureFocus()
+      companionFocus = restore
+      setCompanionOpened(true)
+      restore()
+    }
+    const exitCompanion = () => {
+      const restore = companionFocus
+      companionFocus = undefined
+      setCompanionOpened(false)
       restore?.()
     }
 
@@ -528,6 +549,19 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         toggle() {
           if (zenOpened()) exitZen()
           else enterZen()
+        },
+      },
+      // Companion mode: hides the transcript, keeps the full prompt dock plus
+      // the question/permission panels, and enlarges the dock's touch targets.
+      // For driving a session by voice from a phone while reading the output on
+      // another client. Ephemeral like zen, and reset on session switch.
+      companion: {
+        opened: companionOpened,
+        enter: enterCompanion,
+        exit: exitCompanion,
+        toggle() {
+          if (companionOpened()) exitCompanion()
+          else enterCompanion()
         },
       },
       view(sessionKey: string | Accessor<string>) {

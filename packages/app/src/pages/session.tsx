@@ -833,6 +833,16 @@ export default function Page() {
     ),
   )
 
+  // Companion mode is a per-visit choice, never a default: switching sessions
+  // always lands in the normal view.
+  createEffect(
+    on(
+      () => params.id,
+      () => layout.companion.exit(),
+      { defer: true },
+    ),
+  )
+
   createEffect(() => {
     const id = lastUserMessage()?.id
     if (!id) return
@@ -1250,6 +1260,14 @@ export default function Page() {
       category: language.t("command.category.session"),
       keybind: "alt+z",
       onSelect: () => layout.zen.toggle(),
+    },
+    {
+      id: "companion.toggle",
+      title: language.t("command.companion.toggle"),
+      description: language.t("command.companion.toggle.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+c",
+      onSelect: () => layout.companion.toggle(),
     },
     ...(sync.data.config.share !== "disabled"
       ? [
@@ -2309,7 +2327,16 @@ export default function Page() {
             "padding-top": layout.zen.opened() ? "calc(var(--sat) + 1rem)" : undefined,
           }}
         >
-          <div class="flex-1 min-h-0 overflow-hidden">
+          {/* Companion mode hides the transcript with CSS rather than
+              unmounting it: the session stays fully subscribed and the scroll
+              position survives, so leaving companion restores the exact view.
+              The dock is absolutely bottom-anchored, so it stays put. */}
+          <div
+            classList={{
+              "flex-1 min-h-0 overflow-hidden": true,
+              hidden: layout.companion.opened(),
+            }}
+          >
             <Switch>
               <Match when={params.id}>
                 <Show when={activeMessage()}>
@@ -2702,7 +2729,12 @@ export default function Page() {
             ref={(el) => (promptDock = el)}
             data-slot="prompt-dock"
             classList={{
-              "absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
+              // max-h-full + min-h-0 bound the dock to the viewport instead of
+              // letting it grow upward without limit. Without a bound, nothing
+              // inside can know how much room it has, which is why the question
+              // panel used to guess with a hardcoded max-height. With the chain
+              // bounded, its inner scroller resolves a real height and engages.
+              "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
               // Zen keeps a slimmed dock (input + attach + submit + question/permission
               // prompts) rather than hiding it, so questions stay answerable in zen.
               // PromptInput drops its own chrome via useLayout().zen. Only the mobile
@@ -2710,10 +2742,15 @@ export default function Page() {
               hidden: mobileChanges(),
             }}
           >
+            {/* flex column + min-h-0 so the constraint from the bounded dock
+                reaches the question panel. A flex item's automatic minimum size
+                is content-based, so without min-h-0 at EVERY level this column
+                refuses to shrink below its content and the panel's inner
+                scroller never resolves a height to scroll within. */}
             <div
               ref={(el) => (promptInner = el)}
               classList={{
-                "w-full pointer-events-auto": true,
+                "w-full pointer-events-auto flex flex-col min-h-0": true,
                 "md:max-w-[95%] md:mx-auto": centered(),
               }}
             >

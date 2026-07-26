@@ -58,11 +58,11 @@ import { Identifier } from "@/utils/id"
 import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
-import { DictationPoolButton } from "@/components/dictation-pool-button"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
 import { PromptActionBar } from "@/components/prompt-actionbar"
 import { usePermission } from "@/context/permission"
+import { useQuestion } from "@/context/question"
 import { useLanguage } from "@/context/language"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
@@ -118,12 +118,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // prompts). All other dock chrome (model/agent/variant selectors, the bottom
   // status/action row, the permission auto-accept toggle) is gated behind !zen().
   const zen = () => layout.zen.opened()
+  // Companion mode keeps every control (this dock is the only interface on that
+  // device) but hands the freed transcript space to the touch targets: 72px
+  // buttons against the normal 44px, with the icons scaled to match. 5 buttons
+  // at 72px still fit a 393px-wide phone. Applied at EVERY width, so the mode
+  // looks like itself on desktop too.
+  const companion = () => layout.companion.opened()
+  // The tall writing surface only earns its space when the composer IS the
+  // screen. A pending question or permission prompt stacks directly above the
+  // dock and is what you're actually answering, so the reserved height stops
+  // being a feature and starts squeezing the thing you need to read. The flex
+  // chain would now shrink the editor on its own, but yielding outright gives
+  // the panel the whole gap rather than making it fight for a share.
+  const companionTall = () => companion() && question.pending().length === 0
+  const actionButton = () => (companion() ? "size-[72px]! px-1" : "size-11 md:size-6 px-1")
+  // Icon sizes through its WRAPPER: [data-component=icon] is the sized box and
+  // the svg inside is width:100% of it, so a class on the svg alone only moves
+  // its height and leaves a stretched sliver. Target the wrapper instead. The
+  // component's own size prop tops out at 24px, too small against a 72px button.
+  const actionIcon = () =>
+    companion()
+      ? "[&>[data-component=icon]]:!size-9"
+      : "[&>[data-component=icon]]:!size-6 md:[&>[data-component=icon]]:!size-[18px]"
   const comments = useComments()
   const params = useParams()
   const dialog = useDialog()
   const providers = useProviders()
   const command = useCommand()
   const permission = usePermission()
+  const question = useQuestion()
   const language = useLanguage()
   const settings = useSettings()
   let editorRef!: HTMLDivElement
@@ -2131,7 +2154,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           class="absolute w-px h-px opacity-0 pointer-events-none"
           style={{ left: "-9999px", top: "0" }}
         />
-        <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
+        {/* Companion hands the freed transcript space to the writing surface.
+            The dock is bottom-anchored, so a taller cap grows it upward into
+            the reachable lower half rather than pushing controls off-thumb.
+            Applied at every width — the dock keeps its normal full width. */}
+        <div
+          classList={{
+            "relative overflow-y-auto": true,
+            "max-h-[240px]": !companionTall(),
+            "max-h-[45vh]": companionTall(),
+          }}
+          ref={(el) => (scrollRef = el)}
+        >
           <div
             data-component="prompt-input"
             ref={(el) => {
@@ -2164,6 +2198,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               // so reserve room (pr-12) and vertically center the single line.
               "pt-2 pb-0 md:py-3": !zen(),
               "pt-2 pb-0 md:py-2.5 md:pr-12": zen(),
+              // Hold the tall surface open on an empty draft, so entering
+              // companion doesn't collapse the dock back to one line.
+              "min-h-[28vh]": companionTall(),
               "[&_[data-type=file]]:text-syntax-property": true,
               "[&_[data-type=agent]]:text-syntax-type": true,
               "font-mono!": store.mode === "shell",
@@ -2390,7 +2427,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <Button
                   type="button"
                   variant="ghost"
-                  class="md:hidden flex size-11 items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+                  class={`md:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base`}
                   onClick={() => setDockInfoOpen((v) => !v)}
                   aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                   aria-expanded={dockInfoOpen()}
@@ -2414,11 +2451,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class="flex size-11 md:size-6 items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
+                    class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:size-6"} items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current`}
                     onClick={() => dialog.show(() => <DialogDock />)}
                     aria-label="Customize fields"
                   >
-                    <Icon name="sliders" size="medium" class="md:!size-4" />
+                    {/* The desktop shrink would beat the companion wrapper size
+                        and leave a 16px glyph in a 72px button. */}
+                    <Icon name="sliders" size="medium" class={companion() ? undefined : "md:!size-4"} />
                   </Button>
                 </Tooltip>
               </span>
@@ -2474,9 +2513,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 chevron/customize/send in one justify-between row. Desktop keeps
                 them grouped. */}
             <div class="contents md:flex md:items-center md:gap-1 md:mr-1">
-              <Show when={store.mode === "normal"}>
-                <DictationPoolButton onInsert={insertDictation} />
-              </Show>
               {/* Always shown on a coarse pointer (mobile), never gated on
                   keyboardWanted — so tapping it can't unmount it mid-gesture and
                   blur the editor on release. Stable element = stable focus. */}
@@ -2485,7 +2521,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
+                    class={`${actionButton()} ${actionIcon()} [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current`}
                     // pointerdown, not click/mousedown: on iOS a synthesized
                     // mousedown fires too late to count as a user gesture, so
                     // focus() there won't raise the keyboard. pointerdown fires
@@ -2505,7 +2541,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     onClick={(e: MouseEvent) => e.preventDefault()}
                     aria-label={language.t("prompt.action.showKeyboard")}
                   >
-                    <Icon name="keyboard" class="size-6 md:size-4.5" />
+                    <Icon name="keyboard" />
                   </Button>
                 </Tooltip>
               </Show>
@@ -2525,7 +2561,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     // too (on desktop md:!text-current already lets it through).
                     // Without the exclusion the !important base color beat the
                     // inline color and the mic never tinted on touch.
-                    class="size-11 md:size-6 px-1 [&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-icon-strong-base md:[&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-current"
+                    class={`${actionButton()} ${actionIcon()} [&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-icon-strong-base md:[&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-current`}
                     data-dictation-toggle
                     data-dictation-focused={dictationTargeted() ? "" : undefined}
                     onClick={toggleDictation}
@@ -2536,7 +2572,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   >
                     <Icon
                       name="mic"
-                      class="size-6 md:size-4.5"
                       classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
                       style={
                         dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
@@ -2550,11 +2585,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class="size-11 md:size-6 px-1 [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current"
+                    class={`${actionButton()} ${actionIcon()} [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current`}
                     onClick={() => fileInputRef.click()}
                     aria-label={language.t("prompt.action.attachFile")}
                   >
-                    <Icon name="photo" class="size-6 md:size-4.5" />
+                    <Icon name="photo" />
                   </Button>
                 </Tooltip>
               </Show>
@@ -2577,7 +2612,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   type="button"
                   icon="stop"
                   variant="primary"
-                  class="size-11 md:h-6 md:w-4.5"
+                  class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
                   aria-label={language.t("prompt.action.stop")}
                   onClick={abort}
                 />
@@ -2612,7 +2647,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   disabled={!submittable()}
                   icon="arrow-up"
                   variant="primary"
-                  class="size-11 md:h-6 md:w-4.5"
+                  class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
                   aria-label={language.t("prompt.action.send")}
                   onPointerDown={
                     // iOS: with the keyboard up the editor holds focus, so tapping
