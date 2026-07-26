@@ -13,7 +13,6 @@ import { createSignal } from "solid-js"
 
 const [hidden, setHidden] = createSignal(read())
 const waiters: Array<() => void> = []
-const hiddenWaiters: Array<() => void> = []
 const onlineWaiters: Array<() => void> = []
 
 // Network transitions, bumped on every online/offline event. navigator.onLine is
@@ -31,8 +30,8 @@ function sync() {
   const next = read()
   document.documentElement.toggleAttribute("data-app-hidden", next)
   setHidden(next)
-  const pending = (next ? hiddenWaiters : waiters).splice(0)
-  for (const resolve of pending) resolve()
+  if (next) return
+  for (const resolve of waiters.splice(0)) resolve()
 }
 
 let armed = false
@@ -61,14 +60,6 @@ export const Visibility = {
     arm()
     if (!read()) return Promise.resolve()
     return new Promise<void>((resolve) => waiters.push(resolve))
-  },
-  // Resolves the next time the tab is (or already is) hidden. The snapshot
-  // writer awaits this to persist the open transcript right before
-  // the app is backgrounded, so the next cold open paints from cache.
-  whenHidden() {
-    arm()
-    if (read()) return Promise.resolve()
-    return new Promise<void>((resolve) => hiddenWaiters.push(resolve))
   },
   // Reactive: bumps on every online/offline event. Tracks in a reactive scope;
   // the SSE loop watches it to reconnect the instant the network state changes.

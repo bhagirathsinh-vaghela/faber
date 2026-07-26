@@ -41,45 +41,60 @@ export default function Layout(props: ParentProps) {
             const sdk = useSDK()
             const location = useLocation()
 
-            // Paint from cache, then reconcile. As early as the URL
-            // carries a session id, hydrate the on-device snapshot into the store
-            // so the transcript paints before any fetch, then run sync: with the
-            // store seeded it takes the deltaMessages branch and fetches only the
-            // gap since the snapshot. A missing/stale snapshot no-ops the hydrate
-            // and sync falls back to the normal tail fetch. The snapshot read is
-            // async, so fire the tail fetch immediately too — whichever wins, the
-            // store guards make the other a cheap no-op.
+            // Paint from cache, then reconcile: hydrate the on-device
+            // snapshot so a cold open shows the transcript before any fetch, then
+            // sync, which takes the deltaMessages branch off the seeded store and
+            // fetches only the gap. A missing snapshot no-ops the hydrate and sync
+            // falls back to the normal tail fetch.
+            //
+            // Snapshot.claim enforces the once-per-page-load contract, so this
+            // effect can stay reactive: it still fires the tail fetch on every
+            // route change, but only the session the page LANDED on ever reads
+            // disk. Navigation and project switches (which remount this layout)
+            // get a plain sync() against the live server. The writer below is
+            // independent and keeps running.
             createEffect(() => {
               const id = location.pathname.match(/\/session\/([^/?#]+)/)?.[1]
               if (!id) return
-              Snapshot.read(directory(), id).then((snapshot) => {
+              Snapshot.claim(directory(), id).then((snapshot) => {
                 if (snapshot) sync.session.hydrate(snapshot)
                 sync.session.sync(id, snapshot !== undefined)
               })
             })
 
-            // Persist the open transcript's tail when the tab hides, so the next
-            // cold open (every iOS PWA launch is one) has a snapshot to paint. The
-            // hidden tab is already off the critical path, so no extra idle gate.
-            let disposed = false
-            onCleanup(() => (disposed = true))
-            const persist = async () => {
-              while (!disposed) {
-                await Visibility.whenHidden()
-                if (disposed) return
-                const id = location.pathname.match(/\/session\/([^/?#]+)/)?.[1]
-                if (id) {
-                  const session = sync.session.get(id)
-                  const messages = sync.data.message[id]
-                  if (session && messages?.length)
-                    await Snapshot.write(Snapshot.build(directory(), session, messages, sync.data.part))
-                }
-                // Park until the tab is visible again so the loop re-arms on the
-                // NEXT hide instead of spinning while the tab stays hidden.
-                await Visibility.whenVisible()
-              }
+            // Persist the open transcript's tail on a timer, so a reload paints a
+            // snapshot that is seconds old. Writing at unload instead does not
+            // work: IndexedDB is asynchronous and the browser tears the page down
+            // before the transaction can commit, which leaves only whatever an
+            // earlier background-and-survive happened to write.
+            //
+            // The write costs ~1ms for a 40-message tail, so the cadence is bound
+            // by the dirty check rather than the write: an idle session compares
+            // one string per tick and does nothing.
+            let written = ""
+            const capture = async () => {
+              const id = location.pathname.match(/\/session\/([^/?#]+)/)?.[1]
+              if (!id) return
+              const messages = sync.data.message[id]
+              if (!messages?.length) return
+              const next = Snapshot.fingerprint(messages, sync.data.part)
+              if (next === written) return
+              const session = sync.session.get(id)
+              if (!session) return
+              written = next
+              await Snapshot.write(Snapshot.build(directory(), session, messages, sync.data.part))
             }
-            void persist()
+
+            const timer = setInterval(() => void capture(), 5000)
+            onCleanup(() => clearInterval(timer))
+
+            // A tab going hidden may not come back before it is discarded, and it
+            // is already off the critical path, so capture the tail immediately
+            // rather than waiting out the interval.
+            createEffect(() => {
+              if (!Visibility.hidden()) return
+              void capture()
+            })
             const respond = (input: {
               sessionID: string
               permissionID: string

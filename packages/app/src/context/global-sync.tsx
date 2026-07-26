@@ -26,6 +26,7 @@ import {
 import { createStore, produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
 import { needsAttention } from "@opencode-ai/util/session"
+import { Snapshot } from "@/utils/snapshot"
 import { retry } from "@opencode-ai/util/retry"
 import { useGlobalSDK } from "./global-sdk"
 import type { InitError } from "../pages/error"
@@ -784,6 +785,28 @@ function createGlobalSync() {
   // these liveness re-pushes.
   createEffect(() => {
     globalSDK.subscribe(interestSet(), openDirectory(), openSession())
+  })
+
+  // Snapshots are kept only for the attention set, so a session that is neither
+  // working, pinging, nor unseen surrenders its on-device tail. This touches the
+  // snapshot store ONLY — never a session's messages or parts, which stay owned
+  // by the store and the server.
+  //
+  // recent_hub is a full-list snapshot (refreshed on bootstrap and on reconnect,
+  // not just on the live event), so this one effect covers a stop seen live, a
+  // stop that happened while this client was offline, and a cold boot inheriting
+  // records from a previous run. An empty hub is the pre-bootstrap state, not an
+  // empty attention set, so pruning against it would drop every record.
+  createEffect(() => {
+    if (!globalStore.ready) return
+    if (globalStore.recent_hub.length === 0) return
+    const keep = liveSessions()
+    // The open session is kept regardless: it is the one snapshot certain to be
+    // read next, and a child session never appears in recent_hub, so the
+    // attention set alone would not cover a subagent opened directly.
+    const open = openSession()
+    if (open) keep.add(open)
+    void Snapshot.prune(keep)
   })
 
   // Evict a session's cached transcript unless it is live, a child of a live
