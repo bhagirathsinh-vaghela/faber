@@ -3,6 +3,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Sh
 import type { QuestionRequest } from "@opencode-ai/sdk/v2"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
+import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Markdown } from "@opencode-ai/ui/markdown"
 import { captureFocus } from "@opencode-ai/ui/util/focus"
 import { useSDK } from "@/context/sdk"
@@ -16,7 +17,6 @@ import { agentColor } from "@/utils/agent"
 import { createDictation, dictationActive, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
-import { DictationPoolButton } from "@/components/dictation-pool-button"
 import { clonePrompt, usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
 
@@ -565,13 +565,17 @@ function Panel(props: {
     <div
       ref={(el) => (panel = el)}
       tabindex={-1}
-      // max-h caps the panel to the viewport so a tall question (many options /
-      // long descriptions) can't grow past the top of the screen inside the
-      // bottom-pinned dock. dvh (not vh) tracks mobile browser chrome, matching
-      // #root's h-dvh; 16rem leaves room for the dock's pt-12, the prompt input
-      // below, and the bottom safe-area. The content div scrolls; the collapse
-      // control and actions row stay pinned.
-      class="relative mb-3 flex max-h-[calc(100dvh-16rem)] flex-col overflow-hidden rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
+      // No max-height: the panel shrinks to whatever the bounded dock leaves it.
+      // min-h-0 is what makes that work — a flex item's automatic minimum size is
+      // content-based, so without it this panel refuses to shrink below its
+      // content and a tall question overflows off the TOP of the screen, where
+      // nothing scrolls and the options become unreachable.
+      //
+      // This replaced a hardcoded `max-h-[calc(100dvh-16rem)]`, where 16rem was a
+      // guess at the dock's height. Companion mode grows the composer past that
+      // guess and the panel silently overflowed. Measuring beats guessing, and
+      // the flex chain measures itself.
+      class="relative mb-3 flex min-h-0 flex-col overflow-hidden rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
       classList={{ "border-border-base cursor-default": !focused() }}
       style={
         focused()
@@ -795,22 +799,21 @@ function Panel(props: {
                       <Button
                         type="button"
                         variant="ghost"
-                        class="size-6 px-1"
+                        class="size-11 md:size-6 px-1"
                         onMouseDown={(e: MouseEvent) => {
                           e.preventDefault()
                           requestKeyboard()
                         }}
                         aria-label={language.t("prompt.action.showKeyboard")}
                       >
-                        <Icon name="keyboard" class="size-4.5" />
+                        <Icon name="keyboard" class="size-6 md:size-4.5" />
                       </Button>
                     </Show>
-                    <DictationPoolButton onInsert={acceptDictation} />
                     <Show when={dictation.supported()}>
                       <Button
                         type="button"
                         variant="ghost"
-                        class="size-6 px-1"
+                        class="size-11 md:size-6 px-1"
                         data-dictation-toggle
                         data-dictation-focused={dictationTargeted() ? "" : undefined}
                         onClick={toggleDictation}
@@ -821,15 +824,22 @@ function Panel(props: {
                       >
                         <Icon
                           name="mic"
-                          class="size-4.5"
+                          class="size-6 md:size-4.5"
                           classList={{ "text-icon-critical-base animate-pulse": dictating() }}
                           style={dictationTargeted() ? { color: accent() } : undefined}
                         />
                       </Button>
                     </Show>
-                    <Button type="submit" variant="primary" size="small">
-                      {multi() ? "Add" : "Submit"}
-                    </Button>
+                    {/* Add (multi-select, appends another answer) and Submit are
+                        distinct actions, so they carry distinct glyphs. */}
+                    <IconButton
+                      type="submit"
+                      variant="primary"
+                      size="large"
+                      icon={multi() ? "plus" : "check"}
+                      class="size-11 md:size-8"
+                      aria-label={multi() ? "Add" : "Submit"}
+                    />
                   </form>
                   <Show when={dictating()}>
                     <DictationOverlay
@@ -865,30 +875,50 @@ function Panel(props: {
         </Show>
       </div>
 
-      {/* Actions. Each button carries the keyboard shortcut that triggers it,
-          shown as a hint above (handled in handleKey: alt+D reject, Escape
-          collapse, Enter submit, Tab cycles requests). */}
+      {/* Actions. Glyph buttons sized to a 44px touch target, shrinking to 32px
+          on desktop, matching the dictation overlay. Each carries the keyboard
+          shortcut that triggers it as a hint above (handled in handleKey: alt+D
+          reject, Escape collapse, Enter submit, Tab cycles requests), hidden
+          where there is no keyboard. */}
       <div class="flex shrink-0 flex-row items-end gap-2 justify-end px-4 pb-3">
         <div class="flex flex-col items-center gap-0.5">
-          <kbd class="text-11-regular text-text-weak">⌥D</kbd>
-          <Button variant="secondary" size="small" onClick={reject}>
-            Dismiss
-          </Button>
+          <kbd class="hidden md:block text-11-regular text-text-weak">⌥D</kbd>
+          <IconButton
+            type="button"
+            variant="secondary"
+            size="large"
+            icon="close"
+            class="size-11 md:size-8"
+            aria-label="Dismiss"
+            onClick={reject}
+          />
         </div>
-        <Show when={confirm() || single()}>
-          <div class="flex flex-col items-center gap-0.5">
-            <kbd class="text-11-regular text-text-weak">↵</kbd>
-            <Button variant="primary" size="small" onClick={single() ? () => activate(store.selected) : submit}>
-              Submit
-            </Button>
-          </div>
-        </Show>
         <Show when={multiRequest()}>
           <div class="flex flex-col items-center gap-0.5">
-            <kbd class="text-11-regular text-text-weak">⇥</kbd>
-            <Button variant="ghost" size="small" onClick={() => cycleRequest(1)}>
-              Next question
-            </Button>
+            <kbd class="hidden md:block text-11-regular text-text-weak">⇥</kbd>
+            <IconButton
+              type="button"
+              variant="ghost"
+              size="large"
+              icon="arrow-right"
+              class="size-11 md:size-8"
+              aria-label="Next question"
+              onClick={() => cycleRequest(1)}
+            />
+          </div>
+        </Show>
+        <Show when={confirm() || single()}>
+          <div class="flex flex-col items-center gap-0.5">
+            <kbd class="hidden md:block text-11-regular text-text-weak">↵</kbd>
+            <IconButton
+              type="button"
+              variant="primary"
+              size="large"
+              icon="check"
+              class="size-11 md:size-8"
+              aria-label="Submit"
+              onClick={single() ? () => activate(store.selected) : submit}
+            />
           </div>
         </Show>
       </div>

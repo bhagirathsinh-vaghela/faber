@@ -1,56 +1,11 @@
 import path from "path"
 import type { WSContext } from "hono/ws"
-import z from "zod"
-import { BusEvent } from "@/bus/bus-event"
-import { GlobalBus } from "@/bus/global"
 import { Auth } from "../auth"
 import { Global } from "../global"
 import { Log } from "../util/log"
 
 export namespace Dictation {
   const log = Log.create({ service: "dictation" })
-
-  // A device without a mic (or without a secure origin) can't dictate. The pool
-  // is a global, in-memory drop for transcripts captured on a companion device:
-  // the companion appends here, any composer on any other device pulls an entry
-  // into its input and removes it. In-memory only — a restart clears it.
-  export namespace Pool {
-    export const Entry = z
-      .object({
-        id: z.string(),
-        text: z.string(),
-        timestamp: z.number(),
-      })
-      .meta({ ref: "DictationPoolEntry" })
-    export type Entry = z.infer<typeof Entry>
-
-    export const Event = {
-      Updated: BusEvent.define("dictation.pool.updated", z.object({ entries: Entry.array() })),
-    }
-
-    let entries: Entry[] = []
-
-    function emit() {
-      GlobalBus.emit("event", {
-        directory: "global",
-        payload: { type: Event.Updated.type, properties: { entries } },
-      })
-    }
-
-    export function list() {
-      return entries
-    }
-
-    export function append(text: string) {
-      entries.push({ id: crypto.randomUUID(), text, timestamp: Date.now() })
-      emit()
-    }
-
-    export function remove(id: string) {
-      entries = entries.filter((entry) => entry.id !== id)
-      emit()
-    }
-  }
 
   const PARAMS = {
     model: "nova-3",

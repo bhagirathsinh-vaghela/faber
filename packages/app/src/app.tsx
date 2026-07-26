@@ -45,7 +45,6 @@ import { Suspense } from "solid-js"
 // transcript can't paint until this chunk is loaded
 const sessionChunk = () => import("@/pages/session")
 const Home = lazy(() => import("@/pages/home"))
-const Companion = lazy(() => import("@/pages/companion"))
 const Session = lazy(sessionChunk)
 // The boot-time warm fetch is the request most likely to meet a flaky link, and
 // an unhandled rejection here would surface as a console error for a failure the
@@ -190,14 +189,6 @@ export function AppInterface(props: { defaultUrl?: string }) {
                 component={() => (
                   <Suspense fallback={<Loading />}>
                     <Home />
-                  </Suspense>
-                )}
-              />
-              <Route
-                path="/companion"
-                component={() => (
-                  <Suspense fallback={<Loading />}>
-                    <Companion />
                   </Suspense>
                 )}
               />
