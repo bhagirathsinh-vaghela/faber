@@ -6,6 +6,7 @@ import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { resolveThemeVariant, useTheme, withAlpha, type HexColor } from "@opencode-ai/ui/theme"
 import { useLanguage } from "@/context/language"
+import { loadChunk } from "@/utils/chunk"
 import { showToast } from "@opencode-ai/ui/toast"
 
 export interface TerminalProps extends ComponentProps<"div"> {
@@ -20,7 +21,7 @@ let shared: Promise<{ mod: typeof import("ghostty-web"); ghostty: Ghostty }> | u
 
 const loadGhostty = () => {
   if (shared) return shared
-  shared = import("ghostty-web")
+  shared = loadChunk(() => import("ghostty-web"))
     .then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
     .catch((err) => {
       shared = undefined

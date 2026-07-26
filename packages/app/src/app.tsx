@@ -1,5 +1,5 @@
 import "@/index.css"
-import { ErrorBoundary, Show, lazy, type ParentProps } from "solid-js"
+import { ErrorBoundary, Show, type ParentProps } from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@opencode-ai/ui/font"
@@ -37,6 +37,7 @@ import { HighlightsProvider } from "@/context/highlights"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
+import { lazy, loadChunk } from "@/utils/chunk"
 import { Suspense } from "solid-js"
 
 // eagerly start fetching the route chunks at boot so they download in parallel
@@ -46,7 +47,10 @@ const sessionChunk = () => import("@/pages/session")
 const Home = lazy(() => import("@/pages/home"))
 const Companion = lazy(() => import("@/pages/companion"))
 const Session = lazy(sessionChunk)
-sessionChunk()
+// The boot-time warm fetch is the request most likely to meet a flaky link, and
+// an unhandled rejection here would surface as a console error for a failure the
+// route load already retries on its own.
+loadChunk(sessionChunk).catch(() => undefined)
 const Loading = () => <div class="size-full" />
 
 function UiI18nBridge(props: ParentProps) {

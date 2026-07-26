@@ -14,6 +14,7 @@ import { createSignal } from "solid-js"
 const [hidden, setHidden] = createSignal(read())
 const waiters: Array<() => void> = []
 const hiddenWaiters: Array<() => void> = []
+const onlineWaiters: Array<() => void> = []
 
 // Network transitions, bumped on every online/offline event. navigator.onLine is
 // only a hint (MDN: a true value does not guarantee real connectivity), so the
@@ -40,7 +41,10 @@ function arm() {
   armed = true
   document.addEventListener("visibilitychange", sync)
   const bump = () => setNetwork((n) => n + 1)
-  window.addEventListener("online", bump)
+  window.addEventListener("online", () => {
+    bump()
+    onlineWaiters.splice(0).forEach((resolve) => resolve())
+  })
   window.addEventListener("offline", bump)
   sync()
 }
@@ -71,5 +75,14 @@ export const Visibility = {
   network() {
     arm()
     return network()
+  },
+  // Resolves the next time the browser reports a link (or already reports one).
+  // Chunk loading races this: a retry issued while offline burns an attempt for
+  // certain, so the loader waits here first. onLine is only a hint, so this is a
+  // scheduling aid, never a guarantee the fetch will succeed.
+  whenOnline() {
+    arm()
+    if (typeof navigator === "undefined" || navigator.onLine) return Promise.resolve()
+    return new Promise<void>((resolve) => onlineWaiters.push(resolve))
   },
 }
