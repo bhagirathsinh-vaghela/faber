@@ -160,8 +160,9 @@ render(
   root!,
 )
 
-// Register the no-op service worker so the app is installable as a PWA
-// (desktop standalone window, iOS home-screen app). It caches nothing — see
-// public/sw.js. DEV is skipped so it can't interfere with Vite HMR.
+// Registering the worker also makes the app installable as a PWA (desktop
+// standalone window, iOS home-screen app). It caches the immutable /assets/*
+// so a flaky link cannot break a lazily imported route — see public/sw.js.
+// DEV is skipped so it can't interfere with Vite HMR.
 if (!import.meta.env.DEV && "serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(() => undefined)
