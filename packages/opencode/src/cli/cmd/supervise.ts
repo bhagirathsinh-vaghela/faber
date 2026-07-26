@@ -252,8 +252,14 @@ export const SuperviseCommand = cmd({
         current = null
         return { ok: false, step: "cutover", detail: `relaunch on ${PORT} never became healthy` }
       }
-      const resumed = await resume(snapshot.busy)
+      // Re-arm BEFORE resuming. Both restore the liveness a reconnecting client
+      // checks before deciding whether the session it is sitting on is still
+      // alive, and rearm is a cheap GET per session while resume posts a prompt
+      // and can block for seconds — so doing rearm first shortens the window
+      // where a warm session reads as dead. The client also falls back to the
+      // persisted keepWarm intent, which closes the window that remains here.
       const rearmed = await rearm(snapshot.armed)
+      const resumed = await resume(snapshot.busy)
       return { ok: true, health: live, resumed, rearmed }
     }
 

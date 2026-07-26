@@ -201,7 +201,20 @@ export const {
             .recent()
             .then((x) => x.data ?? [])
             .catch(() => globalSync.data.recent_hub)
-          return recent.some((entry) => entry.sessionID === sessionID && (entry.busy || entry.pingAt !== undefined))
+          if (recent.some((entry) => entry.sessionID === sessionID && (entry.busy || entry.pingAt !== undefined)))
+            return true
+          // busy/pingAt are in-memory on the server, so a restart serves clients
+          // the instant it is healthy but before the supervisor has re-prompted
+          // busy sessions and re-armed warm ones. A client reconnecting inside
+          // that window sees neither flag and would bounce a session the user is
+          // sitting on home. keepWarm is the PERSISTED intent behind the daemon —
+          // it survives the restart and only an explicit stop clears it — so it
+          // distinguishes "not yet re-armed" from "deliberately stopped", which
+          // is the whole point of the liveness check.
+          return sdk.client.session
+            .get({ sessionID })
+            .then((x) => x.data?.keepWarm === true)
+            .catch(() => false)
         },
         addOptimisticMessage(input: {
           sessionID: string
