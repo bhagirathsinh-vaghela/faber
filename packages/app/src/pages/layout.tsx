@@ -1615,10 +1615,7 @@ export default function Layout(props: ParentProps) {
 
     return (
       <div class={`relative size-8 shrink-0 rounded ${props.class ?? ""}`}>
-        <div
-          class="size-full rounded overflow-clip"
-          classList={{ "ring-2 ring-icon-critical-base": missing() }}
-        >
+        <div class="size-full rounded overflow-clip" classList={{ "ring-2 ring-icon-critical-base": missing() }}>
           <Avatar
             fallback={name()}
             src={props.project.icon?.override}

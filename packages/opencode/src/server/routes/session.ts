@@ -468,6 +468,40 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
+      "/:sessionID/abort-turn",
+      describeRoute({
+        summary: "Abort the current turn",
+        description:
+          "Abort the in-flight turn without disarming the session. The ping daemon and keep-warm intent are left intact, so the session stays warm. This is the dock Stop; the full Stop is /abort.",
+        operationId: "session.abortTurn",
+        responses: {
+          200: {
+            description: "Turn aborted",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        // Turn-only Stop: cancel() aborts the in-flight turn but never touches
+        // the daemon (unlike /abort, which stops the daemon first). The session
+        // stays armed and warm.
+        SessionPrompt.cancel(sessionID)
+        return c.json(true)
+      },
+    )
+    .post(
       "/:sessionID/share",
       describeRoute({
         summary: "Share session",

@@ -686,9 +686,11 @@ export namespace Session {
       // with a request carrying a 1h cache_control marker and assert the split is
       // present. No version through 4.0.20 exposes these as typed fields, so
       // upgrading is not a fix; patching the schema would be the fallback.
-      const cacheCreation = (input.metadata?.["anthropic"]?.["usage"] as
-        | { cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number } }
-        | undefined)?.cache_creation
+      const cacheCreation = (
+        input.metadata?.["anthropic"]?.["usage"] as
+          | { cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number } }
+          | undefined
+      )?.cache_creation
       const cacheWrite5m = cacheCreation?.ephemeral_5m_input_tokens
       const cacheWrite1h = cacheCreation?.ephemeral_1h_input_tokens
 

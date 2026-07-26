@@ -4082,6 +4082,39 @@ export type SessionAbortResponses = {
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]
 
+export type SessionAbortTurnData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/abort-turn"
+}
+
+export type SessionAbortTurnErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAbortTurnError = SessionAbortTurnErrors[keyof SessionAbortTurnErrors]
+
+export type SessionAbortTurnResponses = {
+  /**
+   * Turn aborted
+   */
+  200: boolean
+}
+
+export type SessionAbortTurnResponse = SessionAbortTurnResponses[keyof SessionAbortTurnResponses]
+
 export type SessionUnshareData = {
   body?: never
   path: {

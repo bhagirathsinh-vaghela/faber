@@ -820,7 +820,8 @@ export const dict = {
   "workspace.delete.button": "Delete workspace",
   "project.close.failed.title": "Failed to close project",
   "project.notFound.title": "Directory not found",
-  "project.notFound.description": "This project's directory no longer exists on disk. Close it to remove it from the sidebar.",
+  "project.notFound.description":
+    "This project's directory no longer exists on disk. Close it to remove it from the sidebar.",
   "workspace.reset.title": "Reset workspace",
   "workspace.reset.confirm": 'Reset workspace "{{name}}"?',
   "workspace.reset.button": "Reset workspace",

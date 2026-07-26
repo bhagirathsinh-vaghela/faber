@@ -735,9 +735,7 @@ export namespace MessageV2 {
     const result = [] as MessageV2.WithParts[]
     for (const msg of newestFirst) {
       const boundary =
-        msg.info.role === "user" &&
-        answeredBy.has(msg.info.id) &&
-        msg.parts.some((part) => part.type === "compaction")
+        msg.info.role === "user" && answeredBy.has(msg.info.id) && msg.parts.some((part) => part.type === "compaction")
       if (boundary) {
         result.push(msg)
         const summaryID = answeredBy.get(msg.info.id)

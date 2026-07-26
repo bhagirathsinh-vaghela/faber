@@ -224,6 +224,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
   const working = createMemo(() => busy().busy)
+  // Something is in the box worth sending — text draft or pending comments.
+  const submittable = createMemo(() => prompt.dirty() || commentCount() > 0)
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
@@ -1092,10 +1094,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     },
   ])
 
-  // In-place stop (Esc / the streaming stop button): abort the turn and stay on
-  // the session. The turn's own completion disarms the ping daemon, so no
-  // navigation and no separate teardown call — this is NOT the stop-and-leave
-  // action the header/overview use.
+  // In-place stop (Esc / the dock stop button): abort only the in-flight turn,
+  // leaving the ping daemon armed and the session warm. abortTurn (not abort)
+  // is the turn-only route — this is NOT the stop-and-disarm-and-leave action
+  // the header/overview use.
   const abort = () => {
     const sessionID = params.id
     if (!sessionID) return
@@ -1106,7 +1108,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       pending.delete(sessionID)
       return
     }
-    void sdk.client.session.abort({ sessionID }).catch(() => {})
+    void sdk.client.session.abortTurn({ sessionID }).catch(() => {})
   }
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
@@ -1322,7 +1324,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const mode = store.mode
 
     if (text.trim().length === 0 && images.length === 0 && commentCount() === 0) {
-      if (working()) abort()
       return
     }
 
@@ -2537,7 +2538,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       name="mic"
                       class="size-6 md:size-4.5"
                       classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
-                      style={dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined}
+                      style={
+                        dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
+                      }
                     />
                   </Button>
                 </Tooltip>
@@ -2556,65 +2559,81 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Tooltip>
               </Show>
             </div>
-            <Tooltip
-              placement="top"
-              inactive={!prompt.dirty() && !working()}
-              value={
-                <Switch>
-                  <Match when={working()}>
-                    <div class="flex items-center gap-2">
-                      <span>{language.t("prompt.action.stop")}</span>
-                      <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
-                    </div>
-                  </Match>
-                  <Match when={true}>
-                    <div class="flex items-center gap-2">
-                      <span>{language.t("prompt.action.send")}</span>
-                      <Icon name="enter" size="small" class="text-icon-base" />
-                    </div>
-                  </Match>
-                </Switch>
-              }
-            >
-              <IconButton
-                // This is a FORM SUBMIT button, so it can't use the generic
-                // tapAction() helper (that binds onClick, which would race the
-                // native form onSubmit on desktop). It needs the submit wired to
-                // exactly ONE path per platform:
-                //   desktop — native type="submit" (mouse click + Enter).
-                //   touch   — pointerdown (see below), with type="button" so the
-                //             synthesized click can't ALSO submit the form.
-                // The touch trap: one tap emits pointerdown AND a synthesized
-                // click, and preventDefault on pointerdown does not cancel that
-                // click, so a type="submit" here would submit twice — which on a
-                // brand-new session ran session.create() twice and minted two
-                // sessions per tap. type="button" + the onClick swallow below kill
-                // the second path. handleSubmit also self-guards the create window.
-                type={coarse() ? "button" : "submit"}
-                disabled={!prompt.dirty() && !working() && commentCount() === 0}
-                icon={working() ? "stop" : "arrow-up"}
-                variant="primary"
-                class="size-11 md:h-6 md:w-4.5"
-                aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
-                onPointerDown={
-                  // iOS: with the keyboard up the editor holds focus, so tapping
-                  // this button first blurs the editor to dismiss the keyboard and
-                  // the native click->submit gets swallowed in that transition —
-                  // the user has to tap again. Drive the submit off pointerdown
-                  // (the trusted first touch). Coarse pointer only.
-                  coarse()
-                    ? (e: PointerEvent) => {
-                        if (!prompt.dirty() && !working() && commentCount() === 0) return
-                        e.preventDefault()
-                        handleSubmit(e)
-                      }
-                    : undefined
+            {/* Stop and Send are separate controls so both can show at once
+                (busy WITH a draft): Stop for the running turn, Send to inject
+                the draft into it. Send is always rightmost; Stop sits left of
+                it when both are present. */}
+            <Show when={working()}>
+              <Tooltip
+                placement="top"
+                value={
+                  <div class="flex items-center gap-2">
+                    <span>{language.t("prompt.action.stop")}</span>
+                    <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
+                  </div>
                 }
-                // Swallow the click the same tap synthesizes so it can never
-                // re-enter handleSubmit (mirrors the keyboard-toggle button).
-                onClick={coarse() ? (e: MouseEvent) => e.preventDefault() : undefined}
-              />
-            </Tooltip>
+              >
+                <IconButton
+                  type="button"
+                  icon="stop"
+                  variant="primary"
+                  class="size-11 md:h-6 md:w-4.5"
+                  aria-label={language.t("prompt.action.stop")}
+                  onClick={abort}
+                />
+              </Tooltip>
+            </Show>
+            <Show when={!working() || submittable()}>
+              <Tooltip
+                placement="top"
+                inactive={!submittable()}
+                value={
+                  <div class="flex items-center gap-2">
+                    <span>{language.t("prompt.action.send")}</span>
+                    <Icon name="enter" size="small" class="text-icon-base" />
+                  </div>
+                }
+              >
+                <IconButton
+                  // This is a FORM SUBMIT button, so it can't use the generic
+                  // tapAction() helper (that binds onClick, which would race the
+                  // native form onSubmit on desktop). It needs the submit wired to
+                  // exactly ONE path per platform:
+                  //   desktop — native type="submit" (mouse click + Enter).
+                  //   touch   — pointerdown (see below), with type="button" so the
+                  //             synthesized click can't ALSO submit the form.
+                  // The touch trap: one tap emits pointerdown AND a synthesized
+                  // click, and preventDefault on pointerdown does not cancel that
+                  // click, so a type="submit" here would submit twice — which on a
+                  // brand-new session ran session.create() twice and minted two
+                  // sessions per tap. type="button" + the onClick swallow below kill
+                  // the second path. handleSubmit also self-guards the create window.
+                  type={coarse() ? "button" : "submit"}
+                  disabled={!submittable()}
+                  icon="arrow-up"
+                  variant="primary"
+                  class="size-11 md:h-6 md:w-4.5"
+                  aria-label={language.t("prompt.action.send")}
+                  onPointerDown={
+                    // iOS: with the keyboard up the editor holds focus, so tapping
+                    // this button first blurs the editor to dismiss the keyboard and
+                    // the native click->submit gets swallowed in that transition —
+                    // the user has to tap again. Drive the submit off pointerdown
+                    // (the trusted first touch). Coarse pointer only.
+                    coarse()
+                      ? (e: PointerEvent) => {
+                          if (!submittable()) return
+                          e.preventDefault()
+                          handleSubmit(e)
+                        }
+                      : undefined
+                  }
+                  // Swallow the click the same tap synthesizes so it can never
+                  // re-enter handleSubmit (mirrors the keyboard-toggle button).
+                  onClick={coarse() ? (e: MouseEvent) => e.preventDefault() : undefined}
+                />
+              </Tooltip>
+            </Show>
           </div>
         </div>
         <Show when={!zen()}>

@@ -17,9 +17,7 @@ function browser(options: { failures: number; url?: string }) {
 
   const fail = () =>
     new Error(
-      options.url
-        ? `Failed to fetch dynamically imported module: ${options.url}`
-        : "Importing a module script failed.",
+      options.url ? `Failed to fetch dynamically imported module: ${options.url}` : "Importing a module script failed.",
     )
 
   const load = (specifier: string) => {

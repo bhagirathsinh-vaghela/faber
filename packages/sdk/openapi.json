@@ -2547,6 +2547,68 @@
         ]
       }
     },
+    "/session/{sessionID}/abort-turn": {
+      "post": {
+        "operationId": "session.abortTurn",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Abort the current turn",
+        "description": "Abort the in-flight turn without disarming the session. The ping daemon and keep-warm intent are left intact, so the session stays warm. This is the dock Stop; the full Stop is /abort.",
+        "responses": {
+          "200": {
+            "description": "Turn aborted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.abortTurn({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/share": {
       "post": {
         "operationId": "session.share",
@@ -12131,7 +12193,9 @@
               "cacheRead": 0,
               "cacheWrite": 0,
               "output": 0,
-              "reasoning": 0
+              "reasoning": 0,
+              "cacheWrite5m": 0,
+              "cacheWrite1h": 0
             },
             "type": "object",
             "properties": {
@@ -12148,6 +12212,14 @@
                 "type": "number"
               },
               "reasoning": {
+                "type": "number"
+              },
+              "cacheWrite5m": {
+                "default": 0,
+                "type": "number"
+              },
+              "cacheWrite1h": {
+                "default": 0,
                 "type": "number"
               }
             },
@@ -14946,6 +15018,39 @@
                 "description": "Auto-inject background task results when they complete (default: false)",
                 "type": "boolean"
               }
+            }
+          },
+          "pricing": {
+            "description": "Per-million-token prices keyed by model ID, e.g. 'anthropic/claude-opus-5'. Takes precedence over models.dev, which is used for any model absent here. Lives in config so prices can be corrected without shipping a new binary.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "description": "Dollars per million input tokens",
+                  "type": "number"
+                },
+                "output": {
+                  "description": "Dollars per million output tokens",
+                  "type": "number"
+                },
+                "cacheRead": {
+                  "description": "Dollars per million cache-read tokens (Anthropic bills these at 0.1x input)",
+                  "type": "number"
+                },
+                "cacheWrite5m": {
+                  "description": "Dollars per million 5-minute-TTL cache-write tokens (Anthropic bills these at 1.25x input)",
+                  "type": "number"
+                },
+                "cacheWrite1h": {
+                  "description": "Dollars per million 1-hour-TTL cache-write tokens (Anthropic bills these at 2x input)",
+                  "type": "number"
+                }
+              },
+              "required": ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h"]
             }
           },
           "anthropic": {

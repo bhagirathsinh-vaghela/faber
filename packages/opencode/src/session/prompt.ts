@@ -386,9 +386,7 @@ export namespace SessionPrompt {
       // clock can reorder the summary before its own request, but the parentID
       // pointer is unchanged, so a completed task can never look pending again.
       const satisfied = new Set(
-        msgs.flatMap((msg) =>
-          msg.info.role === "assistant" && msg.info.finish ? [msg.info.parentID] : [],
-        ),
+        msgs.flatMap((msg) => (msg.info.role === "assistant" && msg.info.finish ? [msg.info.parentID] : [])),
       )
 
       let lastUser: MessageV2.User | undefined

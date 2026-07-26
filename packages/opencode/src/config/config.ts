@@ -1266,7 +1266,9 @@ export namespace Config {
           z.object({
             input: z.number().describe("Dollars per million input tokens"),
             output: z.number().describe("Dollars per million output tokens"),
-            cacheRead: z.number().describe("Dollars per million cache-read tokens (Anthropic bills these at 0.1x input)"),
+            cacheRead: z
+              .number()
+              .describe("Dollars per million cache-read tokens (Anthropic bills these at 0.1x input)"),
             cacheWrite5m: z
               .number()
               .describe("Dollars per million 5-minute-TTL cache-write tokens (Anthropic bills these at 1.25x input)"),
