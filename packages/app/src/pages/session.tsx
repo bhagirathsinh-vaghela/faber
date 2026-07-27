@@ -2656,6 +2656,14 @@ export default function Page() {
                             scrollRef={scroller}
                             data={visibleUserMessages()}
                             bufferSize={600}
+                            // Turns range from ~80px to ~6000px, and a session opens
+                            // at the tail, so estimating from whatever is measured
+                            // there extrapolates the long final turns across the
+                            // whole history. The scroll range then collapses as
+                            // earlier turns measure in, dragging the viewport with
+                            // it. A fixed hint near the median keeps the range
+                            // honest before anything is measured.
+                            itemSize={900}
                             // shift only when turns PREPEND (history load-earlier):
                             // it anchors the view by unshifting virtua's size
                             // cache. Left on for appends it slides every cached

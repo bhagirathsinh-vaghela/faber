@@ -27,8 +27,12 @@
     height: 24px;
   }
 
+  /* An auto height resolves against the viewBox aspect ratio, which reports 0
+     while an ancestor is skipped by content-visibility and then snaps to the
+     real size on render. Inside the virtualized transcript that fires a resize
+     per icon per scroll, remeasuring turns and shifting the scroll position. */
   [data-slot="icon-svg"] {
     width: 100%;
-    height: auto;
+    height: 100%;
   }
 }

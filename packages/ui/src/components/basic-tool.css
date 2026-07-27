@@ -1,5 +1,10 @@
 [data-component="tool-trigger"] {
   content-visibility: auto;
+  /* A skipped row with no remembered size falls back to the min-height floor,
+     then grows to its real height on render. Naming the rendered height keeps
+     the estimate honest so scrolling past an unrendered row does not resize the
+     turn around it. */
+  contain-intrinsic-size: auto 44px;
   width: 100%;
   display: flex;
   align-items: center;

@@ -1,5 +1,9 @@
 [data-component="diff"] {
   content-visibility: auto;
+  /* Without an intrinsic size a skipped diff measures as zero and snaps to its
+     real height on render, so scrolling back through a transcript resizes turns
+     under the viewport. `auto` remembers the last rendered size. */
+  contain-intrinsic-size: auto none;
 
   [data-slot="diff-hunk-separator-line-number"] {
     position: sticky;
