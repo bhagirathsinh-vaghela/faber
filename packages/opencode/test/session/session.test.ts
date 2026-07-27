@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { Session } from "../../src/session"
+import { MessageV2 } from "../../src/session/message-v2"
+import { Identifier } from "../../src/id/id"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
 import { Instance } from "../../src/project/instance"
@@ -102,6 +104,64 @@ describe("session index", () => {
 
         await Session.remove(parent.id)
         expect(await ids()).not.toContain(parent.id)
+      },
+    })
+  })
+
+  test("message cache serves completed turns and drops them on any write", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const session = await Session.create({})
+
+        async function assistant(completed: boolean) {
+          const msg = {
+            id: Identifier.ascending("message"),
+            role: "assistant" as const,
+            sessionID: session.id,
+            mode: "default",
+            agent: "default",
+            path: { cwd: projectRoot, root: projectRoot },
+            cost: 0,
+            tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: "gpt-4",
+            providerID: "openai",
+            parentID: Identifier.ascending("message"),
+            time: completed ? { created: Date.now(), completed: Date.now() } : { created: Date.now() },
+          }
+          await Session.updateMessage(msg)
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: msg.id,
+            sessionID: session.id,
+            type: "text",
+            text: "first",
+          })
+          return msg
+        }
+
+        const done = await assistant(true)
+        const first = await MessageV2.get({ sessionID: session.id, messageID: done.id })
+        const second = await MessageV2.get({ sessionID: session.id, messageID: done.id })
+        expect(second).toBe(first)
+        expect(second.parts.map((p) => (p.type === "text" ? p.text : p.type))).toEqual(["first"])
+
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: done.id,
+          sessionID: session.id,
+          type: "text",
+          text: "second",
+        })
+        const afterWrite = await MessageV2.get({ sessionID: session.id, messageID: done.id })
+        expect(afterWrite).not.toBe(first)
+        expect(afterWrite.parts.map((p) => (p.type === "text" ? p.text : p.type))).toEqual(["first", "second"])
+
+        const streaming = await assistant(false)
+        const live = await MessageV2.get({ sessionID: session.id, messageID: streaming.id })
+        expect(await MessageV2.get({ sessionID: session.id, messageID: streaming.id })).not.toBe(live)
+
+        await Session.remove(session.id)
       },
     })
   })

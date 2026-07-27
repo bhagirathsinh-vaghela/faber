@@ -700,16 +700,58 @@ export namespace MessageV2 {
     return result
   })
 
+  // Completed assistant turns are immutable, so re-reading one costs a directory
+  // scan plus a file read per part for bytes that cannot have changed. Scrolling
+  // back re-requests the whole window each time (the client's load-more grows the
+  // limit rather than paging), so the same messages are re-read on every step.
+  //
+  // Budgeted in BYTES, not entries: part payloads range from a few hundred bytes
+  // to ~280KB, so an entry count cannot bound the footprint. A record larger than
+  // ENTRY_MAX is served but never stored, so one huge turn cannot evict the rest.
+  const cache = new Map<string, { record: WithParts; size: number }>()
+  const CACHE_MAX = 32 * 1024 * 1024
+  const ENTRY_MAX = 256 * 1024
+  let cached = 0
+
+  export function uncache(messageID: string) {
+    const hit = cache.get(messageID)
+    if (!hit) return
+    cached -= hit.size
+    cache.delete(messageID)
+  }
+
+  function remember(record: WithParts, size: number) {
+    if (size > ENTRY_MAX) return
+    uncache(record.info.id)
+    cache.set(record.info.id, { record, size })
+    cached += size
+    for (const key of cache.keys()) {
+      if (cached <= CACHE_MAX) break
+      uncache(key)
+    }
+  }
+
   export const get = fn(
     z.object({
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message"),
     }),
     async (input): Promise<WithParts> => {
-      return {
+      const hit = cache.get(input.messageID)
+      if (hit) {
+        cache.delete(input.messageID)
+        cache.set(input.messageID, hit)
+        return hit.record
+      }
+      const record = {
         info: await Storage.read<MessageV2.Info>(["message", input.sessionID, input.messageID]),
         parts: await parts(input.messageID),
       }
+      // Only a finished assistant turn is safe to keep: a streaming one is
+      // rewritten part by part, and a user message can still gain summary diffs.
+      if (record.info.role === "assistant" && record.info.time.completed)
+        remember(record, JSON.stringify(record).length)
+      return record
     },
   )
 

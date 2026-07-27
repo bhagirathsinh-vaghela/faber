@@ -557,6 +557,7 @@ export namespace Session {
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     await Storage.write(["message", msg.sessionID, msg.id], msg)
+    MessageV2.uncache(msg.id)
     // A message write is the only real-turn signal (pings never persist a
     // message). Stamp lastActivity with touch:false so it doesn't bump
     // time.updated; the guard keeps it to one write once the timestamp settles
@@ -597,6 +598,7 @@ export namespace Session {
     }),
     async (input) => {
       await Storage.remove(["message", input.sessionID, input.messageID])
+      MessageV2.uncache(input.messageID)
       broadcasted.delete(input.messageID)
       Bus.publish(MessageV2.Event.Removed, {
         sessionID: input.sessionID,
@@ -614,6 +616,7 @@ export namespace Session {
     }),
     async (input) => {
       await Storage.remove(["part", input.messageID, input.partID])
+      MessageV2.uncache(input.messageID)
       Bus.publish(MessageV2.Event.PartRemoved, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -643,6 +646,7 @@ export namespace Session {
     const part = "delta" in input ? input.part : input
     const delta = "delta" in input ? input.delta : undefined
     await Storage.write(["part", part.messageID, part.id], part)
+    MessageV2.uncache(part.messageID)
     // Publish the full accumulated part to the in-process bus so every consumer
     // (TUI, share sync) sees real text. The O(n^2)-on-the-wire cost of resending
     // the growing text is a WEB-SSE concern only, so the blanking lives at that
