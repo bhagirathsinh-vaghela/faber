@@ -495,7 +495,7 @@ export namespace Session {
       const completed = new Set<string>()
       // MessageV2.stream yields newest-first; mirror MessageV2.filterCompacted
       for await (const msg of MessageV2.stream(input.sessionID)) {
-        if (input.limit && result.length >= input.limit) break
+        if (input.limit !== undefined && result.length >= input.limit) break
         if (input.after && msg.info.id <= input.after) break
         result.push(msg)
         if (

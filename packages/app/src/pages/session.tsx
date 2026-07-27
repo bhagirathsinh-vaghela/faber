@@ -2339,7 +2339,14 @@ export default function Page() {
           >
             <Switch>
               <Match when={params.id}>
-                <Show when={activeMessage()}>
+                <Show
+                  when={messagesReady()}
+                  fallback={
+                    <div class="flex-1 flex items-center justify-center text-text-weak">
+                      <Spinner class="size-6" />
+                    </div>
+                  }
+                >
                   <Show
                     when={!mobileChanges()}
                     fallback={

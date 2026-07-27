@@ -1468,6 +1468,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         })
       if (session) {
         created = session.id
+        // Seed BEFORE navigating: the session page reads the store on mount, so
+        // arriving already-hydrated is what removes the two blocking fetches
+        // from the first paint. Seeding after would lose the race it exists to win.
+        sync.session.seed(session, sessionDirectory)
         // Creating a session is an explicit open — declare keep-warm intent up
         // front (same client + directory used to create it). The organic turn
         // about to run also sets it, but only on completion; arming here closes

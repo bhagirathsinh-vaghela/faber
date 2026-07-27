@@ -6,7 +6,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import { Snapshot } from "@/utils/snapshot"
-import type { Message, Part } from "@opencode-ai/sdk/v2/client"
+import type { Message, Part, Session } from "@opencode-ai/sdk/v2/client"
 
 const keyFor = (directory: string, id: string) => `${directory}\n${id}`
 
@@ -281,6 +281,39 @@ export const {
             // stays available behind the delta.
             setMeta("limit", key, messages.length)
             setMeta("complete", key, false)
+          })
+        },
+        // Seed a just-created session into the store so the page it is about to
+        // navigate to paints without waiting on the network. The creating client
+        // already holds the full Info the GET would return, and a session that
+        // has never been prompted has no messages to fetch, so both round trips
+        // are pure latency in front of the first paint. CONTRACT: only for a
+        // session created in THIS gesture — seeding one that already has server
+        // state would mark an empty transcript hydrated and suppress the fetch
+        // that would have filled it.
+        seed(session: Session, directory?: string) {
+          const dir = directory ?? sdk.directory
+          const key = keyFor(dir, session.id)
+          const [store, setStore] = globalSync.child(dir)
+          if (store.message[session.id] !== undefined) return
+          if (meta.limit[key] !== undefined) return
+
+          batch(() => {
+            setStore(
+              "session",
+              produce((draft) => {
+                const match = Binary.search(draft, session.id, (s) => s.id)
+                if (match.found) draft[match.index] = session
+                else draft.splice(match.index, 0, session)
+              }),
+            )
+            setStore("message", session.id, [])
+            // limit is the loaded window, which is genuinely 0 here, and it
+            // doubles as the hydrated flag (sync tests `!== undefined`, so 0
+            // reads as hydrated). complete stops history.more() from paging
+            // behind a session that has nothing behind it.
+            setMeta("limit", key, 0)
+            setMeta("complete", key, true)
           })
         },
         // Heal the OPEN session's transcript. CONTRACT: only call this for the
