@@ -70,7 +70,7 @@ function computeStatusFromPart(part: PartType | undefined, t: Translator): strin
       case "bash":
         return t("ui.sessionTurn.status.runningCommands")
       default:
-        return undefined
+        return t("ui.sessionTurn.status.callingTool", { tool: part.tool })
     }
   }
   if (part.type === "reasoning") {
