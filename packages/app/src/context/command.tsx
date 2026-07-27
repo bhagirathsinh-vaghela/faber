@@ -1,4 +1,4 @@
-import { createEffect, createMemo, onCleanup, onMount, type Accessor } from "solid-js"
+import { createEffect, createMemo, onCleanup, onMount, untrack, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -218,6 +218,24 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
 
       for (const opt of registered()) {
         const id = actionId(opt.id)
+        // Every setCatalog re-serializes the whole catalog and writes it, so
+        // rewriting an entry that did not change costs a full stringify of all
+        // of them. This effect re-runs whenever any registration reads state
+        // that churns (open tab, selected lines, route params), so the skip is
+        // what keeps typing off the persistence path entirely.
+        // untrack: this effect writes the catalog, so a tracked read of it
+        // would re-enter on every write.
+        const prev = untrack(() => catalog[id])
+        if (
+          prev &&
+          prev.title === opt.title &&
+          prev.description === opt.description &&
+          prev.category === opt.category &&
+          prev.keybind === opt.keybind &&
+          prev.slash === opt.slash
+        )
+          continue
+
         setCatalog(id, {
           title: opt.title,
           description: opt.description,

@@ -217,6 +217,13 @@ function localStorageWithPrefix(prefix: string): SyncStorage {
     },
     setItem: (key, value) => {
       const name = item(key)
+      // makePersisted re-serializes and writes the WHOLE blob on every
+      // setStore call, so one effect touching N keys of a store emits N
+      // byte-identical writes. localStorage is synchronous and disk-backed, so
+      // the duplicates block the main thread and cost mobile battery for no
+      // state change. The cache holds the last written bytes; equal means the
+      // write has nothing to do.
+      if (cacheGet(name) === value) return
       cacheSet(name, value)
       if (fallback.disabled) return
       try {
@@ -259,6 +266,7 @@ function localStorageDirect(): SyncStorage {
       return stored
     },
     setItem: (key, value) => {
+      if (cacheGet(key) === value) return
       cacheSet(key, value)
       if (fallback.disabled) return
       try {
