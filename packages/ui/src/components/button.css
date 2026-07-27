@@ -49,7 +49,7 @@
     color: var(--text-strong);
 
     [data-slot="icon-svg"] {
-      color: var(--icon-base);
+      color: var(--icon-strong-base);
     }
 
     /* :hover gated to hover-capable pointers: iOS keeps :hover applied after a

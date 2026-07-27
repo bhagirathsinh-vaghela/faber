@@ -161,9 +161,6 @@ export function SessionHeader() {
                   iconSize="medium"
                   variant={layout.companion.opened() ? "primary" : "ghost"}
                   class="size-10 shrink-0 p-0"
-                  classList={{
-                    "[&_[data-slot=icon-svg]]:!text-icon-strong-base": !layout.companion.opened(),
-                  }}
                   onClick={() => layout.companion.toggle()}
                   aria-pressed={layout.companion.opened()}
                   aria-label={
@@ -218,7 +215,7 @@ export function SessionHeader() {
                       onClick={toggleWarm}
                       aria-label={language.t("session.keepWarm.arm")}
                       aria-pressed={currentSession()?.keepWarm === true}
-                      class="flex items-center justify-center size-6 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!size-4"
+                      class="flex items-center justify-center size-6 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!size-4 [&_[data-component=icon]]:!text-icon-strong-base"
                       classList={{
                         "opacity-100": currentSession()?.keepWarm === true,
                         "opacity-40": !currentSession()?.keepWarm,

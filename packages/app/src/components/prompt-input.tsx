@@ -2435,7 +2435,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <Button
                   type="button"
                   variant="ghost"
-                  class={`md:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base`}
+                  class={`md:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
                   onClick={() => setDockInfoOpen((v) => !v)}
                   aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                   aria-expanded={dockInfoOpen()}
@@ -2459,7 +2459,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:size-6"} items-center justify-center [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current`}
+                    class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:size-6"} items-center justify-center`}
                     onClick={() => dialog.show(() => <DialogDock />)}
                     aria-label="Customize fields"
                   >
@@ -2529,7 +2529,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class={`${actionButton()} ${actionIcon()} [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current`}
+                    class={`${actionButton()} ${actionIcon()}`}
                     // pointerdown, not click/mousedown: on iOS a synthesized
                     // mousedown fires too late to count as a user gesture, so
                     // focus() there won't raise the keyboard. pointerdown fires
@@ -2563,13 +2563,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    // The !important icon color is scoped to :not([data-dictation-
-                    // focused]) so that when this mic is the active dictation
-                    // target, the inline agent-color style below wins on mobile
-                    // too (on desktop md:!text-current already lets it through).
-                    // Without the exclusion the !important base color beat the
-                    // inline color and the mic never tinted on touch.
-                    class={`${actionButton()} ${actionIcon()} [&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-icon-strong-base md:[&:not([data-dictation-focused])_[data-slot=icon-svg]]:!text-current`}
+                    class={`${actionButton()} ${actionIcon()}`}
                     data-dictation-toggle
                     data-dictation-focused={dictationTargeted() ? "" : undefined}
                     onClick={toggleDictation}
@@ -2593,7 +2587,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class={`${actionButton()} ${actionIcon()} [&_[data-slot=icon-svg]]:!text-icon-strong-base md:[&_[data-slot=icon-svg]]:!text-current`}
+                    class={`${actionButton()} ${actionIcon()}`}
                     onClick={() => fileInputRef.click()}
                     aria-label={language.t("prompt.action.attachFile")}
                   >
