@@ -1451,8 +1451,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
     if (!session) return
 
-    props.onSubmit?.()
-
     const model = {
       modelID: currentModel.id,
       providerID: currentModel.provider.id,
@@ -1479,6 +1477,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     if (mode === "shell") {
       clearInput()
+      props.onSubmit?.()
       client.session
         .shell({
           sessionID: session.id,
@@ -1502,6 +1501,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const customCommand = sync.data.command.find((c) => c.name === commandName)
       if (customCommand) {
         clearInput()
+        props.onSubmit?.()
         client.session
           .command({
             sessionID: session.id,
@@ -1768,17 +1768,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     clearInput()
     addOptimisticMessage()
 
+    // Re-arms follow and settles the transcript to the bottom. Runs AFTER the
+    // optimistic message mounts: settleToBottom exits only once scrollHeight
+    // holds steady, so starting it before the message exists makes it settle
+    // against a height that is about to change and burn its full frame budget.
+    props.onSubmit?.()
+
+    // Optimistic own-turn busy: flip the operative store instantly so Send
+    // becomes Stop on the press instead of waiting for the server to publish
+    // session.busy over SSE (or the 5s reconcile tick). Without this the only
+    // feedback for a press is the button disabling, which reads as "nothing
+    // happened" and invites a second press. The reconcile tick confirms it, and
+    // the send-failure path below clears it. busySelf:true — this is our turn.
+    if (sessionDirectory === projectDirectory) {
+      sync.set("session_busy", session.id, { busy: true, busySelf: true, busyDescendant: false })
+    }
+
     const waitForWorktree = async () => {
       const worktree = WorktreeState.get(sessionDirectory)
       if (!worktree || worktree.status !== "pending") return true
-
-      if (sessionDirectory === projectDirectory) {
-        // Optimistic own-turn busy: flip the operative store instantly so the
-        // spinner shows the moment the user sends, without waiting up to 5s for
-        // the reconcile tick. The next tick confirms (or clears, if the send
-        // never started a turn). busySelf:true — this is our own turn.
-        sync.set("session_busy", session.id, { busy: true, busySelf: true, busyDescendant: false })
-      }
 
       const controller = new AbortController()
 

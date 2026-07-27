@@ -83,7 +83,11 @@ export function DictationOverlay(props: {
     document.removeEventListener("pointerdown", handlePointer, true)
     if (done) return
     const text = props.dictation.text().trim()
-    props.dictation.stop()
+    // Same deferral as finish(): teardown (AudioContext.close, track.stop,
+    // socket close) is slow on mobile Safari, and this path runs inside the
+    // host's own action — submitting while dictating unmounts the overlay, so a
+    // synchronous stop here blocks that submit.
+    setTimeout(() => props.dictation.stop())
     if (text) props.onStash(text)
   })
 
