@@ -180,8 +180,12 @@ export const SuperviseCommand = cmd({
       return { busy, armed }
     }
 
+    // Only the parent turn is resumed. A subtask runs as its own session that
+    // the restart does not relaunch, so its result never arrives — without
+    // being told, the parent waits forever on work that is already dead.
     const CONTINUE_TEXT =
-      "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing."
+      "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing." +
+      " In-flight subtasks are NOT restarted: any subtask you had running was lost and its result will never arrive, so relaunch it if you need it."
 
     async function resume(sessions: SessionRef[]) {
       const results = []
