@@ -992,6 +992,7 @@ export namespace SessionPrompt {
       })
     }
 
+    const mcpTitles = await MCP.titles()
     for (const [key, item] of Object.entries(await MCP.tools())) {
       const execute = item.execute
       if (!execute) continue
@@ -1078,7 +1079,7 @@ export namespace SessionPrompt {
         }
 
         return {
-          title: "",
+          title: mcpTitles[key] ?? "",
           metadata,
           output: truncated.content,
           attachments,

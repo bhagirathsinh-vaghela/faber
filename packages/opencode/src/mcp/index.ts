@@ -830,6 +830,28 @@ export namespace MCP {
     return result
   }
 
+  // Human-readable label per executable tool key, for UI display only. The MCP
+  // spec makes `annotations.title` the display name and `name` the programmatic
+  // id, so a server that supplies one gets "Evaluate JavaScript" instead of
+  // "browser_evaluate". Keyed identically to tools() so a caller holding a tool
+  // key can look one up directly.
+  export async function titles() {
+    const result: Record<string, string> = {}
+    const s = await state()
+    const clientsSnapshot = await clients()
+
+    for (const clientName of Object.keys(clientsSnapshot)) {
+      if (s.status[clientName]?.status !== "connected") continue
+      const toolsResult = s.tools[clientName]
+      if (!toolsResult) continue
+      for (const mcpTool of toolsResult.tools) {
+        const title = mcpTool.annotations?.title
+        if (title) result[toolKey(clientName, mcpTool.name)] = title
+      }
+    }
+    return result
+  }
+
   export async function prompts() {
     const s = await state()
     const clientsSnapshot = await clients()

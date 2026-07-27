@@ -24,6 +24,7 @@ const BOX_TYPES: { key: string; label: string }[] = [
   { key: "websearch", label: "Web search" },
   { key: "todowrite", label: "Todo write" },
   { key: "question", label: "Question" },
+  { key: "mcp", label: "MCP & other tools" },
 ]
 
 export const SettingsLayout: Component = () => {

@@ -33,7 +33,6 @@ import { useDialog } from "../context/dialog"
 import { Dialog } from "./dialog"
 import { useI18n } from "../context/i18n"
 import { BasicTool } from "./basic-tool"
-import { GenericTool } from "./basic-tool"
 import { TextShimmer } from "./text-shimmer"
 import { Button } from "./button"
 import { Card } from "./card"
@@ -43,7 +42,7 @@ import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
 import { findLast } from "@opencode-ai/util/array"
-import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/path"
+import { getDirectory as _getDirectory, getFilename, truncateMiddle } from "@opencode-ai/util/path"
 import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { CopyButton } from "./copy-button"
@@ -836,6 +835,9 @@ export interface ToolProps {
   input: Record<string, any>
   metadata: Record<string, any>
   tool: string
+  // Server-supplied display label (MCP `annotations.title`). Absent for tools
+  // whose server advertises none, so callers fall back to the tool id.
+  title?: string
   output?: string
   status?: string
   hideDetails?: boolean
@@ -866,6 +868,54 @@ export function getTool(name: string) {
 export const ToolRegistry = {
   register: registerTool,
   render: getTool,
+}
+
+// Per-VALUE cap, not a cap on how many args are shown: every argument is part
+// of what identifies the call, so dropping some makes two different calls look
+// identical. Long values are what actually break the row, so each is truncated
+// individually and the header wraps.
+const GENERIC_ARG_MAX = 80
+
+function genericArg(value: unknown) {
+  const text = typeof value === "string" ? value : JSON.stringify(value)
+  if (text === undefined) return undefined
+  return truncateMiddle(text.replace(/\s+/g, " ").trim(), GENERIC_ARG_MAX)
+}
+
+// Fallback for every tool with no registered renderer — MCP and plugin tools.
+// Their names are opaque, so the call is unreadable without its arguments: all
+// of them go inline in the header, the full input and output into the body.
+// Box-typed as "mcp" rather than the tool id so one settings row governs the
+// collapse default for all of them instead of one row per discovered tool.
+function GenericTool(props: ToolProps) {
+  const args = createMemo(() =>
+    Object.entries(props.input).flatMap(([key, value]) => {
+      const formatted = genericArg(value)
+      return formatted ? [`${key}=${formatted}`] : []
+    }),
+  )
+
+  const body = createMemo(() => {
+    const sections: string[] = []
+    if (Object.keys(props.input).length) sections.push("```json\n" + JSON.stringify(props.input, null, 2) + "\n```")
+    if (props.output) sections.push("```\n" + stripAnsi(props.output) + "\n```")
+    return sections.join("\n\n")
+  })
+
+  return (
+    <BasicTool
+      {...props}
+      icon="mcp"
+      tool="mcp"
+      trigger={{ title: props.title || props.tool, subtitle: props.title ? props.tool : undefined, args: args() }}
+    >
+      <Show when={body()}>
+        <div data-component="tool-output" data-scrollable>
+          <Markdown text={body()} complete />
+        </div>
+      </Show>
+    </BasicTool>
+  )
 }
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
@@ -955,6 +1005,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             input={input()}
             tool={part.tool}
             metadata={metadata()}
+            // @ts-expect-error
+            title={part.state.title}
             // @ts-expect-error
             output={part.state.output}
             status={part.state.status}
@@ -1292,6 +1344,8 @@ ToolRegistry.register({
           input={input}
           tool={part.tool}
           metadata={metadata}
+          // @ts-expect-error
+          title={part.state.title}
           // @ts-expect-error
           output={part.state.output}
           status={part.state.status}
