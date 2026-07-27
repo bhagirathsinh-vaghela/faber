@@ -1329,10 +1329,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // Guards the new-session create window against a double-submit from ANY source
   // (a touch pointerdown+click pair, a genuine rapid double Enter/tap, a future
   // handler): two concurrent handleSubmit calls on a session-less view would each
-  // run session.create() and mint two root sessions. The flag is held only across
-  // the await that creates the session; once one is in flight or created, a second
-  // submit is dropped. Not reactive — a plain instance-scoped latch.
+  // run session.create() and mint two root sessions.
+  //
+  // The latch spans the whole session-less window, not just the create round
+  // trip. navigate() commits params.id on a later tick (solid-router routes it
+  // through startTransition), so releasing the moment the POST resolves leaves a
+  // gap where the latch is down and info() is still undefined — a submit landing
+  // there sees a session-less view again and mints a duplicate. Releasing is
+  // therefore driven by the view returning to session-less (below) or by a failed
+  // create, never by the create resolving. The route keeps one component instance
+  // across /session -> /session/:id, so the latch survives the navigation.
   let creating = false
+  createEffect(
+    on(
+      () => params.id,
+      (id) => {
+        if (!id) creating = false
+      },
+    ),
+  )
 
   const handleSubmit = async (event: Event) => {
     event.preventDefault()
@@ -1422,6 +1437,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
 
     let session = info()
+    // A root session minted by this submit exists only to carry the prompt that
+    // follows. If that prompt never lands, the record is an orphan: zero
+    // messages, nothing to resume, but it still lists and still counts as needing
+    // attention. Reap it on the failure paths so a session never outlives the
+    // send that justified it. Only ever set for a session created right here —
+    // an existing session is the user's and is never reaped on a failed send.
+    let created: string | undefined
+    const reapCreated = () => {
+      if (!created) return
+      const id = created
+      created = undefined
+      void client.session.delete({ sessionID: id, directory: sessionDirectory }).catch(() => {})
+    }
     if (!session && isNewSession) {
       // Drop a concurrent submit on a session-less view: the first one owns the
       // create, a second would mint a duplicate root session.
@@ -1435,12 +1463,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             title: language.t("prompt.toast.sessionCreateFailed.title"),
             description: errorMessage(err),
           })
+          creating = false
           return undefined
         })
-        .finally(() => {
-          creating = false
-        })
       if (session) {
+        created = session.id
         // Creating a session is an explicit open — declare keep-warm intent up
         // front (same client + directory used to create it). The organic turn
         // about to run also sets it, but only on completion; arming here closes
@@ -1490,6 +1517,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             title: language.t("prompt.toast.shellSendFailed.title"),
             description: errorMessage(err),
           })
+          reapCreated()
           restoreInput()
         })
       return
@@ -1523,6 +1551,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               title: language.t("prompt.toast.commandSendFailed.title"),
               description: errorMessage(err),
             })
+            reapCreated()
             restoreInput()
           })
         return
@@ -1794,6 +1823,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         if (sessionDirectory === projectDirectory) {
           sync.set("session_busy", session.id, { busy: false, busySelf: false, busyDescendant: false })
         }
+        reapCreated()
         removeOptimisticMessage()
         for (const item of commentItems) {
           prompt.context.add({
@@ -1891,6 +1921,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         title: language.t("prompt.toast.promptSendFailed.title"),
         description: errorMessage(err),
       })
+      reapCreated()
       removeOptimisticMessage()
       for (const item of commentItems) {
         prompt.context.add({
