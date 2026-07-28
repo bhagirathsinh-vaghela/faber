@@ -6,6 +6,7 @@ import { Agent } from "@/agent/agent"
 import { Snapshot } from "@/snapshot"
 import { SessionSummary } from "./summary"
 import { Bus } from "@/bus"
+import { SessionRecent } from "./recent"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { Plugin } from "@/plugin"
@@ -435,6 +436,7 @@ export namespace SessionProcessor {
               continue
             }
             input.assistantMessage.error = error
+            void SessionRecent.setError(input.assistantMessage.sessionID, true)
             Bus.publish(Session.Event.Error, {
               sessionID: input.assistantMessage.sessionID,
               error: input.assistantMessage.error,

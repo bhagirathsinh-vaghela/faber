@@ -2,6 +2,7 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Identifier } from "@/id/id"
 import { Instance } from "@/project/instance"
+import { SessionRecent } from "@/session/recent"
 import { Log } from "@/util/log"
 import z from "zod"
 
@@ -118,6 +119,7 @@ export namespace Question {
         resolve,
         reject,
       }
+      void SessionRecent.setQuestion(input.sessionID, true)
       Bus.publish(Event.Asked, info)
     })
   }
@@ -132,6 +134,8 @@ export namespace Question {
     delete s.pending[input.requestID]
 
     log.info("replied", { requestID: input.requestID, answers: input.answers })
+
+    await settle(existing.info.sessionID)
 
     Bus.publish(Event.Replied, {
       sessionID: existing.info.sessionID,
@@ -153,12 +157,23 @@ export namespace Question {
 
     log.info("rejected", { requestID })
 
+    await settle(existing.info.sessionID)
+
     Bus.publish(Event.Rejected, {
       sessionID: existing.info.sessionID,
       requestID: existing.info.id,
     })
 
     existing.reject(new RejectedError())
+  }
+
+  // The dot answers "does this session still want something", so it survives
+  // one answer while its siblings are open: a single request can bundle several
+  // questions and several requests can be open at once.
+  async function settle(sessionID: string) {
+    const s = await state()
+    const open = Object.values(s.pending).some((p) => p.info.sessionID === sessionID)
+    void SessionRecent.setQuestion(sessionID, open)
   }
 
   export class RejectedError extends Error {

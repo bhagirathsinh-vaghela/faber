@@ -460,6 +460,8 @@ export namespace Session {
 
   export function markSeen(id: string) {
     void SessionRecent.setUnseen(id, false)
+    // Opening the session is the acknowledgement: the failure is on screen.
+    void SessionRecent.setError(id, false)
     return update(
       id,
       (session) => {

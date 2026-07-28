@@ -22,6 +22,8 @@ export type RecentSession = {
   busySelf: boolean
   busyDescendant: boolean
   unseen: boolean
+  question: boolean
+  error: boolean
   pingAt?: number
 }
 

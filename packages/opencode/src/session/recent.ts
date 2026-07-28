@@ -48,6 +48,14 @@ export namespace SessionRecent {
       // (busy+busySelf alone can't tell own-only from both).
       busyDescendant: z.boolean(),
       unseen: z.boolean(),
+      // A question is pending an answer. Derived from the pending set rather
+      // than counted, so a session with several open questions clears only when
+      // the last one is answered.
+      question: z.boolean(),
+      // The last turn ended on an error. Cleared when the session is next
+      // viewed or a new turn starts, so a red dot never outlives the failure
+      // that earned it.
+      error: z.boolean(),
       // Epoch ms the next cache ping fires; absent when no ping is scheduled.
       // The client renders the countdown from this against its own clock, so a
       // new deadline is the only thing that has to cross the wire.
@@ -75,7 +83,14 @@ export namespace SessionRecent {
   const hydrate = lazy(async () => {
     const stored = await Storage.read<Stored[]>(KEY).catch(() => [] as Stored[])
     for (const entry of stored)
-      entries.set(entry.sessionID, { ...entry, busy: false, busySelf: false, busyDescendant: false })
+      entries.set(entry.sessionID, {
+        ...entry,
+        busy: false,
+        busySelf: false,
+        busyDescendant: false,
+        question: false,
+        error: false,
+      })
   })
 
   const sorted = () => [...entries.values()].sort((a, b) => b.updated - a.updated)
@@ -85,7 +100,9 @@ export namespace SessionRecent {
     if (timer) return
     timer = setTimeout(() => {
       timer = undefined
-      const durable: Stored[] = sorted().map(({ busy, busySelf, busyDescendant, pingAt, ...rest }) => rest)
+      const durable: Stored[] = sorted().map(
+        ({ busy, busySelf, busyDescendant, question, error, pingAt, ...rest }) => rest,
+      )
       void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
   }
@@ -136,7 +153,10 @@ export namespace SessionRecent {
   // past the cap. Live flags survive a re-touch so a busy turn that writes many
   // messages doesn't strobe the spinner off between chunks.
   export async function touch(
-    input: Omit<Entry, "agent" | "busy" | "busySelf" | "busyDescendant" | "unseen" | "pingAt"> & { agent?: string },
+    input: Omit<
+      Entry,
+      "agent" | "busy" | "busySelf" | "busyDescendant" | "unseen" | "question" | "error" | "pingAt"
+    > & { agent?: string },
   ) {
     await hydrate()
     const prev = entries.get(input.sessionID)
@@ -148,6 +168,9 @@ export namespace SessionRecent {
       busySelf: prev?.busySelf ?? false,
       busyDescendant: prev?.busyDescendant ?? false,
       unseen: prev?.unseen ?? false,
+      question: prev?.question ?? false,
+      // A fresh turn on this session supersedes the last one's failure.
+      error: false,
       pingAt: prev?.pingAt,
     })
     if (entries.size > LIMIT) {
@@ -180,6 +203,24 @@ export namespace SessionRecent {
     if (!entry || entry.unseen === unseen) return
     entry.unseen = unseen
     flush()
+    publish()
+  }
+
+  // Neither flag is durable: a question does not survive the process that holds
+  // its pending promise, and an error describes a turn this instance ran.
+  export async function setQuestion(sessionID: string, question: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.question === question) return
+    entry.question = question
+    publish()
+  }
+
+  export async function setError(sessionID: string, error: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.error === error) return
+    entry.error = error
     publish()
   }
 

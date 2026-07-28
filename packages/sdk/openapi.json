@@ -6262,11 +6262,19 @@
                               "type": "string"
                             }
                           },
-                          "required": ["key", "name", "description"]
+                          "required": [
+                            "key",
+                            "name",
+                            "description"
+                          ]
                         }
                       }
                     },
-                    "required": ["server", "tier", "tools"]
+                    "required": [
+                      "server",
+                      "tier",
+                      "tools"
+                    ]
                   }
                 }
               }
@@ -6680,11 +6688,16 @@
                             "type": "string"
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     }
                   },
-                  "required": ["status", "tools"]
+                  "required": [
+                    "status",
+                    "tools"
+                  ]
                 }
               }
             }
@@ -6733,7 +6746,9 @@
                       "const": true
                     }
                   },
-                  "required": ["success"]
+                  "required": [
+                    "success"
+                  ]
                 }
               }
             }
@@ -8767,6 +8782,12 @@
           "unseen": {
             "type": "boolean"
           },
+          "question": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "boolean"
+          },
           "pingAt": {
             "type": "number"
           }
@@ -8779,7 +8800,9 @@
           "busy",
           "busySelf",
           "busyDescendant",
-          "unseen"
+          "unseen",
+          "question",
+          "error"
         ]
       },
       "OpenProject": {
@@ -14260,7 +14283,11 @@
       "McpTier": {
         "description": "Progressive-disclosure detail level for this server in the MCP tool catalog. \"name\" (default) lists only tool names; \"description\" adds each tool's description; \"full\" adds the input schema. Lower tiers shrink the steady-state request; the model recovers omitted detail on demand via the mcp_search tool. Applies to every session (never per-session) so the shared catalog cache stays byte-identical.",
         "type": "string",
-        "enum": ["name", "description", "full"]
+        "enum": [
+          "name",
+          "description",
+          "full"
+        ]
       },
       "McpLocalConfig": {
         "type": "object",
@@ -14909,7 +14936,13 @@
                   "type": "number"
                 }
               },
-              "required": ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h"]
+              "required": [
+                "input",
+                "output",
+                "cacheRead",
+                "cacheWrite5m",
+                "cacheWrite1h"
+              ]
             }
           },
           "anthropic": {

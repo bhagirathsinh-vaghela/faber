@@ -26,10 +26,9 @@ describe("session.delete ping teardown", () => {
         // ambient one, so the request must name the tmpdir or it deletes against
         // a different project's storage.
         const app = Server.App()
-        const response = await app.request(
-          `/session/${session.id}?directory=${encodeURIComponent(tmp.path)}`,
-          { method: "DELETE" },
-        )
+        const response = await app.request(`/session/${session.id}?directory=${encodeURIComponent(tmp.path)}`, {
+          method: "DELETE",
+        })
         expect(response.status).toBe(200)
         await settle()
 
