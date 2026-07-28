@@ -1071,6 +1071,11 @@ export namespace SessionPrompt {
           }
         }
 
+        // A failed MCP tool call still returns a successful JSON-RPC envelope,
+        // flagged only by isError. Without this it renders as a normal result
+        // and the failure reads as an answer.
+        if (result.isError) throw new Error(textParts.join("\n\n") || `${key} failed`)
+
         const truncated = await Truncate.output(textParts.join("\n\n"), {}, input.agent)
         const metadata = {
           ...(result.metadata ?? {}),

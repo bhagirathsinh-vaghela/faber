@@ -29,7 +29,15 @@ interface McpSearchRequest {
 
 interface McpSearchResponse {
   jsonrpc: string
-  result: {
+  // A tool-level failure comes back as a *successful* JSON-RPC envelope with
+  // isError set and the message in content; only transport/protocol failures
+  // populate the top-level error.
+  error?: {
+    code: number
+    message: string
+  }
+  result?: {
+    isError?: boolean
     content: Array<{
       type: string
       text: string
@@ -121,6 +129,9 @@ export const WebSearchTool = Tool.define("websearch", async () => {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const data: McpSearchResponse = JSON.parse(line.substring(6))
+            if (data.error) throw new Error(`Search error (${data.error.code}): ${data.error.message}`)
+            if (data.result?.isError)
+              throw new Error(`Search error: ${data.result.content.map((item) => item.text).join("\n")}`)
             if (data.result && data.result.content && data.result.content.length > 0) {
               return {
                 output: data.result.content[0].text,
