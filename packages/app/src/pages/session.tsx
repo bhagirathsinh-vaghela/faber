@@ -622,6 +622,15 @@ export default function Page() {
 
   const scrollGestureWindowMs = 250
 
+  // True while settleToBottom's rAF loop is driving the scroller. Its own
+  // scrollTop writes emit scroll events, and a gesture window left live by
+  // momentum (each event re-extends it by 250ms) made onScroll read them as
+  // user gestures — flipping following off mid-settle, which aborted the loop
+  // and landed short. A fast middle-click after a scroll hit this every time;
+  // press-and-hold only "worked" by outlasting the window. The pill arrow and
+  // the End key take the same resumeScroll path and had the same latent bug.
+  let settling = false
+
   let touchGesture: number | undefined
 
   const markScrollGesture = (target?: EventTarget | null) => {
@@ -632,6 +641,10 @@ export default function Page() {
     const nested = el?.closest("[data-scrollable]")
     if (nested && nested !== root) return
 
+    // A real gesture aborts an in-flight settle, so the user can always scroll
+    // away mid-settle. Safe to do unconditionally: onScroll only re-extends the
+    // window on the !settling branch, so its own call can never clear a live one.
+    settling = false
     setUi("scrollGesture", Date.now())
   }
 
@@ -1348,9 +1361,8 @@ export default function Page() {
       if (event.key === "End") {
         resumeScroll()
         // preventScroll: focusing the contenteditable (bottom of the dock)
-        // otherwise triggers a browser scroll-into-view that fights settleToBottom
-        // and lands the transcript short. The arrow button doesn't focus, which is
-        // why it never had this bug.
+        // otherwise triggers a browser scroll-into-view that fights
+        // settleToBottom and lands the transcript short.
         inputRef?.focus({ preventScroll: true })
       } else jumpToTop()
       return
@@ -1383,18 +1395,19 @@ export default function Page() {
     }
   }
 
-  // Middle mouse button = the scroll-to-bottom arrow. That arrow (the pill above
-  // the dock, shown when scrolled up) reliably returns to the true bottom, and it
-  // does so by calling resumeScroll directly. Mirror it exactly, then focus the
-  // prompt so the user can type. auxclick fires only for non-primary buttons;
-  // button === 1 is the middle button.
+  // Middle mouse button = the scroll-to-bottom arrow (the pill above the dock),
+  // then focus the prompt so the user can type. auxclick fires once on release
+  // for non-primary buttons; button === 1 is the middle button. There is no
+  // press-and-hold handling here — holding only ever appeared to matter because
+  // a fast click landed inside the momentum-extended gesture window that used to
+  // abort the settle. See the `settling` flag.
   const handleAuxClick = (event: MouseEvent) => {
     if (event.button !== 1) return
     if (dialog.active) return
     event.preventDefault()
     resumeScroll()
     // preventScroll: see the End-key branch — a bare focus() scroll-yanks the
-    // transcript short; the reliable arrow button doesn't focus at all.
+    // transcript short.
     inputRef?.focus({ preventScroll: true })
   }
 
@@ -1704,12 +1717,22 @@ export default function Page() {
   // FIRST press wait out that growth, so it behaves like the working second press.
   const settleToBottom = (tries = 0, lastHeight = -1, stable = 0) => {
     const el = scroller
-    if (!el || !following()) return
+    if (!el || !following()) {
+      settling = false
+      return
+    }
+    // Claim the scroller for the whole loop: every scroll event it emits from
+    // here on is ours, so onScroll must not read it as a gesture. Cleared on
+    // every exit below, and by markScrollGesture when a real gesture interrupts.
+    settling = true
     const i = lastIndex()
     if (i >= 0 && !atBottom(el)) turnList()?.scrollToIndex(i, { align: "end" })
     pinToBottom()
     const streak = atBottom(el) && el.scrollHeight === lastHeight ? stable + 1 : 0
-    if (tries > 120 || streak >= 3) return
+    if (tries > 120 || streak >= 3) {
+      settling = false
+      return
+    }
     requestAnimationFrame(() => settleToBottom(tries + 1, el.scrollHeight, streak))
   }
 
@@ -1720,6 +1743,14 @@ export default function Page() {
 
   const resumeScroll = () => {
     setStore("messageId", undefined)
+    // Explicitly asking for the tail (pill arrow, End, middle click) makes any
+    // in-flight scroll gesture moot — void the window instead of waiting it out.
+    // `settling` alone isn't enough: it only covers the rAF loop, and the window
+    // outlives it (momentum re-extends it 250ms per event, the loop settles in
+    // ~50ms). A late scroll in that gap — focus()'s scroll-into-view, or virtua
+    // re-applying an offset — was still read as a gesture and unfollowed us 30px
+    // short. Clearing it makes a fast click behave exactly like a slow one.
+    setUi("scrollGesture", 0)
     setFollowing(true)
     settleToBottom()
     clearMessageHash()
@@ -2516,7 +2547,16 @@ export default function Page() {
                           // refollows. Programmatic scrolls (our pins, virtua's
                           // jump compensation, smooth jumps) never do — they
                           // set following explicitly at their call sites.
-                          if (hasScrollGesture()) {
+                          // `settling` overrides the gesture window: while our
+                          // own rAF loop drives the scroller, every event here
+                          // is ours no matter how recently the user scrolled.
+                          // Without this, momentum kept the window alive into
+                          // the settle, the loop's mid-flight (not-yet-bottom)
+                          // frames read as "user scrolled away", following went
+                          // false, and the loop aborted short of the tail.
+                          if (settling) {
+                            // Ours and still climbing — nothing to decide.
+                          } else if (hasScrollGesture()) {
                             setFollowing(atBottom(e.currentTarget))
                             // Keep the gesture window alive across a long drag
                             // or momentum scroll (each event within the window
@@ -2540,7 +2580,7 @@ export default function Page() {
                           // from the landing offset overwrites that anchor with a
                           // neighbor, so the next step counts from the wrong
                           // message. Same gesture guard the follow logic uses.
-                          if (isDesktop() && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
+                          if (isDesktop() && !settling && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
                         style={{
