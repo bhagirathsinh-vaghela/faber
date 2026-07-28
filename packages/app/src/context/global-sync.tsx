@@ -25,7 +25,7 @@ import {
 } from "@opencode-ai/sdk/v2/client"
 import { createStore, produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
-import { needsAttention } from "@opencode-ai/util/session"
+import { isAlive } from "@opencode-ai/util/session"
 import { Snapshot } from "@/utils/snapshot"
 import { retry } from "@opencode-ai/util/retry"
 import { useGlobalSDK } from "./global-sdk"
@@ -700,14 +700,14 @@ function createGlobalSync() {
     return promise
   }
 
-  // Sessions in the attention set — and their subagent children, whose
-  // transcripts the parent's task panel reads — are never evicted, so switching
-  // between the sessions being juggled stays instant. recent_hub is the global
-  // home overview carrying these flags.
+  // Live sessions — and their subagent children, whose transcripts the parent's
+  // task panel reads — are never evicted, so switching between the sessions
+  // being juggled stays instant. recent_hub is the global home overview
+  // carrying these flags.
   function liveSessions() {
     const live = new Set<string>()
     for (const entry of globalStore.recent_hub) {
-      if (needsAttention(entry)) live.add(entry.sessionID)
+      if (isAlive(entry)) live.add(entry.sessionID)
     }
     return live
   }
@@ -787,8 +787,8 @@ function createGlobalSync() {
     globalSDK.subscribe(interestSet(), openDirectory(), openSession())
   })
 
-  // Snapshots are kept only for the attention set, so a session that is neither
-  // working, pinging, nor unseen surrenders its on-device tail. This touches the
+  // Snapshots are kept only for live sessions, so a session that is neither
+  // working nor pinging surrenders its on-device tail. This touches the
   // snapshot store ONLY — never a session's messages or parts, which stay owned
   // by the store and the server.
   //
@@ -1612,7 +1612,7 @@ function createGlobalSync() {
     disposeChild,
     evictSession,
     busy,
-    needsAttention,
+    isAlive,
     setOpenSession,
     ensureInterest,
     bootstrap,

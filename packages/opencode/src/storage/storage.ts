@@ -189,12 +189,15 @@ export namespace Storage {
     })
   }
 
-  export async function write<T>(key: string[], content: T) {
+  // Indented by default: these files are read by hand while debugging. `compact`
+  // is for the few keys rewritten wholesale on a timer, where the indentation is
+  // pure write amplification and no one reads the file directly.
+  export async function write<T>(key: string[], content: T, options?: { compact?: boolean }) {
     const dir = await state().then((x) => x.dir)
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      await atomic(target, JSON.stringify(content, null, 2))
+      await atomic(target, JSON.stringify(content, null, options?.compact ? undefined : 2))
     })
   }
 

@@ -725,7 +725,7 @@ export default function Layout(props: ParentProps) {
     // applied (the streamed first chunk vanishes until the turn's final full-part
     // event heals it). Let SSE own a streaming session's transcript.
     const live = untrack(() =>
-      globalSync.data.recent_hub.some((e) => e.sessionID === session.id && globalSync.needsAttention(e)),
+      globalSync.data.recent_hub.some((e) => e.sessionID === session.id && globalSync.isAlive(e)),
     )
     if (live) return
 

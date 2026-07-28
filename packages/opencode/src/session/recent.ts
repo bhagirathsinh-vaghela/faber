@@ -19,8 +19,12 @@ import z from "zod"
 // them off.
 export namespace SessionRecent {
   const KEY = ["recent"]
-  const LIMIT = 50
-  const FLUSH_MS = 1000
+  const LIMIT = 500
+  // Lossy by design (see above), so the debounce trades a wider crash window for
+  // fewer whole-list rewrites. The floor on that trade is the durable session
+  // record: unseen is written there immediately by markUnseen/markSeen, so a
+  // dropped flush costs recency ordering and a stale cached flag, never truth.
+  const FLUSH_MS = 5000
 
   export const Entry = z
     .object({
@@ -35,7 +39,7 @@ export namespace SessionRecent {
       // lastActivity. Pings and views never reach here.
       updated: z.number(),
       // Effective busy: this session's own turn OR any in-flight descendant
-      // subtask (full subtree). The single boolean isAlive/needsAttention read.
+      // subtask (full subtree). The single boolean isAlive reads.
       busy: z.boolean(),
       // This session's OWN turn only.
       busySelf: z.boolean(),
@@ -82,7 +86,7 @@ export namespace SessionRecent {
     timer = setTimeout(() => {
       timer = undefined
       const durable: Stored[] = sorted().map(({ busy, busySelf, busyDescendant, pingAt, ...rest }) => rest)
-      void Storage.write(KEY, durable)
+      void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
   }
 

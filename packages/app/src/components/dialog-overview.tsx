@@ -14,7 +14,7 @@ import { useMru } from "@/context/mru"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
-import { useStopSession } from "@/hooks/use-stop-session"
+import { isStopKey, useStopSession } from "@/hooks/use-stop-session"
 import { agentColor } from "@/utils/agent"
 
 function getFilename(dir: string) {
@@ -237,20 +237,17 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   let ref: ListRef | undefined
   const [highlight, setHighlight] = createSignal(initial)
 
-  // Alt+Q fires the highlighted row's stop button: a full stop, matching the
-  // session header's stopSession (abort the running turn AND drop the cache
+  // A stop key fires the highlighted row's stop button: a full stop, matching
+  // the session header's stopSession (abort the running turn AND drop the cache
   // ping). Scoped to the overview: the listener lives only while this component
-  // is mounted (home page or dialog), so Alt+Q is inert everywhere else.
+  // is mounted (home page or dialog), so the key is inert everywhere else.
   // Capture phase because the command system is suspended while a dialog is
   // open, so a registered command would never see the key here. Gated on the
   // same pingAt that renders the row's stop button — a row without one is a
   // no-op. If the stopped row is the session open behind the dialog, navigate
   // home like the header does; stopping any other row leaves the view put.
   const stop = (event: KeyboardEvent) => {
-    // event.code, not event.key: on macOS Alt+Q composes the glyph "œ", so
-    // event.key never equals "q". The physical code is layout/composition proof.
-    if (!(event.altKey && event.code === "KeyQ")) return
-    if (event.ctrlKey || event.metaKey || event.shiftKey) return
+    if (!isStopKey(event)) return
     event.preventDefault()
     event.stopPropagation()
     const row = highlight()
@@ -314,7 +311,14 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
         onSelect={(row) => {
           if (row) open(row)
         }}
-        class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2"
+        // content-visibility skips layout/paint for offscreen rows, which this
+        // list needs because it is the one List that runs to hundreds of rows.
+        // Deliberately NOT windowing: List resolves the keyboard-active row by
+        // querying the live DOM (findByKey), so unmounting offscreen rows would
+        // strand arrow-key navigation. Every row stays mounted here.
+        // The `auto` in contain-intrinsic-size makes a row remember its measured
+        // height, so scroll-into-view math doesn't drift off the estimate.
+        class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_36px]"
       >
         {(row) => <Row row={row} showTime={row.section === "recent"} />}
       </List>

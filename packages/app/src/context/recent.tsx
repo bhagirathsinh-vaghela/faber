@@ -59,20 +59,20 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
 
     // A session is in exactly one bucket. Both sort by last real-turn activity
     // (never pings/views), newest-first — most-recently-active on top in either
-    // section. Membership uses globalSync.needsAttention — the same predicate
-    // transcript eviction protects on — so the overview's attention list and the
-    // never-evict set stay one definition. It rides only server-pushed fields
-    // (busy/unseen/pingAt), never the local clock, so the buckets recompute on
-    // server updates rather than every tick — the ping deadline is cleared
-    // server-side when its window lapses.
+    // section. Membership uses globalSync.isAlive — the same predicate transcript
+    // eviction protects on — so the overview's attention list and the never-evict
+    // set stay one definition. It rides only server-pushed fields (busy/pingAt),
+    // never the local clock, so the buckets recompute on server updates rather
+    // than every tick — the ping deadline is cleared server-side when its window
+    // lapses. An unseen-but-idle session sorts into recent and keeps its dot.
     const attention = createMemo(() =>
       rows()
-        .filter((r) => globalSync.needsAttention(r))
+        .filter((r) => globalSync.isAlive(r))
         .sort((a, b) => b.updated - a.updated),
     )
     const recent = createMemo(() =>
       rows()
-        .filter((r) => !globalSync.needsAttention(r))
+        .filter((r) => !globalSync.isAlive(r))
         .sort((a, b) => b.updated - a.updated),
     )
 
@@ -83,7 +83,11 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     // the server re-arms a ping. Re-deriving from rows() here keeps the ping
     // deadline live per tick while the order stays frozen. Falls back to the
     // passed row if the session already left the hub.
-    const live = (row: OverviewRow) => rows().find((r) => r.sessionID === row.sessionID) ?? row
+    //
+    // Indexed rather than scanned: every row resolves through here on each 1Hz
+    // tick, so a linear lookup would make the overview quadratic in row count.
+    const index = createMemo(() => new Map(rows().map((row) => [row.sessionID, row])))
+    const live = (row: OverviewRow) => index().get(row.sessionID) ?? row
 
     // countdown text and ring fraction both come from the ONE shared predicate
     // (pingCountdown), fed the live row's pingAt — identical logic to the session
