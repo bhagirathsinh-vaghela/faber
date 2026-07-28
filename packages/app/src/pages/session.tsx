@@ -2274,7 +2274,12 @@ export default function Page() {
   }
 
   return (
-    <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
+    <div
+      class="relative bg-background-base size-full overflow-hidden flex flex-col"
+      // Inherited by both permission prompts (the dock's and the in-transcript
+      // one), so they carry the same agent tint as the question panel's border.
+      style={{ "--permission-accent": workingTint() ?? "var(--icon-interactive-base)" }}
+    >
       <SessionHeader />
       {/* Zen toggle: always-visible pill, the only zen control.
           Portaled to <body> so the shell's contain:strict <main> can't clip it.

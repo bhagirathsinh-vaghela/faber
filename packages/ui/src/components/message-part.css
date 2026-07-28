@@ -814,23 +814,17 @@ a[data-component="tool-action"]:hover {
   }
 
   &[data-permission="true"] {
-    /* Static warning-tinted ring + soft halo (same shape as the dictation pill:
-       1px ring, ~18px colored glow). Was an animated conic-gradient border
-       driven by @property --border-angle, which re-rasterizes on the CPU every
-       frame; the prompt reads just as clearly with a still glow. */
-    &::before {
-      content: "";
-      position: absolute;
-      inset: -1.5px;
-      top: -5px;
-      border-radius: 7.5px;
-      border: 1.5px solid var(--border-warning-strong, var(--border-warning-selected));
-      box-shadow:
-        0 0 0 1px color-mix(in srgb, var(--border-warning-base) 35%, transparent),
-        0 0 18px 2px color-mix(in srgb, var(--border-warning-base) 25%, transparent);
-      pointer-events: none;
-      z-index: -1;
-    }
+    /* Unconditional, not a focus affordance: an unanswered permission blocks
+       the turn and nothing else in the dock signals it. Painted on the wrapper
+       itself rather than a pseudo-element, because the paint containment above
+       clips anything a descendant draws outside the box. Accent and glow match
+       the question panel's focused border — both are blockers, so they read as
+       one thing. */
+    --permission-ring: var(--permission-accent, var(--icon-interactive-base));
+    border: 1px solid var(--permission-ring);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--permission-ring) 35%, transparent),
+      0 0 12px 2px color-mix(in srgb, var(--permission-ring) 22%, transparent);
   }
 
   &[data-question="true"] {
