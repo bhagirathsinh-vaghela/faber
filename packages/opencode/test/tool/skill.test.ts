@@ -1,4 +1,6 @@
+import { $ } from "bun"
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import type { PermissionNext } from "../../src/permission/next"
@@ -17,22 +19,14 @@ const baseCtx: Omit<Tool.Context, "ask"> = {
   metadata: () => {},
 }
 
+const SKILL_MD = (name: string) => ["---", `name: ${name}`, `description: Skill ${name}.`, "---", "", `# ${name}`, ""].join("\n")
+
 describe("tool.skill", () => {
-  test("description lists skill location URL", async () => {
+  test("description renders a home skill location home-relative", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
-        const skillDir = path.join(dir, ".opencode", "skill", "tool-skill")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: tool-skill
-description: Skill for tool tests.
----
-
-# Tool Skill
-`,
-        )
+        await Bun.write(path.join(dir, ".opencode", "skill", "tool-skill", "SKILL.md"), SKILL_MD("tool-skill"))
       },
     })
 
@@ -44,10 +38,46 @@ description: Skill for tool tests.
         directory: tmp.path,
         fn: async () => {
           const tool = await SkillTool.init()
-          const skillPath = path.join(tmp.path, ".opencode", "skill", "tool-skill", "SKILL.md")
-          expect(tool.description).toContain(`<location>${pathToFileURL(skillPath).href}</location>`)
+          expect(tool.description).toContain("<location>~/.opencode/skill/tool-skill/SKILL.md</location>")
         },
       })
+    } finally {
+      process.env.OPENCODE_TEST_HOME = home
+    }
+  })
+
+  // The location text ships inside tools[], which Anthropic hashes ahead of the
+  // system prompt, so an unchanged skill set must serialize byte-identically no
+  // matter which directory the session runs in — otherwise the whole downstream
+  // prompt cache misses.
+  test("description is byte-identical across worktrees for one skill set", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".opencode", "skill", "global-skill", "SKILL.md"), SKILL_MD("global-skill"))
+        for (const name of ["alpha", "beta"]) {
+          const repo = path.join(dir, "projects", name)
+          await fs.mkdir(repo, { recursive: true })
+          await $`git init`.cwd(repo).quiet()
+          await $`git commit --allow-empty -m init`.cwd(repo).quiet()
+        }
+      },
+    })
+
+    const home = process.env.OPENCODE_TEST_HOME
+    process.env.OPENCODE_TEST_HOME = tmp.path
+
+    try {
+      const render = (directory: string) =>
+        Instance.provide({ directory, fn: async () => (await SkillTool.init()).description })
+
+      const alpha = await render(path.join(tmp.path, "projects", "alpha"))
+      const beta = await render(path.join(tmp.path, "projects", "beta"))
+      const atHome = await render(tmp.path)
+
+      expect(alpha).toContain("<location>~/.opencode/skill/global-skill/SKILL.md</location>")
+      expect(beta).toBe(alpha)
+      expect(atHome).toBe(alpha)
     } finally {
       process.env.OPENCODE_TEST_HOME = home
     }
@@ -58,18 +88,7 @@ description: Skill for tool tests.
       git: true,
       init: async (dir) => {
         const skillDir = path.join(dir, ".opencode", "skill", "tool-skill")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: tool-skill
-description: Skill for tool tests.
----
-
-# Tool Skill
-
-Use this skill.
-`,
-        )
+        await Bun.write(path.join(skillDir, "SKILL.md"), SKILL_MD("tool-skill"))
         await Bun.write(path.join(skillDir, "scripts", "demo.txt"), "demo")
       },
     })

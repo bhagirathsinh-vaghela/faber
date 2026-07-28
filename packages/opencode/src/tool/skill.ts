@@ -1,5 +1,4 @@
 import path from "path"
-import os from "os"
 import { pathToFileURL } from "url"
 import z from "zod"
 import { Tool } from "./tool"
@@ -8,12 +7,20 @@ import { PermissionNext } from "../permission/next"
 import { Ripgrep } from "../file/ripgrep"
 import { iife } from "@/util/iife"
 import { Instance } from "../project/instance"
+import { Global } from "@/global"
 
+// This text is part of the skill tool's description, so it lands in tools[] —
+// the front of Anthropic's cumulative prefix hash. A location that renders
+// differently per worktree changes those bytes and invalidates the whole
+// downstream cache, system prompt included. Home-relative is checked FIRST so
+// a skill outside the worktree renders identically everywhere: testing the
+// worktree first would strip the "~/" whenever the worktree contains home
+// (cwd == ~), reclassifying every global skill as project-local.
 function relativePath(absolute: string) {
-  const home = os.homedir()
+  const home = Global.Path.home
   const worktree = Instance.worktree
-  if (worktree !== "/" && absolute.startsWith(worktree + path.sep)) return path.relative(worktree, absolute)
   if (absolute.startsWith(home + path.sep)) return "~/" + path.relative(home, absolute)
+  if (worktree !== "/" && absolute.startsWith(worktree + path.sep)) return path.relative(worktree, absolute)
   return absolute
 }
 
