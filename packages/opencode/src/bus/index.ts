@@ -46,7 +46,10 @@ export namespace Bus {
       type: def.type,
       properties,
     }
-    log.info("publishing", {
+    // Debug, not info: this fires on every event (a fifth of all log lines
+    // during a turn) and each call is a synchronous write, so at info it costs
+    // the streaming path for a line nobody reads outside event debugging.
+    log.debug("publishing", {
       type: def.type,
     })
     const pending = []
