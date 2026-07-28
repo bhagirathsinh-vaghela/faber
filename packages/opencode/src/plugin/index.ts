@@ -9,6 +9,7 @@ import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
 import { CodexAuthPlugin } from "./codex"
 import { Session } from "../session"
+import { SessionJudge } from "../session/judge"
 import { NamedError } from "@opencode-ai/util/error"
 import { CopilotAuthPlugin } from "./copilot"
 
@@ -35,6 +36,7 @@ export namespace Plugin {
       directory: Instance.directory,
       serverUrl: Server.url(),
       $: Bun.$,
+      judge: SessionJudge.run,
     }
 
     for (const plugin of INTERNAL_PLUGINS) {

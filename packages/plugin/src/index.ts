@@ -30,6 +30,21 @@ export type PluginInput = {
   worktree: string
   serverUrl: URL
   $: BunShell
+  /**
+   * Evaluate `input` against `prompt` with none of the session's context —
+   * no AGENTS.md, no environment, no project instructions, no tools. The
+   * caller owns the rules and the verdict format; this owns the clean prefix.
+   *
+   * Intended for enforcement checks that must weigh one instruction against
+   * one artifact, where the session's own context would dilute the judgment.
+   * Omit `model` to use the provider's small model.
+   */
+  judge: (input: {
+    prompt: string
+    input: string
+    sessionID: string
+    model?: { providerID: string; modelID: string }
+  }) => Promise<string>
 }
 
 export type Plugin = (input: PluginInput) => Promise<Hooks>
