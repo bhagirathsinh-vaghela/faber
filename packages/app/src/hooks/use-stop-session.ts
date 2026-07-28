@@ -5,6 +5,16 @@ import { useNavigate, useParams } from "@solidjs/router"
 // button, the session header, the overview). Aborts the in-flight turn — which
 // server-side also tears down the session's ping daemon — and, only when the
 // stopped session is the one on screen, returns to the overview home.
+// Alt+Q and Ctrl+D both fire the stop action, wherever a stop control lives.
+// event.code, not event.key: on macOS Alt+Q composes the glyph "œ", so
+// event.key never equals "q"; the physical code is layout/composition proof.
+export function isStopKey(event: KeyboardEvent) {
+  if (event.metaKey || event.shiftKey) return false
+  if (event.altKey && !event.ctrlKey) return event.code === "KeyQ"
+  if (event.ctrlKey && !event.altKey) return event.code === "KeyD"
+  return false
+}
+
 export function useStopSession() {
   const sdk = useGlobalSDK()
   const navigate = useNavigate()
