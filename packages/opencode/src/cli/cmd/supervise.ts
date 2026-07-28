@@ -180,12 +180,17 @@ export const SuperviseCommand = cmd({
       return { busy, armed }
     }
 
-    // Only the parent turn is resumed. A subtask runs as its own session that
-    // the restart does not relaunch, so its result never arrives — without
+    // Only the parent turn is resumed, and nothing it was waiting on comes back.
+    // A subtask runs as its own session the restart does not relaunch; a pending
+    // question or permission is a promise map that dies with the process; a tool
+    // mid-execute is left as an orphaned running part. All of it is the same fact
+    // from the model's side (a call it made that can no longer return), so the
+    // prompt states it once rather than enumerating server-side causes. Without
     // being told, the parent waits forever on work that is already dead.
     const CONTINUE_TEXT =
       "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing." +
-      " In-flight subtasks are NOT restarted: any subtask you had running was lost and its result will never arrive, so relaunch it if you need it."
+      " Anything that was in flight is gone and will never return a result: a subtask you launched, a question or permission you were waiting on, a tool call part-way through." +
+      " Redo whatever still matters."
 
     async function resume(sessions: SessionRef[]) {
       const results = []
