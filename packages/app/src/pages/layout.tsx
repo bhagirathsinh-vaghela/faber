@@ -71,6 +71,7 @@ import { ConstrainDragXAxis } from "@/utils/solid-dnd"
 import { navStart } from "@/utils/perf"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogEditProject } from "@/components/dialog-edit-project"
+import { NotificationCenter } from "@/components/notification-center"
 import { Titlebar } from "@/components/titlebar"
 import { useServer } from "@/context/server"
 import { useLanguage } from "@/context/language"
@@ -2332,6 +2333,7 @@ export default function Layout(props: ParentProps) {
             </DragDropProvider>
           </div>
           <div class="shrink-0 w-full pt-3 pb-3 flex flex-col items-center gap-2">
+            <NotificationCenter mobile={sidebarProps.mobile} />
             <TooltipKeybind
               placement={sidebarProps.mobile ? "bottom" : "right"}
               title={language.t("sidebar.settings")}

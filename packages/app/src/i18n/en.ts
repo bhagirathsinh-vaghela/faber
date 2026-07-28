@@ -474,6 +474,11 @@ export const dict = {
   "notification.session.error.title": "Session error",
   "notification.session.error.fallbackDescription": "An error occurred",
 
+  "notification.center.title": "Notifications",
+  "notification.center.empty": "No notifications",
+  "notification.center.markAllRead": "Mark all read",
+  "notification.center.untitledSession": "Untitled session",
+
   "home.title": "Overview",
   "home.recentProjects": "Recent projects",
   "home.recentSessions": "Recent sessions",

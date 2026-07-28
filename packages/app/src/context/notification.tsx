@@ -199,8 +199,14 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
     })
     onCleanup(unsub)
 
+    const unseen = createMemo(() => store.list.filter((n) => !n.viewed))
+
     return {
       ready,
+      unseen,
+      markAllViewed() {
+        setStore("list", (n) => !n.viewed, "viewed", true)
+      },
       session: {
         all(session: string) {
           return index().session.all.get(session) ?? empty
