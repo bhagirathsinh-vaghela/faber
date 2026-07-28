@@ -21,6 +21,8 @@ export type OverviewRow = {
   busySelf: boolean
   busyDescendant: boolean
   unseen: boolean
+  question: boolean
+  error: boolean
   pingAt?: number
 }
 
@@ -52,6 +54,9 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           busySelf: live.busySelf,
           busyDescendant: live.busyDescendant,
           unseen: entry.unseen,
+          // A server that predates these flags omits them; absent reads as off.
+          question: entry.question ?? false,
+          error: entry.error ?? false,
           pingAt: entry.pingAt,
         }
       }),
@@ -99,6 +104,6 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     const remaining = (row: OverviewRow) =>
       pingCountdown(live(row).pingAt, beforeExpiryMs(globalSync.data.config), now()).fraction
 
-    return { attention, recent, countdown, remaining }
+    return { attention, recent, countdown, remaining, get: (id: string) => index().get(id) }
   },
 })

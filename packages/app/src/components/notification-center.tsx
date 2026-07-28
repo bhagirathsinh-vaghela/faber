@@ -2,67 +2,51 @@ import { createMemo, createSignal, For, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { DateTime } from "luxon"
 import { Popover } from "@opencode-ai/ui/popover"
-import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { getFilename } from "@opencode-ai/util/path"
-import { Binary } from "@opencode-ai/util/binary"
-import { useNotification, type Notification } from "@/context/notification"
-import { useGlobalSync } from "@/context/global-sync"
+import { useRecent, type OverviewRow } from "@/context/recent"
 import { useLayout } from "@/context/layout"
 import { useLanguage } from "@/context/language"
-
-// A session.error event can carry no sessionID; the store persists this
-// sentinel in its place, so it is never a routable session.
-const GLOBAL_SESSION = "global"
-
-// Persisted records predate the current error union, so every level is
-// probed at runtime rather than trusted from the declared type.
-function errorText(notification: Notification) {
-  if (notification.type !== "error") return undefined
-  const error: unknown = notification.error
-  if (!error) return undefined
-  if (typeof error === "string") return error
-  if (typeof error !== "object") return undefined
-  const data = (error as { data?: unknown }).data
-  if (!data || typeof data !== "object") return undefined
-  const message = (data as { message?: unknown }).message
-  if (typeof message !== "string") return undefined
-  return message
-}
+import { attention, flat, strongest } from "@/utils/attention"
 
 export function NotificationCenter(props: { mobile?: boolean }) {
-  const notification = useNotification()
-  const globalSync = useGlobalSync()
+  const recent = useRecent()
   const layout = useLayout()
   const language = useLanguage()
   const navigate = useNavigate()
 
   const [open, setOpen] = createSignal(false)
 
-  const unseen = createMemo(() => notification.unseen().filter((n) => n.directory))
-  const hasError = createMemo(() => unseen().some((n) => n.type === "error"))
+  // Busy is deliberately absent: a running turn wants nothing from the user, so
+  // it would fill the list with rows there is nothing to do about.
+  const state = (row: OverviewRow) =>
+    attention({ error: row.error, question: row.question, unseen: row.unseen, agent: row.agent })
+
+  const rows = createMemo(() =>
+    recent
+      .attention()
+      .concat(recent.recent())
+      .filter((row) => state(row)),
+  )
 
   const groups = createMemo(() => {
-    const byDirectory = new Map<string, Notification[]>()
-    for (const entry of unseen()) {
-      const directory = entry.directory
-      if (!directory) continue
-      const existing = byDirectory.get(directory)
+    const byDirectory = new Map<string, OverviewRow[]>()
+    for (const row of rows()) {
+      const existing = byDirectory.get(row.directory)
       if (existing) {
-        existing.push(entry)
+        existing.push(row)
         continue
       }
-      byDirectory.set(directory, [entry])
+      byDirectory.set(row.directory, [row])
     }
     return [...byDirectory.entries()]
-      .map(([directory, entries]) => ({
-        directory,
-        entries: entries.toSorted((a, b) => b.time - a.time),
-      }))
-      .toSorted((a, b) => (b.entries[0]?.time ?? 0) - (a.entries[0]?.time ?? 0))
+      .map(([directory, list]) => ({ directory, rows: list.toSorted((a, b) => b.updated - a.updated) }))
+      .toSorted((a, b) => (b.rows[0]?.updated ?? 0) - (a.rows[0]?.updated ?? 0))
   })
+
+  const badge = createMemo(() => flat(strongest(rows().map(state))))
 
   const projectName = (directory: string) => {
     const project = layout.projects.list().find((p) => p.worktree === directory)
@@ -70,27 +54,9 @@ export function NotificationCenter(props: { mobile?: boolean }) {
     return getFilename(directory)
   }
 
-  const sessionTitle = (directory: string, id: string | undefined) => {
-    if (!id || id === GLOBAL_SESSION) return language.t("notification.center.untitledSession")
-    const [store] = globalSync.child(directory, { bootstrap: false })
-    const match = Binary.search(store.session, id, (s) => s.id)
-    if (!match.found) return id
-    return store.session[match.index]?.title || id
-  }
-
-  const go = (entry: Notification) => {
-    const directory = entry.directory
-    if (!directory) return
+  const go = (row: OverviewRow) => {
     setOpen(false)
-    const session = entry.session
-    if (!session || session === GLOBAL_SESSION) {
-      navigate(`/${base64Encode(directory)}`)
-      return
-    }
-    // Navigating to the session already routed is a no-op, so the route-change
-    // effect that normally clears the entry never fires.
-    notification.session.markViewed(session)
-    navigate(`/${base64Encode(directory)}/session/${session}`)
+    navigate(`/${base64Encode(row.directory)}/session/${row.sessionID}`)
   }
 
   return (
@@ -119,30 +85,27 @@ export function NotificationCenter(props: { mobile?: boolean }) {
                 {(group) => (
                   <div class="flex flex-col gap-0.5">
                     <div class="text-11-regular text-text-weaker truncate px-1">{projectName(group.directory)}</div>
-                    <For each={group.entries}>
-                      {(entry) => (
+                    <For each={group.rows}>
+                      {(row) => (
                         <button
                           type="button"
-                          class="flex items-start gap-2 w-full text-left px-1 py-1 rounded-md hover:bg-surface-raised-base-hover"
-                          onClick={() => go(entry)}
+                          class="flex items-center gap-2 w-full text-left px-1 py-1 rounded-md hover:bg-surface-raised-base-hover"
+                          onClick={() => go(row)}
                         >
-                          <div
-                            classList={{
-                              "shrink-0 size-1.5 rounded-full mt-[7px]": true,
-                              "bg-icon-critical-base": entry.type === "error",
-                              "bg-text-interactive-base": entry.type !== "error",
-                            }}
-                          />
-                          <div class="flex flex-col min-w-0 grow">
-                            <span class="text-14-regular text-text-strong truncate">
-                              {sessionTitle(group.directory, entry.session)}
-                            </span>
-                            <Show when={errorText(entry)}>
-                              {(text) => <span class="text-12-regular text-text-weak truncate">{text()}</span>}
-                            </Show>
-                          </div>
-                          <span class="shrink-0 text-11-regular text-text-weaker mt-0.5">
-                            {DateTime.fromMillis(entry.time).setLocale(language.locale()).toRelative()}
+                          <Show when={flat(state(row))}>
+                            {(dot) => (
+                              <div
+                                title={language.t(dot().label)}
+                                class={`shrink-0 size-1.5 rounded-full ${dot().class}`}
+                                style={dot().tint ? { "background-color": dot().tint } : undefined}
+                              />
+                            )}
+                          </Show>
+                          <span class="text-14-regular text-text-strong truncate grow min-w-0">
+                            {row.title || language.t("notification.center.untitledSession")}
+                          </span>
+                          <span class="shrink-0 text-11-regular text-text-weaker">
+                            {DateTime.fromMillis(row.updated).setLocale(language.locale()).toRelative()}
                           </span>
                         </button>
                       )}
@@ -150,20 +113,16 @@ export function NotificationCenter(props: { mobile?: boolean }) {
                   </div>
                 )}
               </For>
-              <Button variant="ghost" size="small" class="self-start" onClick={() => notification.markAllViewed()}>
-                {language.t("notification.center.markAllRead")}
-              </Button>
             </Show>
           </div>
         </Popover>
-        <Show when={unseen().length > 0}>
-          <div
-            classList={{
-              "absolute top-0.5 right-0.5 size-1.5 rounded-full pointer-events-none": true,
-              "bg-icon-critical-base": hasError(),
-              "bg-text-interactive-base": !hasError(),
-            }}
-          />
+        <Show when={badge()}>
+          {(dot) => (
+            <div
+              class={`absolute top-0.5 right-0.5 size-1.5 rounded-full pointer-events-none ${dot().class}`}
+              style={dot().tint ? { "background-color": dot().tint } : undefined}
+            />
+          )}
         </Show>
       </div>
     </Tooltip>

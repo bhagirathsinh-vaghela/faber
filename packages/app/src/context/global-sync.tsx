@@ -254,6 +254,8 @@ function createGlobalSync() {
       updated: number
       busy: boolean
       unseen: boolean
+      question?: boolean
+      error?: boolean
       pingAt?: number
     }[]
     // The server-owned set of projects shown in the sidebar. Every client

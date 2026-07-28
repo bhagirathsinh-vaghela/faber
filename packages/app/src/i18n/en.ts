@@ -476,7 +476,6 @@ export const dict = {
 
   "notification.center.title": "Notifications",
   "notification.center.empty": "No notifications",
-  "notification.center.markAllRead": "Mark all read",
   "notification.center.untitledSession": "Untitled session",
 
   "home.title": "Overview",
@@ -489,6 +488,9 @@ export const dict = {
   "home.attention.delegating": "Subtask running",
   "home.attention.busyDelegating": "Working + subtask",
   "home.attention.unseen": "New",
+  "home.attention.error": "Error",
+  "home.attention.question": "Waiting on you",
+  "home.attention.permission": "Permission required",
   "home.attention.stopPing": "Stop pinging",
 
   "session.tab.session": "Session",

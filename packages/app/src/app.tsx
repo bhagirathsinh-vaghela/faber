@@ -24,7 +24,6 @@ import { PromptProvider } from "@/context/prompt"
 import { StashProvider } from "@/context/stash"
 import { FileProvider } from "@/context/file"
 import { CommentsProvider } from "@/context/comments"
-import { NotificationProvider } from "@/context/notification"
 import { ModelsProvider } from "@/context/models"
 import { RecentProvider } from "@/context/recent"
 import { TickerProvider } from "@/context/ticker"
@@ -162,19 +161,17 @@ export function AppInterface(props: { defaultUrl?: string }) {
                         <PermissionProvider>
                           <LayoutProvider>
                             <BoxDefaultsBridge>
-                              <NotificationProvider>
-                                <ModelsProvider>
-                                  <CommandProvider>
-                                    <HighlightsProvider>
-                                      <MruProvider>
-                                        <RecentProvider>
-                                          <Layout>{props.children}</Layout>
-                                        </RecentProvider>
-                                      </MruProvider>
-                                    </HighlightsProvider>
-                                  </CommandProvider>
-                                </ModelsProvider>
-                              </NotificationProvider>
+                              <ModelsProvider>
+                                <CommandProvider>
+                                  <HighlightsProvider>
+                                    <MruProvider>
+                                      <RecentProvider>
+                                        <Layout>{props.children}</Layout>
+                                      </RecentProvider>
+                                    </MruProvider>
+                                  </HighlightsProvider>
+                                </CommandProvider>
+                              </ModelsProvider>
                             </BoxDefaultsBridge>
                           </LayoutProvider>
                         </PermissionProvider>

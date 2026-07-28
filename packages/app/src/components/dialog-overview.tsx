@@ -15,7 +15,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { isStopKey, useStopSession } from "@/hooks/use-stop-session"
-import { agentColor } from "@/utils/agent"
+import { attention, busy, flat } from "@/utils/attention"
 
 function getFilename(dir: string) {
   const parts = dir.split("/").filter(Boolean)
@@ -85,17 +85,11 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
 
   const countdown = () => recent.countdown(props.row)
 
-  // Own-busy tint = the agent color, matching the dock/zen/sidebar/title. The
-  // custom color comes from the row's directory child store (same source the
-  // sidebar uses); agentColor falls back to the four built-ins by name. A session
-  // with no stamped agent (touched before the hub carried one) or an unresolved
-  // custom agent falls back to the interactive base.
-  const ownTint = () => {
-    const name = props.row.agent
-    if (!name) return "var(--icon-interactive-base)"
+  // The custom color comes from the row's directory child store, the same source
+  // the sidebar uses.
+  const state = () => {
     const [store] = globalSync.child(props.row.directory, { bootstrap: false })
-    const custom = store.agent.find((a) => a.name === name)?.color
-    return agentColor(name, custom) || "var(--icon-interactive-base)"
+    return attention(props.row, store.agent.find((a) => a.name === props.row.agent)?.color)
   }
 
   const stopPing = (e: MouseEvent) => {
@@ -123,35 +117,38 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
             {countdown() ?? "--"}
           </Chip>
         </ChipGroup>
-        {/* One dot, three states in the shared two-color language (same as the
-            dock/zen bar). Base tint = the agent color when busySelf (own turn),
-            else the task accent (child-only). A task-accent overlay cross-fades
-            in when a subtask ALSO runs (busySelf && busyDescendant = "both"), so
-            the tint oscillates agent↔task exactly like the dock. */}
-        <Show when={props.row.busy}>
-          <span
-            data-slot="busy-dot"
-            title={
-              props.row.busySelf
-                ? props.row.busyDescendant
-                  ? language.t("home.attention.busyDelegating")
-                  : language.t("home.attention.busy")
-                : language.t("home.attention.delegating")
-            }
-            class="relative size-2 rounded-full shrink-0"
-            style={{ "--busy-tint": props.row.busySelf ? ownTint() : "var(--box-accent-task)" }}
-          >
-            <span class="busy-dot-fill" />
-            <Show when={props.row.busySelf && props.row.busyDescendant}>
-              <span class="busy-dot-fill busy-dot-fill-task" />
-            </Show>
-          </span>
+        <Show when={busy(state())}>
+          {(dot) => (
+            // Base tint = the agent color when busySelf (own turn), else the task
+            // accent (child-only). A task-accent overlay cross-fades in when a
+            // subtask ALSO runs, so the tint oscillates agent↔task like the dock.
+            <span
+              data-slot="busy-dot"
+              title={
+                props.row.busySelf
+                  ? props.row.busyDescendant
+                    ? language.t("home.attention.busyDelegating")
+                    : language.t("home.attention.busy")
+                  : language.t("home.attention.delegating")
+              }
+              class="relative size-2 rounded-full shrink-0"
+              style={{ "--busy-tint": dot().tint }}
+            >
+              <span class="busy-dot-fill" />
+              <Show when={dot().mixing}>
+                <span class="busy-dot-fill busy-dot-fill-task" />
+              </Show>
+            </span>
+          )}
         </Show>
-        <Show when={!props.row.busy && props.row.unseen}>
-          <span
-            title={language.t("home.attention.unseen")}
-            class="size-2 rounded-full bg-icon-interactive-base shrink-0"
-          />
+        <Show when={flat(state())}>
+          {(dot) => (
+            <span
+              title={language.t(dot().label)}
+              class={`size-2 rounded-full shrink-0 ${dot().class}`}
+              style={dot().tint ? { "background-color": dot().tint } : undefined}
+            />
+          )}
         </Show>
         <Show when={props.row.pingAt}>
           <IconButton icon="circle-ban-sign" title={language.t("home.attention.stopPing")} onClick={stopPing} />

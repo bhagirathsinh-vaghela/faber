@@ -53,7 +53,8 @@ import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { useProviders } from "@/hooks/use-providers"
 import { showToast, Toast, toaster } from "@opencode-ai/ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { useNotification } from "@/context/notification"
+import { useRecent } from "@/context/recent"
+import { attention, busy as busyDot, flat, strongest } from "@/utils/attention"
 import { usePermission } from "@/context/permission"
 import { Binary } from "@opencode-ai/util/binary"
 import { retry } from "@opencode-ai/util/retry"
@@ -96,7 +97,7 @@ export default function Layout(props: ParentProps) {
   const platform = usePlatform()
   const settings = useSettings()
   const server = useServer()
-  const notification = useNotification()
+  const recent = useRecent()
   const permission = usePermission()
   const navigate = useNavigate()
   const providers = useProviders()
@@ -415,6 +416,39 @@ export default function Layout(props: ParentProps) {
       if (e.details?.type === "worktree.failed") {
         setBusy(e.name, false)
         WorktreeState.failed(e.name, e.details.properties?.message ?? language.t("common.requestFailed"))
+        return
+      }
+
+      // A finished or failed turn is announced, never listed here: the dot it
+      // lights lives on the server's recent entry, which every surface reads.
+      if (e.details?.type === "session.idle" || e.details?.type === "session.error") {
+        const sessionID = e.details.properties.sessionID
+        const [syncStore] = globalSync.child(e.name, { bootstrap: false })
+        const found = sessionID ? Binary.search(syncStore.session, sessionID, (s) => s.id) : undefined
+        const session = sessionID && found?.found ? syncStore.session[found.index] : undefined
+        if (session?.parentID) return
+
+        const href = sessionID ? `/${base64Encode(e.name)}/session/${sessionID}` : `/${base64Encode(e.name)}`
+        if (e.details.type === "session.idle") {
+          playSound(soundSrc(settings.sounds.agent()))
+          if (settings.notifications.agent())
+            void platform.notify(
+              language.t("notification.session.responseReady.title"),
+              session?.title ?? sessionID,
+              href,
+            )
+          return
+        }
+
+        playSound(soundSrc(settings.sounds.errors()))
+        const error = "error" in e.details.properties ? e.details.properties.error : undefined
+        if (settings.notifications.errors())
+          void platform.notify(
+            language.t("notification.session.error.title"),
+            session?.title ??
+              (typeof error === "string" ? error : language.t("notification.session.error.fallbackDescription")),
+            href,
+          )
         return
       }
 
@@ -1540,7 +1574,6 @@ export default function Layout(props: ParentProps) {
         if (!dir || !id) return
         const directory = decode64(dir)
         if (!directory) return
-        notification.session.markViewed(id)
         void globalSDK.client.session.seen({ directory, sessionID: id })
         requestAnimationFrame(() => scrollToSession(id, `${directory}:${id}`))
       },
@@ -1606,9 +1639,17 @@ export default function Layout(props: ParentProps) {
   }
 
   const ProjectIcon = (props: { project: LocalProject; class?: string; notify?: boolean }): JSX.Element => {
-    const notification = useNotification()
-    const notifications = createMemo(() => notification.project.unseen(props.project.worktree))
-    const hasError = createMemo(() => notifications().some((n) => n.type === "error"))
+    // A project's dot is the strongest state across its sessions. Busy is
+    // excluded: the rail shows what wants the user, not what is merely running.
+    const dotState = createMemo(() =>
+      strongest(
+        recent
+          .attention()
+          .concat(recent.recent())
+          .filter((row) => row.directory === props.project.worktree)
+          .map((row) => attention({ error: row.error, question: row.question, unseen: row.unseen, agent: row.agent })),
+      ),
+    )
     const name = createMemo(() => props.project.name || getFilename(props.project.worktree))
     // Explicit === false: an absent flag (old client, pre-hydrate) must never
     // read as missing. Only a server-confirmed missing worktree flags red.
@@ -1623,7 +1664,7 @@ export default function Layout(props: ParentProps) {
             {...getAvatarColors(props.project.icon?.color)}
             class="size-full rounded"
             classList={{
-              "badge-mask": (notifications().length > 0 && props.notify) || missing(),
+              "badge-mask": (!!dotState() && !!props.notify) || missing(),
               "opacity-40": missing(),
             }}
           />
@@ -1631,14 +1672,13 @@ export default function Layout(props: ParentProps) {
         <Show when={missing()}>
           <div class="absolute top-px right-px size-1.5 rounded-full z-10 bg-icon-critical-base" />
         </Show>
-        <Show when={notifications().length > 0 && props.notify && !missing()}>
-          <div
-            classList={{
-              "absolute top-px right-px size-1.5 rounded-full z-10": true,
-              "bg-icon-critical-base": hasError(),
-              "bg-text-interactive-base": !hasError(),
-            }}
-          />
+        <Show when={props.notify && !missing() ? flat(dotState()) : undefined}>
+          {(dot) => (
+            <div
+              class={`absolute top-px right-px size-1.5 rounded-full z-10 ${dot().class}`}
+              style={dot().tint ? { "background-color": dot().tint } : undefined}
+            />
+          )}
         </Show>
       </div>
     )
@@ -1652,9 +1692,6 @@ export default function Layout(props: ParentProps) {
     popover?: boolean
     children?: Map<string, string[]>
   }): JSX.Element => {
-    const notification = useNotification()
-    const notifications = createMemo(() => notification.session.unseen(props.session.id))
-    const hasError = createMemo(() => notifications().some((n) => n.type === "error"))
     const [sessionStore] = globalSync.child(props.session.directory)
     const hasPermissions = createMemo(() => {
       const permissions = sessionStore.permission?.[props.session.id] ?? []
@@ -1687,6 +1724,17 @@ export default function Layout(props: ParentProps) {
     })
     // Task-accent cross-fade shows only when BOTH own turn and a subtask run.
     const mixing = createMemo(() => busyFacts().busySelf && busyFacts().busyDescendant)
+
+    // Busy renders as the spinner above, so the dot only covers the flat states.
+    const dotState = createMemo(() =>
+      attention({
+        error: recent.get(props.session.id)?.error,
+        question: recent.get(props.session.id)?.question,
+        permission: hasPermissions(),
+        unseen: props.session.unseen === true,
+        agent: recent.get(props.session.id)?.agent,
+      }),
+    )
 
     const tint = createMemo(() => {
       const messages = sessionStore.message[props.session.id]
@@ -1778,14 +1826,13 @@ export default function Layout(props: ParentProps) {
                   </Show>
                 </span>
               </Match>
-              <Match when={hasPermissions()}>
-                <div class="size-1.5 rounded-full bg-surface-warning-strong" />
-              </Match>
-              <Match when={hasError()}>
-                <div class="size-1.5 rounded-full bg-text-diff-delete-base" />
-              </Match>
-              <Match when={props.session.unseen === true}>
-                <div class="size-1.5 rounded-full bg-text-interactive-base" />
+              <Match when={flat(dotState())}>
+                {(dot) => (
+                  <div
+                    class={`size-1.5 rounded-full ${dot().class}`}
+                    style={dot().tint ? { "background-color": dot().tint } : undefined}
+                  />
+                )}
               </Match>
             </Switch>
           </div>
