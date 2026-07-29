@@ -483,7 +483,7 @@ export const dict = {
   "home.recentSessions": "Recent sessions",
   "home.empty.title": "No recent projects",
   "home.empty.description": "Get started by opening a local project",
-  "home.attention": "Needs attention",
+  "home.attention": "Live sessions",
   "home.attention.busy": "Working",
   "home.attention.delegating": "Subtask running",
   "home.attention.busyDelegating": "Working + subtask",
