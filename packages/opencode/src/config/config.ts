@@ -114,6 +114,11 @@ export namespace Config {
     result.agent = result.agent || {}
     result.mode = result.mode || {}
     result.plugin = result.plugin || []
+    // Agents a single repo contributes. They are announced in a durable message
+    // block rather than in the task tool's description, which rides in tools[]
+    // at the front of Anthropic's prefix hash and so has to read the same from
+    // every project.
+    const projectAgents = new Set<string>()
 
     const directories = [
       Global.Path.config,
@@ -161,8 +166,16 @@ export namespace Config {
       }
 
       result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
-      result.agent = mergeDeep(result.agent, await loadAgent(dir))
-      result.agent = mergeDeep(result.agent, await loadMode(dir))
+      const dirAgents = await loadAgent(dir)
+      const dirModes = await loadMode(dir)
+      result.agent = mergeDeep(result.agent, dirAgents)
+      result.agent = mergeDeep(result.agent, dirModes)
+      // An agent found under the worktree exists only in this repo. The task
+      // tool lists it outside its description so the tools[] bytes, which
+      // Anthropic hashes ahead of everything else, stay equal across projects.
+      if (dir !== Global.Path.config && Filesystem.contains(Instance.worktree, dir)) {
+        for (const name of Object.keys({ ...dirAgents, ...dirModes })) projectAgents.add(name)
+      }
       result.plugin.push(...(await loadPlugin(dir)))
     }
 
@@ -238,6 +251,7 @@ export namespace Config {
     return {
       config: result,
       directories,
+      projectAgents,
     }
   })
 
@@ -1724,5 +1738,9 @@ export namespace Config {
 
   export async function directories() {
     return state().then((x) => x.directories)
+  }
+
+  export async function projectAgents() {
+    return state().then((x) => x.projectAgents)
   }
 }

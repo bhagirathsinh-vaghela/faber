@@ -30,6 +30,8 @@ import { clone } from "remeda"
 import { ToolRegistry } from "../tool/registry"
 import { MCP } from "../mcp"
 import { McpCatalog } from "../mcp/catalog"
+import { AgentCatalog } from "../agent/catalog"
+import { Config } from "../config/config"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
 import { ListTool } from "../tool/ls"
@@ -1579,8 +1581,43 @@ export namespace SessionPrompt {
     input.session.mcpCatalogText = catalog
   }
 
+  // Repo-scoped subagents ride here instead of in the task tool's description,
+  // which sits in tools[] ahead of every cache marker (see AgentCatalog). The
+  // block is appended once per session and then carried as durable history.
+  async function insertAgentCatalog(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
+    // A subtask cannot spawn another subtask, so the list would be dead weight
+    // in its prompt, and a subtask started without include_context is meant to
+    // begin from a blank conversation.
+    if (input.session.parentID) return
+    const scoped = await Config.projectAgents()
+    if (scoped.size === 0) return
+    const agents = (await Agent.list()).filter((a) => a.mode !== "primary" && scoped.has(a.name))
+    const catalog = AgentCatalog.build(agents)
+    if (!catalog) return
+
+    const present = input.messages.some((msg) =>
+      msg.parts.some((part) => part.type === "text" && part.text.startsWith("<project_subagents>")),
+    )
+    if (present) return
+
+    const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
+    if (!userMessage) return
+    const userInfo = userMessage.info as MessageV2.User
+    const part: MessageV2.TextPart = {
+      id: Identifier.ascending("part"),
+      messageID: userInfo.id,
+      sessionID: userInfo.sessionID,
+      type: "text",
+      text: catalog,
+      synthetic: true,
+    }
+    await Session.updatePart(part)
+    userMessage.parts.push(part)
+  }
+
   async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
     await insertMcpCatalog(input)
+    await insertAgentCatalog(input)
 
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages

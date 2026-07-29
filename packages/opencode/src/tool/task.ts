@@ -11,6 +11,7 @@ import { SessionRevert } from "../session/revert"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
 import { BackgroundTask } from "@/background"
+import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "task-tool" })
@@ -363,10 +364,15 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
     : agents
 
+  // Repo-scoped agents are listed in a durable message block instead (see
+  // TaskAgents.build), keeping this description equal across projects so the
+  // tools[] prefix Anthropic hashes first can be shared between them.
+  const scoped = await Config.projectAgents()
   const toolsets = snapshot?.toolsets ?? (await Agent.toolsets())
   const description = DESCRIPTION.replace(
     "{agents}",
     accessibleAgents
+      .filter((a) => !scoped.has(a.name))
       .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)
       .join("\n"),
   ).replace(
