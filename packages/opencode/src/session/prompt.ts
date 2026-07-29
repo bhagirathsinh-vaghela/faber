@@ -25,6 +25,7 @@ import PROMPT_PLAN_REENTRY from "../session/prompt/plan-reentry.txt"
 import PROMPT_PLAN_SUBAGENT from "../session/prompt/plan-subagent.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
+import SUBTASK from "../session/prompt/subtask.txt"
 import { defer } from "../util/defer"
 import { clone } from "remeda"
 import { ToolRegistry } from "../tool/registry"
@@ -1480,6 +1481,7 @@ export namespace SessionPrompt {
 
   const PLAN_REMINDER_MARKER = "<!-- plan-mode-reminder -->"
   const PLAN_EXIT_MARKER = "<!-- plan-mode-exit -->"
+  const SUBTASK_MARKER = "<!-- subtask-no-delegation -->"
   const TURNS_BETWEEN_REMINDERS = 5
   const FULL_REMINDER_EVERY_N = 5
 
@@ -1489,6 +1491,10 @@ export namespace SessionPrompt {
 
   function hasPlanExit(msg: MessageV2.WithParts) {
     return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(PLAN_EXIT_MARKER))
+  }
+
+  function hasSubtaskReminder(msg: MessageV2.WithParts) {
+    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(SUBTASK_MARKER))
   }
 
   function planFileInfo(planPath: string, exists: boolean) {
@@ -1621,6 +1627,21 @@ export namespace SessionPrompt {
 
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
+
+    // A subtask reaches for the task tool, gets a denial back, and only then
+    // does the work itself, having spent a turn learning it. The tool stays in
+    // the schema either way (removing it would move the tools[] bytes the whole
+    // prefix hashes), so the cheap fix is telling it up front.
+    //
+    // It rides the FIRST user message and is written once for the session: the
+    // fact never changes, and a block appended to each new turn would rewrite
+    // the tail of the prefix every time. Presence is checked across the whole
+    // conversation, not just the message being answered, since later turns
+    // carry their own fresh message.
+    if (input.session.parentID && !input.messages.some(hasSubtaskReminder)) {
+      const first = input.messages.find((msg) => msg.info.role === "user") ?? userMessage
+      await persistReminder(first, SUBTASK, SUBTASK_MARKER)
+    }
 
     const plan = Session.plan(input.session)
     const exists = await Bun.file(plan).exists()
