@@ -29,8 +29,16 @@ type Entry = OverviewRow & { section: Section }
 // the wrong session when the server reorders the live list underneath. Content
 // (busy/unseen/countdown/title) stays live per row; only positions and section
 // membership are held. A row keeps its slot until the session leaves the recent
-// hub entirely; a section switch moves it to the end of its new section; a new
-// session appends to the end of its section. Reopening reseeds the order.
+// hub entirely. Reopening reseeds the order.
+//
+// Where an arrival lands depends on the direction, because the two sections are
+// read for different things. A row falling into Recent stopped working just now,
+// which makes it the newest thing there and the one the user is looking for, so
+// it goes to the FRONT. A row rising into Live goes to the BACK: Live is ranked
+// by what THIS screen viewed last, and a session that woke while the view was
+// open was started somewhere else, so it is unviewed here and belongs behind
+// everything the user is actually cycling. Slotting either by the server's rank
+// is not on offer — held rows have drifted from that order by then.
 function useFrozen() {
   const recent = useRecent()
 
@@ -60,10 +68,15 @@ function useFrozen() {
             return true
           })
         }
+        const arrived: string[] = []
         for (const [id, entry] of current) {
           if (seen.has(id)) continue
-          draft[entry.section].push(id)
+          if (entry.section === "attention") draft.attention.push(id)
+          if (entry.section === "recent") arrived.push(id)
         }
+        // Prepended as a batch, not one unshift each: current runs newest-first,
+        // so unshifting in turn would reverse them against each other.
+        if (arrived.length) draft.recent = [...arrived, ...draft.recent]
       }),
     )
   })
