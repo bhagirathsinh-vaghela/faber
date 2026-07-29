@@ -178,12 +178,19 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   // wipe the MRU. Kept out of the ordering memo so it never writes during a read.
   createEffect(() => mru.prune(new Set(live().map((r) => r.sessionID))))
 
-  // Sections stay fixed — "Needs attention" always above "Recent sessions" —
+  // Sections stay fixed — "Live sessions" always above "Recent sessions" —
   // because section is the primary sort key (attention=0, recent=1), so the
-  // sort never crosses the boundary. MRU only reorders rows WITHIN a section:
-  // viewed sessions lead in most-recently-viewed order, unviewed ones keep their
-  // normal order after (Infinity rank, original index as final tiebreak). Group
-  // order follows first-appearance, so pinning the boundary pins the groups.
+  // sort never crosses the boundary. Group order follows first-appearance, so
+  // pinning the boundary pins the groups.
+  //
+  // MRU reorders the LIVE section only: those are the sessions being juggled
+  // right now, so "what this screen looked at last" is the useful order and is
+  // what Ctrl+Tab cycles. Recent sessions keeps the server's interaction order
+  // (turns and pings) so every device agrees on it — a per-browser view history
+  // would otherwise make the same list read differently on each screen, and the
+  // screen reading it is rarely the one that opened those sessions. Within live,
+  // unviewed rows keep their normal order after the viewed ones (Infinity rank,
+  // original index as final tiebreak).
   const items = createMemo(() => {
     const rank = new Map(mru.order().map((id, i) => [id, i]))
     return live()
@@ -191,7 +198,7 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
         row,
         i,
         section: row.section === "attention" ? 0 : 1,
-        mru: rank.get(row.sessionID) ?? Infinity,
+        mru: row.section === "attention" ? (rank.get(row.sessionID) ?? Infinity) : 0,
       }))
       .sort((a, b) => a.section - b.section || a.mru - b.mru || a.i - b.i)
       .map((x) => x.row)

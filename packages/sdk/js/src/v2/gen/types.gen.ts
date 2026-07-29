@@ -25,6 +25,7 @@ export type RecentSession = {
   question: boolean
   error: boolean
   pingAt?: number
+  pinged?: number
 }
 
 export type OpenProject = {

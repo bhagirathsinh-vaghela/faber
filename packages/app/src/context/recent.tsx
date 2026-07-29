@@ -24,6 +24,12 @@ export type OverviewRow = {
   question: boolean
   error: boolean
   pingAt?: number
+  // Last successful ping's dispatch time. Recent sessions order on
+  // `interacted`, which folds this together with `updated`.
+  pinged?: number
+  // Last interaction of any kind: a real turn or a cache ping. Both are the
+  // session doing work on the user's behalf; neither an open nor a stop counts.
+  interacted: number
 }
 
 export const { use: useRecent, provider: RecentProvider } = createSimpleContext({
@@ -58,18 +64,28 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           question: entry.question ?? false,
           error: entry.error ?? false,
           pingAt: entry.pingAt,
+          pinged: entry.pinged,
+          interacted: Math.max(entry.updated, entry.pinged ?? 0),
         }
       }),
     )
 
-    // A session is in exactly one bucket. Both sort by last real-turn activity
-    // (never pings/views), newest-first — most-recently-active on top in either
-    // section. Membership uses globalSync.isAlive — the same predicate transcript
-    // eviction protects on — so the overview's attention list and the never-evict
-    // set stay one definition. It rides only server-pushed fields (busy/pingAt),
-    // never the local clock, so the buckets recompute on server updates rather
-    // than every tick — the ping deadline is cleared server-side when its window
-    // lapses. An unseen-but-idle session sorts into recent and keeps its dot.
+    // A session is in exactly one bucket, newest-first within each. Membership
+    // uses globalSync.isAlive — the same predicate transcript eviction protects
+    // on — so the overview's live list and the never-evict set stay one
+    // definition. It rides only server-pushed fields (busy/pingAt), never the
+    // local clock, so the buckets recompute on server updates rather than every
+    // tick — the ping deadline is cleared server-side when its window lapses. An
+    // unseen-but-idle session sorts into recent and keeps its dot.
+    //
+    // The two sections order on different clocks on purpose. Live sessions sorts
+    // on last real turn, so a list of working sessions can't reshuffle on ping
+    // timing (every armed session re-anchors on its own cache schedule). Recent
+    // sessions sorts on last interaction of ANY kind, because a session kept
+    // warm for an hour was in use that whole time even though its pings persist
+    // no message — ordering it on the stale turn timestamp buries it under
+    // sessions abandoned earlier. Neither clock counts an open or a stop: those
+    // are per-device acts, and the client MRU already layers view order on top.
     const attention = createMemo(() =>
       rows()
         .filter((r) => globalSync.isAlive(r))
@@ -78,7 +94,7 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     const recent = createMemo(() =>
       rows()
         .filter((r) => !globalSync.isAlive(r))
-        .sort((a, b) => b.updated - a.updated),
+        .sort((a, b) => b.interacted - a.interacted),
     )
 
     // Always resolve the LIVE row by id, never trust a passed-in snapshot. The

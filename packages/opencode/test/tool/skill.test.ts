@@ -19,7 +19,8 @@ const baseCtx: Omit<Tool.Context, "ask"> = {
   metadata: () => {},
 }
 
-const SKILL_MD = (name: string) => ["---", `name: ${name}`, `description: Skill ${name}.`, "---", "", `# ${name}`, ""].join("\n")
+const SKILL_MD = (name: string) =>
+  ["---", `name: ${name}`, `description: Skill ${name}.`, "---", "", `# ${name}`, ""].join("\n")
 
 describe("tool.skill", () => {
   test("description renders a home skill location home-relative", async () => {

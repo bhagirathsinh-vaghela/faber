@@ -8790,6 +8790,9 @@
           },
           "pingAt": {
             "type": "number"
+          },
+          "pinged": {
+            "type": "number"
           }
         },
         "required": [

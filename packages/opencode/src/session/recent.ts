@@ -60,6 +60,11 @@ export namespace SessionRecent {
       // The client renders the countdown from this against its own clock, so a
       // new deadline is the only thing that has to cross the wire.
       pingAt: z.number().optional(),
+      // Dispatch time of the last successful ping — the forward-looking pingAt's
+      // backward-looking counterpart. Recent sessions order on last interaction,
+      // and a kept-warm session's pings are interaction even though they persist
+      // no message and so never advance `updated`.
+      pinged: z.number().optional(),
     })
     .meta({ ref: "RecentSession" })
   export type Entry = z.infer<typeof Entry>
@@ -71,6 +76,7 @@ export namespace SessionRecent {
     agent: true,
     updated: true,
     unseen: true,
+    pinged: true,
   })
   type Stored = z.infer<typeof Stored>
 
@@ -172,6 +178,7 @@ export namespace SessionRecent {
       // A fresh turn on this session supersedes the last one's failure.
       error: false,
       pingAt: prev?.pingAt,
+      pinged: prev?.pinged,
     })
     if (entries.size > LIMIT) {
       const drop = sorted().slice(LIMIT)
@@ -248,6 +255,17 @@ export namespace SessionRecent {
     entry.pingAt = pingAt
     if (appearedOrCleared) publish()
     if (!appearedOrCleared) publishLazy()
+  }
+
+  // A ping landed. Recency only — the Recent section's order moved, no flag the
+  // overview renders changed — so it rides the lazy timer like touch() does.
+  export async function setPinged(sessionID: string, at: number) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry) return
+    entry.pinged = at
+    flush()
+    publishLazy()
   }
 
   export async function remove(sessionID: string) {

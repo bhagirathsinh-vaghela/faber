@@ -275,7 +275,10 @@ export namespace InstructionPrompt {
           .text()
           .catch(() => undefined)
         if (content) {
-          results.push({ filepath: found, content: "Instructions from: " + formatPath(found, "project") + "\n" + content })
+          results.push({
+            filepath: found,
+            content: "Instructions from: " + formatPath(found, "project") + "\n" + content,
+          })
         }
       }
       current = path.dirname(current)

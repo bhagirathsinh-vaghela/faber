@@ -440,6 +440,9 @@ export namespace SessionPing {
   async function classify(sessionID: string, dispatchedAt?: number) {
     if (dispatchedAt !== undefined) {
       misses.delete(sessionID)
+      // Classified success only: a miss never reached the server, so it is not
+      // interaction and must not lift the session up the Recent ordering.
+      void SessionRecent.setPinged(sessionID, dispatchedAt)
       await Session.update(sessionID, (draft) => {
         draft.ping = { count: (draft.ping?.count ?? 0) + 1, time: dispatchedAt }
       })

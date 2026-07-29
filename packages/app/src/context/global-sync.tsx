@@ -257,6 +257,7 @@ function createGlobalSync() {
       question?: boolean
       error?: boolean
       pingAt?: number
+      pinged?: number
     }[]
     // The server-owned set of projects shown in the sidebar. Every client
     // connected to this server renders the same set: seeded at bootstrap from
