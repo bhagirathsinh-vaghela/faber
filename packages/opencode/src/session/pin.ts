@@ -111,6 +111,20 @@ export namespace SessionPin {
     for (const match of matches) into.add(match)
   }
 
+  // Only a skill's frontmatter shapes the prompt: name, description, and
+  // location render into the skill tool's description and land in tools[]. The
+  // body is tool OUTPUT, read from the snapshot when the skill is invoked. So a
+  // body edit is fingerprinted away, letting a running session pick up new
+  // instructions on its next invocation while the cached prefix stands.
+  async function skillDigestInput(file: string) {
+    const text = await Bun.file(file)
+      .text()
+      .catch(() => undefined)
+    if (text === undefined) return undefined
+    const match = text.match(/^---\r?\n[\s\S]*?\r?\n---/)
+    return new TextEncoder().encode(match ? match[0] : text)
+  }
+
   // Everything on disk that shapes a snapshot. config.instructions and
   // skills.paths are resolved through the (possibly stale) config memo; the
   // config FILE bytes are always hashed directly, so a config edit that
@@ -166,9 +180,11 @@ export namespace SessionPin {
     const hasher = new Bun.CryptoHasher("sha256")
     hasher.update(Instance.directory + "\0")
     for (const file of [...files].sort()) {
-      const content = await Bun.file(file)
-        .bytes()
-        .catch(() => undefined)
+      const content = file.endsWith("SKILL.md")
+        ? await skillDigestInput(file)
+        : await Bun.file(file)
+            .bytes()
+            .catch(() => undefined)
       if (!content) continue
       hasher.update(file + "\0")
       hasher.update(content)

@@ -24,6 +24,17 @@ function relativePath(absolute: string) {
   return absolute
 }
 
+// The body as it stands on disk, falling back to the pinned copy when the file
+// is gone or unreadable.
+async function current(skill: Skill.Info) {
+  const text = await Bun.file(skill.location)
+    .text()
+    .catch(() => undefined)
+  if (text === undefined) return skill.content
+  const match = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
+  return match ? text.slice(match[0].length) : text
+}
+
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const skills = ctx?.snapshot ? Object.values(ctx.snapshot.skills) : await Skill.all()
   skills.sort((a, b) => a.name.localeCompare(b.name))
@@ -81,7 +92,12 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, execCtx) {
-      const skill = ctx?.snapshot ? ctx.snapshot.skills[params.name] : await Skill.get(params.name)
+      // Metadata comes from the pin, so the tool description and the loadable
+      // set stay frozen for the session. The body is re-read from disk: it is
+      // output rather than prompt, so serving the current text lets a skill be
+      // edited and picked up on the next invocation without moving the prefix.
+      const pinned = ctx?.snapshot ? ctx.snapshot.skills[params.name] : undefined
+      const skill = pinned ?? (await Skill.get(params.name))
 
       if (!skill) {
         const available = accessibleSkills.map((s) => s.name).join(", ")
@@ -124,7 +140,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           `<skill_content name="${skill.name}">`,
           `# Skill: ${skill.name}`,
           "",
-          skill.content.trim(),
+          (await current(skill)).trim(),
           "",
           `Base directory for this skill: ${base}`,
           "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.",
