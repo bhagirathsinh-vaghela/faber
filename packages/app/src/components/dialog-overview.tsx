@@ -108,51 +108,49 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
           {DateTime.fromMillis(props.row.updated).toRelative()}
         </span>
       </Show>
-      <Show when={!props.showTime}>
-        <ChipGroup>
-          <Chip
-            class={countdown() ? undefined : "opacity-35"}
-            icon={<CountdownRing fraction={countdown() ? recent.remaining(props.row) : 0} />}
+      <Show when={busy(state())}>
+        {(dot) => (
+          // Base tint = the agent color when busySelf (own turn), else the task
+          // accent (child-only). A task-accent overlay cross-fades in when a
+          // subtask ALSO runs, so the tint oscillates agent↔task like the dock.
+          <span
+            data-slot="busy-dot"
+            title={
+              props.row.busySelf
+                ? props.row.busyDescendant
+                  ? language.t("home.attention.busyDelegating")
+                  : language.t("home.attention.busy")
+                : language.t("home.attention.delegating")
+            }
+            class="relative size-2 rounded-full shrink-0"
+            style={{ "--busy-tint": dot().tint }}
           >
-            {countdown() ?? "--"}
-          </Chip>
-        </ChipGroup>
-        <Show when={busy(state())}>
-          {(dot) => (
-            // Base tint = the agent color when busySelf (own turn), else the task
-            // accent (child-only). A task-accent overlay cross-fades in when a
-            // subtask ALSO runs, so the tint oscillates agent↔task like the dock.
-            <span
-              data-slot="busy-dot"
-              title={
-                props.row.busySelf
-                  ? props.row.busyDescendant
-                    ? language.t("home.attention.busyDelegating")
-                    : language.t("home.attention.busy")
-                  : language.t("home.attention.delegating")
-              }
-              class="relative size-2 rounded-full shrink-0"
-              style={{ "--busy-tint": dot().tint }}
-            >
-              <span class="busy-dot-fill" />
-              <Show when={dot().mixing}>
-                <span class="busy-dot-fill busy-dot-fill-task" />
-              </Show>
-            </span>
-          )}
-        </Show>
-        <Show when={flat(state())}>
-          {(dot) => (
-            <span
-              title={language.t(dot().label)}
-              class={`size-2 rounded-full shrink-0 ${dot().class}`}
-              style={dot().tint ? { "background-color": dot().tint } : undefined}
-            />
-          )}
-        </Show>
-        <Show when={props.row.pingAt}>
-          <IconButton icon="circle-ban-sign" title={language.t("home.attention.stopPing")} onClick={stopPing} />
-        </Show>
+            <span class="busy-dot-fill" />
+            <Show when={dot().mixing}>
+              <span class="busy-dot-fill busy-dot-fill-task" />
+            </Show>
+          </span>
+        )}
+      </Show>
+      <Show when={flat(state())}>
+        {(dot) => (
+          <span
+            title={language.t(dot().label)}
+            class={`size-2 rounded-full shrink-0 ${dot().class}`}
+            style={dot().tint ? { "background-color": dot().tint } : undefined}
+          />
+        )}
+      </Show>
+      <ChipGroup>
+        <Chip
+          class={countdown() ? undefined : "opacity-35"}
+          icon={<CountdownRing fraction={countdown() ? recent.remaining(props.row) : 0} />}
+        >
+          {countdown() ?? "--"}
+        </Chip>
+      </ChipGroup>
+      <Show when={props.row.pingAt}>
+        <IconButton icon="circle-ban-sign" title={language.t("home.attention.stopPing")} onClick={stopPing} />
       </Show>
     </div>
   )
