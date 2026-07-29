@@ -32,6 +32,7 @@ import { useSDK } from "@/context/sdk"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
+import { useStash } from "@/context/stash"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -141,6 +142,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       ? "[&>[data-component=icon]]:!size-9"
       : "[&>[data-component=icon]]:!size-6 md:[&>[data-component=icon]]:!size-[18px]"
   const comments = useComments()
+  const stash = useStash()
   const params = useParams()
   const dialog = useDialog()
   const providers = useProviders()
@@ -1151,6 +1153,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     setCurrentHistory("entries", (entries) => [entry, ...entries].slice(0, MAX_HISTORY))
   }
 
+  // Leaving shell mode stashes the command rather than carrying it into normal
+  // mode, where the same Enter would send it to the model as a prompt.
+  const exitShell = () => {
+    setStore("mode", "normal")
+    if (!prompt.dirty()) return
+    stash.push(prompt.current(), prompt.context.items())
+    prompt.reset()
+    prompt.context.clear()
+    // Clearing a typed command reads as losing it unless the stash is named.
+    showToast({
+      title: language.t("prompt.mode.shell.stashed.title"),
+      description: language.t("prompt.mode.shell.stashed.description"),
+    })
+  }
+
   const navigateHistory = (direction: "up" | "down") => {
     const entries = store.mode === "shell" ? shellHistory.entries : history.entries
     const current = store.historyIndex
@@ -1215,21 +1232,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (event.key === "!" && store.mode === "normal") {
       const cursorPosition = getCursorPosition(editorRef)
       if (cursorPosition === 0) {
+        event.preventDefault()
         setStore("mode", "shell")
         setStore("popover", null)
-        event.preventDefault()
         return
       }
     }
     if (store.mode === "shell") {
       const { collapsed, cursorPosition, textLength } = getCaretState()
       if (event.key === "Escape") {
-        setStore("mode", "normal")
+        exitShell()
         event.preventDefault()
         return
       }
       if (event.key === "Backspace" && collapsed && cursorPosition === 0 && textLength === 0) {
-        setStore("mode", "normal")
+        exitShell()
         event.preventDefault()
         return
       }
@@ -1382,6 +1399,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
       if (err instanceof Error) return err.message
       return language.t("common.requestFailed")
+    }
+
+    // A prompt queues behind a running turn, but shell takes the session's
+    // in-flight handle exclusively and the server rejects it outright. Say so
+    // here and keep the draft, rather than losing it to a Session is busy error.
+    if (mode === "shell" && busy().busySelf) {
+      showToast({
+        title: language.t("prompt.toast.shellBusy.title"),
+        description: language.t("prompt.toast.shellBusy.description"),
+      })
+      return
     }
 
     addToHistory(currentPrompt, mode)
@@ -2317,9 +2345,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </Show>
             <Switch>
               <Match when={store.mode === "shell"}>
-                <div class="flex items-center gap-2 px-2 h-6">
-                  <Icon name="console" size="small" class="text-icon-primary" />
-                  <span class="text-12-regular text-text-primary">{language.t("prompt.mode.shell")}</span>
+                <div class="flex items-center gap-2 px-2 h-6" data-blocked={busy().busySelf ? "true" : undefined}>
+                  <Icon
+                    name="console"
+                    size="small"
+                    class={busy().busySelf ? "text-icon-weak" : "text-icon-primary"}
+                  />
+                  <span class={`text-12-regular ${busy().busySelf ? "text-text-weak" : "text-text-primary"}`}>
+                    {language.t("prompt.mode.shell")}
+                  </span>
+                  <Show when={busy().busySelf}>
+                    <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.blocked")}</span>
+                  </Show>
                   <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.exit")}</span>
                 </div>
               </Match>

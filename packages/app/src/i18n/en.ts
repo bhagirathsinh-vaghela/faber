@@ -225,6 +225,9 @@ export const dict = {
   "prompt.placeholder.summarizeComment": "Summarize comment…",
   "prompt.mode.shell": "Shell",
   "prompt.mode.shell.exit": "esc to exit",
+  "prompt.mode.shell.blocked": "unavailable while working",
+  "prompt.mode.shell.stashed.title": "Command stashed",
+  "prompt.mode.shell.stashed.description": "Leaving shell mode saved your command to the stash.",
 
   "prompt.popover.emptyResults": "No matching results",
   "prompt.popover.emptyCommands": "No matching commands",
@@ -260,6 +263,9 @@ export const dict = {
   "prompt.toast.worktreeCreateFailed.title": "Failed to create worktree",
   "prompt.toast.sessionCreateFailed.title": "Failed to create session",
   "prompt.toast.shellSendFailed.title": "Failed to send shell command",
+  "prompt.toast.shellBusy.title": "Shell unavailable while the session is working",
+  "prompt.toast.shellBusy.description":
+    "A shell command needs the session to itself. Wait for the turn to finish, or Stop it, then send again.",
   "prompt.toast.commandSendFailed.title": "Failed to send command",
   "prompt.toast.promptSendFailed.title": "Failed to send prompt",
 
