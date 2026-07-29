@@ -8788,6 +8788,9 @@
           "error": {
             "type": "boolean"
           },
+          "permission": {
+            "type": "boolean"
+          },
           "pingAt": {
             "type": "number"
           },
@@ -8805,7 +8808,8 @@
           "busyDescendant",
           "unseen",
           "question",
-          "error"
+          "error",
+          "permission"
         ]
       },
       "OpenProject": {

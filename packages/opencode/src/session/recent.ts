@@ -56,6 +56,11 @@ export namespace SessionRecent {
       // viewed or a new turn starts, so a red dot never outlives the failure
       // that earned it.
       error: z.boolean(),
+      // A permission prompt is blocking the turn. Recomputed from the pending
+      // set rather than counted, since one reply can resolve siblings: a
+      // rejection drops every prompt on the session, an always-allow drops the
+      // ones its new rule satisfies, and auto-accept drops the edit prompts.
+      permission: z.boolean(),
       // Epoch ms the next cache ping fires; absent when no ping is scheduled.
       // The client renders the countdown from this against its own clock, so a
       // new deadline is the only thing that has to cross the wire.
@@ -96,6 +101,7 @@ export namespace SessionRecent {
         busyDescendant: false,
         question: false,
         error: false,
+        permission: false,
       })
   })
 
@@ -107,7 +113,7 @@ export namespace SessionRecent {
     timer = setTimeout(() => {
       timer = undefined
       const durable: Stored[] = sorted().map(
-        ({ busy, busySelf, busyDescendant, question, error, pingAt, ...rest }) => rest,
+        ({ busy, busySelf, busyDescendant, question, error, permission, pingAt, ...rest }) => rest,
       )
       void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
@@ -161,7 +167,15 @@ export namespace SessionRecent {
   export async function touch(
     input: Omit<
       Entry,
-      "agent" | "busy" | "busySelf" | "busyDescendant" | "unseen" | "question" | "error" | "pingAt"
+      | "agent"
+      | "busy"
+      | "busySelf"
+      | "busyDescendant"
+      | "unseen"
+      | "question"
+      | "permission"
+      | "error"
+      | "pingAt"
     > & { agent?: string },
   ) {
     await hydrate()
@@ -175,6 +189,7 @@ export namespace SessionRecent {
       busyDescendant: prev?.busyDescendant ?? false,
       unseen: prev?.unseen ?? false,
       question: prev?.question ?? false,
+      permission: prev?.permission ?? false,
       // A fresh turn on this session supersedes the last one's failure.
       error: false,
       pingAt: prev?.pingAt,
@@ -213,13 +228,22 @@ export namespace SessionRecent {
     publish()
   }
 
-  // Neither flag is durable: a question does not survive the process that holds
-  // its pending promise, and an error describes a turn this instance ran.
+  // None of these three is durable: a question and a permission die with the
+  // process holding their pending promise, and an error describes a turn this
+  // instance ran.
   export async function setQuestion(sessionID: string, question: boolean) {
     await hydrate()
     const entry = entries.get(sessionID)
     if (!entry || entry.question === question) return
     entry.question = question
+    publish()
+  }
+
+  export async function setPermission(sessionID: string, permission: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.permission === permission) return
+    entry.permission = permission
     publish()
   }
 

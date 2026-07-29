@@ -255,6 +255,7 @@ function createGlobalSync() {
       busy: boolean
       unseen: boolean
       question?: boolean
+      permission?: boolean
       error?: boolean
       pingAt?: number
       pinged?: number

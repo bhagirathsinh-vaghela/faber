@@ -24,6 +24,7 @@ export type RecentSession = {
   unseen: boolean
   question: boolean
   error: boolean
+  permission: boolean
   pingAt?: number
   pinged?: number
 }

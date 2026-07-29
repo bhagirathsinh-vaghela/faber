@@ -22,7 +22,13 @@ export function NotificationCenter(props: { mobile?: boolean }) {
   // Busy is deliberately absent: a running turn wants nothing from the user, so
   // it would fill the list with rows there is nothing to do about.
   const state = (row: OverviewRow) =>
-    attention({ error: row.error, question: row.question, unseen: row.unseen, agent: row.agent })
+    attention({
+      error: row.error,
+      question: row.question,
+      permission: row.permission,
+      unseen: row.unseen,
+      agent: row.agent,
+    })
 
   const rows = createMemo(() =>
     recent

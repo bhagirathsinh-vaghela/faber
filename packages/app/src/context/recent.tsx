@@ -22,6 +22,7 @@ export type OverviewRow = {
   busyDescendant: boolean
   unseen: boolean
   question: boolean
+  permission: boolean
   error: boolean
   pingAt?: number
   // Last successful ping's dispatch time. Recent sessions order on
@@ -62,6 +63,7 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           unseen: entry.unseen,
           // A server that predates these flags omits them; absent reads as off.
           question: entry.question ?? false,
+          permission: entry.permission ?? false,
           error: entry.error ?? false,
           pingAt: entry.pingAt,
           pinged: entry.pinged,
