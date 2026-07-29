@@ -16,19 +16,26 @@ const FILES = [
   "CONTEXT.md", // deprecated
 ]
 
-function formatPath(input: string) {
+// The header sits in S1 for a global file, ahead of every cache marker, so it
+// must read the same from any directory. Scope decides the form rather than a
+// prefix test: a global file is always home-relative, and only a project file
+// is relative to the worktree. Testing the worktree first would rewrite a
+// global file's header whenever the worktree contains home (cwd == ~), and
+// testing home first would put the checkout path in a project file's header.
+function formatPath(input: string, scope: "global" | "project") {
   const home = Global.Path.home
-  const homePrefix = home + path.sep
-  const homeRel = input.startsWith(homePrefix) ? `~/${path.relative(home, input)}` : input
   const worktree = Instance.worktree
-  const workRel = worktree !== "/" && Filesystem.contains(worktree, input) ? path.relative(worktree, input) : homeRel
-  return workRel
+  if (scope === "project" && worktree !== "/" && Filesystem.contains(worktree, input)) {
+    return path.relative(worktree, input)
+  }
+  if (input.startsWith(home + path.sep)) return `~/${path.relative(home, input)}`
+  return input
 }
 
 function globalFiles() {
   const files = [path.join(Global.Path.config, "AGENTS.md")]
   if (!Flag.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT) {
-    files.push(path.join(os.homedir(), ".claude", "CLAUDE.md"))
+    files.push(path.join(Global.Path.home, ".claude", "CLAUDE.md"))
   }
   if (Flag.OPENCODE_CONFIG_DIR) {
     files.push(path.join(Flag.OPENCODE_CONFIG_DIR, "AGENTS.md"))
@@ -186,7 +193,7 @@ export namespace InstructionPrompt {
         const content = await Bun.file(p)
           .text()
           .catch(() => "")
-        return content ? "Instructions from: " + formatPath(p) + "\n" + content : ""
+        return content ? "Instructions from: " + formatPath(p, "global") + "\n" + content : ""
       })
 
     // Load project files
@@ -196,7 +203,7 @@ export namespace InstructionPrompt {
         const content = await Bun.file(p)
           .text()
           .catch(() => "")
-        return content ? "Instructions from: " + formatPath(p) + "\n" + content : ""
+        return content ? "Instructions from: " + formatPath(p, "project") + "\n" + content : ""
       })
 
     // URL instructions go to project
@@ -268,7 +275,7 @@ export namespace InstructionPrompt {
           .text()
           .catch(() => undefined)
         if (content) {
-          results.push({ filepath: found, content: "Instructions from: " + formatPath(found) + "\n" + content })
+          results.push({ filepath: found, content: "Instructions from: " + formatPath(found, "project") + "\n" + content })
         }
       }
       current = path.dirname(current)
