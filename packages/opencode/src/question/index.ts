@@ -81,20 +81,29 @@ export namespace Question {
     ),
   }
 
-  const state = Instance.state(async () => {
-    const pending: Record<
-      string,
-      {
-        info: Request
-        resolve: (answers: Answer[]) => void
-        reject: (e: any) => void
-      }
-    > = {}
+  const state = Instance.state(
+    async () => {
+      const pending: Record<
+        string,
+        {
+          info: Request
+          resolve: (answers: Answer[]) => void
+          reject: (e: any) => void
+        }
+      > = {}
 
-    return {
-      pending,
-    }
-  })
+      return {
+        pending,
+      }
+    },
+    async (s) => {
+      for (const [id, item] of Object.entries(s.pending)) {
+        delete s.pending[id]
+        void SessionRecent.setQuestion(item.info.sessionID, false)
+        item.reject(new RejectedError())
+      }
+    },
+  )
 
   export async function ask(input: {
     sessionID: string
@@ -165,6 +174,21 @@ export namespace Question {
     })
 
     existing.reject(new RejectedError())
+  }
+
+  // A turn ending is the end of every question it raised: the tool call waiting
+  // on the answer is gone, so an unanswered prompt has nothing left to return
+  // to. Called from the one place every turn exits through, so a Stop mid-prompt
+  // cannot leave the dot claiming the session still wants an answer.
+  export async function clear(sessionID: string) {
+    const s = await state()
+    for (const [id, item] of Object.entries(s.pending)) {
+      if (item.info.sessionID !== sessionID) continue
+      delete s.pending[id]
+      Bus.publish(Event.Rejected, { sessionID, requestID: item.info.id })
+      item.reject(new RejectedError())
+    }
+    await settle(sessionID)
   }
 
   // The dot answers "does this session still want something", so it survives

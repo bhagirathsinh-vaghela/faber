@@ -4,6 +4,7 @@ import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
+import { SessionRecent } from "@/session/recent"
 import { fn } from "@/util/fn"
 import { Log } from "@/util/log"
 import { Wildcard } from "@/util/wildcard"
@@ -112,27 +113,36 @@ export namespace PermissionNext {
     ),
   }
 
-  const state = Instance.state(async () => {
-    const projectID = Instance.project.id
-    const stored = await Storage.read<Ruleset>(["permission", projectID]).catch(() => [] as Ruleset)
+  const state = Instance.state(
+    async () => {
+      const projectID = Instance.project.id
+      const stored = await Storage.read<Ruleset>(["permission", projectID]).catch(() => [] as Ruleset)
 
-    const pending: Record<
-      string,
-      {
-        info: Request
-        resolve: () => void
-        reject: (e: any) => void
+      const pending: Record<
+        string,
+        {
+          info: Request
+          resolve: () => void
+          reject: (e: any) => void
+        }
+      > = {}
+
+      const autoAccept: Record<string, boolean> = {}
+
+      return {
+        pending,
+        approved: stored,
+        autoAccept,
       }
-    > = {}
-
-    const autoAccept: Record<string, boolean> = {}
-
-    return {
-      pending,
-      approved: stored,
-      autoAccept,
-    }
-  })
+    },
+    async (s) => {
+      for (const [id, item] of Object.entries(s.pending)) {
+        delete s.pending[id]
+        void SessionRecent.setPermission(item.info.sessionID, false)
+        item.reject(new RejectedError())
+      }
+    },
+  )
 
   export const ask = fn(
     Request.partial({ id: true }).extend({
@@ -159,6 +169,7 @@ export namespace PermissionNext {
               resolve,
               reject,
             }
+            void SessionRecent.setPermission(request.sessionID, true)
             Bus.publish(Event.Asked, info)
           })
         }
@@ -198,10 +209,12 @@ export namespace PermissionNext {
             pending.reject(new RejectedError())
           }
         }
+        await settle(sessionID)
         return
       }
       if (input.reply === "once") {
         existing.resolve()
+        await settle(existing.info.sessionID)
         return
       }
       if (input.reply === "always") {
@@ -231,6 +244,8 @@ export namespace PermissionNext {
           pending.resolve()
         }
 
+        await settle(sessionID)
+
         // TODO: we don't save the permission ruleset to disk yet until there's
         // UI to manage it
         // await Storage.write(["permission", Instance.project.id], s.approved)
@@ -238,6 +253,30 @@ export namespace PermissionNext {
       }
     },
   )
+
+  // A turn ending is the end of every prompt it raised: the tool call waiting on
+  // the answer is gone, so an unanswered prompt has nothing left to unblock.
+  // Called from the one place every turn exits through, so a Stop mid-prompt
+  // cannot leave the dot claiming the session is still blocked.
+  export async function clear(sessionID: string) {
+    const s = await state()
+    for (const [id, item] of Object.entries(s.pending)) {
+      if (item.info.sessionID !== sessionID) continue
+      delete s.pending[id]
+      Bus.publish(Event.Replied, { sessionID, requestID: item.info.id, reply: "reject" })
+      item.reject(new RejectedError())
+    }
+    await settle(sessionID)
+  }
+
+  // The dot answers "is this session still blocked", so it is recomputed from
+  // the pending set rather than cleared per reply: one reply can resolve
+  // siblings, and a session can hold several prompts at once.
+  async function settle(sessionID: string) {
+    const s = await state()
+    const open = Object.values(s.pending).some((p) => p.info.sessionID === sessionID)
+    void SessionRecent.setPermission(sessionID, open)
+  }
 
   export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
     const merged = merge(...rulesets)
@@ -319,6 +358,7 @@ export namespace PermissionNext {
         })
         pending.resolve()
       }
+      await settle(input.sessionID)
     },
   )
 }

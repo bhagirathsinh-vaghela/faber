@@ -51,6 +51,7 @@ import { SessionProcessor } from "./processor"
 import { TaskTool } from "@/tool/task"
 import { Tool } from "@/tool/tool"
 import { PermissionNext } from "@/permission/next"
+import { Question } from "@/question"
 import { SessionStatus } from "./status"
 import { SessionBusy } from "./busy"
 import { LLM } from "./llm"
@@ -289,6 +290,12 @@ export namespace SessionPrompt {
     log.info("cancel", { sessionID })
     const s = state()
     const match = s[sessionID]
+    // Both branches drop the session's open prompts. A prompt outlives the tool
+    // call that raised it only as a dot nobody can answer, and the no-match
+    // branch is reached with one still open: a session waiting on a permission
+    // is not in-flight by the time a Stop arrives.
+    void Question.clear(sessionID)
+    void PermissionNext.clear(sessionID)
     if (!match) {
       // No in-flight turn — the "verify nothing is in flight, THEN kill the
       // ping" case (an idle, ping-armed session). Just tear the daemon down.
