@@ -2229,173 +2229,204 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             The dock is bottom-anchored, so a taller cap grows it upward into
             the reachable lower half rather than pushing controls off-thumb.
             Applied at every width — the dock keeps its normal full width. */}
+        {/* Desktop zen puts the editor and the button row on one line. They must
+            share it as flex siblings so the buttons claim real width and wrapped
+            text can never reach under them. Everywhere else this wrapper is
+            display:contents, leaving the two as direct children of the form. */}
         <div
           classList={{
-            "relative overflow-y-auto": true,
-            "max-h-[240px]": !companionTall(),
-            "max-h-[45vh]": companionTall(),
+            contents: true,
+            "md:flex md:flex-row md:items-center": zen(),
           }}
-          ref={(el) => (scrollRef = el)}
         >
           <div
-            data-component="prompt-input"
-            ref={(el) => {
-              editorRef = el
-              props.ref?.(el)
-            }}
-            role="textbox"
-            aria-multiline="true"
-            aria-label={
-              store.mode === "shell"
-                ? language.t("prompt.placeholder.shell")
-                : commentCount() > 1
-                  ? language.t("prompt.placeholder.summarizeComments")
-                  : commentCount() === 1
-                    ? language.t("prompt.placeholder.summarizeComment")
-                    : language.t("prompt.placeholder.normal")
-            }
-            contenteditable="true"
-            inputmode={suppressKeyboard() ? "none" : undefined}
-            onInput={handleInput}
-            onPaste={handlePaste}
-            onCompositionStart={() => setComposing(true)}
-            onCompositionEnd={() => setComposing(false)}
-            onKeyDown={handleKeyDown}
             classList={{
-              "select-text": true,
-              "w-full px-2 text-13-semibold md:px-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
-              // Top-pad the text so the button row hugs beneath it. Desktop zen
-              // is the exception: the buttons pin to the right edge on one line,
-              // so reserve room (pr-12) and vertically center the single line.
-              "pt-2 pb-0 md:py-3": !zen(),
-              "pt-2 pb-0 md:py-2.5 md:pr-12": zen(),
-              // Hold the tall surface open on an empty draft, so entering
-              // companion doesn't collapse the dock back to one line.
-              "min-h-[28vh]": companionTall(),
-              "[&_[data-type=file]]:text-syntax-property": true,
-              "[&_[data-type=agent]]:text-syntax-type": true,
-              "font-mono!": store.mode === "shell",
+              "relative overflow-y-auto min-w-0": true,
+              "md:flex-1": zen(),
+              "max-h-[240px]": !companionTall(),
+              "max-h-[45vh]": companionTall(),
             }}
-          />
-          <Show when={!prompt.dirty()}>
+            ref={(el) => (scrollRef = el)}
+          >
             <div
-              classList={{
-                "absolute top-0 inset-x-0 px-2 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
-                // Mirror the editor's vertical padding so the placeholder sits
-                // exactly where typed text will appear.
-                "pt-2 pb-0 md:py-3": !zen(),
-                "pt-2 pb-0 md:py-2.5 md:pr-12": zen(),
+              data-component="prompt-input"
+              ref={(el) => {
+                editorRef = el
+                props.ref?.(el)
               }}
-            >
-              {store.mode === "shell"
-                ? language.t("prompt.placeholder.shell")
-                : commentCount() > 1
-                  ? language.t("prompt.placeholder.summarizeComments")
-                  : commentCount() === 1
-                    ? language.t("prompt.placeholder.summarizeComment")
-                    : language.t("prompt.placeholder.normal")}
-            </div>
-          </Show>
-        </div>
-        <div
-          classList={{
-            // Mobile stacks so the dock info line (when expanded) sits above the
-            // flat button row; desktop keeps them side by side.
-            "flex flex-col md:flex-row md:items-center md:justify-between gap-2": true,
-            // Default: the button row sits below the input. The mobile pt-2
-            // mirrors the editor's own pt-2 (symmetric space above/below the
-            // text), and pb-1.5 keeps the buttons off the bottom border. On
-            // mobile this holds in zen too, giving the same two-row layout as
-            // the collapsed dock.
-            "relative px-3 pt-2 pb-1.5 md:pt-0 md:py-1.5": !zen(),
-            "relative px-3 pt-2 pb-1.5 md:pt-0 md:pb-0": zen(),
-            // Desktop zen keeps the original single row: buttons pinned to the
-            // input's right edge (the mobile stack still applies below md).
-            "md:absolute md:inset-y-0 md:right-0 md:px-2 md:pt-0 md:pb-0": zen(),
-          }}
-        >
+              role="textbox"
+              aria-multiline="true"
+              aria-label={
+                store.mode === "shell"
+                  ? language.t("prompt.placeholder.shell")
+                  : commentCount() > 1
+                    ? language.t("prompt.placeholder.summarizeComments")
+                    : commentCount() === 1
+                      ? language.t("prompt.placeholder.summarizeComment")
+                      : language.t("prompt.placeholder.normal")
+              }
+              contenteditable="true"
+              inputmode={suppressKeyboard() ? "none" : undefined}
+              onInput={handleInput}
+              onPaste={handlePaste}
+              onCompositionStart={() => setComposing(true)}
+              onCompositionEnd={() => setComposing(false)}
+              onKeyDown={handleKeyDown}
+              classList={{
+                "select-text": true,
+                "w-full px-2 text-13-semibold md:px-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
+                "pt-2 pb-0 md:py-3": !zen(),
+                "pt-2 pb-0 md:py-2.5": zen(),
+                // Hold the tall surface open on an empty draft, so entering
+                // companion doesn't collapse the dock back to one line.
+                "min-h-[28vh]": companionTall(),
+                "[&_[data-type=file]]:text-syntax-property": true,
+                "[&_[data-type=agent]]:text-syntax-type": true,
+                "font-mono!": store.mode === "shell",
+              }}
+            />
+            <Show when={!prompt.dirty()}>
+              <div
+                classList={{
+                  "absolute top-0 inset-x-0 px-2 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
+                  // Mirror the editor's vertical padding so the placeholder sits
+                  // exactly where typed text will appear.
+                  "pt-2 pb-0 md:py-3": !zen(),
+                  "pt-2 pb-0 md:py-2.5": zen(),
+                }}
+              >
+                {store.mode === "shell"
+                  ? language.t("prompt.placeholder.shell")
+                  : commentCount() > 1
+                    ? language.t("prompt.placeholder.summarizeComments")
+                    : commentCount() === 1
+                      ? language.t("prompt.placeholder.summarizeComment")
+                      : language.t("prompt.placeholder.normal")}
+              </div>
+            </Show>
+          </div>
           <div
             classList={{
-              "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!": true,
-              // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
-              hidden: zen(),
-              // Mobile: hidden unless the chevron expands it. Desktop always shows.
-              "hidden md:flex": !zen() && !dockInfoOpen(),
+              // Mobile stacks so the dock info line (when expanded) sits above the
+              // flat button row; desktop keeps them side by side.
+              "flex flex-col md:flex-row md:items-center md:justify-between gap-2": true,
+              // Default: the button row sits below the input. The mobile pt-2
+              // mirrors the editor's own pt-2 (symmetric space above/below the
+              // text), and pb-1.5 keeps the buttons off the bottom border. On
+              // mobile this holds in zen too, giving the same two-row layout as
+              // the collapsed dock.
+              "relative px-3 pt-2 pb-1.5 md:pt-0 md:py-1.5": !zen(),
+              "relative px-3 pt-2 pb-1.5 md:pt-0 md:pb-0": zen(),
+              // Desktop zen keeps the original single row: buttons sit at the
+              // input's right edge (the mobile stack still applies below md).
+              "md:shrink-0 md:px-2 md:pt-0 md:pb-0": zen(),
             }}
           >
-            {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
+            <div
+              classList={{
+                "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!": true,
+                // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
+                hidden: zen(),
+                // Mobile: hidden unless the chevron expands it. Desktop always shows.
+                "hidden md:flex": !zen() && !dockInfoOpen(),
+              }}
+            >
+              {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
                 which is now the single busy cue in both modes. Kept (gated false,
                 not deleted) so it can be restored by dropping the `false &&`. */}
-            <Show when={false && working()}>
-              {/* Busy indicator: the spinner sits ON TOP of a soft, diffuse
+              <Show when={false && working()}>
+                {/* Busy indicator: the spinner sits ON TOP of a soft, diffuse
                   glow that pulses behind it. Base tint follows the three-state
                   table (agent when own turn, task accent when child-only); when
                   BOTH run, a task-accent copy of both layers cross-fades over the
                   agent base so the tint oscillates between the two colors. */}
-              <span class="dock-working-indicator mr-2" style={{ "--dock-glow-tint": baseTint() }}>
-                <span data-slot="dock-working-glow" class="dock-working-glow" />
-                <Show when={mixing()}>
-                  <span data-slot="dock-working-glow" class="dock-working-glow dock-working-glow-task" />
-                </Show>
-                <Spinner class="dock-working-spinner" style={{ color: baseTint() }} />
-                <Show when={mixing()}>
-                  <Spinner class="dock-working-spinner dock-working-spinner-task" />
-                </Show>
-              </span>
-            </Show>
-            <Switch>
-              <Match when={store.mode === "shell"}>
-                <div class="flex items-center gap-2 px-2 h-6" data-blocked={busy().busySelf ? "true" : undefined}>
-                  <Icon
-                    name="console"
-                    size="small"
-                    class={busy().busySelf ? "text-icon-weak" : "text-icon-primary"}
-                  />
-                  <span class={`text-12-regular ${busy().busySelf ? "text-text-weak" : "text-text-primary"}`}>
-                    {language.t("prompt.mode.shell")}
-                  </span>
-                  <Show when={busy().busySelf}>
-                    <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.blocked")}</span>
+                <span class="dock-working-indicator mr-2" style={{ "--dock-glow-tint": baseTint() }}>
+                  <span data-slot="dock-working-glow" class="dock-working-glow" />
+                  <Show when={mixing()}>
+                    <span data-slot="dock-working-glow" class="dock-working-glow dock-working-glow-task" />
                   </Show>
-                  <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.exit")}</span>
-                </div>
-              </Match>
-              <Match when={store.mode === "normal"}>
-                <Show when={local.dock.isVisible("agent")}>
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={8}
-                    title={language.t("command.agent.cycle")}
-                    keybind={command.keybind("agent.cycle")}
-                  >
-                    <Select
-                      options={local.agent.list().map((agent) => agent.name)}
-                      current={local.agent.current()?.name ?? ""}
-                      onSelect={local.agent.set}
-                      class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
-                      valueClass="truncate text-syntax-type"
-                      variant="ghost"
+                  <Spinner class="dock-working-spinner" style={{ color: baseTint() }} />
+                  <Show when={mixing()}>
+                    <Spinner class="dock-working-spinner dock-working-spinner-task" />
+                  </Show>
+                </span>
+              </Show>
+              <Switch>
+                <Match when={store.mode === "shell"}>
+                  <div class="flex items-center gap-2 px-2 h-6" data-blocked={busy().busySelf ? "true" : undefined}>
+                    <Icon
+                      name="console"
+                      size="small"
+                      class={busy().busySelf ? "text-icon-weak" : "text-icon-primary"}
                     />
-                  </TooltipKeybind>
-                </Show>
-                <Show when={local.dock.isVisible("model")}>
+                    <span class={`text-12-regular ${busy().busySelf ? "text-text-weak" : "text-text-primary"}`}>
+                      {language.t("prompt.mode.shell")}
+                    </span>
+                    <Show when={busy().busySelf}>
+                      <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.blocked")}</span>
+                    </Show>
+                    <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.exit")}</span>
+                  </div>
+                </Match>
+                <Match when={store.mode === "normal"}>
                   <Show when={local.dock.isVisible("agent")}>
-                    <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                    <TooltipKeybind
+                      placement="top"
+                      gutter={8}
+                      title={language.t("command.agent.cycle")}
+                      keybind={command.keybind("agent.cycle")}
+                    >
+                      <Select
+                        options={local.agent.list().map((agent) => agent.name)}
+                        current={local.agent.current()?.name ?? ""}
+                        onSelect={local.agent.set}
+                        class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
+                        valueClass="truncate text-syntax-type"
+                        variant="ghost"
+                      />
+                    </TooltipKeybind>
                   </Show>
-                  <Show
-                    when={providers.paid().length > 0}
-                    fallback={
+                  <Show when={local.dock.isVisible("model")}>
+                    <Show when={local.dock.isVisible("agent")}>
+                      <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                    </Show>
+                    <Show
+                      when={providers.paid().length > 0}
+                      fallback={
+                        <TooltipKeybind
+                          placement="top"
+                          gutter={8}
+                          title={language.t("command.model.choose")}
+                          keybind={command.keybind("model.choose")}
+                        >
+                          <Button
+                            as="div"
+                            variant="ghost"
+                            class="min-w-0 max-w-[240px]"
+                            onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                          >
+                            <Show when={local.model.current()?.provider?.id}>
+                              <ProviderIcon
+                                id={local.model.current()!.provider.id as IconName}
+                                class="size-4 shrink-0 mr-1 text-text-weak"
+                              />
+                            </Show>
+                            <span class="truncate" style={{ color: "var(--model)" }}>
+                              {local.model.current()?.name ?? language.t("dialog.model.select.title")}
+                            </span>
+                          </Button>
+                        </TooltipKeybind>
+                      }
+                    >
                       <TooltipKeybind
                         placement="top"
                         gutter={8}
                         title={language.t("command.model.choose")}
                         keybind={command.keybind("model.choose")}
                       >
-                        <Button
-                          as="div"
-                          variant="ghost"
-                          class="min-w-0 max-w-[240px]"
-                          onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                        <ModelSelectorPopover
+                          triggerAs={Button}
+                          triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
                         >
                           <Show when={local.model.current()?.provider?.id}>
                             <ProviderIcon
@@ -2406,343 +2437,324 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <span class="truncate" style={{ color: "var(--model)" }}>
                             {local.model.current()?.name ?? language.t("dialog.model.select.title")}
                           </span>
-                        </Button>
+                          <Show when={local.model.pendingModel()}>
+                            <span
+                              class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
+                              title={language.t("model.pending")}
+                            />
+                          </Show>
+                        </ModelSelectorPopover>
                       </TooltipKeybind>
-                    }
-                  >
+                    </Show>
+                  </Show>
+                  <Show when={local.dock.isVisible("variant") && local.model.variant.list().length > 0}>
+                    <Show when={local.dock.isVisible("agent") || local.dock.isVisible("model")}>
+                      <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                    </Show>
                     <TooltipKeybind
                       placement="top"
                       gutter={8}
-                      title={language.t("command.model.choose")}
-                      keybind={command.keybind("model.choose")}
+                      title={language.t("command.model.variant.cycle")}
+                      keybind={command.keybind("model.variant.cycle")}
                     >
-                      <ModelSelectorPopover
-                        triggerAs={Button}
-                        triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
-                      >
-                        <Show when={local.model.current()?.provider?.id}>
-                          <ProviderIcon
-                            id={local.model.current()!.provider.id as IconName}
-                            class="size-4 shrink-0 mr-1 text-text-weak"
-                          />
-                        </Show>
-                        <span class="truncate" style={{ color: "var(--model)" }}>
-                          {local.model.current()?.name ?? language.t("dialog.model.select.title")}
-                        </span>
-                        <Show when={local.model.pendingModel()}>
+                      <span class="inline-flex items-center">
+                        <Select
+                          options={["default", ...local.model.variant.list()]}
+                          current={local.model.variant.current() ?? "default"}
+                          label={(v) => (v === "default" ? language.t("common.default") : v)}
+                          onSelect={(v) => local.model.variant.set(v === "default" ? undefined : v)}
+                          class="capitalize max-w-[120px]"
+                          valueClass="truncate text-syntax-constant"
+                          variant="ghost"
+                        />
+                        <Show when={local.model.pendingVariant()}>
                           <span
                             class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
                             title={language.t("model.pending")}
                           />
                         </Show>
-                      </ModelSelectorPopover>
+                      </span>
                     </TooltipKeybind>
                   </Show>
-                </Show>
-                <Show when={local.dock.isVisible("variant") && local.model.variant.list().length > 0}>
-                  <Show when={local.dock.isVisible("agent") || local.dock.isVisible("model")}>
-                    <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
-                  </Show>
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={8}
-                    title={language.t("command.model.variant.cycle")}
-                    keybind={command.keybind("model.variant.cycle")}
+                </Match>
+              </Switch>
+              <Show when={store.mode === "normal" && local.dock.isVisible("cwd")}>
+                <span class="inline-flex min-w-0 items-center text-12-regular leading-tight">
+                  <Show
+                    when={
+                      local.dock.isVisible("agent") ||
+                      local.dock.isVisible("model") ||
+                      (local.dock.isVisible("variant") && local.model.variant.list().length > 0)
+                    }
                   >
-                    <span class="inline-flex items-center">
-                      <Select
-                        options={["default", ...local.model.variant.list()]}
-                        current={local.model.variant.current() ?? "default"}
-                        label={(v) => (v === "default" ? language.t("common.default") : v)}
-                        onSelect={(v) => local.model.variant.set(v === "default" ? undefined : v)}
-                        class="capitalize max-w-[120px]"
-                        valueClass="truncate text-syntax-constant"
-                        variant="ghost"
-                      />
-                      <Show when={local.model.pendingVariant()}>
-                        <span
-                          class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
-                          title={language.t("model.pending")}
-                        />
-                      </Show>
-                    </span>
-                  </TooltipKeybind>
-                </Show>
-              </Match>
-            </Switch>
-            <Show when={store.mode === "normal" && local.dock.isVisible("cwd")}>
-              <span class="inline-flex min-w-0 items-center text-12-regular leading-tight">
-                <Show
-                  when={
-                    local.dock.isVisible("agent") ||
-                    local.dock.isVisible("model") ||
-                    (local.dock.isVisible("variant") && local.model.variant.list().length > 0)
-                  }
-                >
-                  <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
-                </Show>
-                <span class="truncate-start [unicode-bidi:plaintext] min-w-0" style={{ color: "var(--syntax-string)" }}>
-                  {dir()}
+                    <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
+                  </Show>
+                  <span
+                    class="truncate-start [unicode-bidi:plaintext] min-w-0"
+                    style={{ color: "var(--syntax-string)" }}
+                  >
+                    {dir()}
+                  </span>
+                  <Show when={local.dock.isVisible("branch") && sync.data.vcs?.branch}>
+                    {(branch) => (
+                      <span
+                        class="ml-1.5 inline-flex shrink-0 items-center gap-1 [&_[data-component=icon]]:!text-current"
+                        style={{ color: "var(--branch)" }}
+                      >
+                        <Icon name="branch" class="size-3.5" />
+                        <span class="truncate">{branch()}</span>
+                      </span>
+                    )}
+                  </Show>
                 </span>
-                <Show when={local.dock.isVisible("branch") && sync.data.vcs?.branch}>
-                  {(branch) => (
-                    <span
-                      class="ml-1.5 inline-flex shrink-0 items-center gap-1 [&_[data-component=icon]]:!text-current"
-                      style={{ color: "var(--branch)" }}
-                    >
-                      <Icon name="branch" class="size-3.5" />
-                      <span class="truncate">{branch()}</span>
-                    </span>
-                  )}
-                </Show>
-              </span>
-            </Show>
-          </div>
-          <div class="flex items-center justify-between flex-1 md:flex-none md:justify-end md:gap-1 shrink-0">
-            {/* Mobile only: grabber toggles the dock info line + chip row
+              </Show>
+            </div>
+            <div class="flex items-center justify-between flex-1 md:flex-none md:justify-end md:gap-1 shrink-0">
+              {/* Mobile only: grabber toggles the dock info line + chip row
                 together (both collapsed by default). Outward arrows = expand;
                 inward arrows = collapse. */}
-            <Show when={store.mode === "normal" && !zen()}>
-              <Tooltip placement="top" value={dockInfoOpen() ? "Hide session info" : "Show session info"}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  class={`md:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
-                  onClick={() => setDockInfoOpen((v) => !v)}
-                  aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
-                  aria-expanded={dockInfoOpen()}
-                >
-                  <Icon name={dockInfoOpen() ? "chevron-grabber-inward" : "chevron-grabber-vertical"} size="medium" />
-                </Button>
-              </Tooltip>
-            </Show>
-            {/* Customize configures the dock info line + chip row, so it's only
+              <Show when={store.mode === "normal" && !zen()}>
+                <Tooltip placement="top" value={dockInfoOpen() ? "Hide session info" : "Show session info"}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class={`md:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
+                    onClick={() => setDockInfoOpen((v) => !v)}
+                    aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
+                    aria-expanded={dockInfoOpen()}
+                  >
+                    <Icon name={dockInfoOpen() ? "chevron-grabber-inward" : "chevron-grabber-vertical"} size="medium" />
+                  </Button>
+                </Tooltip>
+              </Show>
+              {/* Customize configures the dock info line + chip row, so it's only
                 useful when those are visible. On mobile it hides while collapsed
                 (a display:none span leaves no flex slot, so the row still spreads
                 evenly); it's always present on desktop. */}
-            <Show when={store.mode === "normal" && !zen()}>
-              <span
-                classList={{
-                  contents: dockInfoOpen(),
-                  "hidden md:contents": !dockInfoOpen(),
-                }}
-              >
-                <Tooltip placement="top" value="Customize fields">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:size-6"} items-center justify-center`}
-                    onClick={() => dialog.show(() => <DialogDock />)}
-                    aria-label="Customize fields"
-                  >
-                    {/* The desktop shrink would beat the companion wrapper size
+              <Show when={store.mode === "normal" && !zen()}>
+                <span
+                  classList={{
+                    contents: dockInfoOpen(),
+                    "hidden md:contents": !dockInfoOpen(),
+                  }}
+                >
+                  <Tooltip placement="top" value="Customize fields">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:size-6"} items-center justify-center`}
+                      onClick={() => dialog.show(() => <DialogDock />)}
+                      aria-label="Customize fields"
+                    >
+                      {/* The desktop shrink would beat the companion wrapper size
                         and leave a 16px glyph in a 72px button. */}
-                    <Icon name="sliders" size="medium" class={companion() ? undefined : "md:!size-4"} />
-                  </Button>
-                </Tooltip>
-              </span>
-            </Show>
-            {/* Auto-accept is desktop-only in the footer. The whole wrapper is
+                      <Icon name="sliders" size="medium" class={companion() ? undefined : "md:!size-4"} />
+                    </Button>
+                  </Tooltip>
+                </span>
+              </Show>
+              {/* Auto-accept is desktop-only in the footer. The whole wrapper is
                 display:none on mobile (md:contents on desktop) so it leaves no
                 flex slot — otherwise its tooltip wrapper would break the mobile
                 row's even spread. */}
-            <Show when={permission.permissionsEnabled() && params.id && !zen()}>
-              <span class="hidden md:contents">
-                <TooltipKeybind
-                  placement="top"
-                  gutter={8}
-                  title={language.t("command.permissions.autoaccept.enable")}
-                  keybind={command.keybind("permissions.autoaccept")}
-                >
-                  <Button
-                    variant="ghost"
-                    onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                    classList={{
-                      "flex size-6 items-center justify-center": true,
-                      "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
-                      "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
-                    }}
-                    aria-label={
-                      permission.isAutoAccepting(params.id!, sdk.directory)
-                        ? language.t("command.permissions.autoaccept.disable")
-                        : language.t("command.permissions.autoaccept.enable")
-                    }
-                    aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
+              <Show when={permission.permissionsEnabled() && params.id && !zen()}>
+                <span class="hidden md:contents">
+                  <TooltipKeybind
+                    placement="top"
+                    gutter={8}
+                    title={language.t("command.permissions.autoaccept.enable")}
+                    keybind={command.keybind("permissions.autoaccept")}
                   >
-                    <Icon
-                      name="chevron-double-right"
-                      size="small"
-                      classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
-                    />
-                  </Button>
-                </TooltipKeybind>
-              </span>
-            </Show>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPTED_FILE_TYPES.join(",")}
-              multiple
-              class="hidden"
-              onChange={(e) => {
-                for (const file of Array.from(e.currentTarget.files ?? [])) addImageAttachment(file)
-                e.currentTarget.value = ""
-              }}
-            />
-            {/* Mobile: contents so keyboard/mic/photo are flat siblings of the
+                    <Button
+                      variant="ghost"
+                      onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
+                      classList={{
+                        "flex size-6 items-center justify-center": true,
+                        "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
+                        "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                      }}
+                      aria-label={
+                        permission.isAutoAccepting(params.id!, sdk.directory)
+                          ? language.t("command.permissions.autoaccept.disable")
+                          : language.t("command.permissions.autoaccept.enable")
+                      }
+                      aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
+                    >
+                      <Icon
+                        name="chevron-double-right"
+                        size="small"
+                        classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
+                      />
+                    </Button>
+                  </TooltipKeybind>
+                </span>
+              </Show>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_FILE_TYPES.join(",")}
+                multiple
+                class="hidden"
+                onChange={(e) => {
+                  for (const file of Array.from(e.currentTarget.files ?? [])) addImageAttachment(file)
+                  e.currentTarget.value = ""
+                }}
+              />
+              {/* Mobile: contents so keyboard/mic/photo are flat siblings of the
                 chevron/customize/send in one justify-between row. Desktop keeps
                 them grouped. */}
-            <div class="contents md:flex md:items-center md:gap-1 md:mr-1">
-              {/* Always shown on a coarse pointer (mobile), never gated on
+              <div class="contents md:flex md:items-center md:gap-1 md:mr-1">
+                {/* Always shown on a coarse pointer (mobile), never gated on
                   keyboardWanted — so tapping it can't unmount it mid-gesture and
                   blur the editor on release. Stable element = stable focus. */}
-              <Show when={coarse()}>
-                <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class={`${actionButton()} ${actionIcon()}`}
-                    // pointerdown, not click/mousedown: on iOS a synthesized
-                    // mousedown fires too late to count as a user gesture, so
-                    // focus() there won't raise the keyboard. pointerdown fires
-                    // on the genuine touch (trusted activation). preventDefault
-                    // stops the button stealing focus so requestKeyboard drives
-                    // the editor focus itself.
-                    onPointerDown={(e: PointerEvent) => {
-                      e.preventDefault()
-                      requestKeyboard()
-                    }}
-                    // Swallow the release sequence too: without this the
-                    // pointerup/mouseup/click on lift pulls focus off the editor,
-                    // blurring it and dropping the keyboard — so it only stayed up
-                    // while the finger held the button.
-                    onPointerUp={(e: PointerEvent) => e.preventDefault()}
-                    onMouseDown={(e: MouseEvent) => e.preventDefault()}
-                    onClick={(e: MouseEvent) => e.preventDefault()}
-                    aria-label={language.t("prompt.action.showKeyboard")}
-                  >
-                    <Icon name="keyboard" />
-                  </Button>
-                </Tooltip>
-              </Show>
-              <Show when={store.mode === "normal" && dictation.supported()}>
-                <Tooltip
-                  placement="top"
-                  value={
-                    store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
-                  }
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class={`${actionButton()} ${actionIcon()}`}
-                    data-dictation-toggle
-                    data-dictation-focused={dictationTargeted() ? "" : undefined}
-                    onClick={toggleDictation}
-                    aria-label={
+                <Show when={coarse()}>
+                  <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class={`${actionButton()} ${actionIcon()}`}
+                      // pointerdown, not click/mousedown: on iOS a synthesized
+                      // mousedown fires too late to count as a user gesture, so
+                      // focus() there won't raise the keyboard. pointerdown fires
+                      // on the genuine touch (trusted activation). preventDefault
+                      // stops the button stealing focus so requestKeyboard drives
+                      // the editor focus itself.
+                      onPointerDown={(e: PointerEvent) => {
+                        e.preventDefault()
+                        requestKeyboard()
+                      }}
+                      // Swallow the release sequence too: without this the
+                      // pointerup/mouseup/click on lift pulls focus off the editor,
+                      // blurring it and dropping the keyboard — so it only stayed up
+                      // while the finger held the button.
+                      onPointerUp={(e: PointerEvent) => e.preventDefault()}
+                      onMouseDown={(e: MouseEvent) => e.preventDefault()}
+                      onClick={(e: MouseEvent) => e.preventDefault()}
+                      aria-label={language.t("prompt.action.showKeyboard")}
+                    >
+                      <Icon name="keyboard" />
+                    </Button>
+                  </Tooltip>
+                </Show>
+                <Show when={store.mode === "normal" && dictation.supported()}>
+                  <Tooltip
+                    placement="top"
+                    value={
                       store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                     }
-                    aria-pressed={store.dictating}
                   >
-                    <Icon
-                      name="mic"
-                      classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
-                      style={
-                        dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class={`${actionButton()} ${actionIcon()}`}
+                      data-dictation-toggle
+                      data-dictation-focused={dictationTargeted() ? "" : undefined}
+                      onClick={toggleDictation}
+                      aria-label={
+                        store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                       }
-                    />
-                  </Button>
-                </Tooltip>
-              </Show>
-              <Show when={store.mode === "normal"}>
-                <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class={`${actionButton()} ${actionIcon()}`}
-                    onClick={() => fileInputRef.click()}
-                    aria-label={language.t("prompt.action.attachFile")}
-                  >
-                    <Icon name="photo" />
-                  </Button>
-                </Tooltip>
-              </Show>
-            </div>
-            {/* Stop and Send are separate controls so both can show at once
+                      aria-pressed={store.dictating}
+                    >
+                      <Icon
+                        name="mic"
+                        classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
+                        style={
+                          dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
+                        }
+                      />
+                    </Button>
+                  </Tooltip>
+                </Show>
+                <Show when={store.mode === "normal"}>
+                  <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class={`${actionButton()} ${actionIcon()}`}
+                      onClick={() => fileInputRef.click()}
+                      aria-label={language.t("prompt.action.attachFile")}
+                    >
+                      <Icon name="photo" />
+                    </Button>
+                  </Tooltip>
+                </Show>
+              </div>
+              {/* Stop and Send are separate controls so both can show at once
                 (busy WITH a draft): Stop for the running turn, Send to inject
                 the draft into it. Send is always rightmost; Stop sits left of
                 it when both are present. */}
-            <Show when={working()}>
-              <Tooltip
-                placement="top"
-                value={
-                  <div class="flex items-center gap-2">
-                    <span>{language.t("prompt.action.stop")}</span>
-                    <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
-                  </div>
-                }
-              >
-                <IconButton
-                  type="button"
-                  icon="stop"
-                  variant="primary"
-                  class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
-                  aria-label={language.t("prompt.action.stop")}
-                  onClick={abort}
-                />
-              </Tooltip>
-            </Show>
-            <Show when={!working() || submittable()}>
-              <Tooltip
-                placement="top"
-                inactive={!submittable()}
-                value={
-                  <div class="flex items-center gap-2">
-                    <span>{language.t("prompt.action.send")}</span>
-                    <Icon name="enter" size="small" class="text-icon-base" />
-                  </div>
-                }
-              >
-                <IconButton
-                  // This is a FORM SUBMIT button, so it can't use the generic
-                  // tapAction() helper (that binds onClick, which would race the
-                  // native form onSubmit on desktop). It needs the submit wired to
-                  // exactly ONE path per platform:
-                  //   desktop — native type="submit" (mouse click + Enter).
-                  //   touch   — pointerdown (see below), with type="button" so the
-                  //             synthesized click can't ALSO submit the form.
-                  // The touch trap: one tap emits pointerdown AND a synthesized
-                  // click, and preventDefault on pointerdown does not cancel that
-                  // click, so a type="submit" here would submit twice — which on a
-                  // brand-new session ran session.create() twice and minted two
-                  // sessions per tap. type="button" + the onClick swallow below kill
-                  // the second path. handleSubmit also self-guards the create window.
-                  type={coarse() ? "button" : "submit"}
-                  disabled={!submittable()}
-                  icon="arrow-up"
-                  variant="primary"
-                  class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
-                  aria-label={language.t("prompt.action.send")}
-                  onPointerDown={
-                    // iOS: with the keyboard up the editor holds focus, so tapping
-                    // this button first blurs the editor to dismiss the keyboard and
-                    // the native click->submit gets swallowed in that transition —
-                    // the user has to tap again. Drive the submit off pointerdown
-                    // (the trusted first touch). Coarse pointer only.
-                    coarse()
-                      ? (e: PointerEvent) => {
-                          if (!submittable()) return
-                          e.preventDefault()
-                          handleSubmit(e)
-                        }
-                      : undefined
+              <Show when={working()}>
+                <Tooltip
+                  placement="top"
+                  value={
+                    <div class="flex items-center gap-2">
+                      <span>{language.t("prompt.action.stop")}</span>
+                      <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
+                    </div>
                   }
-                  // Swallow the click the same tap synthesizes so it can never
-                  // re-enter handleSubmit (mirrors the keyboard-toggle button).
-                  onClick={coarse() ? (e: MouseEvent) => e.preventDefault() : undefined}
-                />
-              </Tooltip>
-            </Show>
+                >
+                  <IconButton
+                    type="button"
+                    icon="stop"
+                    variant="primary"
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
+                    aria-label={language.t("prompt.action.stop")}
+                    onClick={abort}
+                  />
+                </Tooltip>
+              </Show>
+              <Show when={!working() || submittable()}>
+                <Tooltip
+                  placement="top"
+                  inactive={!submittable()}
+                  value={
+                    <div class="flex items-center gap-2">
+                      <span>{language.t("prompt.action.send")}</span>
+                      <Icon name="enter" size="small" class="text-icon-base" />
+                    </div>
+                  }
+                >
+                  <IconButton
+                    // This is a FORM SUBMIT button, so it can't use the generic
+                    // tapAction() helper (that binds onClick, which would race the
+                    // native form onSubmit on desktop). It needs the submit wired to
+                    // exactly ONE path per platform:
+                    //   desktop — native type="submit" (mouse click + Enter).
+                    //   touch   — pointerdown (see below), with type="button" so the
+                    //             synthesized click can't ALSO submit the form.
+                    // The touch trap: one tap emits pointerdown AND a synthesized
+                    // click, and preventDefault on pointerdown does not cancel that
+                    // click, so a type="submit" here would submit twice — which on a
+                    // brand-new session ran session.create() twice and minted two
+                    // sessions per tap. type="button" + the onClick swallow below kill
+                    // the second path. handleSubmit also self-guards the create window.
+                    type={coarse() ? "button" : "submit"}
+                    disabled={!submittable()}
+                    icon="arrow-up"
+                    variant="primary"
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
+                    aria-label={language.t("prompt.action.send")}
+                    onPointerDown={
+                      // iOS: with the keyboard up the editor holds focus, so tapping
+                      // this button first blurs the editor to dismiss the keyboard and
+                      // the native click->submit gets swallowed in that transition —
+                      // the user has to tap again. Drive the submit off pointerdown
+                      // (the trusted first touch). Coarse pointer only.
+                      coarse()
+                        ? (e: PointerEvent) => {
+                            if (!submittable()) return
+                            e.preventDefault()
+                            handleSubmit(e)
+                          }
+                        : undefined
+                    }
+                    // Swallow the click the same tap synthesizes so it can never
+                    // re-enter handleSubmit (mirrors the keyboard-toggle button).
+                    onClick={coarse() ? (e: MouseEvent) => e.preventDefault() : undefined}
+                  />
+                </Tooltip>
+              </Show>
+            </div>
           </div>
         </div>
         <Show when={!zen()}>
