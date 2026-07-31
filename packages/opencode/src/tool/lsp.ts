@@ -24,30 +24,44 @@ export const LspTool = Tool.define("lsp", {
   parameters: z
     .object({
       operation: z.enum(operations).describe("The LSP operation to perform"),
-      filePath: z.string().describe("The absolute or relative path to the file"),
-      line: z.number().int().min(1).describe("The line number (1-based, as shown in editors)"),
-      character: z.number().int().min(1).describe("The character offset (1-based, as shown in editors)"),
+      filePath: z
+        .string()
+        .optional()
+        .describe("The absolute or relative path to the file. Optional for workspaceSymbol."),
+      symbol: z
+        .string()
+        .optional()
+        .describe(
+          "Name of the symbol to target, e.g. 'getClients' or 'LSP.getClients'. Use instead of line/character when the position is unknown.",
+        ),
+      query: z.string().optional().describe("Search string for workspaceSymbol."),
+      line: z.number().int().min(1).optional().describe("The line number (1-based, as shown in editors)"),
+      character: z.number().int().min(1).optional().describe("The character offset (1-based, as shown in editors)"),
+      limit: z.number().int().min(1).optional().describe("Max results for workspaceSymbol (default 10)"),
+      offset: z.number().int().min(0).optional().describe("Result offset for workspaceSymbol, to page past a cap"),
     })
     .strict(),
   execute: async (args, ctx) => {
-    const file = path.isAbsolute(args.filePath) ? args.filePath : path.join(Instance.directory, args.filePath)
-    await assertExternalDirectory(ctx, file)
-
     await ctx.ask({
       permission: "lsp",
       patterns: ["*"],
       always: ["*"],
       metadata: {},
     })
-    const uri = pathToFileURL(file).href
-    const position = {
-      file,
-      line: args.line - 1,
-      character: args.character - 1,
+
+    if (args.operation === "workspaceSymbol") {
+      if (!args.query) throw new Error("workspaceSymbol requires `query`.")
+      const symbols = await LSP.workspaceSymbol(args.query, { limit: args.limit, offset: args.offset })
+      return {
+        title: `workspaceSymbol ${args.query}`,
+        metadata: { result: symbols },
+        output: symbols.length === 0 ? `No symbols matching ${args.query}` : JSON.stringify(symbols, null, 2),
+      }
     }
 
-    const relPath = path.relative(Instance.worktree, file)
-    const title = `${args.operation} ${relPath}:${args.line}:${args.character}`
+    if (!args.filePath) throw new Error(`${args.operation} requires \`filePath\`.`)
+    const file = path.isAbsolute(args.filePath) ? args.filePath : path.join(Instance.directory, args.filePath)
+    await assertExternalDirectory(ctx, file)
 
     const exists = await Bun.file(file).exists()
     if (!exists) {
@@ -61,6 +75,35 @@ export const LspTool = Tool.define("lsp", {
 
     await LSP.touchFile(file, true)
 
+    const relPath = path.relative(Instance.worktree, file)
+
+    if (args.operation === "documentSymbol") {
+      const symbols = await LSP.documentSymbol(pathToFileURL(file).href)
+      return {
+        title: `documentSymbol ${relPath}`,
+        metadata: { result: symbols },
+        output: symbols.length === 0 ? "No symbols found" : JSON.stringify(symbols, null, 2),
+      }
+    }
+
+    // A named symbol is resolved to a position here, so every positional
+    // operation below can be addressed either way. Resolution may land in a
+    // different file than the one asked about (the symbol was found through the
+    // workspace index), and a position request only answers for a file the
+    // server has been told about, so open that one too.
+    const position = await (async () => {
+      if (args.symbol) {
+        const found = await LSP.symbolPosition({ file, symbol: args.symbol })
+        if (!found) throw new Error(`Symbol not found: ${args.symbol}`)
+        if (found.file !== file) await LSP.touchFile(found.file, true)
+        return found
+      }
+      if (args.line === undefined || args.character === undefined) {
+        throw new Error(`${args.operation} requires either \`symbol\`, or both \`line\` and \`character\`.`)
+      }
+      return { file, line: args.line - 1, character: args.character - 1 }
+    })()
+
     const result: unknown[] = await (async () => {
       switch (args.operation) {
         case "goToDefinition":
@@ -69,10 +112,6 @@ export const LspTool = Tool.define("lsp", {
           return LSP.references(position)
         case "hover":
           return LSP.hover(position)
-        case "documentSymbol":
-          return LSP.documentSymbol(uri)
-        case "workspaceSymbol":
-          return LSP.workspaceSymbol("")
         case "goToImplementation":
           return LSP.implementation(position)
         case "prepareCallHierarchy":
@@ -81,16 +120,20 @@ export const LspTool = Tool.define("lsp", {
           return LSP.incomingCalls(position)
         case "outgoingCalls":
           return LSP.outgoingCalls(position)
+        default:
+          throw new Error(`Unhandled operation: ${args.operation}`)
       }
     })()
 
+    const target = args.symbol ?? `${position.line + 1}:${position.character + 1}`
+    const resolved = path.relative(Instance.worktree, position.file)
     const output = (() => {
       if (result.length === 0) return `No results found for ${args.operation}`
       return JSON.stringify(result, null, 2)
     })()
 
     return {
-      title,
+      title: `${args.operation} ${resolved} ${target}`,
       metadata: { result },
       output,
     }

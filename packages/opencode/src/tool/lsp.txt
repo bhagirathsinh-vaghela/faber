@@ -1,6 +1,34 @@
 Interact with Language Server Protocol (LSP) servers to get code intelligence features.
 
-Supported operations:
+Prefer this over grep/read when the question is about a SYMBOL (a function,
+type, method, class, constant) rather than about text. The language server has
+already parsed and type-checked the code, so it distinguishes a real reference
+from the same word in a comment, a string, or an unrelated variable, and it
+follows imports across files.
+
+Use grep/read instead when searching for literal text: comments, log messages,
+config values, or any pattern that is not a symbol.
+
+| Question                        | Use                                    |
+| ------------------------------- | -------------------------------------- |
+| Where does this symbol live?    | workspaceSymbol (by name, no position) |
+| What is defined in this file?   | documentSymbol                         |
+| Where is this defined?          | goToDefinition                         |
+| Who uses this?                  | findReferences                         |
+| What is its type/signature/doc? | hover                                  |
+| What implements this interface? | goToImplementation                     |
+| What does this function call?   | outgoingCalls                          |
+| What calls this function?       | incomingCalls                          |
+
+Addressing a symbol: pass `symbol` with its name (e.g. "getClients" or
+"LSP.getClients") and its position is resolved for you. Pass `line` and
+`character` only when you already know them, or when targeting something that is
+not a named symbol. Reading the file first is not a prerequisite for this tool.
+
+When the file is unknown, start with workspaceSymbol to find it, then use the
+returned location for follow-up operations.
+
+Operations:
 - goToDefinition: Find where a symbol is defined
 - findReferences: Find all references to a symbol
 - hover: Get hover information (documentation, type info) for a symbol
@@ -11,9 +39,12 @@ Supported operations:
 - incomingCalls: Find all functions/methods that call the function at a position
 - outgoingCalls: Find all functions/methods called by the function at a position
 
-All operations require:
-- filePath: The file to operate on
-- line: The line number (1-based, as shown in editors)
-- character: The character offset (1-based, as shown in editors)
+Parameters:
+- filePath: required for every operation except workspaceSymbol
+- symbol: name of the symbol to target; alternative to line/character
+- line, character: 1-based position, as shown in editors
+- query: required for workspaceSymbol
+- limit, offset: page workspaceSymbol results (default limit 10)
 
-Note: LSP servers must be configured for the file type. If no server is available, an error will be returned.
+Note: LSP servers must be configured for the file type. If no server is
+available, an error will be returned.

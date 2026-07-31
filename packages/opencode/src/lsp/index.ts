@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import { Log } from "../util/log"
 import { LSPClient } from "./client"
 import path from "path"
-import { pathToFileURL } from "url"
+import { pathToFileURL, fileURLToPath } from "url"
 import { LSPServer } from "./server"
 import z from "zod"
 import { Config } from "../config/config"
@@ -397,16 +397,21 @@ export namespace LSP {
     SymbolKind.Enum,
   ]
 
-  export async function workspaceSymbol(query: string) {
+  // The cap is applied AFTER merging every client's results, not per client:
+  // capping inside runAll returns up to limit x clients and silently drops
+  // whichever server answered last. offset lets a caller page a common name
+  // rather than guess whether a truncated list held the match.
+  export async function workspaceSymbol(query: string, page?: { limit?: number; offset?: number }) {
+    const limit = page?.limit ?? 10
+    const offset = page?.offset ?? 0
     return runAll((client) =>
       client.connection
         .sendRequest("workspace/symbol", {
           query,
         })
-        .then((result: any) => result.filter((x: LSP.Symbol) => kinds.includes(x.kind)))
-        .then((result: any) => result.slice(0, 10))
+        .then((symbols: any) => symbols.filter((x: LSP.Symbol) => kinds.includes(x.kind)))
         .catch(() => []),
-    ).then((result) => result.flat() as LSP.Symbol[])
+    ).then((symbols) => (symbols.flat() as LSP.Symbol[]).slice(offset, offset + limit))
   }
 
   export async function documentSymbol(uri: string) {
@@ -420,8 +425,49 @@ export namespace LSP {
         })
         .catch(() => []),
     )
-      .then((result) => result.flat() as (LSP.DocumentSymbol | LSP.Symbol)[])
-      .then((result) => result.filter(Boolean))
+      .then((symbols) => symbols.flat() as (LSP.DocumentSymbol | LSP.Symbol)[])
+      .then((symbols) => symbols.filter(Boolean))
+  }
+
+  // Resolve a symbol name to the position its definition starts at, so a caller
+  // can address code the way it reads (`Foo.bar`) instead of by coordinates it
+  // could only obtain by reading the file first. A dotted name matches on its
+  // last segment: a document symbol carries a method as `bar`, expressing `Foo`
+  // as nesting rather than as part of the name.
+  export async function symbolPosition(input: { file: string; symbol: string }) {
+    const leaf = input.symbol.split(".").pop() || input.symbol
+    const flatten = (symbols: any[]): any[] => symbols.flatMap((symbol) => [symbol, ...flatten(symbol.children ?? [])])
+
+    // A DocumentSymbol carries selectionRange, which is the name itself. A flat
+    // SymbolInformation carries only location.range, which spans the whole
+    // declaration and so starts on a keyword (`async`, `export`) where every
+    // position request answers null. Find the name inside that line instead, so
+    // both server shapes land on the identifier.
+    const onName = async (file: string, range: any) => {
+      const text = await Bun.file(file)
+        .text()
+        .catch(() => "")
+      const line = text.split("\n")[range.start.line]
+      const column = line === undefined ? -1 : line.indexOf(leaf, range.start.character)
+      return { file, line: range.start.line, character: column === -1 ? range.start.character : column }
+    }
+
+    const local = flatten(await documentSymbol(pathToFileURL(input.file).href))
+    const match = local.find((symbol: any) => symbol.name === leaf)
+    if (match?.selectionRange) {
+      return {
+        file: input.file,
+        line: match.selectionRange.start.line,
+        character: match.selectionRange.start.character,
+      }
+    }
+    if (match?.location?.range) return onName(input.file, match.location.range)
+
+    // Absent from this file, so ask the workspace index: naming a symbol without
+    // knowing which file holds it is the case this exists for.
+    const found = (await workspaceSymbol(leaf)).find((symbol) => symbol.name === leaf)
+    if (!found) return undefined
+    return onName(fileURLToPath(found.location.uri), found.location.range)
   }
 
   export async function definition(input: { file: string; line: number; character: number }) {
