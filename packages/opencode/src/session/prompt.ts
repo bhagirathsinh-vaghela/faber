@@ -297,15 +297,11 @@ export namespace SessionPrompt {
     void Question.clear(sessionID)
     void PermissionNext.clear(sessionID)
     if (!match) {
-      // No in-flight turn — the "verify nothing is in flight, THEN kill the
-      // ping" case (an idle, ping-armed session). Just tear the daemon down.
-      // Intent (keepWarm) is owned by the caller: the /abort route clears it
-      // before calling here on a user Stop. cancel() must NOT write intent —
-      // it also runs on every normal loop exit via defer, where clearing it
-      // would cold a session that just finished a turn.
-      SessionPing.stop(sessionID)
-      // No live handle — busy is already false, but restamp defensively so the
-      // projection can never lag a self-flag that somehow outlived its turn.
+      // Disarming is never inferred from the absence of a handle: this branch
+      // cannot tell an idle session apart from a turn whose handle a prior
+      // cancel() already dropped, and every aborted turn reaches here twice
+      // (route, then the loop's defer). Callers that mean "disarm" — /abort,
+      // ping/stop, session delete — call SessionPing.stop themselves.
       SessionBusy.exit(sessionID)
       SessionStatus.set(sessionID, { type: "idle" })
       return
