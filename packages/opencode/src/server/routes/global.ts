@@ -8,6 +8,7 @@ import { GlobalBus, GlobalInterest } from "@/bus/global"
 import { Instance } from "../../project/instance"
 import { Project } from "../../project/project"
 import { OpenProjects } from "../../project/open"
+import { LSP } from "../../lsp"
 import { Installation } from "@/installation"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
@@ -198,6 +199,7 @@ export const GlobalRoutes = lazy(() =>
       async (c) => {
         const { project } = await Project.fromDirectory(c.req.valid("json").directory)
         await OpenProjects.close(project.id)
+        await LSP.shutdownProject(project.id)
         return c.json(true)
       },
     )
@@ -431,6 +433,7 @@ export const GlobalRoutes = lazy(() =>
       }),
       async (c) => {
         await Instance.disposeAll()
+        await LSP.shutdownAll()
         GlobalBus.emit("event", {
           directory: "global",
           payload: {

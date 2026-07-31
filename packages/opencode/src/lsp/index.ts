@@ -76,75 +76,110 @@ export namespace LSP {
     }
   }
 
-  const state = Instance.state(
-    async () => {
-      const clients: LSPClient.Info[] = []
-      const servers: Record<string, LSPServer.Info> = {}
-      const cfg = await Config.get()
+  // Language servers outlive the instance that first reached for them. A cold
+  // server costs whatever its workspace load costs (gopls re-derives metadata
+  // for every module in a go.work on each new LSP session, tens of seconds on a
+  // large one), and that price is paid by the SERVER, where no timeout here can
+  // bound it. Tying the pool to Instance.state charged it again every time a
+  // directory went idle long enough to be disposed, so these live at module
+  // scope instead, outside any instance context, and are torn down only by the
+  // two events that mean the workspace is really finished with: the project
+  // closing, and the process exiting. This mirrors an editor holding one
+  // connection open for as long as the workspace is open.
+  //
+  // Config is read at spawn and never re-read for a live client, so an edited
+  // lsp block needs the project closed and reopened, or the server restarted.
+  const pool = new Map<string, { client: LSPClient.Info; projectID: string }>()
+  const spawning = new Map<string, Promise<LSPClient.Info | undefined>>()
 
-      if (cfg.lsp === false) {
-        log.info("all LSPs are disabled")
-        return {
-          broken: new Set<string>(),
-          servers,
-          clients,
-          spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
-        }
+  const state = Instance.state(async () => {
+    const servers: Record<string, LSPServer.Info> = {}
+    const cfg = await Config.get()
+
+    // Instance-scoped, unlike the pool: a spawn failure is usually transient (a
+    // half-installed binary, a missing toolchain that appears later), so it must
+    // expire rather than disable the server for the life of the process.
+    const broken = new Set<string>()
+
+    if (cfg.lsp === false) {
+      log.info("all LSPs are disabled")
+      return { servers, broken }
+    }
+
+    for (const server of Object.values(LSPServer)) {
+      servers[server.id] = server
+    }
+
+    filterExperimentalServers(servers)
+
+    for (const [name, item] of Object.entries(cfg.lsp ?? {})) {
+      const existing = servers[name]
+      if (item.disabled) {
+        log.info(`LSP server ${name} is disabled`)
+        delete servers[name]
+        continue
       }
-
-      for (const server of Object.values(LSPServer)) {
-        servers[server.id] = server
+      servers[name] = {
+        ...existing,
+        id: name,
+        root: existing?.root ?? (async () => Instance.directory),
+        extensions: item.extensions ?? existing?.extensions ?? [],
+        spawn: async (root) => {
+          return {
+            process: spawn(item.command[0], item.command.slice(1), {
+              cwd: root,
+              env: {
+                ...process.env,
+                ...item.env,
+              },
+            }),
+            initialization: item.initialization,
+          }
+        },
       }
+    }
 
-      filterExperimentalServers(servers)
+    log.info("enabled LSP servers", {
+      serverIds: Object.values(servers)
+        .map((server) => server.id)
+        .join(", "),
+    })
 
-      for (const [name, item] of Object.entries(cfg.lsp ?? {})) {
-        const existing = servers[name]
-        if (item.disabled) {
-          log.info(`LSP server ${name} is disabled`)
-          delete servers[name]
-          continue
-        }
-        servers[name] = {
-          ...existing,
-          id: name,
-          root: existing?.root ?? (async () => Instance.directory),
-          extensions: item.extensions ?? existing?.extensions ?? [],
-          spawn: async (root) => {
-            return {
-              process: spawn(item.command[0], item.command.slice(1), {
-                cwd: root,
-                env: {
-                  ...process.env,
-                  ...item.env,
-                },
-              }),
-              initialization: item.initialization,
-            }
-          },
-        }
-      }
-
-      log.info("enabled LSP servers", {
-        serverIds: Object.values(servers)
-          .map((server) => server.id)
-          .join(", "),
-      })
-
-      return {
-        broken: new Set<string>(),
-        servers,
-        clients,
-        spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
-      }
-    },
-    async (state) => {
-      await Promise.all(state.clients.map((client) => client.shutdown()))
-    },
-  )
+    return { servers, broken }
+  })
 
   export async function init() {
     return state()
+  }
+
+  async function drop(keys: string[]) {
+    if (!keys.length) return
+    await Promise.all(
+      keys.map(async (key) => {
+        const entry = pool.get(key)
+        if (!entry) return
+        pool.delete(key)
+        await entry.client.shutdown().catch((err: unknown) => {
+          log.error("failed to shut down lsp client", { key, error: err })
+        })
+      }),
+    )
+    Bus.publish(Event.Updated, {})
+  }
+
+  // A closed project is finished with its language servers. Sessions in it are
+  // already gone by the time this runs (project close unlinks the view, and any
+  // live session keeps its own instance alive independently), so nothing is
+  // mid-request on these clients.
+  export async function shutdownProject(projectID: string) {
+    await drop([...pool].filter(([, entry]) => entry.projectID === projectID).map(([key]) => key))
+  }
+
+  // Process-exit backstop. Nothing else reaches these clients once the pool
+  // stopped riding on Instance.state, so a root that never sees an explicit
+  // project close would otherwise leak its server for the life of the process.
+  export async function shutdownAll() {
+    await drop([...pool.keys()])
   }
 
   export const Status = z
@@ -161,23 +196,28 @@ export namespace LSP {
 
   export async function status() {
     return state().then((x) => {
-      const result: Status[] = []
-      for (const client of x.clients) {
-        result.push({
-          id: client.serverID,
-          name: x.servers[client.serverID].id,
-          root: path.relative(Instance.directory, client.root),
+      const projectID = Instance.project.id
+      const statuses: Status[] = []
+      for (const entry of pool.values()) {
+        if (entry.projectID !== projectID) continue
+        const server = x.servers[entry.client.serverID]
+        if (!server) continue
+        statuses.push({
+          id: entry.client.serverID,
+          name: server.id,
+          root: path.relative(Instance.directory, entry.client.root),
           status: "connected",
         })
       }
-      return result
+      return statuses
     })
   }
 
   async function getClients(file: string) {
     const s = await state()
     const extension = path.parse(file).ext || file
-    const result: LSPClient.Info[] = []
+    const matched: LSPClient.Info[] = []
+    const projectID = Instance.project.id
 
     async function schedule(server: LSPServer.Info, root: string, key: string) {
       const handle = await server
@@ -211,13 +251,13 @@ export namespace LSP {
         return undefined
       }
 
-      const existing = s.clients.find((x) => x.root === root && x.serverID === server.id)
+      const existing = pool.get(key)
       if (existing) {
         handle.process.kill()
-        return existing
+        return existing.client
       }
 
-      s.clients.push(client)
+      pool.set(key, { client, projectID })
       return client
     }
 
@@ -226,39 +266,40 @@ export namespace LSP {
 
       const root = await server.root(file)
       if (!root) continue
-      if (s.broken.has(root + server.id)) continue
+      const key = root + server.id
+      if (s.broken.has(key)) continue
 
-      const match = s.clients.find((x) => x.root === root && x.serverID === server.id)
+      const match = pool.get(key)
       if (match) {
-        result.push(match)
+        matched.push(match.client)
         continue
       }
 
-      const inflight = s.spawning.get(root + server.id)
+      const inflight = spawning.get(key)
       if (inflight) {
         const client = await inflight
         if (!client) continue
-        result.push(client)
+        matched.push(client)
         continue
       }
 
-      const task = schedule(server, root, root + server.id)
-      s.spawning.set(root + server.id, task)
+      const task = schedule(server, root, key)
+      spawning.set(key, task)
 
       task.finally(() => {
-        if (s.spawning.get(root + server.id) === task) {
-          s.spawning.delete(root + server.id)
+        if (spawning.get(key) === task) {
+          spawning.delete(key)
         }
       })
 
       const client = await task
       if (!client) continue
 
-      result.push(client)
+      matched.push(client)
       Bus.publish(Event.Updated, {})
     }
 
-    return result
+    return matched
   }
 
   export async function hasClients(file: string) {
@@ -454,9 +495,11 @@ export namespace LSP {
     }).then((result) => result.flat().filter(Boolean))
   }
 
+  // Scoped to the calling project: the pool spans every open project, and a
+  // workspace-wide query must not reach into a sibling project's servers.
   async function runAll<T>(input: (client: LSPClient.Info) => Promise<T>): Promise<T[]> {
-    const clients = await state().then((x) => x.clients)
-    const tasks = clients.map((x) => input(x))
+    const projectID = Instance.project.id
+    const tasks = [...pool.values()].filter((x) => x.projectID === projectID).map((x) => input(x.client))
     return Promise.all(tasks)
   }
 

@@ -3,6 +3,7 @@ import { Server } from "@/server/server"
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
 import { InstanceBootstrap } from "@/project/bootstrap"
+import { LSP } from "@/lsp"
 import { Rpc } from "@/util/rpc"
 import { upgrade } from "@/cli/upgrade"
 import { Config } from "@/config/config"
@@ -137,6 +138,7 @@ export const rpc = {
     Log.Default.info("worker shutting down")
     if (eventStream.abort) eventStream.abort.abort()
     await Instance.disposeAll()
+    await LSP.shutdownAll()
     if (server) server.stop(true)
   },
 }
