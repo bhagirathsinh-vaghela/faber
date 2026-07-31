@@ -2192,7 +2192,9 @@ export default function Page() {
     // ABOVE the input, so its top edge rises when any of those appear and the
     // pill would ride up with it. In the slim zen dock that also lands the pill
     // on top of the submit/stop button. The input box's top edge is stable.
-    const el = inputRef
+    // inputRef is the contenteditable, which desktop zen shrinks to flex-1
+    // beside the button row; its form wrapper spans the box in both modes.
+    const el = inputRef?.closest("form")
     if (!el) return
     const r = el.getBoundingClientRect()
     if (r.width === 0) return
