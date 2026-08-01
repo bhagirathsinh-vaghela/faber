@@ -133,7 +133,7 @@ export namespace SessionPin {
   // Managed enterprise config is excluded (admin-controlled; restart covers it).
   async function fingerprint() {
     const files = new Set<string>()
-    for (const file of ["opencode.jsonc", "opencode.json", "config.json"]) {
+    for (const file of ["opencode.jsonc", "opencode.json", "config.json", "opencode.local.json"]) {
       files.add(path.join(Global.Path.config, file))
     }
     if (Flag.OPENCODE_CONFIG) files.add(Flag.OPENCODE_CONFIG)
