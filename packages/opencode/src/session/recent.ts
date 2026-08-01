@@ -167,15 +167,7 @@ export namespace SessionRecent {
   export async function touch(
     input: Omit<
       Entry,
-      | "agent"
-      | "busy"
-      | "busySelf"
-      | "busyDescendant"
-      | "unseen"
-      | "question"
-      | "permission"
-      | "error"
-      | "pingAt"
+      "agent" | "busy" | "busySelf" | "busyDescendant" | "unseen" | "question" | "permission" | "error" | "pingAt"
     > & { agent?: string },
   ) {
     await hydrate()

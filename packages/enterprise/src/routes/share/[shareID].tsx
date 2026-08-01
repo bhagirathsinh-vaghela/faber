@@ -248,6 +248,13 @@ export default function () {
                         const activeMessage = createMemo(
                           () => messages().find((m) => m.id === store.messageId) ?? firstUserMessage(),
                         )
+                        const messageLabel = (message: UserMessage) => {
+                          const parts = data().part[message.id] ?? []
+                          return parts.find(
+                            (part): part is Extract<Part, { type: "text" }> =>
+                              part.type === "text" && !part.synthetic && !part.ignored,
+                          )?.text
+                        }
                         function setActiveMessage(message: UserMessage | undefined) {
                           if (message) {
                             setStore("messageId", message.id)
@@ -379,6 +386,7 @@ export default function () {
                                         class="sticky top-0 shrink-0 py-2 pl-4"
                                         messages={messages()}
                                         current={activeMessage()}
+                                        getLabel={messageLabel}
                                         size="compact"
                                         onMessageSelect={setActiveMessage}
                                       />

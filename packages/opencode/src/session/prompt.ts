@@ -2150,6 +2150,57 @@ export namespace SessionPrompt {
     return result
   }
 
+  // The tail carries where the conversation ended up; a title built from the
+  // opening prompt alone goes stale as soon as the session moves on.
+  const TITLE_CONTEXT_CHARS = 1000
+
+  // One title off the opening prompt, then one refresh once a topic has
+  // established itself. Further turns add little, so generation stops there.
+  const TITLE_GENERATION_LIMIT = 2
+
+  // Backstop for parseTitle's plain-text fallback, which can return a whole
+  // sentence. A model honouring the prompt's 3-7 words never reaches it.
+  const TITLE_MAX_CHARS = 80
+
+  // The prompt asks for {"title": "..."} but nothing enforces it: the SDK's
+  // schema-constrained output is a forced tool call on Anthropic, which this
+  // deliberately tool-less call cannot take. So a model may answer in prose or
+  // wrap the object in <think>, and the plain-text fallback keeps that usable.
+  function parseTitle(text: string) {
+    const stripped = text.replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+    const json = stripped.match(/\{[\s\S]*\}/)
+    if (json) {
+      const parsed = iife(() => {
+        try {
+          return JSON.parse(json[0]) as { title?: unknown }
+        } catch {
+          return undefined
+        }
+      })
+      if (typeof parsed?.title === "string" && parsed.title.trim()) return parsed.title.trim()
+    }
+    return stripped
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0)
+  }
+
+  // Subtask prompts are read alongside text because a command invocation
+  // (/fix, /review) carries the user's actual request there and contributes no
+  // text part at all, leaving nothing to title.
+  function conversationTail(history: MessageV2.WithParts[]) {
+    const text = history
+      .flatMap((msg) =>
+        msg.parts.flatMap((part) => {
+          if (part.type === "subtask") return [`${msg.info.role}: ${part.prompt}`]
+          if (part.type !== "text" || part.synthetic || part.ignored) return []
+          return [`${msg.info.role}: ${part.text}`]
+        }),
+      )
+      .join("\n")
+    return text.length > TITLE_CONTEXT_CHARS ? text.slice(-TITLE_CONTEXT_CHARS) : text
+  }
+
   async function ensureTitle(input: {
     session: Session.Info
     history: MessageV2.WithParts[]
@@ -2157,28 +2208,23 @@ export namespace SessionPrompt {
     modelID: string
   }) {
     if (input.session.parentID) return
-    if (!Session.isDefaultTitle(input.session.title)) return
 
-    // Find first non-synthetic user message
-    const firstRealUserIdx = input.history.findIndex(
+    const generations = input.session.titleGenerations ?? 0
+    if (generations >= TITLE_GENERATION_LIMIT) return
+    // Set only by a rename, which hands the title to the user for good.
+    if (input.session.titleGenerated !== undefined) return
+
+    const userMessages = input.history.filter(
       (m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic),
     )
-    if (firstRealUserIdx === -1) return
+    const latestUser = userMessages.at(-1)
+    if (!latestUser) return
+    // Spacing: the first title comes off the opening prompt, the refresh waits
+    // for a third so the tail has an established topic to describe.
+    if (generations > 0 && userMessages.length < 3) return
 
-    const isFirst =
-      input.history.filter((m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic))
-        .length === 1
-    if (!isFirst) return
-
-    // Gather all messages up to and including the first real user message for context
-    // This includes any shell/subtask executions that preceded the user's first prompt
-    const contextMessages = input.history.slice(0, firstRealUserIdx + 1)
-    const firstRealUser = contextMessages[firstRealUserIdx]
-
-    // For subtask-only messages (from command invocations), extract the prompt directly
-    // since toModelMessage converts subtask parts to generic "The following tool was executed by the user"
-    const subtaskParts = firstRealUser.parts.filter((p) => p.type === "subtask") as MessageV2.SubtaskPart[]
-    const hasOnlySubtaskParts = subtaskParts.length > 0 && firstRealUser.parts.every((p) => p.type === "subtask")
+    const content = conversationTail(input.history)
+    if (!content) return
 
     const agent = await Agent.get("title")
     if (!agent) return
@@ -2190,7 +2236,7 @@ export namespace SessionPrompt {
     })
     const { stream } = await LLM.stream({
       agent,
-      user: firstRealUser.info as MessageV2.User,
+      user: latestUser.info as MessageV2.User,
       system: { env: [], globalInstructions: [], projectInstructions: [] },
       small: true,
       tools: {},
@@ -2201,11 +2247,8 @@ export namespace SessionPrompt {
       messages: [
         {
           role: "user",
-          content: "Generate a title for this conversation:\n",
+          content,
         },
-        ...(hasOnlySubtaskParts
-          ? [{ role: "user" as const, content: subtaskParts.map((p) => p.prompt).join("\n") }]
-          : MessageV2.toModelMessages(contextMessages, model).messages),
       ],
     })
     const text = await stream.text.catch((err) => log.error("failed to generate title", { error: err }))
@@ -2213,15 +2256,13 @@ export namespace SessionPrompt {
       return Session.update(
         input.session.id,
         (draft) => {
-          const cleaned = text
-            .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
-            .split("\n")
-            .map((line) => line.trim())
-            .find((line) => line.length > 0)
+          const cleaned = parseTitle(text)
           if (!cleaned) return
+          // A rename concurrent with this stream owns the title; never overwrite it.
+          if (draft.titleGenerated !== undefined) return
 
-          const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
-          draft.title = title
+          draft.title = cleaned.length > TITLE_MAX_CHARS ? cleaned.substring(0, TITLE_MAX_CHARS - 3) + "..." : cleaned
+          draft.titleGenerations = (draft.titleGenerations ?? 0) + 1
         },
         { touch: false },
       )

@@ -154,8 +154,6 @@ export type UserMessage = {
     created: number
   }
   summary?: {
-    title?: string
-    body?: string
     diffs: Array<FileDiff>
   }
   agent: string
@@ -978,6 +976,8 @@ export type Session = {
     url: string
   }
   title: string
+  titleGenerated?: string
+  titleGenerations?: number
   version: string
   branch?: string
   time: {

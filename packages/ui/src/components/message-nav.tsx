@@ -50,11 +50,8 @@ export function MessageNav(
                       data-slot="message-nav-title-preview"
                       data-active={message.id === local.current?.id || undefined}
                     >
-                      <Show
-                        when={local.getLabel?.(message) ?? message.summary?.title}
-                        fallback={i18n.t("ui.messageNav.newMessage")}
-                      >
-                        {local.getLabel?.(message) ?? message.summary?.title}
+                      <Show when={local.getLabel?.(message)} fallback={i18n.t("ui.messageNav.newMessage")}>
+                        {local.getLabel?.(message)}
                       </Show>
                     </div>
                   </button>

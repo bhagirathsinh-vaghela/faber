@@ -113,7 +113,15 @@ export namespace Session {
           url: z.string(),
         })
         .optional(),
+      // What every reader renders, whoever set it. A user rename displaces the
+      // generated text into titleGenerated rather than overwriting it, so the
+      // two never compete for the same slot.
       title: z.string(),
+      titleGenerated: z.string().optional(),
+      // Counts generations, not user messages: the prompt loop sees a
+      // compaction-truncated history, so a message count would reset and
+      // regenerate forever.
+      titleGenerations: z.number().optional(),
       version: z.string(),
       branch: z.string().optional(),
       time: z.object({

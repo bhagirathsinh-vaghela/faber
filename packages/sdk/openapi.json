@@ -9205,12 +9205,6 @@
           "summary": {
             "type": "object",
             "properties": {
-              "title": {
-                "type": "string"
-              },
-              "body": {
-                "type": "string"
-              },
               "diffs": {
                 "type": "array",
                 "items": {
@@ -12016,6 +12010,12 @@
           },
           "title": {
             "type": "string"
+          },
+          "titleGenerated": {
+            "type": "string"
+          },
+          "titleGenerations": {
+            "type": "number"
           },
           "version": {
             "type": "string"

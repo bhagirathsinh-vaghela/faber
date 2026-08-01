@@ -363,6 +363,11 @@ export const SessionRoutes = lazy(() =>
           sessionID,
           (session) => {
             if (updates.title !== undefined) {
+              // Displace the generated text on the FIRST rename only: once
+              // titleGenerated holds it, title is the user's, and moving that
+              // across on a second rename would bury the generated one.
+              if (session.titleGenerated === undefined && !Session.isDefaultTitle(session.title))
+                session.titleGenerated = session.title
               session.title = updates.title
             }
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
