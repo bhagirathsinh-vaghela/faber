@@ -60,6 +60,7 @@ import { SessionPin } from "./pin"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
+import { Image } from "@/image/image"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1455,6 +1456,8 @@ export namespace SessionPrompt {
         ]
       }),
     ).then((x) => x.flat())
+
+    await Image.clamp(parts)
 
     await Plugin.trigger(
       "chat.message",

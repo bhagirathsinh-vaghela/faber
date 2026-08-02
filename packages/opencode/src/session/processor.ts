@@ -18,6 +18,7 @@ import { SessionPing } from "./ping"
 import { SessionPricing } from "./pricing"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { Image } from "@/image/image"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -210,6 +211,7 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    if (value.output.attachments) await Image.clamp(value.output.attachments)
                     await Session.updatePart({
                       ...match,
                       state: {
