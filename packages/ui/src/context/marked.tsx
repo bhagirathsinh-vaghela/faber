@@ -88,19 +88,6 @@ async function renderMathInText(text: string): Promise<string> {
     }
   })
 
-  // Inline math: single-delimiter span.
-  const inlineMathRegex = /(?<!\$)\$(?!\$)((?:[^$\\]|\\.)+?)\$(?!\$)/g
-  result = result.replace(inlineMathRegex, (whole, math) => {
-    try {
-      return katex.renderToString(math, {
-        displayMode: false,
-        throwOnError: false,
-      })
-    } catch {
-      return whole
-    }
-  })
-
   return result
 }
 

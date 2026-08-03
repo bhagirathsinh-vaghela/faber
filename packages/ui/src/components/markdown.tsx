@@ -24,11 +24,14 @@ function loadKatex() {
   import("rehype-katex").then((m) => setKatexPlugin(() => m.default)).catch(() => (katexPending = false))
 }
 
-// Cheap pre-check so a math-free message never triggers the import. A lone
-// dollar (currency) must not match: display math is a paired double-dollar, and
-// inline math needs a non-space right after the opening dollar and before the
-// closing one, mirroring remark-math's own delimiter guard.
-const MATH = /\$\$[\s\S]+?\$\$|(?<!\$)\$(?!\s)[^$\n]+?(?<!\s)\$(?!\$)/
+// remark-math's inline tokenizer consumes spaces, so with single-dollar math on,
+// ANY two dollars on a line pair up and the prose between them becomes a
+// non-wrapping KaTeX box that overflows the container ("$10-24/adult, so $40-70").
+// Currency beats inline math in chat, so only a double-dollar fence counts.
+const MATH_OPTIONS = { singleDollarTextMath: false }
+
+// Cheap pre-check so a math-free message never triggers the import.
+const MATH = /\$\$[\s\S]+?\$\$/
 function hasMath(text: string) {
   return MATH.test(text)
 }
@@ -370,7 +373,7 @@ export function Markdown(
       <SolidMarkdown
         renderingStrategy="reconcile"
         skipHtml
-        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+        remarkPlugins={[remarkGfm, [remarkMath, MATH_OPTIONS], remarkBreaks]}
         rehypePlugins={rehype()}
         components={components(labels, theme, complete)}
       >
