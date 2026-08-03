@@ -40,6 +40,36 @@ function encode(samples: Float32Array) {
   return pcm.buffer
 }
 
+// Run after the browser has committed the next paint. A rAF callback lands just
+// before the frame is painted, so a task queued from inside it runs after. A
+// hidden tab never fires rAF, so a timer races it — the mic must always be
+// released, even with nothing on screen to wait for.
+function afterPaint(fn: () => void) {
+  let ran = false
+  const once = () => {
+    if (ran) return
+    ran = true
+    fn()
+  }
+  requestAnimationFrame(() => setTimeout(once))
+  setTimeout(once, 500)
+}
+
+// Releasing the capture graph is slow: track.stop() and AudioContext.close()
+// tear down the OS audio path, and over a Bluetooth headset that also forces the
+// HFP->A2DP profile switch, which blocks the main thread for hundreds of ms.
+// Deferring it past the paint keeps that cost off the frame that dismisses the
+// overlay and inserts the transcript. The socket closes first so the server-side
+// transcription stream ends immediately rather than outliving the audio.
+function release(socket: WebSocket, context: AudioContext, stream: MediaStream) {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }))
+  socket.close()
+  afterPaint(() => {
+    for (const track of stream.getTracks()) track.stop()
+    context.close().catch(() => {})
+  })
+}
+
 let active: (() => void) | undefined
 
 // True while any dictation session (from any host) is capturing. Not
@@ -98,10 +128,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     analyser = undefined
     if (active === stop) active = undefined
     setStore({ active: false, committed: "", interim: "" })
-    for (const track of stream.getTracks()) track.stop()
-    context.close()
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }))
-    socket.close()
+    release(socket, context, stream)
   }
 
   const stop = () => teardown()

@@ -29,17 +29,15 @@ export function DictationOverlay(props: {
   let done = false
   const finish = (outcome: "accept" | "stash" | "discard") => {
     done = true
+    // Capture the transcript before anything else: stop() clears the store.
     const text = props.dictation.text().trim()
-    // Dismiss and hand off the text first, then tear down the mic. teardown
-    // (AudioContext.close, track.stop, socket close) is slow on mobile Safari;
-    // running it before onClose left the overlay hanging on the tap. The text
-    // is already captured above, so the ordering is safe.
+    // Dismiss and hand off the text before releasing the mic, so the frame that
+    // closes the overlay and inserts the text carries no audio-teardown work.
+    // stop() defers the expensive part past that paint on its own.
     props.onClose()
     if (text && outcome === "accept") props.onAccept(text)
     if (text && outcome === "stash") props.onStash(text)
-    // Tear the mic down on a later task so it never blocks the dismiss paint.
-    // The user sees the action land instantly; audio cleanup runs after.
-    setTimeout(() => props.dictation.stop())
+    props.dictation.stop()
   }
 
   const handleKey = (event: KeyboardEvent) => {
@@ -83,11 +81,7 @@ export function DictationOverlay(props: {
     document.removeEventListener("pointerdown", handlePointer, true)
     if (done) return
     const text = props.dictation.text().trim()
-    // Same deferral as finish(): teardown (AudioContext.close, track.stop,
-    // socket close) is slow on mobile Safari, and this path runs inside the
-    // host's own action — submitting while dictating unmounts the overlay, so a
-    // synchronous stop here blocks that submit.
-    setTimeout(() => props.dictation.stop())
+    props.dictation.stop()
     if (text) props.onStash(text)
   })
 
