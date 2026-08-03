@@ -1,6 +1,9 @@
 [data-component="resize-handle"] {
   position: absolute;
   z-index: 10;
+  /* The drag is ours; without this the browser claims the same gesture for a
+     scroll and the pointer stream is cancelled mid-resize. */
+  touch-action: none;
 
   &::after {
     content: "";
