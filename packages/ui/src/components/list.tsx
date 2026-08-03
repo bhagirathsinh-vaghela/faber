@@ -263,7 +263,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
           <div
             data-slot="list-search"
             classList={{ [searchProps().class ?? ""]: !!searchProps().class }}
-            onPointerDown={(event) => {
+            onMouseDown={(event) => {
               const container = event.currentTarget
               if (!(container instanceof HTMLElement)) return
 

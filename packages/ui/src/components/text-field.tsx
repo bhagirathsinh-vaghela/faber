@@ -4,7 +4,7 @@ import type { ComponentProps } from "solid-js"
 import { useI18n } from "../context/i18n"
 import { IconButton } from "./icon-button"
 import { Tooltip } from "./tooltip"
-import { createCoarsePointer } from "../util/mobile"
+import { createCoarsePointer, gestureAction } from "../util/mobile"
 
 export interface TextFieldProps
   extends ComponentProps<typeof Kobalte.Input>,
@@ -72,9 +72,16 @@ export function TextField(props: TextFieldProps) {
     const ref = local.ref
     if (typeof ref === "function") (ref as (el: HTMLInputElement | HTMLTextAreaElement) => void)(el)
   }
+  // Synchronous, inside the triggering gesture: a deferred focus (rAF/timeout)
+  // lands in a later task with no user activation left, and the browser then
+  // declines to raise the keyboard. Setting inputmode on the node directly
+  // rather than waiting for the reactive re-render is part of the same
+  // constraint — the focus has to see "text" already.
   const requestKeyboard = () => {
     setKeyboardWanted(true)
-    requestAnimationFrame(() => inputRef?.focus())
+    if (!inputRef) return
+    inputRef.inputMode = local.inputmode ?? "text"
+    inputRef.focus()
   }
   const handleBlur = (event: FocusEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => {
     setKeyboardWanted(false)
@@ -143,13 +150,9 @@ export function TextField(props: TextFieldProps) {
               type="button"
               icon="keyboard"
               variant="ghost"
-              // mousedown, not click: taking focus on click races the
-              // requestKeyboard refocus. Prevent the default focus shift and
-              // drive it ourselves so the caret stays in the field.
-              onMouseDown={(e: MouseEvent) => {
-                e.preventDefault()
-                requestKeyboard()
-              }}
+              // Raising the keyboard is gated on live user activation, so it
+              // acts on press rather than click (see gestureAction).
+              {...gestureAction(requestKeyboard)}
               tabIndex={-1}
               data-slot="input-keyboard-button"
               aria-label={i18n.t("ui.textField.showKeyboard")}

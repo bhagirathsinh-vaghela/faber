@@ -122,12 +122,18 @@ export const Terminal = (props: TerminalProps) => {
     setOption("fontFamily", font)
   })
 
+  // The textarea focus lands synchronously: deferring it to a later task drops
+  // the user activation the soft keyboard needs, so on touch the terminal would
+  // take focus without a keyboard to type into it.
   const focusTerminal = () => {
     const t = term
     if (!t) return
     t.focus()
-    setTimeout(() => t.textarea?.focus(), 0)
+    t.textarea?.focus()
   }
+  // Press, not click: focusing the terminal is what raises the soft keyboard, and
+  // that needs the live user activation a click handler no longer holds. Same
+  // sanctioned exception as the dock's keyboard toggle.
   const handlePointerDown = () => {
     const activeElement = document.activeElement
     if (activeElement instanceof HTMLElement && activeElement !== container) {

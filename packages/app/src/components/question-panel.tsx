@@ -15,7 +15,7 @@ import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
 import { createDictation, dictationActive, dictationTarget, registerDictationTarget } from "@/utils/dictation"
-import { createCoarsePointer } from "@/utils/mobile"
+import { createCoarsePointer, gestureAction } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { clonePrompt, usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -199,9 +199,14 @@ function Panel(props: {
   const coarse = createCoarsePointer()
   const [keyboardWanted, setKeyboardWanted] = createSignal(false)
   const suppressKeyboard = () => coarse() && !keyboardWanted()
+  // Synchronous, inside the triggering gesture: a deferred focus (rAF/timeout)
+  // lands in a later task with no user activation left, and the browser then
+  // declines to raise the keyboard.
   const requestKeyboard = () => {
     setKeyboardWanted(true)
-    requestAnimationFrame(() => input?.focus())
+    if (!input) return
+    input.inputMode = "text"
+    input.focus()
   }
   // Leaving edit mode resets the opt-in so the next edit is suppressed again.
   createEffect(() => {
@@ -800,10 +805,9 @@ function Panel(props: {
                         type="button"
                         variant="ghost"
                         class="size-11 md:size-6 px-1"
-                        onMouseDown={(e: MouseEvent) => {
-                          e.preventDefault()
-                          requestKeyboard()
-                        }}
+                        // Raising the keyboard is gated on live user activation,
+                        // so it acts on press rather than click.
+                        {...gestureAction(requestKeyboard)}
                         aria-label={language.t("prompt.action.showKeyboard")}
                       >
                         <Icon name="keyboard" class="size-6 md:size-4.5" />

@@ -2275,20 +2275,20 @@ export default function Page() {
     }
   })
 
-  // Desktop toggles zen on click, not here: activating on press-down made this
-  // the only button in the app that fired before release, so it couldn't be
-  // aborted by dragging off and it double-fired against the synthesized click.
-  // Mobile still needs pointerdown to distinguish a drag from a tap.
+  // Pointer events TRACK the drag; they never toggle. The toggle is the click
+  // below, so the pill activates like every other control (and stays reachable
+  // by keyboard and screen reader). A drag past the threshold suppresses that
+  // click, which is what separates "moved the pill" from "tapped the pill".
+  let dragged = false
   function startPillDrag(e: PointerEvent) {
     if (isDesktop()) return
-    e.preventDefault()
     const startX = e.clientX
     const startY = e.clientY
-    let moved = false
+    dragged = false
 
     const move = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return
-      moved = true
+      if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return
+      dragged = true
       setDrag(clampPill(ev.clientX - pillSize() / 2, ev.clientY - pillSize() / 2))
     }
     const up = () => {
@@ -2296,10 +2296,6 @@ export default function Page() {
       document.removeEventListener("pointerup", up)
       const final = drag()
       setDrag(null)
-      if (!moved) {
-        layout.zen.toggle()
-        return
-      }
       if (final) setPos(final)
     }
     document.addEventListener("pointermove", move)
@@ -2322,12 +2318,13 @@ export default function Page() {
         <button
           type="button"
           onPointerDown={startPillDrag}
-          // Desktop only. On touch the toggle already ran from the pointerup
-          // above, and preventDefault on pointerdown cannot cancel the
-          // synthesized click (see packages/ui/src/util/mobile.ts), so letting
-          // this run there would toggle zen twice per tap.
           onClick={() => {
-            if (!isDesktop()) return
+            // A drag that ended elsewhere still emits a click here; only a tap
+            // that stayed put should toggle.
+            if (dragged) {
+              dragged = false
+              return
+            }
             layout.zen.toggle()
           }}
           aria-label={layout.zen.opened() ? language.t("zen.exit") : language.t("zen.enter")}

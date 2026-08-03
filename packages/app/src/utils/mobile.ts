@@ -1,1 +1,1 @@
-export { createCoarsePointer, createStandalone, tapAction } from "@opencode-ai/ui/util/mobile"
+export { createCoarsePointer, createStandalone, gestureAction, preserveFocus } from "@opencode-ai/ui/util/mobile"

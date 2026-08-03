@@ -927,7 +927,7 @@ export function Code<T>(props: CodeProps<T>) {
       }}
       ref={wrapper}
       tabIndex={0}
-      onPointerDown={() => {
+      onMouseDown={() => {
         findTarget = host
         wrapper.focus({ preventScroll: true })
       }}
@@ -939,7 +939,7 @@ export function Code<T>(props: CodeProps<T>) {
         <div
           ref={findBar}
           class="z-50 flex h-8 items-center gap-2 rounded-md border border-border-base bg-background-base px-3 shadow-md"
-          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <Icon name="magnifying-glass" size="small" class="text-text-weak shrink-0" />
           <input

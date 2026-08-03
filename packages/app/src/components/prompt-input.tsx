@@ -57,7 +57,7 @@ import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
-import { createCoarsePointer } from "@/utils/mobile"
+import { createCoarsePointer, gestureAction, preserveFocus } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
@@ -2613,23 +2613,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       type="button"
                       variant="ghost"
                       class={`${actionButton()} ${actionIcon()}`}
-                      // pointerdown, not click/mousedown: on iOS a synthesized
-                      // mousedown fires too late to count as a user gesture, so
-                      // focus() there won't raise the keyboard. pointerdown fires
-                      // on the genuine touch (trusted activation). preventDefault
-                      // stops the button stealing focus so requestKeyboard drives
-                      // the editor focus itself.
-                      onPointerDown={(e: PointerEvent) => {
-                        e.preventDefault()
-                        requestKeyboard()
-                      }}
-                      // Swallow the release sequence too: without this the
-                      // pointerup/mouseup/click on lift pulls focus off the editor,
-                      // blurring it and dropping the keyboard — so it only stayed up
-                      // while the finger held the button.
-                      onPointerUp={(e: PointerEvent) => e.preventDefault()}
-                      onMouseDown={(e: MouseEvent) => e.preventDefault()}
-                      onClick={(e: MouseEvent) => e.preventDefault()}
+                      // The app's one sanctioned press-time action: raising the
+                      // soft keyboard needs a focus() inside the live user
+                      // activation, which a click handler no longer holds.
+                      {...gestureAction(requestKeyboard)}
                       aria-label={language.t("prompt.action.showKeyboard")}
                     >
                       <Icon name="keyboard" />
@@ -2715,42 +2702,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   }
                 >
                   <IconButton
-                    // This is a FORM SUBMIT button, so it can't use the generic
-                    // tapAction() helper (that binds onClick, which would race the
-                    // native form onSubmit on desktop). It needs the submit wired to
-                    // exactly ONE path per platform:
-                    //   desktop — native type="submit" (mouse click + Enter).
-                    //   touch   — pointerdown (see below), with type="button" so the
-                    //             synthesized click can't ALSO submit the form.
-                    // The touch trap: one tap emits pointerdown AND a synthesized
-                    // click, and preventDefault on pointerdown does not cancel that
-                    // click, so a type="submit" here would submit twice — which on a
-                    // brand-new session ran session.create() twice and minted two
-                    // sessions per tap. type="button" + the onClick swallow below kill
-                    // the second path. handleSubmit also self-guards the create window.
-                    type={coarse() ? "button" : "submit"}
+                    // The native form submit fires this on both a mouse click and
+                    // Enter, so handleSubmit needs no click handler of its own.
+                    // preserveFocus is what makes that viable on touch: without it
+                    // the press blurs the editor to dismiss the soft keyboard, and
+                    // on iOS that transition eats the tap before it becomes a click
+                    // (the two-tap send). Cancelling the focus shift leaves the
+                    // keyboard up and the click intact.
+                    type="submit"
                     disabled={!submittable()}
                     icon="arrow-up"
                     variant="primary"
                     class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
                     aria-label={language.t("prompt.action.send")}
-                    onPointerDown={
-                      // iOS: with the keyboard up the editor holds focus, so tapping
-                      // this button first blurs the editor to dismiss the keyboard and
-                      // the native click->submit gets swallowed in that transition —
-                      // the user has to tap again. Drive the submit off pointerdown
-                      // (the trusted first touch). Coarse pointer only.
-                      coarse()
-                        ? (e: PointerEvent) => {
-                            if (!submittable()) return
-                            e.preventDefault()
-                            handleSubmit(e)
-                          }
-                        : undefined
-                    }
-                    // Swallow the click the same tap synthesizes so it can never
-                    // re-enter handleSubmit (mirrors the keyboard-toggle button).
-                    onClick={coarse() ? (e: MouseEvent) => e.preventDefault() : undefined}
+                    {...preserveFocus()}
                   />
                 </Tooltip>
               </Show>
