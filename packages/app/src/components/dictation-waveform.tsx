@@ -21,9 +21,12 @@ export function DictationWaveform(props: { analyser: () => AnalyserNode | undefi
 
   onMount(() => {
     if (!canvas) return
-    // desynchronized decouples the paint from the event loop for lower
-    // latency; alpha stays on so the bars sit over the translucent pill.
-    const ctx = canvas.getContext("2d", { desynchronized: true })
+    // NOT desynchronized: that hint hands the canvas to the display controller
+    // on its own layer, which Chrome on Android composites opaque — the bars
+    // arrive on a black rectangle instead of over the panel. The latency it
+    // trades for is worthless here anyway, since the draw loop is throttled to
+    // 30fps below.
+    const ctx = canvas.getContext("2d")
     if (!ctx) return
 
     let raf = 0

@@ -124,7 +124,9 @@ export function DictationOverlay(props: {
               <span class="absolute inline-flex size-full rounded-full bg-icon-critical-base opacity-60 animate-ping" />
               <span class="relative inline-flex size-2.5 rounded-full bg-icon-critical-base animate-pulse" />
             </span>
-            <div class="h-6 w-[180px] transform-gpu">
+            {/* Chrome on Android composites a promoted canvas layer opaque, so
+                the bars arrive on a black rectangle. */}
+            <div class="h-6 w-[180px]">
               <DictationWaveform analyser={props.dictation.analyser} />
             </div>
           </div>
