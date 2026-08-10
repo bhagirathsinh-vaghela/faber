@@ -46,6 +46,10 @@ export namespace Log {
     level?: Level
   }
 
+  const MAXSIZE = 50 * 1024 * 1024
+  const MAXAGE = 7 * 24 * 60 * 60 * 1000
+  const MAXFILES = 20
+
   let logpath = ""
   export function file() {
     return logpath
@@ -59,32 +63,51 @@ export namespace Log {
     if (options.level) level = options.level
     cleanup(Global.Path.log)
     if (options.print) return
-    logpath = path.join(
-      Global.Path.log,
-      options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
-    )
-    const logfile = Bun.file(logpath)
-    await fs.truncate(logpath).catch(() => {})
-    const writer = logfile.writer()
-    write = async (msg: any) => {
+
+    const prefix = options.dev ? `dev-${process.pid}-` : ""
+    let size = 0
+    let writer = open()
+
+    function open() {
+      const stamp = new Date().toISOString().replace(/[:.]/g, "").replace("Z", "")
+      logpath = path.join(Global.Path.log, prefix + stamp + ".log")
+      size = 0
+      return Bun.file(logpath).writer()
+    }
+
+    write = (msg: any) => {
       const num = writer.write(msg)
       writer.flush()
+      size += num
+      if (size < MAXSIZE) return num
+      writer.end()
+      writer = open()
+      cleanup(Global.Path.log)
       return num
     }
   }
 
   async function cleanup(dir: string) {
-    const glob = new Bun.Glob("????-??-??T??????.log")
+    const glob = new Bun.Glob("*.log")
     const files = await Array.fromAsync(
       glob.scan({
         cwd: dir,
         absolute: true,
       }),
     )
-    if (files.length <= 5) return
-
-    const filesToDelete = files.slice(0, -10)
-    await Promise.all(filesToDelete.map((file) => fs.unlink(file).catch(() => {})))
+    const entries = (
+      await Promise.all(
+        files.map(async (file) => {
+          const stat = await fs.stat(file).catch(() => null)
+          return stat && { file, modified: stat.mtimeMs }
+        }),
+      )
+    ).filter((entry) => entry !== null && entry !== undefined)
+    const cutoff = Date.now() - MAXAGE
+    const expired = entries
+      .sort((a, b) => b.modified - a.modified)
+      .filter((entry, index) => entry.file !== logpath && (entry.modified < cutoff || index >= MAXFILES))
+    await Promise.all(expired.map((entry) => fs.unlink(entry.file).catch(() => {})))
   }
 
   function formatError(error: Error, depth = 0): string {
