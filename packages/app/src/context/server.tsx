@@ -38,10 +38,24 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     const [state, setState] = createStore({
       active: "",
-      healthy: undefined as boolean | undefined,
+      // Two views of the same question. The SSE stream sees a clean drop
+      // instantly but leaves a half-open socket looking alive until its 60s
+      // watchdog; the poll bounds that at one interval. Neither alone covers
+      // both failures.
+      polled: undefined as boolean | undefined,
+      stream: undefined as boolean | undefined,
+      version: undefined as string | undefined,
+      host: undefined as string | undefined,
     })
 
-    const healthy = () => state.healthy
+    // Down beats up, so a drop never waits on the slower signal. Undefined is
+    // "not yet known" — startup, a server switch, or a stream detached while
+    // the tab is hidden — and must not render as a failure.
+    const healthy = () => {
+      if (state.polled === false || state.stream === false) return false
+      if (state.polled === true || state.stream === true) return true
+      return undefined
+    }
 
     function setActive(input: string) {
       const url = normalizeServerUrl(input)
@@ -99,15 +113,15 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       })
       return sdk.global
         .health()
-        .then((x) => x.data?.healthy === true)
-        .catch(() => false)
+        .then((x) => ({ healthy: x.data?.healthy === true, version: x.data?.version, host: x.data?.host }))
+        .catch(() => ({ healthy: false, version: undefined, host: undefined }))
     }
 
     createEffect(() => {
       const url = state.active
       if (!url) return
 
-      setState("healthy", undefined)
+      setState({ polled: undefined, stream: undefined, version: undefined, host: undefined })
 
       let alive = true
       let busy = false
@@ -118,7 +132,12 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         void check(url)
           .then((next) => {
             if (!alive) return
-            setState("healthy", next)
+            // An unreachable server can't report its identity, so keep the last
+            // known version/host rather than blanking the name on a blip.
+            setState({
+              polled: next.healthy,
+              ...(next.healthy ? { version: next.version, host: next.host } : {}),
+            })
           })
           .finally(() => {
             busy = false
@@ -136,15 +155,26 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     const isLocal = createMemo(() => projectsKey(state.active) === "local")
 
+    // GlobalSDK owns the event stream and mounts below this provider, so it
+    // reports liveness upward instead of this context reaching down for it.
+    const setStream = (next: boolean | undefined) => setState("stream", next)
+
     return {
       ready: isReady,
       healthy,
       isLocal,
+      setStream,
       get url() {
         return state.active
       },
       get name() {
         return serverDisplayName(state.active)
+      },
+      get version() {
+        return state.version
+      },
+      get host() {
+        return state.host
       },
       get list() {
         return store.list

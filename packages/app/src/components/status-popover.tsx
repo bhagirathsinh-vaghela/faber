@@ -1,32 +1,10 @@
-import { createEffect, createMemo, For, onCleanup, Show } from "solid-js"
-import { createStore, reconcile } from "solid-js/store"
+import { createMemo, For, Show } from "solid-js"
 import { Popover } from "@opencode-ai/ui/popover"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { Button } from "@opencode-ai/ui/button"
 import { useSyncOptional } from "@/context/sync"
 import { serverDisplayName, useServer } from "@/context/server"
-import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
-import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
-
-type ServerStatus = { healthy: boolean; version?: string; host?: string }
-
-async function checkHealth(
-  url: string,
-  platform: ReturnType<typeof usePlatform>,
-  lastHost?: string,
-): Promise<ServerStatus> {
-  const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(3000)
-  const sdk = createOpencodeClient({
-    baseUrl: url,
-    fetch: platform.fetch,
-    signal,
-  })
-  return sdk.global
-    .health()
-    .then((x) => ({ healthy: x.data?.healthy === true, version: x.data?.version, host: x.data?.host }))
-    .catch(() => ({ healthy: false, host: lastHost }))
-}
 
 export function StatusPopover() {
   // Optional: on the home route this control renders outside the session Sync/SDK
@@ -34,32 +12,13 @@ export function StatusPopover() {
   // needs only useServer; the mcp/lsp/plugin panels guard on these being present.
   const sync = useSyncOptional()
   const server = useServer()
-  const platform = usePlatform()
   const language = useLanguage()
 
-  const [store, setStore] = createStore({
-    status: {} as Record<string, ServerStatus | undefined>,
-  })
-
-  const connection = createMemo(() => store.status[server.url])
-  const machineName = createMemo(() => connection()?.host ?? serverDisplayName(server.url))
+  const machineName = createMemo(() => server.host ?? serverDisplayName(server.url))
   // Button shows just the first label of the FQDN (my-host.example.ts.net
   // -> my-host) so a long hostname on disconnect can't overrun the titlebar and
   // tuck the sibling buttons. The popover still shows the full machineName().
   const shortName = createMemo(() => machineName().replace(/:\d+$/, "").split(".")[0] || machineName())
-
-  async function refreshHealth() {
-    const url = server.url
-    if (!url) return
-    setStore("status", reconcile({ [url]: await checkHealth(url, platform, store.status[url]?.host) }))
-  }
-
-  createEffect(() => {
-    server.url
-    refreshHealth()
-    const interval = setInterval(refreshHealth, 10_000)
-    onCleanup(() => clearInterval(interval))
-  })
 
   const mcpItems = createMemo(() =>
     Object.entries(sync?.data.mcp ?? {})
@@ -69,15 +28,35 @@ export function StatusPopover() {
 
   const mcpConnected = createMemo(() => mcpItems().filter((i) => i.status === "connected").length)
 
+  // A bare count of the connected servers reads as the total and hides the ones
+  // that are not, so show the fraction whenever they disagree.
+  const mcpLabel = createMemo(() => {
+    const eligible = mcpItems().filter((i) => i.status !== "disabled").length
+    if (eligible === 0) return ""
+    if (mcpConnected() === eligible) return `${eligible} `
+    return `${mcpConnected()}/${eligible} `
+  })
+
   const lspItems = createMemo(() => sync?.data.lsp ?? [])
   const lspCount = createMemo(() => lspItems().length)
   const plugins = createMemo(() => sync?.data.config.plugin ?? [])
   const pluginCount = createMemo(() => plugins().length)
 
-  const overallHealthy = createMemo(() => {
-    const serverHealthy = server.healthy() === true
-    const anyMcpIssue = mcpItems().some((m) => m.status !== "connected" && m.status !== "disabled")
-    return serverHealthy && !anyMcpIssue
+  const mcpSeverity = createMemo(() => {
+    if (mcpItems().some((m) => m.status === "failed")) return "critical"
+    if (mcpItems().some((m) => m.status === "needs_auth" || m.status === "needs_client_registration")) return "warning"
+    return undefined
+  })
+
+  const lspSeverity = createMemo(() => (lspItems().some((l) => l.status === "error") ? "critical" : undefined))
+
+  // Suppressed while the server is unreachable: the mcp and lsp maps are then a
+  // snapshot from before it went away, so any subsystem fault they report is
+  // unverifiable. Server reachability subsumes it anyway.
+  const degraded = createMemo(() => {
+    if (server.healthy() !== true) return undefined
+    if (mcpSeverity() === "critical" || lspSeverity() === "critical") return "critical"
+    return mcpSeverity()
   })
 
   return (
@@ -91,14 +70,25 @@ export function StatusPopover() {
       }}
       trigger={
         <div class="flex items-center gap-1.5 min-w-0">
+          {/* ring-offset paints its gap, which cannot match a ghost trigger
+              that restyles its background on hover and expand. */}
           <div
             classList={{
-              "size-1.5 rounded-full shrink-0": true,
-              "bg-icon-success-base": overallHealthy(),
-              "bg-icon-critical-base": !overallHealthy() && server.healthy() !== undefined,
-              "bg-border-weak-base": server.healthy() === undefined,
+              "flex items-center justify-center shrink-0 rounded-full size-3": true,
+              border: !!degraded(),
+              "border-icon-critical-base": degraded() === "critical",
+              "border-icon-warning-base": degraded() === "warning",
             }}
-          />
+          >
+            <div
+              classList={{
+                "size-1.5 rounded-full shrink-0": true,
+                "bg-icon-success-base": server.healthy() === true,
+                "bg-icon-critical-base": server.healthy() === false,
+                "bg-border-weak-base": server.healthy() === undefined,
+              }}
+            />
+          </div>
           <span class="text-12-regular text-text-strong truncate">{shortName()}</span>
         </div>
       }
@@ -118,13 +108,28 @@ export function StatusPopover() {
         >
           <Tabs.List data-slot="tablist" class="bg-transparent border-b-0 px-4 pt-2 pb-0 gap-4 h-10">
             <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular">
+              <Show when={server.healthy() === false}>
+                <span class="size-1.5 rounded-full shrink-0 bg-icon-critical-base inline-block mr-1.5" />
+              </Show>
               {language.t("status.popover.tab.servers")}
             </Tabs.Trigger>
             <Tabs.Trigger value="mcp" data-slot="tab" class="text-12-regular">
-              {mcpConnected() > 0 ? `${mcpConnected()} ` : ""}
+              <Show when={mcpSeverity()}>
+                <span
+                  classList={{
+                    "size-1.5 rounded-full shrink-0 inline-block mr-1.5": true,
+                    "bg-icon-critical-base": mcpSeverity() === "critical",
+                    "bg-icon-warning-base": mcpSeverity() === "warning",
+                  }}
+                />
+              </Show>
+              {mcpLabel()}
               {language.t("status.popover.tab.mcp")}
             </Tabs.Trigger>
             <Tabs.Trigger value="lsp" data-slot="tab" class="text-12-regular">
+              <Show when={lspSeverity()}>
+                <span class="size-1.5 rounded-full shrink-0 bg-icon-critical-base inline-block mr-1.5" />
+              </Show>
               {lspCount() > 0 ? `${lspCount()} ` : ""}
               {language.t("status.popover.tab.lsp")}
             </Tabs.Trigger>
@@ -141,14 +146,14 @@ export function StatusPopover() {
                   <div
                     classList={{
                       "size-1.5 rounded-full shrink-0": true,
-                      "bg-icon-success-base": connection()?.healthy === true,
-                      "bg-icon-critical-base": connection()?.healthy === false,
-                      "bg-border-weak-base": connection() === undefined,
+                      "bg-icon-success-base": server.healthy() === true,
+                      "bg-icon-critical-base": server.healthy() === false,
+                      "bg-border-weak-base": server.healthy() === undefined,
                     }}
                   />
                   <span class="text-14-regular text-text-base truncate">{machineName()}</span>
-                  <Show when={connection()?.version}>
-                    <span class="text-12-regular text-text-weak truncate">{connection()?.version}</span>
+                  <Show when={server.version}>
+                    <span class="text-12-regular text-text-weak truncate">{server.version}</span>
                   </Show>
                 </div>
               </div>

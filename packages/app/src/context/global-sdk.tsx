@@ -195,6 +195,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         await Visibility.whenVisible()
         if (abort.signal.aborted) break
         attempt = new AbortController()
+        let attached = false
         try {
           // sseMaxRetryAttempts:1 disables the SDK's own retry loop, which
           // otherwise swallows a drop and sleeps 3-30s internally before
@@ -206,6 +207,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
             { signal: attempt.signal, sseMaxRetryAttempts: 1 },
           )
           backoff = 250
+          attached = true
+          server.setStream(true)
           pet()
           // Re-declare interest on every (re)attach: the server registry is
           // per-process, so a restart wiped our set and would otherwise fail-open
@@ -243,6 +246,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         rest()
         flush()
         if (abort.signal.aborted) break
+        // Only a stream that never attached is evidence of an outage: the
+        // server did not answer at all. Attaching and then ending is ambiguous
+        // (restart, network flap), and a hidden tab is detached on purpose —
+        // both report unknown and let the next attach settle it.
+        server.setStream(attached || Visibility.hidden() ? undefined : false)
         await new Promise<void>((resolve) => setTimeout(resolve, backoff))
         backoff = Math.min(backoff * 2, 2000)
       }
@@ -252,6 +260,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       abort.abort()
       rest()
       flush()
+      server.setStream(undefined)
     })
 
     const sdk = createOpencodeClient({
