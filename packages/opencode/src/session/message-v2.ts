@@ -336,6 +336,11 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    // Which real user prompt this is, counted from 1 over the session's whole
+    // life. Distinct from promptIndex, which is a position in one request's
+    // message array and is rewritten every turn. Absent on synthetic messages
+    // and on anything written before this existed.
+    ordinal: z.number().optional(),
   }).meta({
     ref: "UserMessage",
   })

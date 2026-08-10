@@ -166,6 +166,7 @@ export type UserMessage = {
     [key: string]: boolean
   }
   variant?: string
+  ordinal?: number
 }
 
 export type ProviderAuthError = {
@@ -977,7 +978,8 @@ export type Session = {
   }
   title: string
   titleGenerated?: string
-  titleGenerations?: number
+  titleOrdinal?: number
+  prompts?: number
   version: string
   branch?: string
   time: {

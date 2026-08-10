@@ -1110,7 +1110,7 @@ export namespace SessionPrompt {
       snapshot.agents[input.agent ?? snapshot.defaultAgent ?? ""] ??
       (await Agent.get(input.agent ?? (await Agent.defaultAgent())))
     const model = input.model ?? (await lastModel(input.sessionID)) ?? agent.model
-    const info: MessageV2.Info = {
+    const info: MessageV2.User = {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
       sessionID: input.sessionID,
@@ -1474,10 +1474,26 @@ export namespace SessionPrompt {
       },
     )
 
+    // A message carrying nothing the user typed is the infrastructure talking
+    // (the supervisor's resume prompt, a task result), and marking it here is
+    // what keeps it out of the prompt count and out of every "last real user
+    // message" lookup.
+    if (parts.length > 0 && parts.every((part) => "synthetic" in part && part.synthetic)) info.synthetic = true
+
+    // Stamped before the message is written so the ordinal is durable the
+    // moment the prompt exists, rather than being recounted per turn from a
+    // history that compaction shortens.
+    if (!info.synthetic)
+      info.ordinal = await Session.update(input.sessionID, (draft) => {
+        draft.prompts = (draft.prompts ?? 0) + 1
+      }).then((session) => session.prompts)
+
     await Session.updateMessage(info)
     for (const part of parts) {
       await Session.updatePart(part)
     }
+
+    if (info.ordinal === 1) await placeholderTitle(input.sessionID, parts)
 
     return {
       info,
@@ -2157,51 +2173,127 @@ export namespace SessionPrompt {
   // opening prompt alone goes stale as soon as the session moves on.
   const TITLE_CONTEXT_CHARS = 1000
 
-  // One title off the opening prompt, then one refresh once a topic has
-  // established itself. Further turns add little, so generation stops there.
-  const TITLE_GENERATION_LIMIT = 2
+  // The opening prompt names the session, the third renames it once a topic has
+  // established itself. A later prompt describes a session the user already
+  // recognises, so generation stops.
+  const TITLE_ORDINALS = [1, 3]
 
-  // Backstop for parseTitle's plain-text fallback, which can return a whole
-  // sentence. A model honouring the prompt's 3-7 words never reaches it.
+  // Longer than this is not a 3-7 word title but a model ignoring the prompt,
+  // and truncating it produces a worse label than the one already shown.
   const TITLE_MAX_CHARS = 80
 
-  // The prompt asks for {"title": "..."} but nothing enforces it: the SDK's
-  // schema-constrained output is a forced tool call on Anthropic, which this
-  // deliberately tool-less call cannot take. So a model may answer in prose or
-  // wrap the object in <think>, and the plain-text fallback keeps that usable.
-  function parseTitle(text: string) {
+  const TITLE_TIMEOUT = 15_000
+
+  // Cut a placeholder at a word boundary rather than mid-word, and leave the
+  // ellipsis off — this is a label in a list, not prose.
+  const PLACEHOLDER_MAX_CHARS = 50
+
+  // The prompt asks for {"title": "..."} and nothing on the wire enforces it:
+  // the SDK constrains output through a forced tool call on Anthropic, which
+  // this deliberately tool-less call cannot take. So the parse is the whole
+  // enforcement, and it is strict on purpose. Prose that is not the requested
+  // object is a model that ignored the instruction, and taking its first line
+  // anyway is what produced titles like a bare ``` fence: returning undefined
+  // keeps the existing title and lets the next ordinal try again.
+  export function parseTitle(text: string) {
     const stripped = text.replace(/<think>[\s\S]*?<\/think>\s*/g, "")
     const json = stripped.match(/\{[\s\S]*\}/)
-    if (json) {
-      const parsed = iife(() => {
-        try {
-          return JSON.parse(json[0]) as { title?: unknown }
-        } catch {
-          return undefined
-        }
-      })
-      if (typeof parsed?.title === "string" && parsed.title.trim()) return parsed.title.trim()
-    }
-    return stripped
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.length > 0)
+    if (!json) return
+    const parsed = iife(() => {
+      try {
+        return JSON.parse(json[0]) as { title?: unknown }
+      } catch {
+        return undefined
+      }
+    })
+    if (typeof parsed?.title !== "string") return
+    const title = parsed.title.trim()
+    if (!title || title.length > TITLE_MAX_CHARS) return
+    return title
   }
 
-  // Subtask prompts are read alongside text because a command invocation
-  // (/fix, /review) carries the user's actual request there and contributes no
-  // text part at all, leaving nothing to title.
-  function conversationTail(history: MessageV2.WithParts[]) {
+  // Only the user's own prompts. An assistant's reply is mostly code and tool
+  // output, so a raw conversation tail late in a session is a keyhole onto
+  // whatever was being printed when the window closed rather than onto what the
+  // session is about. Subtask prompts count as text because a command
+  // invocation (/fix, /review) carries the request there and contributes no
+  // text part at all.
+  export function titleInput(history: MessageV2.WithParts[]) {
     const text = history
+      .filter((msg) => msg.info.role === "user" && !msg.info.synthetic)
       .flatMap((msg) =>
         msg.parts.flatMap((part) => {
-          if (part.type === "subtask") return [`${msg.info.role}: ${part.prompt}`]
+          if (part.type === "subtask") return [part.prompt]
           if (part.type !== "text" || part.synthetic || part.ignored) return []
-          return [`${msg.info.role}: ${part.text}`]
+          return [part.text]
         }),
       )
       .join("\n")
+      .trim()
     return text.length > TITLE_CONTEXT_CHARS ? text.slice(-TITLE_CONTEXT_CHARS) : text
+  }
+
+  // Shown the instant the first prompt lands, so the list reads as something
+  // recognisable instead of an ISO timestamp for as long as the model takes.
+  // Deliberately dumb: the first line of what was asked, which beats a rushed
+  // generated title often enough to be worth showing.
+  export function derivePlaceholder(text: string) {
+    const line = text
+      .split("\n")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.length > 0 && !entry.startsWith("<") && !entry.startsWith("#"))
+    if (!line) return
+    if (line.length <= PLACEHOLDER_MAX_CHARS) return line
+    const cut = line.slice(0, PLACEHOLDER_MAX_CHARS)
+    const boundary = cut.lastIndexOf(" ")
+    return boundary > 0 ? cut.slice(0, boundary) : cut
+  }
+
+  async function placeholderTitle(sessionID: string, parts: MessageV2.Part[]) {
+    const text = parts
+      .flatMap((part) => {
+        if (part.type === "subtask") return [part.prompt]
+        if (part.type !== "text" || part.synthetic || part.ignored) return []
+        return [part.text]
+      })
+      .join("\n")
+    const placeholder = derivePlaceholder(text)
+    if (!placeholder) return
+    await Session.update(
+      sessionID,
+      (draft) => {
+        if (!Session.isDefaultTitle(draft.title)) return
+        draft.title = placeholder
+        draft.titleGenerated = placeholder
+      },
+      { touch: false },
+    )
+  }
+
+  // The generator may replace only its own text. Equality proves the title on
+  // screen is what it last wrote; anything else means a rename, a fork, a
+  // --title, or a subtask description owns the name. A session with no record
+  // at all is owned unless its title is still the default, which is what leaves
+  // every session written before this existed alone.
+  export function generatorOwns(session: Session.Info) {
+    if (session.titleGenerated !== undefined) return session.titleGenerated === session.title
+    return Session.isDefaultTitle(session.title)
+  }
+
+  // The ordinal to generate at, or undefined to leave the title as it is.
+  export function titleTrigger(session: Session.Info, history: MessageV2.WithParts[]) {
+    if (session.parentID) return
+    if (!generatorOwns(session)) return
+    const latest = history.findLast((msg) => msg.info.role === "user" && !msg.info.synthetic)
+    if (!latest) return
+    // The message's own ordinal, not a count of what this turn can see: a
+    // re-entered loop (a task result arriving, the compaction route) reaches
+    // here with no new prompt, and the ordinal it reads is one already
+    // generated at.
+    const ordinal = (latest.info as MessageV2.User).ordinal
+    if (!ordinal || !TITLE_ORDINALS.includes(ordinal)) return
+    if (session.titleOrdinal !== undefined && session.titleOrdinal >= ordinal) return
+    return ordinal
   }
 
   async function ensureTitle(input: {
@@ -2210,23 +2302,11 @@ export namespace SessionPrompt {
     providerID: string
     modelID: string
   }) {
-    if (input.session.parentID) return
+    const ordinal = titleTrigger(input.session, input.history)
+    if (!ordinal) return
+    const latestUser = input.history.findLast((msg) => msg.info.role === "user" && !msg.info.synthetic)!
 
-    const generations = input.session.titleGenerations ?? 0
-    if (generations >= TITLE_GENERATION_LIMIT) return
-    // Set only by a rename, which hands the title to the user for good.
-    if (input.session.titleGenerated !== undefined) return
-
-    const userMessages = input.history.filter(
-      (m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic),
-    )
-    const latestUser = userMessages.at(-1)
-    if (!latestUser) return
-    // Spacing: the first title comes off the opening prompt, the refresh waits
-    // for a third so the tail has an established topic to describe.
-    if (generations > 0 && userMessages.length < 3) return
-
-    const content = conversationTail(input.history)
+    const content = titleInput(input.history)
     if (!content) return
 
     const agent = await Agent.get("title")
@@ -2237,6 +2317,11 @@ export namespace SessionPrompt {
         (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
       )
     })
+    // Claiming the ordinal before the request, not after it, is what stops two
+    // turns racing into the same generation. The generation is worth nothing
+    // late, so it is bounded rather than left to a retry that could land after
+    // the user has renamed the session.
+    await Session.update(input.session.id, (draft) => void (draft.titleOrdinal = ordinal), { touch: false })
     const { stream } = await LLM.stream({
       agent,
       user: latestUser.info as MessageV2.User,
@@ -2244,7 +2329,7 @@ export namespace SessionPrompt {
       small: true,
       tools: {},
       model,
-      abort: new AbortController().signal,
+      abort: AbortSignal.timeout(TITLE_TIMEOUT),
       sessionID: input.session.id,
       retries: 2,
       messages: [
@@ -2255,19 +2340,21 @@ export namespace SessionPrompt {
       ],
     })
     const text = await stream.text.catch((err) => log.error("failed to generate title", { error: err }))
-    if (text)
-      return Session.update(
-        input.session.id,
-        (draft) => {
-          const cleaned = parseTitle(text)
-          if (!cleaned) return
-          // A rename concurrent with this stream owns the title; never overwrite it.
-          if (draft.titleGenerated !== undefined) return
-
-          draft.title = cleaned.length > TITLE_MAX_CHARS ? cleaned.substring(0, TITLE_MAX_CHARS - 3) + "..." : cleaned
-          draft.titleGenerations = (draft.titleGenerations ?? 0) + 1
-        },
-        { touch: false },
-      )
+    if (!text) return
+    const title = parseTitle(text)
+    if (!title) return
+    return Session.update(
+      input.session.id,
+      (draft) => {
+        // Re-checked against the draft because the request took time: a rename
+        // during it owns the title, and a later ordinal's result landing first
+        // is the better one.
+        if (!generatorOwns(draft)) return
+        if (draft.titleOrdinal !== undefined && draft.titleOrdinal > ordinal) return
+        draft.title = title
+        draft.titleGenerated = title
+      },
+      { touch: false },
+    )
   }
 }

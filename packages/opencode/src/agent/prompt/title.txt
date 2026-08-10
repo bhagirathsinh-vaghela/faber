@@ -1,7 +1,5 @@
 Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding session. The title should be clear enough that the user recognizes the session in a list. Use sentence case: capitalize only the first word and proper nouns.
 
-If the conversation is a greeting or small talk rather than a task, title it by its tone or intent instead of inventing a task.
-
 Return JSON with a single "title" field. Output only the JSON object, nothing else.
 
 Good examples:
@@ -9,7 +7,6 @@ Good examples:
 {"title": "Add OAuth authentication"}
 {"title": "Debug failing CI tests"}
 {"title": "Refactor API client error handling"}
-{"title": "Quick check-in"}
 
 Bad (too vague): {"title": "Code changes"}
 Bad (too long): {"title": "Investigate and fix the issue where the login button does not respond on mobile devices"}

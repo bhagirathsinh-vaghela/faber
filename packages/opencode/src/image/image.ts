@@ -99,7 +99,11 @@ export namespace Image {
       const marker = header[cursor + 1]!
       // SOF0-SOF3 and SOF5-SOF7 / SOF9-SOF11 carry the frame dimensions; DHT,
       // DAC and RST are not frame headers despite sitting in the same range.
-      if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb))
+      if (
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb)
+      )
         return { width: header.readUInt16BE(cursor + 7), height: header.readUInt16BE(cursor + 5) }
       if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
         cursor += 2
@@ -181,7 +185,9 @@ export namespace Image {
             mime: "image/jpeg",
             data: Buffer.from(resized.get_bytes_jpeg(quality)).toString("base64"),
           }))
-          const fitting = candidates.find((candidate) => Buffer.byteLength(candidate.data, "utf8") <= limits.maxBase64Bytes)
+          const fitting = candidates.find(
+            (candidate) => Buffer.byteLength(candidate.data, "utf8") <= limits.maxBase64Bytes,
+          )
           if (fitting) {
             log.info("resized image", {
               from: `${width}x${height}`,

@@ -113,15 +113,25 @@ export namespace Session {
           url: z.string(),
         })
         .optional(),
-      // What every reader renders, whoever set it. A user rename displaces the
-      // generated text into titleGenerated rather than overwriting it, so the
-      // two never compete for the same slot.
+      // What every reader renders, whoever set it.
       title: z.string(),
+      // The exact text the generator last wrote. Ownership is decided by
+      // comparing it to title: equal means the generator's own text is still
+      // there and may be replaced, anything else means a rename (or a fork,
+      // --title, a subtask description) named this session and the generator
+      // must not touch it. Absent alongside a non-default title says the same,
+      // which is what protects sessions written before this existed.
       titleGenerated: z.string().optional(),
-      // Counts generations, not user messages: the prompt loop sees a
-      // compaction-truncated history, so a message count would reset and
-      // regenerate forever.
-      titleGenerations: z.number().optional(),
+      // The prompt ordinal the last generation ran at. Together with prompts it
+      // makes "generate at the 1st and 3rd prompt" a fact about the session
+      // rather than about which turn happened to observe the count, so a
+      // stop/resume or a re-entered loop cannot re-fire one.
+      titleOrdinal: z.number().optional(),
+      // Real user prompts seen, stamped on the message at creation. Counting
+      // persisted history instead would shrink at every compaction and count
+      // the infrastructure messages (compaction requests, task-result
+      // injections) that filterCompacted leaves in place.
+      prompts: z.number().optional(),
       version: z.string(),
       branch: z.string().optional(),
       time: z.object({

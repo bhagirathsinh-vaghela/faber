@@ -200,7 +200,9 @@ export const SuperviseCommand = cmd({
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ parts: [{ type: "text", text: CONTINUE_TEXT }] }),
+            // Synthetic: this is the supervisor talking, not the user. It must
+            // not count as one of the session's prompts nor describe it.
+            body: JSON.stringify({ parts: [{ type: "text", text: CONTINUE_TEXT, synthetic: true }] }),
             signal: AbortSignal.timeout(10000),
           },
         ).catch(() => null)

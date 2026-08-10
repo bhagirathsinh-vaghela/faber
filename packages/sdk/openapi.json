@@ -9248,6 +9248,9 @@
           },
           "variant": {
             "type": "string"
+          },
+          "ordinal": {
+            "type": "number"
           }
         },
         "required": [
@@ -12014,7 +12017,10 @@
           "titleGenerated": {
             "type": "string"
           },
-          "titleGenerations": {
+          "titleOrdinal": {
+            "type": "number"
+          },
+          "prompts": {
             "type": "number"
           },
           "version": {

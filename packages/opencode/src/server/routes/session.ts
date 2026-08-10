@@ -362,14 +362,9 @@ export const SessionRoutes = lazy(() =>
         const updatedSession = await Session.update(
           sessionID,
           (session) => {
-            if (updates.title !== undefined) {
-              // Displace the generated text on the FIRST rename only: once
-              // titleGenerated holds it, title is the user's, and moving that
-              // across on a second rename would bury the generated one.
-              if (session.titleGenerated === undefined && !Session.isDefaultTitle(session.title))
-                session.titleGenerated = session.title
-              session.title = updates.title
-            }
+            // The generator only writes over a title it still matches, so
+            // leaving titleGenerated alone is what makes a rename stick.
+            if (updates.title !== undefined) session.title = updates.title
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
             if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
             if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID

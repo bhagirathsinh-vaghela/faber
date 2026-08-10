@@ -235,11 +235,7 @@ describe("Image.clamp", () => {
   })
 
   test("clamps every oversized part in one message", async () => {
-    const parts = [
-      imagePart(pngBase64(2_400, 900)),
-      imagePart(pngBase64(3_200, 1_000)),
-      imagePart(pngBase64(900, 800)),
-    ]
+    const parts = [imagePart(pngBase64(2_400, 900)), imagePart(pngBase64(3_200, 1_000)), imagePart(pngBase64(900, 800))]
 
     await Image.clamp(parts)
 
