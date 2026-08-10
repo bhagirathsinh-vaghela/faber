@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Instance } from "../../src/project/instance"
+import { Session } from "../../src/session"
 import { SessionPing } from "../../src/session/ping"
 import { tmpdir } from "../fixture/fixture"
 
@@ -12,9 +13,10 @@ describe("SessionPing directory teardown", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        SessionPing.start("ses_ping_dispose")
+        const session = await Session.create({})
+        SessionPing.start(session.id)
         await settle()
-        expect(SessionPing.list()).toEqual(["ses_ping_dispose"])
+        expect(SessionPing.list()).toEqual([session.id])
 
         await Instance.dispose()
         expect(SessionPing.list()).toEqual([])

@@ -32,6 +32,24 @@ const cacheDir = path.join(dir, "cache", "opencode")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "14")
 
+// Clear the behavior flags a developer's shell may export. These turn features
+// off wholesale, so a shell that sets one makes the tests covering that feature
+// fail on that machine alone: OPENCODE_DISABLE_EXTERNAL_SKILLS skips the
+// .claude/.agents scan the skill tests assert on, and
+// OPENCODE_DISABLE_PROJECT_CONFIG skips the merge the config tests assert on. A
+// test that needs one sets it itself.
+delete process.env["OPENCODE_DISABLE_EXTERNAL_SKILLS"]
+delete process.env["OPENCODE_DISABLE_CLAUDE_CODE"]
+delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_SKILLS"]
+delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
+delete process.env["OPENCODE_DISABLE_PROJECT_CONFIG"]
+delete process.env["OPENCODE_DISABLE_AUTOUPDATE"]
+delete process.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"]
+delete process.env["OPENCODE_DISABLE_LSP_DOWNLOAD"]
+delete process.env["OPENCODE_CONFIG"]
+delete process.env["OPENCODE_CONFIG_CONTENT"]
+delete process.env["OPENCODE_PERMISSION"]
+
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]
 delete process.env["OPENAI_API_KEY"]

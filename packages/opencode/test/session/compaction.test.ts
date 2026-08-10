@@ -163,9 +163,17 @@ describe("util.token.estimate", () => {
 })
 
 describe("session.getUsage", () => {
-  test("normalizes standard usage to token format", () => {
+  async function usage(input: Parameters<typeof Session.getUsage>[0]) {
+    await using tempdir = await tmpdir()
+    return Instance.provide({
+      directory: tempdir.path,
+      fn: () => Session.getUsage(input),
+    })
+  }
+
+  test("normalizes standard usage to token format", async () => {
     const model = createModel({ context: 100_000, output: 32_000 })
-    const result = Session.getUsage({
+    const result = await usage({
       model,
       usage: {
         inputTokens: 1000,
@@ -181,9 +189,9 @@ describe("session.getUsage", () => {
     expect(result.tokens.cache.write).toBe(0)
   })
 
-  test("extracts cached tokens to cache.read", () => {
+  test("extracts cached tokens to cache.read", async () => {
     const model = createModel({ context: 100_000, output: 32_000 })
-    const result = Session.getUsage({
+    const result = await usage({
       model,
       usage: {
         inputTokens: 1000,
@@ -197,9 +205,9 @@ describe("session.getUsage", () => {
     expect(result.tokens.cache.read).toBe(200)
   })
 
-  test("handles anthropic cache write metadata", () => {
+  test("handles anthropic cache write metadata", async () => {
     const model = createModel({ context: 100_000, output: 32_000 })
-    const result = Session.getUsage({
+    const result = await usage({
       model,
       usage: {
         inputTokens: 1000,
@@ -216,9 +224,9 @@ describe("session.getUsage", () => {
     expect(result.tokens.cache.write).toBe(300)
   })
 
-  test("does not subtract cached tokens for anthropic provider", () => {
+  test("does not subtract cached tokens for anthropic provider", async () => {
     const model = createModel({ context: 100_000, output: 32_000 })
-    const result = Session.getUsage({
+    const result = await usage({
       model,
       usage: {
         inputTokens: 1000,
@@ -235,9 +243,9 @@ describe("session.getUsage", () => {
     expect(result.tokens.cache.read).toBe(200)
   })
 
-  test("handles reasoning tokens", () => {
+  test("handles reasoning tokens", async () => {
     const model = createModel({ context: 100_000, output: 32_000 })
-    const result = Session.getUsage({
+    const result = await usage({
       model,
       usage: {
         inputTokens: 1000,
@@ -250,9 +258,9 @@ describe("session.getUsage", () => {
     expect(result.tokens.reasoning).toBe(100)
   })
 
-  test("handles undefined optional values gracefully", () => {
+  test("handles undefined optional values gracefully", async () => {
     const model = createModel({ context: 100_000, output: 32_000 })
-    const result = Session.getUsage({
+    const result = await usage({
       model,
       usage: {
         inputTokens: 0,
@@ -266,10 +274,10 @@ describe("session.getUsage", () => {
     expect(result.tokens.reasoning).toBe(0)
     expect(result.tokens.cache.read).toBe(0)
     expect(result.tokens.cache.write).toBe(0)
-    expect(Number.isNaN(result.cost)).toBe(false)
+    expect(Number.isNaN(await result.cost)).toBe(false)
   })
 
-  test("calculates cost correctly", () => {
+  test("calculates cost correctly", async () => {
     const model = createModel({
       context: 100_000,
       output: 32_000,
@@ -279,7 +287,7 @@ describe("session.getUsage", () => {
         cache: { read: 0.3, write: 3.75 },
       },
     })
-    const result = Session.getUsage({
+    const result = await usage({
       model,
       usage: {
         inputTokens: 1_000_000,
@@ -288,6 +296,6 @@ describe("session.getUsage", () => {
       },
     })
 
-    expect(result.cost).toBe(3 + 1.5)
+    expect(await result.cost).toBe(3 + 1.5)
   })
 })

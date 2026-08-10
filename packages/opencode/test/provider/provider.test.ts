@@ -1989,6 +1989,7 @@ test("all variants can be disabled via config", async () => {
               models: {
                 "claude-sonnet-4-20250514": {
                   variants: {
+                    adaptive: { disabled: true },
                     high: { disabled: true },
                     max: { disabled: true },
                   },

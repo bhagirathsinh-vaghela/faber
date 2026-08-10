@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Instance } from "../../src/project/instance"
 import { Liveness } from "../../src/project/liveness"
+import { Session } from "../../src/session"
 import { SessionPing } from "../../src/session/ping"
 import { tmpdir } from "../fixture/fixture"
 
@@ -67,12 +68,13 @@ describe("Liveness auto-dispose", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        SessionPing.start("ses_dispose")
+        const session = await Session.create({})
+        SessionPing.start(session.id)
         await settle(50)
         expect(Liveness.alive(tmp.path)).toBe(true)
 
         // Disarming is the last live user leaving; the grace timer then disposes.
-        SessionPing.stop("ses_dispose")
+        SessionPing.stop(session.id)
         expect(Liveness.alive(tmp.path)).toBe(false)
 
         await settle(3200)

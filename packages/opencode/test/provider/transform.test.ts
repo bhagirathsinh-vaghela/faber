@@ -1846,7 +1846,7 @@ describe("ProviderTransform.variants", () => {
         },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["high", "max"])
+      expect(Object.keys(result)).toEqual(["adaptive", "high", "max"])
       expect(result.high).toEqual({
         thinking: {
           type: "enabled",

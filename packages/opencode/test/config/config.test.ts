@@ -314,8 +314,9 @@ test("handles command configuration", async () => {
   })
 })
 
-test("migrates autoshare to share field", async () => {
+test("forces share off whatever the config asks for, including deprecated autoshare", async () => {
   await using tmp = await tmpdir({
+    git: true,
     init: async (dir) => {
       await Bun.write(
         path.join(dir, "opencode.json"),
@@ -330,7 +331,7 @@ test("migrates autoshare to share field", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.share).toBe("auto")
+      expect(config.share).toBe("disabled")
       expect(config.autoshare).toBe(true)
     },
   })
@@ -620,6 +621,7 @@ test("resolves scoped npm plugins in config", async () => {
 
 test("merges plugin arrays from global and local configs", async () => {
   await using tmp = await tmpdir({
+    git: true,
     init: async (dir) => {
       // Create a nested project structure with local .opencode config
       const projectDir = path.join(dir, "project")
@@ -698,6 +700,7 @@ Helper subagent prompt`,
 
 test("merges instructions arrays from global and local configs", async () => {
   await using tmp = await tmpdir({
+    git: true,
     init: async (dir) => {
       const projectDir = path.join(dir, "project")
       const opencodeDir = path.join(projectDir, ".opencode")
@@ -737,6 +740,7 @@ test("merges instructions arrays from global and local configs", async () => {
 
 test("deduplicates duplicate instructions from global and local configs", async () => {
   await using tmp = await tmpdir({
+    git: true,
     init: async (dir) => {
       const projectDir = path.join(dir, "project")
       const opencodeDir = path.join(projectDir, ".opencode")
@@ -779,6 +783,7 @@ test("deduplicates duplicate instructions from global and local configs", async 
 
 test("deduplicates duplicate plugins from global and local configs", async () => {
   await using tmp = await tmpdir({
+    git: true,
     init: async (dir) => {
       // Create a nested project structure with local .opencode config
       const projectDir = path.join(dir, "project")

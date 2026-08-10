@@ -23,7 +23,7 @@ describe("session.prompt agent variant", () => {
       fn: async () => {
         const session = await Session.create({})
 
-        // First prompt with explicit model - uses that model, no variant
+        // Explicit model wins; the agent's variant still applies
         const first = await SessionPrompt.prompt({
           sessionID: session.id,
           agent: "build",
@@ -33,7 +33,7 @@ describe("session.prompt agent variant", () => {
         })
         if (first.info.role !== "user") throw new Error("expected user message")
         expect(first.info.model).toEqual({ providerID: "opencode", modelID: "kimi-k2.5-free" })
-        expect(first.info.variant).toBeUndefined()
+        expect(first.info.variant).toBe("xhigh")
 
         // Second prompt without model - inherits from last message (not agent's model)
         const second = await SessionPrompt.prompt({
@@ -44,7 +44,7 @@ describe("session.prompt agent variant", () => {
         })
         if (second.info.role !== "user") throw new Error("expected user message")
         expect(second.info.model).toEqual({ providerID: "opencode", modelID: "kimi-k2.5-free" })
-        expect(second.info.variant).toBeUndefined()
+        expect(second.info.variant).toBe("xhigh")
 
         // Third prompt with explicit variant - uses it
         const third = await SessionPrompt.prompt({
