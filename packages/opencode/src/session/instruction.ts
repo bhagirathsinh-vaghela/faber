@@ -16,6 +16,11 @@ const FILES = [
   "CONTEXT.md", // deprecated
 ]
 
+// Sits outside the FILES chain, which is first-match-wins: a fourth entry
+// there would be shadowed by an AGENTS.md or CLAUDE.md in the same tree. A
+// local file has to layer on top of whichever of those won, not replace it.
+const LOCAL = "AGENTS.local.md"
+
 // The header sits in S1 for a global file, ahead of every cache marker, so it
 // must read the same from any directory. Scope decides the form rather than a
 // prefix test: a global file is always home-relative, and only a project file
@@ -41,6 +46,21 @@ function globalFiles() {
     files.push(path.join(Flag.OPENCODE_CONFIG_DIR, "AGENTS.md"))
   }
   return files
+}
+
+async function globalLocal() {
+  const candidates = [path.join(Global.Path.config, LOCAL)]
+  if (Flag.OPENCODE_CONFIG_DIR) candidates.push(path.join(Flag.OPENCODE_CONFIG_DIR, LOCAL))
+  for (const candidate of candidates) {
+    if (await Bun.file(candidate).exists()) return [path.resolve(candidate)]
+  }
+  return []
+}
+
+async function projectLocal() {
+  if (Flag.OPENCODE_DISABLE_PROJECT_CONFIG) return []
+  const matches = await Filesystem.findUp(LOCAL, Instance.directory, Instance.worktree).catch(() => [])
+  return matches.map((match) => path.resolve(match))
 }
 
 async function resolveRelative(instruction: string): Promise<string[]> {
@@ -111,6 +131,9 @@ export namespace InstructionPrompt {
         break
       }
     }
+
+    for (const file of await projectLocal()) paths.add(file)
+    for (const file of await globalLocal()) paths.add(file)
 
     if (config.instructions) {
       for (let instruction of config.instructions) {
@@ -186,25 +209,19 @@ export namespace InstructionPrompt {
     // A file reachable as both global and project (e.g. cwd inside the global config dir) loads once, as global
     for (const p of globalPaths) projectPaths.delete(p)
 
-    // Load global files
-    const globalFiles_ = Array.from(globalPaths)
-      .sort()
-      .map(async (p) => {
+    // Later text wins on conflict, so a local override cannot be sorted in
+    // with the rest — alphabetical would place it ahead of AGENTS.md.
+    const load = (paths: Set<string>, local: string[], scope: "global" | "project") =>
+      [...[...paths].sort(), ...local.filter((p) => !paths.has(p)).sort()].map(async (p) => {
         const content = await Bun.file(p)
           .text()
           .catch(() => "")
-        return content ? "Instructions from: " + formatPath(p, "global") + "\n" + content : ""
+        return content ? "Instructions from: " + formatPath(p, scope) + "\n" + content : ""
       })
 
-    // Load project files
-    const projectFiles = Array.from(projectPaths)
-      .sort()
-      .map(async (p) => {
-        const content = await Bun.file(p)
-          .text()
-          .catch(() => "")
-        return content ? "Instructions from: " + formatPath(p, "project") + "\n" + content : ""
-      })
+    const locals = { global: await globalLocal(), project: await projectLocal() }
+    const globalFiles_ = load(globalPaths, locals.global, "global")
+    const projectFiles = load(projectPaths, locals.project, "project")
 
     // URL instructions go to project
     const urls: string[] = []
@@ -228,7 +245,7 @@ export namespace InstructionPrompt {
     ])
 
     cached.instructions = { global, project }
-    cached.paths = new Set([...globalPaths, ...projectPaths])
+    cached.paths = new Set([...globalPaths, ...projectPaths, ...locals.global, ...locals.project])
     return cached.instructions
   }
 
@@ -250,10 +267,17 @@ export namespace InstructionPrompt {
   }
 
   export async function find(dir: string) {
+    const found: string[] = []
     for (const file of FILES) {
       const filepath = path.resolve(path.join(dir, file))
-      if (await Bun.file(filepath).exists()) return filepath
+      if (await Bun.file(filepath).exists()) {
+        found.push(filepath)
+        break
+      }
     }
+    const local = path.resolve(path.join(dir, LOCAL))
+    if (await Bun.file(local).exists()) found.push(local)
+    return found
   }
 
   export async function resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string) {
@@ -267,9 +291,8 @@ export namespace InstructionPrompt {
     const root = path.resolve(Instance.directory)
 
     while (current.startsWith(root) && current !== root) {
-      const found = await find(current)
-
-      if (found && found !== target && !system.has(found) && !already.has(found) && !isClaimed(messageID, found)) {
+      for (const found of await find(current)) {
+        if (found === target || system.has(found) || already.has(found) || isClaimed(messageID, found)) continue
         claim(messageID, found)
         const content = await Bun.file(found)
           .text()
