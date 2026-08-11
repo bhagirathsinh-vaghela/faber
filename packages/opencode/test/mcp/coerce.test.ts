@@ -45,4 +45,28 @@ describe("MCP.coerceArgs", () => {
   test("passes through keys not in the schema", () => {
     expect(MCP.coerceArgs({ extra: "keep" }, schema)).toEqual({ extra: "keep" })
   })
+
+  test("parses a JSON-encoded array into the declared array", () => {
+    const labels: JSONSchema7 = {
+      type: "object",
+      properties: { labelIds: { type: "array", items: { type: "string" } } },
+    }
+    expect(MCP.coerceArgs({ labelIds: '["UNREAD"]' }, labels)).toEqual({ labelIds: ["UNREAD"] })
+    expect(MCP.coerceArgs({ labelIds: '["STARRED","IMPORTANT"]' }, labels)).toEqual({
+      labelIds: ["STARRED", "IMPORTANT"],
+    })
+  })
+
+  test("coerces items inside a JSON-encoded array", () => {
+    expect(MCP.coerceArgs({ list: '["1","2"]' }, schema)).toEqual({ list: [1, 2] })
+  })
+
+  test("leaves a lone string alone when the JSON does not parse to an array", () => {
+    const labels: JSONSchema7 = {
+      type: "object",
+      properties: { labelIds: { type: "array", items: { type: "string" } } },
+    }
+    expect(MCP.coerceArgs({ labelIds: "UNREAD" }, labels)).toEqual({ labelIds: "UNREAD" })
+    expect(MCP.coerceArgs({ labelIds: '"UNREAD"' }, labels)).toEqual({ labelIds: '"UNREAD"' })
+  })
 })

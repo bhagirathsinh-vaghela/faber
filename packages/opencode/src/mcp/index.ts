@@ -155,9 +155,21 @@ export namespace MCP {
     if (type === "object" && value && typeof value === "object" && schema.properties) {
       return coerceArgs(value as Record<string, unknown>, schema)
     }
-    if (type === "array" && Array.isArray(value) && schema.items && typeof schema.items === "object") {
-      const items = schema.items as JSONSchema7
-      return value.map((v) => coerceValue(v, items))
+    if (type === "array") {
+      const items = schema.items && typeof schema.items === "object" ? (schema.items as JSONSchema7) : undefined
+      if (Array.isArray(value)) return items ? value.map((v) => coerceValue(v, items)) : value
+      // A model that never saw the schema emits the array as a JSON string, and
+      // the server reads the brackets as part of the first element's value.
+      if (typeof value === "string" && value.trim().startsWith("[")) {
+        const parsed = (() => {
+          try {
+            return JSON.parse(value)
+          } catch {
+            return undefined
+          }
+        })()
+        if (Array.isArray(parsed)) return items ? parsed.map((v) => coerceValue(v, items)) : parsed
+      }
     }
     return value
   }
