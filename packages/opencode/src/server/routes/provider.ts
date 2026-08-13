@@ -5,6 +5,7 @@ import { Config } from "../../config/config"
 import { Provider } from "../../provider/provider"
 import { ModelsDev } from "../../provider/models"
 import { ProviderAuth } from "../../provider/auth"
+import { SessionPin } from "../../session/pin"
 import { mapValues } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
@@ -58,6 +59,37 @@ export const ProviderRoutes = lazy(() =>
           default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
           connected: Object.keys(connected),
         })
+      },
+    )
+    .get(
+      "/default",
+      describeRoute({
+        summary: "Get default model",
+        description:
+          "Resolve the model a new session in this directory will use when the caller expresses no preference: the config `model` key, else a connected provider's default. Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.",
+        operationId: "provider.default",
+        responses: {
+          200: {
+            description: "Default model",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z
+                    .object({
+                      providerID: z.string(),
+                      modelID: z.string(),
+                    })
+                    .nullable(),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        await SessionPin.refresh()
+        // "no providers connected" is a valid resolution, not a request failure.
+        return c.json(await Provider.defaultModel().catch(() => null))
       },
     )
     .get(

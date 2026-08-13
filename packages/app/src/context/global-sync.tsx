@@ -12,6 +12,7 @@ import {
   type ModelPreference,
   type StashEntry,
   type ProviderListResponse,
+  type ProviderDefaultResponse,
   type ProviderAuthResponse,
   type Command,
   type McpStatus,
@@ -72,6 +73,9 @@ type State = {
   icon: string | undefined
   provider: ProviderListResponse
   config: Config
+  // Server-resolved, never re-derived here: a second implementation of the
+  // resolution rule drifts from the one the turn actually uses.
+  default_model: ProviderDefaultResponse
   path: Path
   // Global server-owned UI preferences, persisted on the server and streamed to
   // every client so all tabs stay in sync.
@@ -335,6 +339,9 @@ function createGlobalSync() {
 
   const refresh = () => {
     root = true
+    // Config and the default model are per-directory, so a root-only refresh
+    // leaves every open directory on the values it fetched at bootstrap.
+    for (const directory of Object.keys(children)) queued.add(directory)
     if (paused()) return
     schedule()
   }
@@ -493,6 +500,7 @@ function createGlobalSync() {
           icon: icon[0].value,
           provider: { all: [], connected: [], default: {} },
           config: {},
+          default_model: null,
           path: { state: "", config: "", worktree: "", directory: "", home: "" },
           model_preference: { user: [], recent: [], variant: {} },
           stash: [],
@@ -647,6 +655,7 @@ function createGlobalSync() {
           }),
         agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
         config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
+        default_model: () => sdk.provider.default().then((x) => setStore("default_model", x.data ?? null)),
       }
 
       try {

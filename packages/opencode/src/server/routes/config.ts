@@ -3,6 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { Config } from "../../config/config"
 import { Provider } from "../../provider/provider"
+import { SessionPin } from "../../session/pin"
 import { mapValues } from "remeda"
 import { errors } from "../error"
 import { Log } from "../../util/log"
@@ -30,6 +31,7 @@ export const ConfigRoutes = lazy(() =>
         },
       }),
       async (c) => {
+        await SessionPin.refresh()
         return c.json(await Config.get())
       },
     )

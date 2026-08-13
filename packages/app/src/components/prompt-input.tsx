@@ -1514,6 +1514,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       modelID: currentModel.id,
       providerID: currentModel.provider.id,
     }
+    // Only an explicit pick rides on the request; otherwise the server resolves
+    // the default itself, off config newer than this tab's copy. `model` above
+    // is the resolved display value, right for the optimistic message but not
+    // something to pin the turn to.
+    const requestModel = local.model.picked()
     const agent = currentAgent.name
     const variant = local.model.variant.current()
 
@@ -1915,7 +1920,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       await client.session.promptAsync({
         sessionID: session.id,
         agent,
-        model,
+        model: requestModel,
         messageID,
         parts: requestParts,
         variant,

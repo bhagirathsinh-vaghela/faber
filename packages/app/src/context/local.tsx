@@ -126,37 +126,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const lastMessage = (sessionID: string) => sync.data.message[sessionID]?.findLast((m) => m.role === "user")
       const lastMessageModel = (sessionID: string) => lastMessage(sessionID)?.model
 
-      // The global default model = config.model (settings) → a connected
-      // provider's default. The recent list is history for the picker only and
-      // deliberately does NOT drive the default (picking a model no longer
-      // changes what a new session starts on; only settings does).
-      const fallbackModel = createMemo<ModelKey | undefined>(() => {
-        if (sync.data.config.model) {
-          const [providerID, modelID] = sync.data.config.model.split("/")
-          if (isModelValid({ providerID, modelID })) {
-            return {
-              providerID,
-              modelID,
-            }
-          }
-        }
-
-        const defaults = providers.default()
-        for (const p of providers.connected()) {
-          const configured = defaults[p.id]
-          if (configured) {
-            const key = { providerID: p.id, modelID: configured }
-            if (isModelValid(key)) return key
-          }
-
-          const first = Object.values(p.models)[0]
-          if (!first) continue
-          const key = { providerID: p.id, modelID: first.id }
-          if (isModelValid(key)) return key
-        }
-
-        return undefined
-      })
+      // The server owns this resolution, so the chip and the turn cannot
+      // disagree. The recent list is history for the picker only and
+      // deliberately does NOT drive the default; only settings does.
+      const fallbackModel = createMemo<ModelKey | undefined>(() => sync.data.default_model ?? undefined)
 
       const current = createMemo(() => {
         // Open session: this tab's pending pick wins, else the model the last
@@ -172,6 +145,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           : getFirstValidModel(() => ephemeral.model, fallbackModel)
         if (!key) return undefined
         return models.find(key)
+      })
+
+      // Undefined is meaningful to the caller: omitting the model from a prompt
+      // lets the server resolve it off disk at turn time, so a config edit since
+      // this tab last fetched still takes effect.
+      const picked = createMemo<ModelKey | undefined>(() => {
+        const id = activeSessionID()
+        if (id) return getFirstValidModel(() => ephemeral.bySession[id], () => lastMessageModel(id))
+        return getFirstValidModel(() => ephemeral.model)
       })
 
       // The forward pick differs from its baseline. Baseline is the last turn's
@@ -257,6 +239,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       return {
         ready: models.ready,
         current,
+        picked,
         default: fallbackModel,
         pendingModel,
         pendingVariant,

@@ -5555,6 +5555,59 @@
         ]
       }
     },
+    "/provider/default": {
+      "get": {
+        "operationId": "provider.default",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get default model",
+        "description": "Resolve the model a new session in this directory will use when the caller expresses no preference: the config `model` key, else a connected provider's default. Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.",
+        "responses": {
+          "200": {
+            "description": "Default model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "modelID": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "providerID",
+                        "modelID"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.default({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/auth": {
       "get": {
         "operationId": "provider.auth",

@@ -5417,6 +5417,27 @@ export type ProviderListResponses = {
 
 export type ProviderListResponse = ProviderListResponses[keyof ProviderListResponses]
 
+export type ProviderDefaultData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/default"
+}
+
+export type ProviderDefaultResponses = {
+  /**
+   * Default model
+   */
+  200: {
+    providerID: string
+    modelID: string
+  } | null
+}
+
+export type ProviderDefaultResponse = ProviderDefaultResponses[keyof ProviderDefaultResponses]
+
 export type ProviderAuthData = {
   body?: never
   path?: never

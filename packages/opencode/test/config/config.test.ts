@@ -107,6 +107,34 @@ test("merges multiple config files with correct precedence", async () => {
   })
 })
 
+test("project opencode.local.json overrides project opencode.json", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        model: "project/model",
+        username: "project",
+      })
+      await writeConfig(
+        dir,
+        {
+          $schema: "https://opencode.ai/config.json",
+          model: "local/model",
+        },
+        "opencode.local.json",
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.model).toBe("local/model")
+      expect(config.username).toBe("project")
+    },
+  })
+})
+
 test("handles environment variable substitution", async () => {
   const originalEnv = process.env["TEST_VAR"]
   process.env["TEST_VAR"] = "test_theme"

@@ -136,6 +136,7 @@ import type {
   ProjectUpdateErrors,
   ProjectUpdateResponses,
   ProviderAuthResponses,
+  ProviderDefaultResponses,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
   ProviderOauthAuthorizeResponses,
@@ -3071,6 +3072,25 @@ export class Provider extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<ProviderListResponses, unknown, ThrowOnError>({
       url: "/provider",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get default model
+   *
+   * Resolve the model a new session in this directory will use when the caller expresses no preference: the config `model` key, else a connected provider's default. Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.
+   */
+  public default<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ProviderDefaultResponses, unknown, ThrowOnError>({
+      url: "/provider/default",
       ...options,
       ...params,
     })

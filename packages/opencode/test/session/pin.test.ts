@@ -35,6 +35,36 @@ describe("SessionPin", () => {
     SessionPin.drop("ses_pin_fresh")
   })
 
+  test("refresh never moves a running pin; new sessions and stop-reopen still do", async () => {
+    await using workspace = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "AGENTS.md"), "# Before Refresh")
+      },
+    })
+    const provide = <R>(fn: () => Promise<R>) => Instance.provide({ directory: workspace.path, fn })
+
+    const running = await provide(() => SessionPin.get("ses_refresh_running"))
+    expect(running.instructions.project.join("\n")).toContain("# Before Refresh")
+
+    await Bun.write(path.join(workspace.path, "AGENTS.md"), "# After Refresh")
+    await provide(() => SessionPin.refresh())
+
+    const afterRefresh = await provide(() => SessionPin.get("ses_refresh_running"))
+    expect(afterRefresh).toBe(running)
+    expect(afterRefresh.instructions.project.join("\n")).toContain("# Before Refresh")
+
+    const fresh = await provide(() => SessionPin.get("ses_refresh_fresh"))
+    expect(fresh.instructions.project.join("\n")).toContain("# After Refresh")
+
+    SessionPin.drop("ses_refresh_running")
+    const repinned = await provide(() => SessionPin.get("ses_refresh_running"))
+    expect(repinned.instructions.project.join("\n")).toContain("# After Refresh")
+
+    SessionPin.drop("ses_refresh_running")
+    SessionPin.drop("ses_refresh_fresh")
+  })
+
   test("identical disk shares one snapshot; entry frees when the last session drops", async () => {
     await using tmp = await tmpdir({
       git: true,

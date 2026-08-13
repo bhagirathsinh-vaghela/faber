@@ -101,9 +101,11 @@ export namespace Config {
       log.debug("loaded custom config", { path: Flag.OPENCODE_CONFIG })
     }
 
-    // Project config overrides global and remote config.
+    // Project config overrides global and remote config. opencode.local.json is
+    // last so it wins: it is the per-checkout, gitignored override, mirroring
+    // the same filename's role in the global chain.
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-      for (const file of ["opencode.jsonc", "opencode.json"]) {
+      for (const file of ["opencode.jsonc", "opencode.json", "opencode.local.json"]) {
         const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
         for (const resolved of found.toReversed()) {
           result = mergeConfigConcatArrays(result, await loadFile(resolved))
