@@ -78,14 +78,9 @@ mock.module("@modelcontextprotocol/sdk/client/sse.js", () => ({
   },
 }))
 
-// Mock the MCP SDK Client to trigger OAuth flow
-mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
-  Client: class MockClient {
-    async connect(transport: { start: () => Promise<void> }) {
-      await transport.start()
-    }
-  },
-}))
+// The real client drives the OAuth flow these tests assert on, since connect()
+// calls the mocked transports' start(). A module mock of the client would apply
+// to every file in the run, leaving the others without its request methods.
 
 // Mock UnauthorizedError in the auth module
 mock.module("@modelcontextprotocol/sdk/client/auth.js", () => ({

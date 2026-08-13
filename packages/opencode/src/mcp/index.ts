@@ -27,6 +27,7 @@ import open from "open"
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
   const DEFAULT_TIMEOUT = 30_000
+  const MAX_CALL_TIMEOUT = 600_000
 
   async function readStderr(transport: BunStdioTransport, key: string) {
     const stream = transport.stderr
@@ -186,7 +187,12 @@ export namespace MCP {
   }
 
   // Convert MCP tool definition to AI SDK Tool type
-  async function convertMcpTool(mcpTool: MCPToolDef, client: MCPClient, timeout?: number): Promise<Tool> {
+  export async function convertMcpTool(
+    mcpTool: MCPToolDef,
+    client: MCPClient,
+    timeout?: number,
+    maxTotalTimeout = MAX_CALL_TIMEOUT,
+  ): Promise<Tool> {
     const inputSchema = mcpTool.inputSchema
 
     // Spread first, then override type to ensure it's always "object"
@@ -200,7 +206,7 @@ export namespace MCP {
     return dynamicTool({
       description: mcpTool.description ?? "",
       inputSchema: jsonSchema(schema),
-      execute: async (args: unknown) => {
+      execute: async (args: unknown, opts) => {
         const coerced = args && typeof args === "object" ? coerceArgs(args as Record<string, unknown>, schema) : args
         return client.callTool(
           {
@@ -209,8 +215,13 @@ export namespace MCP {
           },
           CallToolResultSchema,
           {
+            // Without a handler the SDK omits the progressToken, so the server cannot
+            // report progress and resetTimeoutOnProgress below can never fire.
+            onprogress: () => {},
             resetTimeoutOnProgress: true,
             timeout,
+            maxTotalTimeout,
+            signal: opts?.abortSignal,
           },
         )
       },
