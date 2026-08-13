@@ -551,7 +551,7 @@ export namespace Config {
         .int()
         .positive()
         .optional()
-        .describe("Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified."),
+        .describe("Timeout in ms for this server: connecting, listing tools, and each tool call. Connect and list default to 30000; a tool call falls back to experimental.mcp_timeout, then to the MCP SDK default of 60000."),
     })
     .strict()
     .meta({
@@ -600,7 +600,7 @@ export namespace Config {
         .int()
         .positive()
         .optional()
-        .describe("Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified."),
+        .describe("Timeout in ms for this server: connecting, listing tools, and each tool call. Connect and list default to 30000; a tool call falls back to experimental.mcp_timeout, then to the MCP SDK default of 60000."),
     })
     .strict()
     .meta({
