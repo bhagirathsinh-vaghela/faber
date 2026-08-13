@@ -335,6 +335,15 @@
     display: flex;
     align-items: start;
     gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  [data-slot="message-part-tool-error-tool"] {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-large);
+    color: var(--text-on-critical-weak);
+    white-space: nowrap;
   }
 
   [data-slot="message-part-tool-error-title"] {

@@ -977,23 +977,24 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       <Switch>
         <Match when={part.state.status === "error" && part.state.error}>
           {(error) => {
-            const cleaned = error().replace("Error: ", "")
+            const cleaned = error().replace(/^Error: /, "")
             const [title, ...rest] = cleaned.split(": ")
             return (
               <Card variant="error">
                 <div data-component="tool-error">
                   <Icon name="circle-ban-sign" size="small" />
-                  <Switch>
-                    <Match when={title && title.length < 30}>
-                      <div data-slot="message-part-tool-error-content">
+                  <div data-slot="message-part-tool-error-content">
+                    <div data-slot="message-part-tool-error-tool">{part.tool}</div>
+                    <Switch>
+                      <Match when={title && title.length < 30}>
                         <div data-slot="message-part-tool-error-title">{title}</div>
                         <span data-slot="message-part-tool-error-message">{rest.join(": ")}</span>
-                      </div>
-                    </Match>
-                    <Match when={true}>
-                      <span data-slot="message-part-tool-error-message">{cleaned}</span>
-                    </Match>
-                  </Switch>
+                      </Match>
+                      <Match when={true}>
+                        <span data-slot="message-part-tool-error-message">{cleaned}</span>
+                      </Match>
+                    </Switch>
+                  </div>
                 </div>
               </Card>
             )
