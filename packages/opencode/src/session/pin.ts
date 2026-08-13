@@ -12,8 +12,6 @@ import type { Tool } from "../tool/tool"
 import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { Filesystem } from "../util/filesystem"
-import { GlobalBus } from "@/bus/global"
-import { Event as ServerEvent } from "../server/event"
 
 // Pin time = disk time. A session pins a snapshot of the prompt-shaping state
 // on first touch (open or first turn after boot), and every turn reads through
@@ -252,23 +250,14 @@ export namespace SessionPin {
   // pinning anything. A read (GET /config, GET /provider/default) has no session
   // to pin, so it cannot go through get(), and the memo would otherwise serve
   // pre-edit config until some session happened to touch this directory.
+  // Announcing a digest move here would feed back: a client answers
+  // global.disposed by re-bootstrapping every open directory, and each
+  // bootstrap calls the two readers that land here.
   export async function refresh() {
     const digest = await fingerprint()
-    const previous = built.get(Instance.directory)
-    if (previous === digest) return
+    if (built.get(Instance.directory) === digest) return
     await reset()
     built.set(Instance.directory, digest)
-    // A first fingerprint would otherwise broadcast, and the refetch it
-    // triggers is a first fingerprint for another directory — an edit would
-    // fan out into one event per open directory, forever.
-    if (previous === undefined) return
-    GlobalBus.emit("event", {
-      directory: "global",
-      payload: {
-        type: ServerEvent.Disposed.type,
-        properties: {},
-      },
-    })
   }
 
   // Subtasks must see the exact prompt state of their parent — a disk change
