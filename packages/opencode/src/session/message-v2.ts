@@ -683,10 +683,12 @@ export namespace MessageV2 {
       const message = await get({ sessionID, messageID: item[2] }).catch(() => undefined)
       if (message) messages.push(message)
     }
-    // Sort by creation time, not by ID. IDs that straddle a width change (old
-    // 6-byte vs new 8-byte) or the old 48-bit overflow boundary sort incorrectly
-    // by filename; time.created is the durable truth.
-    messages.sort((a, b) => b.info.time.created - a.info.time.created)
+    // time.created is the durable ordering key, since ids straddling a width
+    // change sort by filename in an order that predates the widening. It has
+    // millisecond resolution and a turn mints several messages inside one
+    // millisecond, so the id breaks the tie: its counter increments per mint,
+    // which is the only record of order within that millisecond.
+    messages.sort((a, b) => b.info.time.created - a.info.time.created || (a.info.id < b.info.id ? 1 : -1))
     for (const message of messages) yield message
   })
 
