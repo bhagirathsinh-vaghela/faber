@@ -61,6 +61,7 @@ import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
+import { createMediaQuery } from "@solid-primitives/media"
 
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
@@ -617,6 +618,12 @@ export default function Layout(props: ParentProps) {
     running: number
   }
 
+  // Prefetch buys instant neighbour navigation by holding whole transcripts in
+  // the store, each part carrying a Solid store node. A phone pays for that in
+  // the one currency it cannot spare: iOS discards a tab on memory pressure, so
+  // the reward for a faster swipe is losing the session entirely. Small screens
+  // fetch on open instead.
+  const smallScreen = createMediaQuery("(max-width: 767px)")
   const prefetchChunk = 200
   const prefetchConcurrency = 1
   const prefetchPendingLimit = 6
@@ -642,6 +649,10 @@ export default function Layout(props: ParentProps) {
       const oldest = lru.keys().next().value as string | undefined
       if (!oldest) return
       lru.delete(oldest)
+      const open = untrack(() => params.id)
+      if (oldest === open) continue
+      const [store, setStore] = globalSync.child(directory, { bootstrap: false })
+      globalSync.evictSession(store, setStore, oldest, new Set(open ? [open] : []))
     }
   }
 
@@ -754,6 +765,7 @@ export default function Layout(props: ParentProps) {
   const prefetchSession = (session: Session, priority: "high" | "low" = "low") => {
     const directory = session.directory
     if (!directory) return
+    if (smallScreen()) return
 
     // Never prefetch a live session: its transcript is arriving over SSE, and a
     // full-window refetch reconciles the parts store, clobbering deltas already

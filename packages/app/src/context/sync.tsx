@@ -1,4 +1,5 @@
 import { batch, createMemo } from "solid-js"
+import { createMediaQuery } from "@solid-primitives/media"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
 import { retry } from "@opencode-ai/util/retry"
@@ -27,7 +28,12 @@ export const {
 
     const current = createMemo(() => globalSync.child(sdk.directory))
     const absolute = (path: string) => (current()[0].path.directory + "/" + path).replace("//", "/")
-    const chunk = 400
+    // A phone has no memory headroom to spend on scrollback it is not showing,
+    // and iOS answers an over-budget tab by discarding it, so the backfill window
+    // is the difference between deep scrollback and losing the session. Paging
+    // stays available at either size: `more()` fetches the next window on demand.
+    const smallScreen = createMediaQuery("(max-width: 767px)")
+    const chunk = () => (smallScreen() ? 100 : 400)
     // tail-first bootstrap: paint the newest N messages immediately so the
     // session is interactive, then backfill the rest to the compaction
     // boundary in the background
@@ -49,8 +55,9 @@ export const {
     }
 
     const limitFor = (count: number) => {
-      if (count <= chunk) return chunk
-      return Math.ceil(count / chunk) * chunk
+      const window = chunk()
+      if (count <= window) return window
+      return Math.ceil(count / window) * window
     }
 
     const loadMessages = async (input: {
@@ -355,7 +362,7 @@ export const {
           if (pending) return pending
 
           const count = store.message[sessionID]?.length ?? 0
-          const full = hydrated ? (meta.limit[key] ?? chunk) : limitFor(count)
+          const full = hydrated ? (meta.limit[key] ?? chunk()) : limitFor(count)
           // fresh bootstrap paints the tail first; a hydrated/resume load keeps
           // whatever was already loaded
           const initial = hydrated ? full : Math.min(tail, full)
@@ -480,7 +487,7 @@ export const {
             const key = keyFor(sdk.directory, sessionID)
             return meta.loading[key] ?? false
           },
-          async loadMore(sessionID: string, count = chunk) {
+          async loadMore(sessionID: string, count = chunk()) {
             const directory = sdk.directory
             const client = sdk.client
             const [, setStore] = globalSync.child(directory)
@@ -488,7 +495,7 @@ export const {
             if (meta.loading[key]) return
             if (meta.complete[key]) return
 
-            const currentLimit = meta.limit[key] ?? chunk
+            const currentLimit = meta.limit[key] ?? chunk()
             await loadMessages({
               directory,
               client,
