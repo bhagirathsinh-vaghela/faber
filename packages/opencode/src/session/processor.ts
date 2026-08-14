@@ -19,6 +19,7 @@ import { SessionPricing } from "./pricing"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { Image } from "@/image/image"
+import { ABORTED, settled } from "@/util/abort"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -93,7 +94,25 @@ export namespace SessionProcessor {
             // the new anchor instead of drifting until the daemon's next wake.
             void SessionPing.refresh(input.sessionID)
 
-            for await (const value of stream.fullStream) {
+            // Racing each step against the signal, rather than `for await`, is
+            // what makes the teardown below reachable. A tool that never settles
+            // (a wedged MCP server) leaves the SDK's stream suspended with no
+            // further chunk and no end, so an iterator-driven loop parks inside
+            // .next() forever: `throwIfAborted` never gets another turn, and the
+            // part stays "running" for the life of the session.
+            const iterator = stream.fullStream[Symbol.asyncIterator]()
+            const aborted = settled(input.abort)
+            while (true) {
+              const step = await Promise.race([iterator.next(), aborted])
+              // Abandon the suspended tool rather than await it: returning the
+              // iterator would join the same call that is refusing to finish.
+              if (step === ABORTED) {
+                void iterator.return?.().catch(() => {})
+                input.abort.throwIfAborted()
+                break
+              }
+              if (step.done) break
+              const value = step.value
               input.abort.throwIfAborted()
               switch (value.type) {
                 case "reasoning-start":

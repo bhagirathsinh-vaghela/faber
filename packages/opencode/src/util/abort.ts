@@ -33,3 +33,21 @@ export function abortAfterAny(ms: number, ...signals: AbortSignal[]) {
     clearTimeout: timeout.clearTimeout,
   }
 }
+
+/**
+ * Resolution marker for {@link settled}, distinguishable from any value a raced
+ * promise could itself resolve with.
+ */
+export const ABORTED = Symbol("aborted")
+
+/**
+ * A promise that resolves with {@link ABORTED} once the signal aborts, for
+ * racing against work that may never settle on its own.
+ *
+ * It never rejects: a rejection would race as a throw and lose the abort's
+ * place in whatever teardown the caller runs.
+ */
+export function settled(signal: AbortSignal): Promise<typeof ABORTED> {
+  if (signal.aborted) return Promise.resolve(ABORTED)
+  return new Promise((resolve) => signal.addEventListener("abort", () => resolve(ABORTED), { once: true }))
+}
