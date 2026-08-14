@@ -31,23 +31,6 @@ export namespace MCP {
   const DEFAULT_TIMEOUT = 30_000
   const MAX_CALL_TIMEOUT = 600_000
 
-  async function readStderr(transport: BunStdioTransport, key: string) {
-    const stream = transport.stderr
-    if (!stream) return
-    const reader = stream.getReader()
-    const decoder = new TextDecoder()
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        log.info(`mcp stderr: ${decoder.decode(value, { stream: true })}`, { key })
-      }
-    } catch {
-    } finally {
-      reader.releaseLock()
-    }
-  }
-
   export const Resource = z
     .object({
       name: z.string(),
@@ -627,7 +610,6 @@ export namespace MCP {
           ...mcp.environment,
         },
       })
-      readStderr(transport, key)
 
       const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
       try {

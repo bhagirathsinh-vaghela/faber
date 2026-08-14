@@ -1,6 +1,7 @@
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js"
 import { JSONRPCMessageSchema } from "@modelcontextprotocol/sdk/types.js"
+import { spawn, type ChildProcess } from "node:child_process"
 
 export type StdioParams = {
   command: string
@@ -10,20 +11,21 @@ export type StdioParams = {
 }
 
 /**
- * MCP stdio transport using Bun.spawn instead of node:child_process.
+ * MCP stdio transport over node:child_process streams.
  *
- * The MCP SDK's StdioClientTransport uses node:child_process which under
- * Bun's compiled binary goes through a compatibility polyfill. That polyfill
- * has known bugs where stdin.write() data is silently lost or truncated for
- * larger payloads (oven-sh/bun#13978, #18239, #8695).
+ * Bun.spawn's stdout ReadableStream was observed going silent mid-session in
+ * the live server: the child kept answering (a tee on its stdout captured the
+ * reply frames), but reader.read() stopped resolving after a few frames, so
+ * every later call timed out as unanswered (oven-sh/bun#1320 is the same
+ * shape). node's event-driven streams deliver those same frames reliably, and
+ * they are what the reference MCP SDK client rides on.
  *
- * This transport uses Bun's native spawn API which returns a FileSink for
- * stdin. Each send() calls write() then flush(), guaranteeing the full
- * message reaches the child process regardless of payload size.
+ * stderr is INHERITED, never piped: a piped stream nobody drains holds ~64KB
+ * and then blocks the child inside write(2), stranding requests it already
+ * accepted with nothing on any stream to say so.
  */
 export class BunStdioTransport implements Transport {
-  private proc: ReturnType<typeof Bun.spawn> | undefined
-  private reading = false
+  private proc: ChildProcess | undefined
   private params: StdioParams
 
   onclose?: () => void
@@ -34,39 +36,58 @@ export class BunStdioTransport implements Transport {
     this.params = params
   }
 
-  get stderr(): ReadableStream<Uint8Array> | null {
-    return (this.proc?.stderr as ReadableStream<Uint8Array>) ?? null
-  }
-
   async start() {
     if (this.proc) throw new Error("BunStdioTransport already started")
 
     const params = this.params
-    this.proc = Bun.spawn([params.command, ...(params.args ?? [])], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
+    const proc = spawn(params.command, params.args ?? [], {
+      stdio: ["pipe", "pipe", "inherit"],
       cwd: params.cwd,
       env: params.env as Record<string, string>,
     })
+    this.proc = proc
 
-    this.readStdout()
+    const decoder = new TextDecoder()
+    let buf = ""
+    proc.stdout!.on("data", (chunk: Buffer) => {
+      buf += decoder.decode(chunk, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, idx)
+        buf = buf.slice(idx + 1)
+        if (!line) continue
+        try {
+          this.onmessage?.(JSONRPCMessageSchema.parse(JSON.parse(line)))
+        } catch (e) {
+          this.onerror?.(e instanceof Error ? e : new Error(String(e)))
+        }
+      }
+    })
 
-    // Fire onclose when the process exits
-    this.proc.exited.then(() => {
+    proc.on("error", (error) => {
+      this.onerror?.(error)
+    })
+
+    proc.on("exit", () => {
       this.proc = undefined
       this.onclose?.()
     })
   }
 
   async send(message: JSONRPCMessage) {
-    const stdin = this.proc?.stdin as import("bun").FileSink | undefined
-    if (!stdin) throw new Error("Not connected")
-    const json = JSON.stringify(message) + "\n"
-    stdin.write(json)
-    // Awaiting the flush is what guarantees the whole frame reaches the server;
-    // a partially written one leaves it waiting for the rest forever.
-    await stdin.flush()
+    const stdin = this.proc?.stdin
+    if (!stdin || !stdin.writable) throw new Error("Not connected")
+    // The write callback fires once the frame is handed to the kernel, so
+    // resolving there guarantees the whole frame is out before the caller
+    // starts its response timer. A settled promise ignores the extra resolve
+    // from 'drain' after a full buffer.
+    await new Promise<void>((resolve, reject) => {
+      const flushed = stdin.write(JSON.stringify(message) + "\n", (error) => {
+        if (error) reject(error)
+        else resolve()
+      })
+      if (flushed === false) stdin.once("drain", resolve)
+    })
   }
 
   async close() {
@@ -74,65 +95,26 @@ export class BunStdioTransport implements Transport {
     if (!proc) return
     this.proc = undefined
 
-    // Close stdin to signal EOF to the child
-    const stdin = proc.stdin as import("bun").FileSink | undefined
-    if (stdin) {
-      try {
-        stdin.end()
-      } catch {}
-    }
+    proc.stdin?.end()
 
-    // Give the process a moment to exit gracefully, then kill
-    const exited = Promise.race([proc.exited, new Promise((r) => setTimeout(r, 2000))])
-    await exited
+    const exited = () => proc.exitCode !== null || proc.signalCode !== null
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => {
+        if (exited()) return resolve()
+        const timer = setTimeout(() => resolve(), ms)
+        proc.once("exit", () => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
 
-    if (!proc.killed) {
+    await wait(2000)
+    if (!exited()) {
       proc.kill()
-      await Promise.race([proc.exited, new Promise((r) => setTimeout(r, 2000))])
-      if (!proc.killed) proc.kill("SIGKILL")
+      await wait(2000)
+      if (!exited()) proc.kill("SIGKILL")
     }
 
     this.onclose?.()
-  }
-
-  private async readStdout() {
-    if (this.reading) return
-    this.reading = true
-
-    const stdout = this.proc?.stdout as ReadableStream<Uint8Array> | undefined
-    // Leaving the flag set would mark this transport as reading when nothing
-    // is, and every later response would go unread with no error raised.
-    if (!stdout) {
-      this.reading = false
-      return
-    }
-
-    const reader = stdout.getReader()
-    const decoder = new TextDecoder()
-    let buf = ""
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        let idx: number
-        while ((idx = buf.indexOf("\n")) !== -1) {
-          const line = buf.slice(0, idx)
-          buf = buf.slice(idx + 1)
-          if (!line) continue
-          try {
-            const msg = JSONRPCMessageSchema.parse(JSON.parse(line))
-            this.onmessage?.(msg)
-          } catch (e) {
-            this.onerror?.(e instanceof Error ? e : new Error(String(e)))
-          }
-        }
-      }
-    } catch (e) {
-      this.onerror?.(e instanceof Error ? e : new Error(String(e)))
-    } finally {
-      reader.releaseLock()
-      this.reading = false
-    }
   }
 }
