@@ -503,20 +503,27 @@ export namespace Session {
       // boundary — pre-compaction messages are the model's dropped context and
       // are never serialized. Pass false to page into pre-compaction history.
       compacted: z.boolean().optional(),
-      // Reconnect delta: return only messages newer than this id. Message ids
-      // are monotonic, so the newest-first stream can stop the moment it reaches
-      // one at or below the cursor. A resuming client passes its last-known id
-      // to heal the disconnect gap without re-fetching the whole window.
+      // Reconnect delta: return only messages newer than this id. A resuming
+      // client passes its last-known id to heal the disconnect gap without
+      // re-fetching the whole window.
       after: Identifier.schema("message").optional(),
     }),
     async (input) => {
       const compacted = input.compacted ?? true
+      const after = input.after
+        ? await MessageV2.get({ sessionID: input.sessionID, messageID: input.after })
+            .then((x) => x.info.time.created)
+            .catch(() => undefined)
+        : undefined
       const result = [] as MessageV2.WithParts[]
       const completed = new Set<string>()
       // MessageV2.stream yields newest-first; mirror MessageV2.filterCompacted
       for await (const msg of MessageV2.stream(input.sessionID)) {
         if (input.limit !== undefined && result.length >= input.limit) break
-        if (input.after && msg.info.id <= input.after) break
+        // The stream is ordered by time.created, so the cursor test must use the
+        // same key; comparing ids here would stop at the wrong message whenever
+        // id order and creation order disagree.
+        if (after !== undefined && msg.info.time.created <= after) break
         result.push(msg)
         if (
           compacted &&
