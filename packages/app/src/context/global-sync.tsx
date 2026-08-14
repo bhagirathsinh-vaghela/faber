@@ -669,7 +669,12 @@ function createGlobalSync() {
       if (!meta) return
       const sdk = sdkFor(directory)
 
-      setStore("status", "loading")
+      // `status` starts at `loading` and only ever moves forward. It means "this
+      // directory has nothing to render yet", NOT "a fetch is in flight":
+      // SyncProvider gates the whole session subtree on it, so resetting it for a
+      // directory already loaded unmounts the transcript, the unsent prompt
+      // draft, terminals and open files — on every reconnect, which re-bootstraps
+      // each open directory.
 
       // projectMeta is synced from persisted storage in ensureChild.
       // vcs is seeded from persisted storage in ensureChild.
@@ -689,7 +694,7 @@ function createGlobalSync() {
         const project = getFilename(directory)
         const message = err instanceof Error ? err.message : String(err)
         showToast({ title: `Failed to reload ${project}`, description: message })
-        setStore("status", "partial")
+        if (store.status === "loading") setStore("status", "partial")
         return
       }
 
