@@ -101,9 +101,13 @@ test("a dead transport reconnects and the call succeeds", async () => {
     },
   )
 
-  const result = await tool.execute!({}, { toolCallId: "call-5", messages: [] })
+  const answer = await tool.execute!({}, { toolCallId: "call-5", messages: [] })
 
-  expect(result).toEqual({ content: [{ type: "text", text: "second" }] })
+  // The retry is answered by a process holding none of the state the caller
+  // built, which the answer alone cannot distinguish from their own session.
+  expect(answer.content[0].text).toContain("was restarted")
+  expect(answer.content[0].text).toContain("Redo that setup")
+  expect(answer.content[1]).toEqual({ type: "text", text: "second" })
   expect(reconnects).toBe(1)
 })
 
@@ -157,7 +161,8 @@ test("a wedged server is replaced and the retry answers", async () => {
 
   const answered = await tool.execute!({}, { toolCallId: "call-7", messages: [] })
 
-  expect(answered).toEqual({ content: [{ type: "text", text: "revived" }] })
+  expect(answered.content[0].text).toContain("was restarted")
+  expect(answered.content[1]).toEqual({ type: "text", text: "revived" })
   expect(reconnects).toBe(1)
 })
 

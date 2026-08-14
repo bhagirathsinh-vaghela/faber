@@ -274,7 +274,12 @@ export namespace MCP {
           // The same object back means nothing was replaced, so a retry would
           // hit the process that just failed to answer.
           if (!revived || revived === current) throw error
-          return call(revived)
+          const retried = await call(revived)
+          const notice = {
+            type: "text" as const,
+            text: `The ${clientName} server stopped responding and was restarted. Anything earlier calls set up (an open page, a session, in-memory state) is gone, and the result below comes from a fresh one. Redo that setup before trusting it.`,
+          }
+          return { ...retried, content: [notice, ...(Array.isArray(retried.content) ? retried.content : [])] }
         })
       },
     })
