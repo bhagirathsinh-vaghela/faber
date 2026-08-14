@@ -639,6 +639,22 @@ function createGlobalSync() {
     return promise
   }
 
+  // The catalog is the largest response a bootstrap asks for, and several
+  // surfaces bootstrap the same directory around a reconnect. Deduplicated per
+  // directory rather than globally, since which providers are connected and
+  // which model each defaults to follow that directory's config.
+  const providerFetch = new Map<string, Promise<ProviderListResponse>>()
+  function providerList(directory: string) {
+    const pending = providerFetch.get(directory)
+    if (pending) return pending
+    const promise = sdkFor(directory)
+      .provider.list()
+      .then((x) => normalizeProviderList(x.data!))
+      .finally(() => providerFetch.delete(directory))
+    providerFetch.set(directory, promise)
+    return promise
+  }
+
   async function bootstrapInstance(directory: string) {
     if (!directory) return
     bootstrapped.add(directory)
@@ -660,10 +676,7 @@ function createGlobalSync() {
 
       const blockingRequests = {
         project: () => sdk.project.current().then((x) => setStore("project", x.data!.id)),
-        provider: () =>
-          sdk.provider.list().then((x) => {
-            setStore("provider", normalizeProviderList(x.data!))
-          }),
+        provider: () => providerList(directory).then((list) => setStore("provider", list)),
         agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
         config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
         default_model: () => sdk.provider.default().then((x) => setStore("default_model", x.data ?? null)),
