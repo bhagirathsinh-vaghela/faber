@@ -118,7 +118,7 @@ export namespace SessionPing {
     void Instance.provide({ directory, fn: () => Bus.publish(Event.Armed, { sessionID, armed: value }) })
   }
 
-  function arm(sessionID: string, entry: { abort: AbortController; id: number; directory: string }) {
+  async function arm(sessionID: string, entry: { abort: AbortController; id: number; directory: string }) {
     active.set(sessionID, entry)
     Liveness.setArmed(entry.directory, sessionID, true)
     // keepWarm is the persisted shadow of the daemon: it is written HERE and in
@@ -126,21 +126,21 @@ export namespace SessionPing {
     // button) funnels through start()->arm; every disarm through stop()/tail->
     // disarm. session.get reconciles off this field but never writes it. One
     // writer per direction — no caller juggles the flag, no cross-caller races.
-    void Session.update(sessionID, (draft) => {
+    await Session.update(sessionID, (draft) => {
       draft.keepWarm = true
-    })
+    }).catch(() => {})
     armed(sessionID, entry.directory, true)
   }
 
-  function disarm(sessionID: string) {
+  async function disarm(sessionID: string) {
     const entry = active.get(sessionID)
     if (!entry) return
     active.delete(sessionID)
     Liveness.setArmed(entry.directory, sessionID, false)
     void SessionRecent.setPing(sessionID, undefined)
-    void Session.update(sessionID, (draft) => {
+    await Session.update(sessionID, (draft) => {
       draft.keepWarm = false
-    })
+    }).catch(() => {})
     armed(sessionID, entry.directory, false)
   }
 
@@ -160,13 +160,13 @@ export namespace SessionPing {
     // is armed: organic turns still re-anchor the cache TTL and the statusline
     // countdown still ticks (sliding to "--" on expiry), but no automatic ping
     // fires. probe() is unaffected — explicit cache-safe revert still pings.
-    Config.get().then((cfg) => {
+    Config.get().then(async (cfg) => {
       if (!cfg.ping?.enabled) return
       // Re-check after the await: an organic turn may have armed a loop already.
       if (active.has(sessionID)) return
       const abort = new AbortController()
       const id = ++loopId
-      arm(sessionID, { abort, id, directory })
+      await arm(sessionID, { abort, id, directory })
       run(sessionID, abort.signal, id)
     })
   }
@@ -175,7 +175,7 @@ export namespace SessionPing {
     const entry = active.get(sessionID)
     if (!entry) return
     entry.abort.abort()
-    disarm(sessionID)
+    return disarm(sessionID)
   }
 
   // Re-publish the ping deadline for an armed session after its cache re-anchors.
@@ -241,7 +241,7 @@ export namespace SessionPing {
     }
     // Only disarm if we're still the active loop (not replaced by a newer one)
     const entry = active.get(sessionID)
-    if (entry?.id === id) disarm(sessionID)
+    if (entry?.id === id) await disarm(sessionID)
   }
 
   type Next = { type: "ping"; delay: number; at: number } | { type: "idle" } | { type: "stop" }

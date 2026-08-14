@@ -311,8 +311,8 @@ export const SessionRoutes = lazy(() =>
         // and re-indexes, so running it after remove() would resurrect the
         // session it just deleted. Children first: remove() recurses into them,
         // and a subtask that somehow armed would be orphaned the same way.
-        for (const child of await Session.children(sessionID)) SessionPing.stop(child.id)
-        SessionPing.stop(sessionID)
+        for (const child of await Session.children(sessionID)) await SessionPing.stop(child.id)
+        await SessionPing.stop(sessionID)
         await Session.remove(sessionID)
         SessionPin.drop(sessionID)
         return c.json(true)
