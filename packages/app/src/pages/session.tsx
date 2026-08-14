@@ -677,9 +677,9 @@ export default function Page() {
 
   // On reconnect, re-hydrate the open session so a message/part the server
   // published while the stream was down (no replay) heals without a reload.
-  // First defer to server truth: a session force-stopped (e.g. its project was
-  // closed from another client) while this client was offline is no longer
-  // live, so navigate home instead of resurrecting it.
+  // First defer to server truth: a session deleted, or whose project was closed
+  // from another client, has nothing left to render here, so go home rather than
+  // resurrecting it.
   //
   // The reconnect signal also bumps on the FIRST connect, which races page load:
   // if this effect registers before that first bump, treating it as a reconnect
@@ -694,7 +694,7 @@ export default function Page() {
         if (!params.id) return
         const reconnected = connected
         connected = true
-        if (reconnected && !(await sync.session.live(params.id))) {
+        if (reconnected && !(await sync.session.reachable(params.id))) {
           navigate("/")
           return
         }

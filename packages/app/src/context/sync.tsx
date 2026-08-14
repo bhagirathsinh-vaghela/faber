@@ -187,34 +187,25 @@ export const {
       },
       session: {
         get: getSession,
-        // Server truth for "is this session open/alive" = busy OR a scheduled
-        // ping (pingAt set) — the same signal the overview's attention bucket
-        // uses. pingAt is cleared server-side when the cache window lapses, so an
-        // armed-but-cold daemon does not read as live. A reconnecting client
-        // defers to this: a session force-stopped while the client was offline
-        // reads not-live, so it navigates home instead of resurrecting. Explicit
-        // reopen is a fresh open, not this reconnect path, so it is unaffected.
-        async live(sessionID: string) {
-          // Refresh the hub so the decision uses current server state, not a
-          // snapshot from before the disconnect.
-          const recent = await sdk.client.global
-            .recent()
-            .then((x) => x.data ?? [])
-            .catch(() => globalSync.data.recent_hub)
-          if (recent.some((entry) => entry.sessionID === sessionID && (entry.busy || entry.pingAt !== undefined)))
-            return true
-          // busy/pingAt are in-memory on the server, so a restart serves clients
-          // the instant it is healthy but before the supervisor has re-prompted
-          // busy sessions and re-armed warm ones. A client reconnecting inside
-          // that window sees neither flag and would bounce a session the user is
-          // sitting on home. keepWarm is the PERSISTED intent behind the daemon —
-          // it survives the restart and only an explicit stop clears it — so it
-          // distinguishes "not yet re-armed" from "deliberately stopped", which
-          // is the whole point of the liveness check.
+        // Whether a reconnecting client may stay on this session. The question is
+        // NOT "is it working" — an idle session is the normal case and the user
+        // is sitting on it. It is "does this session still exist somewhere the
+        // client can render it", which is false only when the session was deleted
+        // or its project closed from another client.
+        //
+        // Deliberately not busy/pingAt/keepWarm: all three are liveness, and all
+        // three read false for an ordinary idle session, so any of them as the
+        // test bounces the user home on every server restart.
+        async reachable(sessionID: string) {
+          const openBeforeAttaching = await sdk.client.global.projects
+            .open()
+            .then((x) => (x.data ?? []).some((project) => project.worktree === sdk.directory))
+            .catch(() => undefined)
+          if (openBeforeAttaching === false) return false
           return sdk.client.session
             .get({ sessionID })
-            .then((x) => x.data?.keepWarm === true)
-            .catch(() => false)
+            .then((x) => !!x.data?.id && !x.data.time?.archived)
+            .catch(() => true)
         },
         addOptimisticMessage(input: {
           sessionID: string
