@@ -289,6 +289,10 @@ function createGlobalSync() {
   const [reconnect, setReconnect] = createSignal(0)
 
   const queued = new Set<string>()
+  // Directories a surface has asked to bootstrap, which is a much smaller set
+  // than `children`: a child store is created for every directory the recent
+  // list mentions, including throwaway paths that no longer exist on disk.
+  const bootstrapped = new Set<string>()
   let root = false
   let running = false
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -341,7 +345,12 @@ function createGlobalSync() {
     root = true
     // Config and the default model are per-directory, so a root-only refresh
     // leaves every open directory on the values it fetched at bootstrap.
-    for (const directory of Object.keys(children)) queued.add(directory)
+    //
+    // Scoped to directories a surface actually asked to bootstrap. A child store
+    // also exists for every directory the recent list mentions, which reaches
+    // every throwaway path any session ever ran in, and bootstrapping those costs
+    // a 17-endpoint fan-out each for state nothing renders.
+    for (const directory of bootstrapped) queued.add(directory)
     if (paused()) return
     schedule()
   }
@@ -573,6 +582,7 @@ function createGlobalSync() {
   // the server.instance.disposed handler, which re-bootstraps — this tears down.
   function disposeChild(directory: string) {
     delete children[directory]
+    bootstrapped.delete(directory)
     vcsCache.delete(directory)
     metaCache.delete(directory)
     iconCache.delete(directory)
@@ -631,6 +641,7 @@ function createGlobalSync() {
 
   async function bootstrapInstance(directory: string) {
     if (!directory) return
+    bootstrapped.add(directory)
     const pending = booting.get(directory)
     if (pending) return pending
 
@@ -889,9 +900,10 @@ function createGlobalSync() {
           // Same reconnect gap for the blocking overlays: a permission or
           // question asked while the stream was down never arrives (no replay)
           // and neither refresh() nor the message/part heal above re-fetches it.
-          // Re-run the instance-wide list for every known directory so the
-          // overlay heals without a page reload.
-          for (const directory of Object.keys(children)) {
+          // Re-run the instance-wide list for every bootstrapped directory so
+          // the overlay heals without a page reload. A directory that only ever
+          // held a recent-list row renders no overlay to heal.
+          for (const directory of bootstrapped) {
             void syncPermissions(directory).catch(() => {})
             void syncQuestions(directory).catch(() => {})
           }
