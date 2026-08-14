@@ -1,9 +1,9 @@
 import { randomBytes } from "crypto"
 
 export namespace Identifier {
-  const LENGTH = 26
+  const TIME_BYTES = 8
+  const RANDOM_CHARS = 14
 
-  // State for monotonic ID generation
   let lastTimestamp = 0
   let counter = 0
 
@@ -38,11 +38,11 @@ export namespace Identifier {
 
     now = descending ? ~now : now
 
-    const timeBytes = Buffer.alloc(6)
-    for (let i = 0; i < 6; i++) {
-      timeBytes[i] = Number((now >> BigInt(40 - 8 * i)) & BigInt(0xff))
+    const timeBytes = Buffer.alloc(TIME_BYTES)
+    for (let i = 0; i < TIME_BYTES; i++) {
+      timeBytes[i] = Number((now >> BigInt((TIME_BYTES - 1 - i) * 8)) & BigInt(0xff))
     }
 
-    return timeBytes.toString("hex") + randomBase62(LENGTH - 12)
+    return timeBytes.toString("hex") + randomBase62(RANDOM_CHARS)
   }
 }

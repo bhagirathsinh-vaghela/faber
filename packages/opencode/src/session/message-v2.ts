@@ -678,16 +678,16 @@ export namespace MessageV2 {
 
   export const stream = fn(Identifier.schema("session"), async function* (sessionID) {
     const list = await Array.fromAsync(await Storage.list(["message", sessionID]))
-    for (let i = list.length - 1; i >= 0; i--) {
-      // A torn message-info file must skip that one message, not abort the whole
-      // transcript stream (which would make the session unopenable). get() stays
-      // strict for direct lookups; bulk load tolerates a missing message.
-      const message = await get({
-        sessionID,
-        messageID: list[i][2],
-      }).catch(() => undefined)
-      if (message) yield message
+    const messages = [] as WithParts[]
+    for (const item of list) {
+      const message = await get({ sessionID, messageID: item[2] }).catch(() => undefined)
+      if (message) messages.push(message)
     }
+    // Sort by creation time, not by ID. IDs that straddle a width change (old
+    // 6-byte vs new 8-byte) or the old 48-bit overflow boundary sort incorrectly
+    // by filename; time.created is the durable truth.
+    messages.sort((a, b) => b.info.time.created - a.info.time.created)
+    for (const message of messages) yield message
   })
 
   export const parts = fn(Identifier.schema("message"), async (messageID) => {

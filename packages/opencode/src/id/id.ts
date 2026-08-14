@@ -17,19 +17,12 @@ export namespace Identifier {
     return z.string().startsWith(prefixes[prefix])
   }
 
-  const LENGTH = 26
+  const TIME_BYTES = 8
+  const RANDOM_CHARS = 14
 
-  // State for monotonic ID generation
   let lastTimestamp = 0
   let counter = 0
 
-  // Raise the monotonic floor so a fresh process can't mint IDs that sort below
-  // what is already on disk. lastTimestamp resets to 0 on every process start;
-  // if the wall clock is currently behind the newest persisted ID (a prior
-  // process held a future timestamp, or the clock stepped back while the server
-  // was down), the first mints would encode a smaller value and sort before
-  // existing messages. Seeding from the newest persisted ID at boot closes that
-  // window. Never lowers the floor — a stale seed is a no-op.
   export function seed(timestamp: number) {
     if (timestamp > lastTimestamp) {
       lastTimestamp = timestamp
@@ -69,17 +62,6 @@ export namespace Identifier {
   export function create(prefix: keyof typeof prefixes, descending: boolean, timestamp?: number): string {
     const currentTimestamp = timestamp ?? Date.now()
 
-    // Monotonic guard: ascending IDs must strictly increase in creation order so
-    // that sorting by ID equals sorting by creation time (message-v2 orders the
-    // wire array this way). Date.now() is NOT monotonic — an NTP correction or a
-    // backward clock read between two mints can hand a causally-later ID a
-    // smaller timestamp, sorting it before an earlier one (observed: an assistant
-    // message sorting before its own parent user message, which then breaks
-    // downstream cache-marker ordering). Only advance lastTimestamp when the
-    // clock moves forward; if it is equal or has gone backward, hold the previous
-    // timestamp and keep incrementing the counter so the encoded value never
-    // decreases. The counter is shared across all prefixes, which is what keeps
-    // interleaved message/part mints globally ordered.
     if (currentTimestamp > lastTimestamp) {
       lastTimestamp = currentTimestamp
       counter = 0
@@ -90,19 +72,19 @@ export namespace Identifier {
 
     now = descending ? ~now : now
 
-    const timeBytes = Buffer.alloc(6)
-    for (let i = 0; i < 6; i++) {
-      timeBytes[i] = Number((now >> BigInt(40 - 8 * i)) & BigInt(0xff))
+    const timeBytes = Buffer.alloc(TIME_BYTES)
+    for (let i = 0; i < TIME_BYTES; i++) {
+      timeBytes[i] = Number((now >> BigInt((TIME_BYTES - 1 - i) * 8)) & BigInt(0xff))
     }
 
-    return prefixes[prefix] + "_" + timeBytes.toString("hex") + randomBase62(LENGTH - 12)
+    return prefixes[prefix] + "_" + timeBytes.toString("hex") + randomBase62(RANDOM_CHARS)
   }
 
-  /** Extract timestamp from an ascending ID. Does not work with descending IDs. */
   export function timestamp(id: string): number {
     const prefix = id.split("_")[0]
-    const hex = id.slice(prefix.length + 1, prefix.length + 13)
-    const encoded = BigInt("0x" + hex)
+    const body = id.slice(prefix.length + 1)
+    const hexLen = body.length <= 26 ? 12 : 16
+    const encoded = BigInt("0x" + body.slice(0, hexLen))
     return Number(encoded / BigInt(0x1000))
   }
 }

@@ -4,8 +4,6 @@ import { Identifier } from "../../src/id/id"
 describe("id.Identifier.seed", () => {
   test("a mint after seeding to a future timestamp sorts above pre-seed ids", () => {
     const before = Identifier.ascending("message")
-    // Simulate the disk holding an id minted far in the future (a prior process
-    // that held a forward clock). Seed to it, then a fresh mint must sort above.
     Identifier.seed(Date.now() + 60_000)
     const after = Identifier.ascending("message")
     expect(after > before).toBe(true)
@@ -32,5 +30,29 @@ describe("id.Identifier.seed", () => {
     Identifier.seed(Date.now() + 600_000)
     const high = Identifier.timestamp(Identifier.ascending("message"))
     expect(high).toBeGreaterThan(low)
+  })
+})
+
+describe("id.Identifier 8-byte encoding", () => {
+  test("ascending IDs produce 16 hex chars in the time field", () => {
+    const id = Identifier.ascending("message")
+    const body = id.slice(4)
+    expect(body.length).toBe(30)
+    expect(body.slice(0, 16)).toMatch(/^[0-9a-f]{16}$/)
+  })
+
+  test("descending IDs produce 16 hex chars in the time field", () => {
+    const id = Identifier.descending("session")
+    const body = id.slice(4)
+    expect(body.length).toBe(30)
+    expect(body.slice(0, 16)).toMatch(/^[0-9a-f]{16}$/)
+  })
+
+  test("timestamp() round-trips through create", () => {
+    const ts = Date.now() + 700_000
+    Identifier.seed(ts)
+    const id = Identifier.create("message", false, ts)
+    const decoded = Identifier.timestamp(id)
+    expect(decoded).toBe(ts)
   })
 })
