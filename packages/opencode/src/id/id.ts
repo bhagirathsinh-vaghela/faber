@@ -38,6 +38,8 @@ export namespace Identifier {
     return generateID(prefix, true, given)
   }
 
+  const DESCENDING = new Set<string>([prefixes.session])
+
   function generateID(prefix: keyof typeof prefixes, descending: boolean, given?: string): string {
     if (!given) {
       return create(prefix, descending)
@@ -85,6 +87,9 @@ export namespace Identifier {
     const body = id.slice(prefix.length + 1)
     const hexLen = body.length <= 26 ? 12 : 16
     const encoded = BigInt("0x" + body.slice(0, hexLen))
-    return Number(encoded / BigInt(0x1000))
+    // Descending ids store the complement, so reading one without inverting it
+    // yields a value near the width ceiling rather than a time.
+    const value = DESCENDING.has(prefix) ? ((1n << BigInt(hexLen * 4)) - 1n) & ~encoded : encoded
+    return Number(value / BigInt(0x1000))
   }
 }
