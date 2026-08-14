@@ -139,99 +139,6 @@ export namespace Storage {
         )
       }
     },
-    async (dir) => {
-      const TIME_BYTES = 8
-
-      const encode8 = (timestamp: number, counter: number, descending: boolean) => {
-        let now = BigInt(timestamp) * BigInt(0x1000) + BigInt(counter)
-        if (descending) now = ~now
-        const bytes = Buffer.alloc(TIME_BYTES)
-        for (let i = 0; i < TIME_BYTES; i++)
-          bytes[i] = Number((now >> BigInt((TIME_BYTES - 1 - i) * 8)) & BigInt(0xff))
-        return bytes.toString("hex")
-      }
-
-      const isOldId = (id: string) => {
-        const body = id.split("_").slice(1).join("_")
-        return body.length <= 26
-      }
-
-      const reencodeId = (id: string, timestamp: number, counter: number) => {
-        const prefix = id.split("_")[0]
-        const body = id.slice(prefix.length + 1)
-        const randomPart = body.slice(12)
-        const descending = prefix === "ses"
-        return prefix + "_" + encode8(timestamp, counter, descending) + randomPart
-      }
-
-      const messageDir = path.join(dir, "message")
-      const partDir = path.join(dir, "part")
-      const sessionDirs = await fs.readdir(messageDir).catch(() => [] as string[])
-
-      for (const sessionId of sessionDirs) {
-        const msgDir = path.join(messageDir, sessionId)
-        const msgFiles = await fs.readdir(msgDir).catch(() => [] as string[])
-        const oldMsgFiles = msgFiles.filter((f) => f.endsWith(".json") && isOldId(f.slice(0, -5)))
-        if (oldMsgFiles.length === 0) continue
-
-        log.info("re-encoding old IDs", { session: sessionId, count: oldMsgFiles.length })
-
-        const entries = [] as { old: string; data: any; created: number }[]
-        for (const file of oldMsgFiles) {
-          const data = await Bun.file(path.join(msgDir, file)).json().catch(() => undefined)
-          if (!data) continue
-          entries.push({ old: data.id, data, created: data.time?.created ?? 0 })
-        }
-        entries.sort((a, b) => a.created - b.created)
-
-        const idMap = new Map<string, string>()
-        let lastTs = 0
-        let ctr = 0
-        for (const entry of entries) {
-          const ts = entry.created
-          if (ts !== lastTs) {
-            lastTs = ts
-            ctr = 0
-          }
-          ctr++
-          const newId = reencodeId(entry.old, ts, ctr)
-          idMap.set(entry.old, newId)
-        }
-
-        for (const entry of entries) {
-          const newId = idMap.get(entry.old)!
-          const data = entry.data
-          data.id = newId
-          if (data.parentID && idMap.has(data.parentID)) data.parentID = idMap.get(data.parentID)
-
-          await Bun.write(path.join(msgDir, newId + ".json"), JSON.stringify(data))
-          if (newId !== entry.old) await fs.unlink(path.join(msgDir, entry.old + ".json")).catch(() => {})
-        }
-
-        for (const [oldMsgId, newMsgId] of idMap) {
-          const oldPartDir = path.join(partDir, oldMsgId)
-          const exists = await Filesystem.isDir(oldPartDir)
-          if (!exists) continue
-
-          const partFiles = await fs.readdir(oldPartDir).catch(() => [] as string[])
-          const newPartDir = path.join(partDir, newMsgId)
-          if (oldMsgId !== newMsgId) await fs.mkdir(newPartDir, { recursive: true })
-
-          for (const pf of partFiles) {
-            if (!pf.endsWith(".json")) continue
-            const partData = await Bun.file(path.join(oldPartDir, pf)).json().catch(() => undefined)
-            if (!partData) continue
-
-            if (partData.messageID && idMap.has(partData.messageID))
-              partData.messageID = idMap.get(partData.messageID)
-
-            await Bun.write(path.join(newPartDir, pf), JSON.stringify(partData))
-          }
-
-          if (oldMsgId !== newMsgId) await fs.rm(oldPartDir, { recursive: true }).catch(() => {})
-        }
-      }
-    },
   ]
 
   const state = lazy(async () => {
@@ -242,8 +149,7 @@ export namespace Storage {
       .catch(() => 0)
     for (let index = migration; index < MIGRATIONS.length; index++) {
       log.info("running migration", { index })
-      const migration = MIGRATIONS[index]
-      await migration(dir).catch(() => log.error("failed to run migration", { index }))
+      await MIGRATIONS[index](dir)
       await Bun.write(path.join(dir, "migration"), (index + 1).toString())
     }
     await sweepOrphans(dir)
