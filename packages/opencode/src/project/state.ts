@@ -32,6 +32,10 @@ export namespace State {
     get.reset = () => {
       recordsByKey.get(root())?.delete(init)
     }
+    // Read without constructing. For a unit whose init has side effects
+    // (spawning subprocesses, opening connections), a caller that merely
+    // wants to enumerate what already exists would otherwise create it.
+    get.peek = () => recordsByKey.get(root())?.get(init)?.state as S | undefined
     return get
   }
 

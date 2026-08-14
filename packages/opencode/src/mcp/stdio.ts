@@ -64,7 +64,9 @@ export class BunStdioTransport implements Transport {
     if (!stdin) throw new Error("Not connected")
     const json = JSON.stringify(message) + "\n"
     stdin.write(json)
-    stdin.flush()
+    // Awaiting the flush is what guarantees the whole frame reaches the server;
+    // a partially written one leaves it waiting for the rest forever.
+    await stdin.flush()
   }
 
   async close() {
@@ -98,7 +100,12 @@ export class BunStdioTransport implements Transport {
     this.reading = true
 
     const stdout = this.proc?.stdout as ReadableStream<Uint8Array> | undefined
-    if (!stdout) return
+    // Leaving the flag set would mark this transport as reading when nothing
+    // is, and every later response would go unread with no error raised.
+    if (!stdout) {
+      this.reading = false
+      return
+    }
 
     const reader = stdout.getReader()
     const decoder = new TextDecoder()

@@ -2,6 +2,8 @@ import { test, expect } from "bun:test"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { MCP } from "../../src/mcp/index"
+import { Instance } from "../../src/project/instance"
+import { tmpdir } from "../fixture/fixture"
 
 const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
 
@@ -72,6 +74,187 @@ test("a server reporting progress forever still hits the ceiling", async () => {
   const err = await tool.execute!({}, { toolCallId: "call-4", messages: [] }).catch((e: Error) => e)
 
   expect((err as Error).message).toBe("MCP error -32001: Maximum total timeout exceeded")
+})
+
+test("a dead transport reconnects and the call succeeds", async () => {
+  const dead = await connect((server) =>
+    server.registerTool("ping", { description: "answers" }, async () => ({
+      content: [{ type: "text" as const, text: "first" }],
+    })),
+  )
+  await dead.close()
+
+  let reconnects = 0
+  const tool = await MCP.convertMcpTool(
+    { name: "ping", inputSchema: noInput },
+    dead,
+    1_000,
+    5_000,
+    "probe",
+    async () => {
+      reconnects++
+      return connect((server) =>
+        server.registerTool("ping", { description: "answers" }, async () => ({
+          content: [{ type: "text" as const, text: "second" }],
+        })),
+      )
+    },
+  )
+
+  const result = await tool.execute!({}, { toolCallId: "call-5", messages: [] })
+
+  expect(result).toEqual({ content: [{ type: "text", text: "second" }] })
+  expect(reconnects).toBe(1)
+})
+
+test("a reconnect that cannot revive the server surfaces the original error", async () => {
+  const dead = await connect((server) =>
+    server.registerTool("ping", { description: "answers" }, async () => ({
+      content: [{ type: "text" as const, text: "first" }],
+    })),
+  )
+  await dead.close()
+
+  const tool = await MCP.convertMcpTool(
+    { name: "ping", inputSchema: noInput },
+    dead,
+    1_000,
+    5_000,
+    "probe",
+    async () => undefined,
+  )
+
+  const err = await tool.execute!({}, { toolCallId: "call-6", messages: [] }).catch((e: Error) => e)
+
+  expect(err).toBeInstanceOf(Error)
+  expect((err as Error).message).toMatch(/not connected|connection closed/i)
+})
+
+test("a wedged server is replaced and the retry answers", async () => {
+  const wedged = await connect((server) =>
+    server.registerTool("stuck", { description: "accepts the call, never answers" }, async () => {
+      await Bun.sleep(60_000)
+      return { content: [{ type: "text" as const, text: "never" }] }
+    }),
+  )
+
+  let reconnects = 0
+  const tool = await MCP.convertMcpTool(
+    { name: "stuck", inputSchema: noInput },
+    wedged,
+    150,
+    5_000,
+    "probe",
+    async () => {
+      reconnects++
+      return connect((server) =>
+        server.registerTool("stuck", { description: "answers" }, async () => ({
+          content: [{ type: "text" as const, text: "revived" }],
+        })),
+      )
+    },
+  )
+
+  const answered = await tool.execute!({}, { toolCallId: "call-7", messages: [] })
+
+  expect(answered).toEqual({ content: [{ type: "text", text: "revived" }] })
+  expect(reconnects).toBe(1)
+})
+
+test("a wedged server that cannot be replaced surfaces the timeout", async () => {
+  const wedged = await connect((server) =>
+    server.registerTool("stuck", { description: "accepts the call, never answers" }, async () => {
+      await Bun.sleep(60_000)
+      return { content: [{ type: "text" as const, text: "never" }] }
+    }),
+  )
+
+  const tool = await MCP.convertMcpTool(
+    { name: "stuck", inputSchema: noInput },
+    wedged,
+    150,
+    5_000,
+    "probe",
+    async () => undefined,
+  )
+
+  const err = await tool.execute!({}, { toolCallId: "call-8", messages: [] }).catch((e: Error) => e)
+
+  expect((err as Error).message).toBe("MCP error -32001: Request timed out")
+})
+
+test("per-project polls and session pins start no servers", async () => {
+  await using workspace = await tmpdir({})
+  await Instance.provide({
+    directory: workspace.path,
+    fn: async () => {
+      const before = MCP.builds()
+      expect(await MCP.prompts()).toEqual({})
+      await MCP.status()
+      await MCP.reset()
+      // Each build spawns one subprocess per configured server.
+      expect(MCP.builds() - before).toBe(0)
+    },
+  })
+})
+
+test("a replaced server is picked up by the next call", async () => {
+  const first = await connect((server) =>
+    server.registerTool("where", { description: "names its process" }, async () => ({
+      content: [{ type: "text" as const, text: "first" }],
+    })),
+  )
+  const second = await connect((server) =>
+    server.registerTool("where", { description: "names its process" }, async () => ({
+      content: [{ type: "text" as const, text: "second" }],
+    })),
+  )
+
+  await using workspace = await tmpdir({})
+  await Instance.provide({
+    directory: workspace.path,
+    fn: async () => {
+      const tool = await MCP.convertMcpTool({ name: "where", inputSchema: noInput }, first, 1_000, 5_000, "probe")
+
+      // Stand in for a replacement that already happened: the tool still holds
+      // the client it was built with, while state holds the live one.
+      const shared = await MCP.clients()
+      shared["probe"] = second
+
+      const answered = await tool.execute!({}, { toolCallId: "call-10", messages: [] })
+      expect(answered).toEqual({ content: [{ type: "text", text: "second" }] })
+    },
+  })
+})
+
+test("an aborted call is not retried", async () => {
+  const wedged = await connect((server) =>
+    server.registerTool("stuck", { description: "accepts the call, never answers" }, async () => {
+      await Bun.sleep(60_000)
+      return { content: [{ type: "text" as const, text: "never" }] }
+    }),
+  )
+
+  let reconnects = 0
+  const tool = await MCP.convertMcpTool(
+    { name: "stuck", inputSchema: noInput },
+    wedged,
+    10_000,
+    30_000,
+    "probe",
+    async () => {
+      reconnects++
+      return undefined
+    },
+  )
+
+  const abort = new AbortController()
+  const call = tool.execute!({}, { toolCallId: "call-9", messages: [], abortSignal: abort.signal })
+  await Bun.sleep(50)
+  abort.abort(new Error("turn aborted"))
+  await (call as Promise<unknown>).catch(() => {})
+
+  expect(reconnects).toBe(0)
 })
 
 test("an aborted turn cancels the call instead of waiting for the timeout", async () => {

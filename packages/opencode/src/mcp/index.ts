@@ -1,4 +1,6 @@
 import { dynamicTool, type Tool, jsonSchema, type JSONSchema7 } from "ai"
+import { existsSync } from "fs"
+import os from "os"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
@@ -132,6 +134,21 @@ export namespace MCP {
       log.info("tools list changed notification received", { server: serverName })
       Bus.publish(ToolsChanged, { server: serverName })
     })
+    // A transport whose process exits leaves the client object in place, and
+    // every later call rejects with "Not connected". Marking the status here is
+    // what lets the next call know to reconnect instead of retrying a corpse.
+    const previous = client.onclose
+    client.onclose = () => {
+      log.info("mcp transport closed", { server: serverName })
+      state()
+        .then((s) => {
+          if (s.clients[serverName] !== client) return
+          s.status[serverName] = { status: "failed", error: "Connection closed" }
+          Bus.publish(ToolsChanged, { server: serverName })
+        })
+        .catch(() => {})
+      previous?.()
+    }
   }
 
   // Coerce a single value toward the JSON-schema type. When the model calls an
@@ -186,12 +203,43 @@ export namespace MCP {
     return out
   }
 
+  // A dead transport (server crashed, killed, or exited) leaves the client
+  // object usable-looking while every call rejects, and nothing else in the
+  // process notices, so the only route back is a reconnect on the next call.
+  // A wedged child looks alive but never responds, surfacing as a request
+  // timeout, and only a replacement process clears it.
+  const unreachable = (error: unknown) =>
+    error instanceof Error && /not connected|connection closed|request timed out/i.test(error.message)
+
+  // Reconnect and hand back the fresh client, or undefined when the server
+  // cannot be revived. Injectable so a test can drive the retry without the
+  // Instance state and config a real connect needs.
+  export type Revive = (name: string) => Promise<MCPClient | undefined>
+
+  const revive: Revive = async (name) => {
+    await connect(name)
+    return live(name)
+  }
+
+  // The client map lives on Instance state, which is absent outside a running
+  // instance (a unit test calling a tool directly), so an unavailable map means
+  // "nothing newer to use" rather than a failure.
+  const live = async (name: string) => {
+    try {
+      return (await state()).clients[name]
+    } catch {
+      return undefined
+    }
+  }
+
   // Convert MCP tool definition to AI SDK Tool type
   export async function convertMcpTool(
     mcpTool: MCPToolDef,
     client: MCPClient,
     timeout?: number,
     maxTotalTimeout = MAX_CALL_TIMEOUT,
+    clientName?: string,
+    reconnect: Revive = revive,
   ): Promise<Tool> {
     const inputSchema = mcpTool.inputSchema
 
@@ -208,22 +256,43 @@ export namespace MCP {
       inputSchema: jsonSchema(schema),
       execute: async (args: unknown, opts) => {
         const coerced = args && typeof args === "object" ? coerceArgs(args as Record<string, unknown>, schema) : args
-        return client.callTool(
-          {
-            name: mcpTool.name,
-            arguments: (coerced || {}) as Record<string, unknown>,
-          },
-          CallToolResultSchema,
-          {
-            // Without a handler the SDK omits the progressToken, so the server cannot
-            // report progress and resetTimeoutOnProgress below can never fire.
-            onprogress: () => {},
-            resetTimeoutOnProgress: true,
-            timeout,
-            maxTotalTimeout,
-            signal: opts?.abortSignal,
-          },
-        )
+        const call = (target: MCPClient) =>
+          target.callTool(
+            {
+              name: mcpTool.name,
+              arguments: (coerced || {}) as Record<string, unknown>,
+            },
+            CallToolResultSchema,
+            {
+              // Without a handler the SDK omits the progressToken, so the server cannot
+              // report progress and resetTimeoutOnProgress below can never fire.
+              onprogress: () => {},
+              resetTimeoutOnProgress: true,
+              timeout,
+              maxTotalTimeout,
+              signal: opts?.abortSignal,
+            },
+          )
+        // A stateful server (a browser, a REPL) holds its state in one process,
+        // so a call reaching a different connection than the previous one loses
+        // everything that call set up.
+        const current = clientName ? ((await live(clientName)) ?? client) : client
+        return call(current).catch(async (error) => {
+          if (!clientName || !unreachable(error) || opts?.abortSignal?.aborted) throw error
+          log.info("mcp server is unreachable, replacing it", {
+            clientName,
+            tool: mcpTool.name,
+            error: (error as Error).message,
+          })
+          // A wedged child is still running, so leaving it alive would leak the
+          // process and could hand the same one back.
+          await current.close().catch(() => {})
+          const revived = await reconnect(clientName).catch(() => undefined)
+          // The same object back means nothing was replaced, so a retry would
+          // hit the process that just failed to answer.
+          if (!revived || revived === current) throw error
+          return call(revived)
+        })
       },
     })
   }
@@ -250,8 +319,12 @@ export namespace MCP {
   // tradeoff for stability.
   type ToolsListResult = Awaited<ReturnType<MCPClient["listTools"]>>
 
+  let buildCount = 0
+
   const state = Instance.state(
     async () => {
+      buildCount++
+      log.info("building mcp clients", { directory: Instance.directory })
       const cfg = await Config.get()
       const config = cfg.mcp ?? {}
       const clients: Record<string, MCPClient> = {}
@@ -308,12 +381,18 @@ export namespace MCP {
   // evicts the memo and would orphan the live stdio subprocesses / HTTP
   // connections), this closes them first, then rebuilds lazily on next access.
   export async function reset() {
-    const s = await state()
-    await Promise.all(
-      Object.values(s.clients).map((client) =>
-        client.close().catch((error) => log.error("Failed to close MCP client", { error })),
-      ),
-    )
+    // Every session pin calls this, and awaiting state() here would CONNECT
+    // every configured server purely to close it, so a directory holding no
+    // clients has nothing to tear down.
+    const pending = state.peek()
+    if (pending) {
+      const s = await pending
+      await Promise.all(
+        Object.values(s.clients).map((client) =>
+          client.close().catch((error) => log.error("Failed to close MCP client", { error })),
+        ),
+      )
+    }
     pendingOAuthTransports.clear()
     state.reset()
   }
@@ -534,7 +613,10 @@ export namespace MCP {
 
     if (mcp.type === "local") {
       const [cmd, ...args] = mcp.command
-      const cwd = Instance.directory
+      // A session outlives its project directory (a temp dir the user removed),
+      // and spawning into one that no longer exists fails ENOENT on every
+      // attempt, so home stands in as a directory that always resolves.
+      const cwd = existsSync(Instance.directory) ? Instance.directory : os.homedir()
       const transport = new BunStdioTransport({
         command: cmd,
         args,
@@ -619,7 +701,10 @@ export namespace MCP {
   }
 
   export async function status() {
-    const s = await state()
+    // Reading connection state must not cost a subprocess per server, since
+    // the UI polls this for every open project.
+    const pending = state.peek()
+    const s = pending ? await pending : undefined
     const cfg = await Config.get()
     const config = cfg.mcp ?? {}
     const result: Record<string, Status> = {}
@@ -629,7 +714,7 @@ export namespace MCP {
     // invents a server that config does not list.
     for (const [key, mcp] of Object.entries(config)) {
       if (!isMcpConfigured(mcp)) continue
-      result[key] = s.status[key] ?? { status: "disabled" }
+      result[key] = s?.status[key] ?? { status: "disabled" }
     }
 
     return result
@@ -637,6 +722,18 @@ export namespace MCP {
 
   export async function clients() {
     return state().then((state) => state.clients)
+  }
+
+  // Whether this instance has built its client set, without building it.
+  export function started() {
+    return state.peek() !== undefined
+  }
+
+  // How many times this process built a client set. A build spawns one
+  // subprocess per configured server, and the memo hides that a caller
+  // triggered one, so the count is what a test can assert against.
+  export function builds() {
+    return buildCount
   }
 
   export async function connect(name: string) {
@@ -831,8 +928,12 @@ export namespace MCP {
     const defaultTimeout = cfg.experimental?.mcp_timeout
 
     for (const [clientName, client] of Object.entries(clientsSnapshot)) {
-      // Only include tools from connected MCPs (skip disabled ones)
-      if (s.status[clientName]?.status !== "connected") {
+      // Only include tools from connected MCPs (skip disabled ones). A failed
+      // server with cached tools stays listed: dropping it would shift tools[]
+      // mid-session and cost the whole prompt-cache prefix, while the execute
+      // path reconnects on the next call.
+      const status = s.status[clientName]?.status
+      if (status !== "connected" && !(status === "failed" && s.tools[clientName])) {
         continue
       }
 
@@ -847,7 +948,13 @@ export namespace MCP {
       const entry = isMcpConfigured(mcpConfig) ? mcpConfig : undefined
       const timeout = entry?.timeout ?? defaultTimeout
       for (const mcpTool of toolsResult.tools) {
-        result[toolKey(clientName, mcpTool.name)] = await convertMcpTool(mcpTool, client, timeout)
+        result[toolKey(clientName, mcpTool.name)] = await convertMcpTool(
+          mcpTool,
+          client,
+          timeout,
+          MAX_CALL_TIMEOUT,
+          clientName,
+        )
       }
     }
     return result
@@ -876,8 +983,14 @@ export namespace MCP {
   }
 
   export async function prompts() {
-    const s = await state()
-    const clientsSnapshot = await clients()
+    // The command list is polled per open project directory, and every server
+    // is a subprocess. Building state here would start the whole set for a
+    // directory nobody is running a tool in, so a directory with no MCP yet
+    // reports no prompts rather than spawning one to find out.
+    const pending = state.peek()
+    if (!pending) return {}
+    const s = await pending
+    const clientsSnapshot = s.clients
 
     const prompts = Object.fromEntries<PromptInfo & { client: string }>(
       (
