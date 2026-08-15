@@ -412,10 +412,6 @@
     height: auto;
     max-height: 240px;
     overflow-y: auto;
-    content-visibility: auto;
-    /* max-height is the rendered ceiling, so it is also the honest estimate for
-       a skipped body; `auto` refines it to the real size once rendered. */
-    contain-intrinsic-size: auto 240px;
 
     [data-component="markdown"] {
       overflow: visible;
