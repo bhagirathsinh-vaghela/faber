@@ -118,4 +118,11 @@ export namespace Identifier {
   export function timestamp(id: string): number {
     return Math.floor(counterValue(id) / COUNTER_RANGE)
   }
+
+  // The one ordering key for anything minted here. Comparing the decoded value
+  // rather than the string keeps ids of different time-field widths comparable,
+  // which a lexical sort gets wrong.
+  export function compare(left: string, right: string): number {
+    return counterValue(left) - counterValue(right) || (left < right ? -1 : left > right ? 1 : 0)
+  }
 }

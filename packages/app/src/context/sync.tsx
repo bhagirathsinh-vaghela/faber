@@ -1,6 +1,7 @@
 import { batch, createMemo } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
+import { Identifier } from "@opencode-ai/util/identifier"
 import { retry } from "@opencode-ai/util/retry"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
@@ -10,7 +11,7 @@ import type { Message, Part, Session } from "@opencode-ai/sdk/v2/client"
 
 const keyFor = (directory: string, id: string) => `${directory}\n${id}`
 
-const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+const cmp = Identifier.compare
 
 export const {
   use: useSync,

@@ -26,6 +26,7 @@ import {
 } from "@opencode-ai/sdk/v2/client"
 import { createStore, produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
 import { Binary } from "@opencode-ai/util/binary"
+import { Identifier } from "@opencode-ai/util/identifier"
 import { isAlive } from "@opencode-ai/util/session"
 import { Snapshot } from "@/utils/snapshot"
 import { retry } from "@opencode-ai/util/retry"
@@ -157,7 +158,7 @@ type ChildOptions = {
   bootstrap?: boolean
 }
 
-const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+const cmp = Identifier.compare
 
 // Mirror bash.ts's metadata cap: when appending streamed tool-output deltas the
 // client must apply the same 30KB display truncation the server does, so the

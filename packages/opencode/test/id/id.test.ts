@@ -104,6 +104,27 @@ describe("id.Identifier counter overflow", () => {
   })
 })
 
+describe("id.Identifier.compare", () => {
+  test("orders by mint order, including within one millisecond", () => {
+    const ts = Date.now() + 3_000_000
+    const ids = Array.from({ length: 20 }, () => Identifier.create("message", false, ts))
+    const shuffled = [...ids].reverse()
+    expect(shuffled.toSorted(Identifier.compare)).toStrictEqual(ids)
+  })
+
+  test("orders a 6-byte id below an 8-byte one that a lexical sort puts first", () => {
+    const legacy = "msg_01a01642d091" + "abcdefghijklmn"
+    const current = "msg_001a01642d091001" + "abcdefghijklmn"
+    expect(legacy < current).toBe(false)
+    expect(Identifier.compare(legacy, current)).toBeLessThan(0)
+  })
+
+  test("is a total order: equal ids compare equal", () => {
+    const id = Identifier.ascending("message")
+    expect(Identifier.compare(id, id)).toBe(0)
+  })
+})
+
 describe("id.Identifier 8-byte encoding", () => {
   test("ascending IDs produce 16 hex chars in the time field", () => {
     const id = Identifier.ascending("message")

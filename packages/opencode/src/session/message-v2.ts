@@ -683,12 +683,12 @@ export namespace MessageV2 {
       const message = await get({ sessionID, messageID: item[2] }).catch(() => undefined)
       if (message) messages.push(message)
     }
-    // time.created is the durable ordering key, since ids straddling a width
-    // change sort by filename in an order that predates the widening. It has
-    // millisecond resolution and a turn mints several messages inside one
-    // millisecond, so the id breaks the tie: its counter increments per mint,
-    // which is the only record of order within that millisecond.
-    messages.sort((a, b) => b.info.time.created - a.info.time.created || (a.info.id < b.info.id ? 1 : -1))
+    // The id IS the ordering key: it packs the mint millisecond and a counter
+    // that increments within it, so it orders a turn's messages at a resolution
+    // time.created cannot. Ordering by a separate timestamp field made the two
+    // able to disagree, and a client-minted id whose created is stamped on
+    // arrival disagrees by the round trip.
+    messages.sort((a, b) => Identifier.compare(b.info.id, a.info.id))
     for (const message of messages) yield message
   })
 

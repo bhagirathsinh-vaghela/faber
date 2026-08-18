@@ -1,3 +1,9 @@
+import { Identifier } from "./identifier"
+
+// Both searches run over lists the server ordered with Identifier.compare, so
+// they order by the same key. A lexical comparison here would disagree with
+// that order for ids of different time-field widths and land a message at the
+// wrong index.
 export namespace Binary {
   export function search<T>(array: T[], id: string, compare: (item: T) => string): { found: boolean; index: number } {
     let left = 0
@@ -5,11 +11,11 @@ export namespace Binary {
 
     while (left <= right) {
       const mid = Math.floor((left + right) / 2)
-      const midId = compare(array[mid])
+      const order = Identifier.compare(compare(array[mid]), id)
 
-      if (midId === id) {
+      if (order === 0) {
         return { found: true, index: mid }
-      } else if (midId < id) {
+      } else if (order < 0) {
         left = mid + 1
       } else {
         right = mid - 1
@@ -26,9 +32,8 @@ export namespace Binary {
 
     while (left < right) {
       const mid = Math.floor((left + right) / 2)
-      const midId = compare(array[mid])
 
-      if (midId < id) {
+      if (Identifier.compare(compare(array[mid]), id) < 0) {
         left = mid + 1
       } else {
         right = mid

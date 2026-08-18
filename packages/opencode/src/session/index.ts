@@ -511,19 +511,12 @@ export namespace Session {
     async (input) => {
       const compacted = input.compacted ?? true
       const after = input.after
-        ? await MessageV2.get({ sessionID: input.sessionID, messageID: input.after })
-            .then((x) => x.info.time.created)
-            .catch(() => undefined)
-        : undefined
       const result = [] as MessageV2.WithParts[]
       const completed = new Set<string>()
       // MessageV2.stream yields newest-first; mirror MessageV2.filterCompacted
       for await (const msg of MessageV2.stream(input.sessionID)) {
         if (input.limit !== undefined && result.length >= input.limit) break
-        // The stream is ordered by time.created, so the cursor test must use the
-        // same key; comparing ids here would stop at the wrong message whenever
-        // id order and creation order disagree.
-        if (after !== undefined && msg.info.time.created <= after) break
+        if (after !== undefined && Identifier.compare(msg.info.id, after) <= 0) break
         result.push(msg)
         if (
           compacted &&
