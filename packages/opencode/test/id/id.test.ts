@@ -145,6 +145,20 @@ describe("id.Identifier.compare", () => {
     expect([...ids].reverse().toSorted(Identifier.compare)).toStrictEqual(ids)
     expect(new Set(ids.map((id) => Number(BigInt("0x" + id.slice(4, 20))))).size).toBeLessThan(ids.length)
   })
+
+  test("orders ids that were never minted here, like the paths a project is keyed by", () => {
+    const paths = ["/Users/x/src/a", "/tmp/cancel-b", "/private/tmp/c", "session_diff", "model"]
+    const sorted = [...paths].sort(Identifier.compare)
+    expect(sorted).toStrictEqual([...paths].sort())
+    for (const path of sorted) {
+      expect(Binary.search(sorted, path, (item: string) => item).found).toBe(true)
+    }
+  })
+
+  test("orders a minted id against one that carries no time field", () => {
+    const minted = Identifier.descending("session")
+    expect(Identifier.compare(minted, "/tmp/x")).toBe(minted < "/tmp/x" ? -1 : 1)
+  })
 })
 
 describe("id.Identifier 8-byte encoding", () => {

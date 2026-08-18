@@ -34,6 +34,7 @@ export namespace Identifier {
   export function seed(id: string) {
     const range = BigInt(COUNTER_RANGE)
     const value = counterValue(id)
+    if (value === undefined) return
     if (value > BigInt(lastTimestamp) * range + BigInt(counter)) {
       lastTimestamp = Number(value / range)
       counter = Number(value % range)
@@ -104,24 +105,35 @@ export namespace Identifier {
     return (prefix ? prefixes[prefix] + "_" : "") + hex + randomBase62(RANDOM_CHARS)
   }
 
-  function sortValue(id: string): bigint {
+  const HEX = /^[0-9a-f]+$/
+
+  // Not every string compared here was minted here. A project id is a directory
+  // path and a share compaction key is a literal like "session", both of which
+  // reach the same sorted lists; undefined is the "no time field to read"
+  // answer that keeps them orderable instead of failing the parse.
+  function sortValue(id: string): bigint | undefined {
     const body = id.slice(id.indexOf("_") + 1)
-    return BigInt("0x" + body.slice(0, body.length <= 26 ? 12 : 16))
+    const hex = body.slice(0, body.length <= 26 ? 12 : 16)
+    if (!HEX.test(hex)) return undefined
+    return BigInt("0x" + hex)
   }
 
-  function counterValue(id: string): bigint {
+  function counterValue(id: string): bigint | undefined {
     const underscore = id.indexOf("_")
     const prefix = underscore === -1 ? "" : id.slice(0, underscore)
     const body = id.slice(underscore + 1)
     const hexLen = body.length <= 26 ? 12 : 16
     const encoded = sortValue(id)
+    if (encoded === undefined) return undefined
     // Descending ids store the complement, so reading one without inverting it
     // yields a value near the width ceiling rather than a time.
     return DESCENDING.has(prefix) ? ((1n << BigInt(hexLen * 4)) - 1n) & ~encoded : encoded
   }
 
   export function timestamp(id: string): number {
-    return Number(counterValue(id) / BigInt(COUNTER_RANGE))
+    const value = counterValue(id)
+    if (value === undefined) return 0
+    return Number(value / BigInt(COUNTER_RANGE))
   }
 
   // Storage order, which is what a descending id's complement exists to
@@ -131,7 +143,7 @@ export namespace Identifier {
   export function compare(left: string, right: string): number {
     const a = sortValue(left)
     const b = sortValue(right)
-    if (a !== b) return a < b ? -1 : 1
+    if (a !== undefined && b !== undefined && a !== b) return a < b ? -1 : 1
     return left < right ? -1 : left > right ? 1 : 0
   }
 }
