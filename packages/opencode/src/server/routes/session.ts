@@ -471,6 +471,7 @@ export const SessionRoutes = lazy(() =>
         // defer, so it must never disarm on its own — only this explicit route
         // does. One lever: stop() disarms + shadows keepWarm=false.
         SessionPing.stop(sessionID)
+        SessionPin.drop(sessionID)
         SessionPrompt.cancel(sessionID)
         return c.json(true)
       },
