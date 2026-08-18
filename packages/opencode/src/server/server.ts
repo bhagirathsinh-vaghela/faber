@@ -22,6 +22,7 @@ import { Dock } from "../dock/dock"
 import { Auth } from "../auth"
 import { Flag } from "../flag/flag"
 import { Command } from "../command"
+import { SessionPin } from "../session/pin"
 import { Global } from "../global"
 import { ProjectRoutes } from "./routes/project"
 import { SessionRoutes } from "./routes/session"
@@ -381,6 +382,7 @@ export namespace Server {
             },
           }),
           async (c) => {
+            await SessionPin.refresh()
             const commands = await Command.list()
             return c.json(commands)
           },
