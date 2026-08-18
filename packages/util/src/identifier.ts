@@ -32,10 +32,11 @@ export namespace Identifier {
   // re-issues counters the persisted ids already spent — two records then share
   // a time field and fall back to sorting by their random tail.
   export function seed(id: string) {
+    const range = BigInt(COUNTER_RANGE)
     const value = counterValue(id)
-    if (value > lastTimestamp * COUNTER_RANGE + counter) {
-      lastTimestamp = Math.floor(value / COUNTER_RANGE)
-      counter = value % COUNTER_RANGE
+    if (value > BigInt(lastTimestamp) * range + BigInt(counter)) {
+      lastTimestamp = Number(value / range)
+      counter = Number(value % range)
     }
   }
 
@@ -103,26 +104,34 @@ export namespace Identifier {
     return (prefix ? prefixes[prefix] + "_" : "") + hex + randomBase62(RANDOM_CHARS)
   }
 
-  function counterValue(id: string): number {
+  function sortValue(id: string): bigint {
+    const body = id.slice(id.indexOf("_") + 1)
+    return BigInt("0x" + body.slice(0, body.length <= 26 ? 12 : 16))
+  }
+
+  function counterValue(id: string): bigint {
     const underscore = id.indexOf("_")
     const prefix = underscore === -1 ? "" : id.slice(0, underscore)
     const body = id.slice(underscore + 1)
     const hexLen = body.length <= 26 ? 12 : 16
-    const encoded = BigInt("0x" + body.slice(0, hexLen))
+    const encoded = sortValue(id)
     // Descending ids store the complement, so reading one without inverting it
     // yields a value near the width ceiling rather than a time.
-    const value = DESCENDING.has(prefix) ? ((1n << BigInt(hexLen * 4)) - 1n) & ~encoded : encoded
-    return Number(value)
+    return DESCENDING.has(prefix) ? ((1n << BigInt(hexLen * 4)) - 1n) & ~encoded : encoded
   }
 
   export function timestamp(id: string): number {
-    return Math.floor(counterValue(id) / COUNTER_RANGE)
+    return Number(counterValue(id) / BigInt(COUNTER_RANGE))
   }
 
-  // The one ordering key for anything minted here. Comparing the decoded value
-  // rather than the string keeps ids of different time-field widths comparable,
-  // which a lexical sort gets wrong.
+  // Storage order, which is what a descending id's complement exists to
+  // produce: decoding it here would sort sessions oldest-first against every
+  // list that holds them newest-first. BigInt because an 8-byte field is 2048x
+  // wider than a Number holds, and a lexical sort misorders differing widths.
   export function compare(left: string, right: string): number {
-    return counterValue(left) - counterValue(right) || (left < right ? -1 : left > right ? 1 : 0)
+    const a = sortValue(left)
+    const b = sortValue(right)
+    if (a !== b) return a < b ? -1 : 1
+    return left < right ? -1 : left > right ? 1 : 0
   }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
+import { Binary } from "@opencode-ai/util/binary"
 
 const timeField = (id: string) => id.slice(4, 20)
 
@@ -123,6 +124,27 @@ describe("id.Identifier.compare", () => {
     const id = Identifier.ascending("message")
     expect(Identifier.compare(id, id)).toBe(0)
   })
+
+  test("keeps descending ids newest-first, matching how sessions are stored", () => {
+    const ids = Array.from({ length: 5 }, () => Identifier.descending("session"))
+    const stored = [...ids].sort()
+    expect(stored.toSorted(Identifier.compare)).toStrictEqual(stored)
+    expect(stored[0]).toBe(ids.at(-1)!)
+  })
+
+  test("finds every descending id in a list ordered the way sessions are stored", () => {
+    const stored = Array.from({ length: 5 }, () => Identifier.descending("session")).sort()
+    for (const id of stored) {
+      expect(Binary.search(stored, id, (item: string) => item).found).toBe(true)
+    }
+  })
+
+  test("separates ids whose time fields exceed what a double can represent", () => {
+    const beyond = 2_400_000_000_000
+    const ids = Array.from({ length: 5 }, () => Identifier.create("message", false, beyond))
+    expect([...ids].reverse().toSorted(Identifier.compare)).toStrictEqual(ids)
+    expect(new Set(ids.map((id) => Number(BigInt("0x" + id.slice(4, 20))))).size).toBeLessThan(ids.length)
+  })
 })
 
 describe("id.Identifier 8-byte encoding", () => {
@@ -141,7 +163,7 @@ describe("id.Identifier 8-byte encoding", () => {
   })
 
   test("timestamp() round-trips through create", () => {
-    const ts = Date.now() + 3_600_000
+    const ts = 3_000_000_000_000
     const id = Identifier.create("message", false, ts)
     const decoded = Identifier.timestamp(id)
     expect(decoded).toBe(ts)
