@@ -352,7 +352,7 @@ export namespace SessionPrompt {
       // from minting an assistant/part that sorts before its own parent — the
       // inversion that wedged the turn loop. Complements the link-based checks:
       // those survive an existing inversion, this prevents new ones.
-      for (const msg of msgs) Identifier.seed(Identifier.timestamp(msg.info.id))
+      for (const msg of msgs) Identifier.seed(msg.info.id)
 
       // Rebuild the read-time map from durable history. read, edit, and write
       // parts all persist their post-op mtime+hash, and seeding walks them in
