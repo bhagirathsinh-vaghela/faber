@@ -2059,6 +2059,10 @@ export namespace SessionPrompt {
       template = template + "\n\n" + input.arguments
     }
 
+    // Substituted ahead of the shell expansion below so a !`...` block can pass
+    // the id to a command; the model has no other way to learn which session it is.
+    template = template.replaceAll("$SESSION", input.sessionID)
+
     const shell = ConfigMarkdown.shell(template)
     if (shell.length > 0) {
       const results = await Promise.all(
