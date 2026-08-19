@@ -2,6 +2,7 @@ import { spawn, type Subprocess } from "bun"
 import os from "os"
 import path from "path"
 import { cmd } from "./cmd"
+import { SessionPing } from "../../session/ping"
 
 // Supervisor for the long-lived OpenCode server: a small outer shell that owns
 // the serve process so it can be restarted from a browser with no terminal.
@@ -53,8 +54,10 @@ export const SuperviseCommand = cmd({
     const compiled = !entry || entry.startsWith("/$bunfs")
     const base = compiled ? [process.execPath] : [process.execPath, "run", "--conditions=browser", entry]
 
-    function serveArgs(port: number) {
-      return [...base, "serve", "--port", String(port), "--hostname", "0.0.0.0"]
+    function serveArgs(port: number, restore = false) {
+      const args = [...base, "serve", "--port", String(port), "--hostname", "0.0.0.0"]
+      if (restore) args.push("--restore")
+      return args
     }
 
     // The supervisor OWNS the server it runs: it started it, holds the handle,
@@ -149,8 +152,8 @@ export const SuperviseCommand = cmd({
       return null
     }
 
-    function launch(port: number) {
-      return spawn(serveArgs(port), { stdout: "inherit", stderr: "inherit" })
+    function launch(port: number, restore = false) {
+      return spawn(serveArgs(port, restore), { stdout: "inherit", stderr: "inherit" })
     }
 
     type SessionRef = { sessionID: string; directory: string }
@@ -180,18 +183,6 @@ export const SuperviseCommand = cmd({
       return { busy, armed }
     }
 
-    // Only the parent turn is resumed, and nothing it was waiting on comes back.
-    // A subtask runs as its own session the restart does not relaunch; a pending
-    // question or permission is a promise map that dies with the process; a tool
-    // mid-execute is left as an orphaned running part. All of it is the same fact
-    // from the model's side (a call it made that can no longer return), so the
-    // prompt states it once rather than enumerating server-side causes. Without
-    // being told, the parent waits forever on work that is already dead.
-    const CONTINUE_TEXT =
-      "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing." +
-      " Anything that was in flight is gone and will never return a result: a subtask you launched, a question or permission you were waiting on, a tool call part-way through." +
-      " Redo whatever still matters."
-
     async function resume(sessions: SessionRef[]) {
       const results = []
       for (const s of sessions) {
@@ -202,7 +193,7 @@ export const SuperviseCommand = cmd({
             headers: { "Content-Type": "application/json" },
             // Synthetic: this is the supervisor talking, not the user. It must
             // not count as one of the session's prompts nor describe it.
-            body: JSON.stringify({ parts: [{ type: "text", text: CONTINUE_TEXT, synthetic: true }] }),
+            body: JSON.stringify({ parts: [{ type: "text", text: SessionPing.CONTINUE_TEXT, synthetic: true }] }),
             signal: AbortSignal.timeout(10000),
           },
         ).catch(() => null)
@@ -231,7 +222,11 @@ export const SuperviseCommand = cmd({
       return results
     }
 
-    async function restart() {
+    // restore=true ONLY from the cold start below, where no predecessor was
+    // observed and disk is the sole record of what was live. Every other call
+    // replays the snapshot taken above instead, so resuming from disk as well
+    // would prompt the same interrupted turn twice.
+    async function restart(restore = false) {
       // Stage on the alt port and prove it healthy before touching the live
       // server.
       if (!(await reapOrphan(ALT_PORT)))
@@ -256,7 +251,7 @@ export const SuperviseCommand = cmd({
       // the relaunch can't lose the bind race and leave stale bits serving.
       if (!(await reapOrphan(PORT)))
         return { ok: false, step: "cutover", detail: `port ${PORT} is held by a process that won't die` }
-      current = launch(PORT)
+      current = launch(PORT, restore)
       const live = await waitOwned(current, PORT)
       if (!live) {
         await stop(current)
@@ -382,6 +377,19 @@ export const SuperviseCommand = cmd({
     console.log(
       `supervisor listening on 0.0.0.0:${SUPERVISOR_PORT} (local: http://localhost:${SUPERVISOR_PORT}, opencode :${PORT}, stage :${ALT_PORT})`,
     )
+
+    // Boot the server the supervisor exists to own, so a machine that just
+    // rebooted needs no browser round-trip to become usable. Gated on health
+    // rather than fired blind: a supervisor relaunched to pick up new
+    // supervisor code finds the previous one's server still serving on PORT,
+    // and restart() would kill a healthy server (dropping its sessions'
+    // in-memory liveness) to replace it with an identical one. reapOrphan
+    // inside restart() adopts that orphan on the next explicit /restart.
+    if (!(await health(PORT))) {
+      const boot = await restart(true)
+      console.log(boot.ok ? `started server on :${PORT}` : `failed to start server: ${boot.step} — ${boot.detail}`)
+    }
+
     await new Promise(() => {})
   },
 })

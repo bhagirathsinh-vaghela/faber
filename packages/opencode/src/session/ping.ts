@@ -107,6 +107,67 @@ export namespace SessionPing {
     )
   }
 
+  // Only IMPLICIT arms may consult this — attach and the boot restore, which act
+  // on an intent recorded earlier rather than on something the user just did. An
+  // explicit arm (a turn, the arm route) must NOT: it runs before its own
+  // dispatch re-anchors the cache, so every session resumed after the TTL would
+  // read as cold and never arm — and since arm() is the only writer of keepWarm,
+  // the intent would never be recorded either.
+  export function warm(session: Session.Info) {
+    const base = session.cache?.lastRequestAt
+    return !!base && base + CACHE_TTL > Date.now()
+  }
+
+  // Only the parent turn is resumed, and nothing it was waiting on comes back.
+  // A subtask runs as its own session nothing relaunches; a pending question or
+  // permission is a promise map that died with the process; a tool mid-execute is
+  // left as an orphaned running part. All of it is the same fact from the model's
+  // side (a call it made that can no longer return), so the prompt states it once
+  // rather than enumerating causes. Without being told, the parent waits forever
+  // on work that is already dead.
+  export const CONTINUE_TEXT =
+    "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing." +
+    " Anything that was in flight is gone and will never return a result: a subtask you launched, a question or permission you were waiting on, a tool call part-way through." +
+    " Redo whatever still matters."
+
+  // A turn that never reached its own completion stamp. Every ordinary ending
+  // writes one — a clean finish, an error, and a user Stop alike (the abort
+  // unwinds through the same tail) — so its absence means the process died
+  // holding the turn: a reboot, a crash, a kill. That makes this the discriminator
+  // the supervisor cannot supply after a reboot, when the memory it snapshots
+  // busy state from died with the machine.
+  async function interrupted(sessionID: string) {
+    for await (const msg of MessageV2.stream(sessionID)) {
+      if (msg.info.role !== "assistant") continue
+      return !msg.info.time.completed
+    }
+    return false
+  }
+
+  // Restore what a /restart restores, for the case it cannot cover: nothing
+  // observed the previous server, so both tiers are rebuilt from disk instead of
+  // from a snapshot taken before the kill.
+  //
+  // Cache liveness gates BOTH tiers, and does the work a boot-time comparison
+  // would: the anchor cannot outlive the TTL, so a machine down longer than that
+  // restores nothing — correctly, since neither a daemon nor a resumed turn has
+  // a warm cache left to act on. It also keeps the blast radius honest, because
+  // the persisted intent accumulates across every session ever left warm.
+  export async function restore(resume: (session: Session.Info) => Promise<void>) {
+    const entries = await SessionRecent.list()
+    for (const entry of entries) {
+      await Instance.provide({
+        directory: entry.directory,
+        fn: async () => {
+          const session = await Session.get(entry.sessionID).catch(() => undefined)
+          if (!session || session.parentID || !session.keepWarm || !warm(session)) return
+          if (await interrupted(session.id)) return resume(session)
+          start(session.id)
+        },
+      }).catch((e) => log.error("restore failed", { sessionID: entry.sessionID, error: e }))
+    }
+  }
+
   // All three active mutations funnel through arm/disarm so the event fires
   // exactly when membership changes. The armed event MUST be stamped with the
   // session's own directory: the client routes it into a per-directory store

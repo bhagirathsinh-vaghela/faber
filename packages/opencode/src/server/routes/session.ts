@@ -181,7 +181,7 @@ export const SessionRoutes = lazy(() =>
         // session has keepWarm=false. Intent is set explicitly (an organic turn
         // or POST /arm) and crosses a restart via the persisted field, so this
         // still re-arms a genuinely-warm session after a server restart.
-        if (!session.parentID && session.keepWarm) SessionPing.start(sessionID)
+        if (!session.parentID && session.keepWarm && SessionPing.warm(session)) SessionPing.start(sessionID)
         // Attaching to a root session opens its project in the shared sidebar
         // set. Tied to session attach (a genuine "open" signal), NOT instance
         // bootstrap, which also fires for incidental re-provides.
