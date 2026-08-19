@@ -170,6 +170,12 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       get name() {
         return serverDisplayName(state.active)
       },
+      // The server's own identity (its hostname), which only a reachable server
+      // reports; before the first health poll answers there is nothing but the
+      // URL the browser dialed.
+      get machine() {
+        return state.host ?? serverDisplayName(state.active)
+      },
       get version() {
         return state.version
       },

@@ -3,7 +3,7 @@ import { Popover } from "@opencode-ai/ui/popover"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { Button } from "@opencode-ai/ui/button"
 import { useSyncOptional } from "@/context/sync"
-import { serverDisplayName, useServer } from "@/context/server"
+import { useServer } from "@/context/server"
 import { useLanguage } from "@/context/language"
 
 export function StatusPopover() {
@@ -14,7 +14,7 @@ export function StatusPopover() {
   const server = useServer()
   const language = useLanguage()
 
-  const machineName = createMemo(() => server.host ?? serverDisplayName(server.url))
+  const machineName = createMemo(() => server.machine)
   // Button shows just the first label of the FQDN (my-host.example.ts.net
   // -> my-host) so a long hostname on disconnect can't overrun the titlebar and
   // tuck the sibling buttons. The popover still shows the full machineName().

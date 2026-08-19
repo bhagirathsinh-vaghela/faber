@@ -1,3 +1,4 @@
+import { Show } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectServer } from "@/components/dialog-select-server"
@@ -25,7 +26,10 @@ export default function Home() {
               "bg-border-weak-base": server.healthy() === undefined,
             }}
           />
-          {server.name}
+          {server.machine}
+          <Show when={server.machine !== server.name}>
+            <span class="text-text-weaker">({server.name})</span>
+          </Show>
         </Button>
       </div>
       <div class="flex-1 min-h-0 w-full max-w-2xl flex flex-col">
