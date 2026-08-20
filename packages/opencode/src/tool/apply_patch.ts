@@ -60,7 +60,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
     let totalDiff = ""
 
     for (const hunk of hunks) {
-      const filePath = path.resolve(Instance.directory, hunk.path)
+      const filePath = Filesystem.resolve(Instance.directory, hunk.path)
       await assertExternalDirectory(ctx, filePath)
 
       switch (hunk.type) {
@@ -122,7 +122,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
             if (change.removed) deletions += change.count || 0
           }
 
-          const movePath = hunk.move_path ? path.resolve(Instance.directory, hunk.move_path) : undefined
+          const movePath = hunk.move_path ? Filesystem.resolve(Instance.directory, hunk.move_path) : undefined
           await assertExternalDirectory(ctx, movePath)
 
           fileChanges.push({
@@ -168,7 +168,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
     // Build per-file metadata for UI rendering (used for both permission and result)
     const files = fileChanges.map((change) => ({
       filePath: change.filePath,
-      relativePath: path.relative(Instance.worktree, change.movePath ?? change.filePath),
+      targetPath: change.movePath ?? change.filePath,
       type: change.type,
       diff: change.diff,
       before: change.oldContent,

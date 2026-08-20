@@ -52,7 +52,7 @@ export const EditTool = Tool.define("edit", {
       throw new Error("oldString and newString must be different")
     }
 
-    const filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+    const filePath = Filesystem.resolve(Instance.directory, params.filePath)
     await assertExternalDirectory(ctx, filePath)
 
     let diff = ""
@@ -227,7 +227,7 @@ export const EditTool = Tool.define("edit", {
         mtime: stamp?.mtime,
         hash: stamp?.hash,
       },
-      title: `${path.relative(Instance.worktree, filePath)}`,
+      title: filePath,
       output,
     }
   },

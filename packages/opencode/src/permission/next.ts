@@ -5,22 +5,14 @@ import { Identifier } from "@/id/id"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import { SessionRecent } from "@/session/recent"
+import { Filesystem } from "@/util/filesystem"
 import { fn } from "@/util/fn"
 import { Log } from "@/util/log"
 import { Wildcard } from "@/util/wildcard"
-import os from "os"
 import z from "zod"
 
 export namespace PermissionNext {
   const log = Log.create({ service: "permission" })
-
-  function expand(pattern: string): string {
-    if (pattern.startsWith("~/")) return os.homedir() + pattern.slice(1)
-    if (pattern === "~") return os.homedir()
-    if (pattern.startsWith("$HOME/")) return os.homedir() + pattern.slice(5)
-    if (pattern.startsWith("$HOME")) return os.homedir() + pattern.slice(5)
-    return pattern
-  }
 
   export const Action = z.enum(["allow", "deny", "ask"]).meta({
     ref: "PermissionAction",
@@ -55,7 +47,11 @@ export namespace PermissionNext {
         continue
       }
       ruleset.push(
-        ...Object.entries(value).map(([pattern, action]) => ({ permission: key, pattern: expand(pattern), action })),
+        ...Object.entries(value).map(([pattern, action]) => ({
+          permission: key,
+          pattern: Filesystem.expand(pattern),
+          action,
+        })),
       )
     }
     return ruleset

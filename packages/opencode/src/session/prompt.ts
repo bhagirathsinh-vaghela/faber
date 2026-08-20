@@ -45,6 +45,7 @@ import { $, fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
 import { Wildcard } from "../util/wildcard"
+import { Filesystem } from "../util/filesystem"
 import { NamedError } from "@opencode-ai/util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
@@ -374,7 +375,7 @@ export namespace SessionPrompt {
             typeof part.state.metadata?.mtime === "number"
               ? [
                   {
-                    file: path.resolve(Instance.directory, part.state.input.filePath),
+                    file: Filesystem.resolve(Instance.directory, part.state.input.filePath),
                     mtime: part.state.metadata.mtime,
                     hash: typeof part.state.metadata.hash === "string" ? part.state.metadata.hash : undefined,
                     offset: typeof part.state.metadata.offset === "number" ? part.state.metadata.offset : undefined,

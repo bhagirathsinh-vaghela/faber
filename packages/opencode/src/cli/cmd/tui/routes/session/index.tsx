@@ -2924,11 +2924,11 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
     )
   }
 
-  function title(file: { type: string; relativePath: string; filePath: string; deletions: number }) {
-    if (file.type === "delete") return "# Deleted " + file.relativePath
-    if (file.type === "add") return "# Created " + file.relativePath
-    if (file.type === "move") return "# Moved " + normalizePath(file.filePath) + " → " + file.relativePath
-    return "← Patched " + file.relativePath
+  function title(file: { type: string; targetPath: string; filePath: string; deletions: number }) {
+    if (file.type === "delete") return "# Deleted " + file.targetPath
+    if (file.type === "add") return "# Created " + file.targetPath
+    if (file.type === "move") return "# Moved " + normalizePath(file.filePath) + " → " + file.targetPath
+    return "← Patched " + file.targetPath
   }
 
   return (

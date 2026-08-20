@@ -166,15 +166,8 @@ function createThrottledValue(getValue: () => string) {
   return value
 }
 
-function relativizeProjectPaths(text: string, directory?: string) {
-  if (!text) return ""
-  if (!directory) return text
-  return text.split(directory).join("")
-}
-
 function getDirectory(path: string | undefined) {
-  const data = useData()
-  return relativizeProjectPaths(_getDirectory(path), data.directory)
+  return _getDirectory(path)
 }
 
 export function getSessionToolParts(store: ReturnType<typeof useData>["store"], sessionId: string): ToolPart[] {
@@ -1037,9 +1030,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 }
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {
-  const data = useData()
   const part = props.part as TextPart
-  const displayText = () => relativizeProjectPaths((part.text ?? "").trim(), data.directory)
+  const displayText = () => (part.text ?? "").trim()
   const throttledText = createThrottledValue(displayText)
 
   // Render an assistant text step in the same MessageBox as the turn's Response
@@ -1098,7 +1090,7 @@ ToolRegistry.register({
           icon="glasses"
           trigger={{
             title: i18n.t("ui.tool.read"),
-            subtitle: props.input.filePath ? relativizeProjectPaths(props.input.filePath, data.directory) : "",
+            subtitle: props.title ?? props.input.filePath ?? "",
             args,
           }}
         />
@@ -1107,7 +1099,7 @@ ToolRegistry.register({
             <div data-component="tool-loaded-file">
               <Icon name="enter" size="small" />
               <span>
-                {i18n.t("ui.tool.loaded")} {relativizeProjectPaths(filepath, data.directory)}
+                {i18n.t("ui.tool.loaded")} {filepath}
               </span>
             </div>
           )}
@@ -1655,7 +1647,7 @@ ToolRegistry.register({
 
 interface ApplyPatchFile {
   filePath: string
-  relativePath: string
+  targetPath: string
   type: "add" | "update" | "delete" | "move"
   diff: string
   before: string
@@ -1717,7 +1709,7 @@ ToolRegistry.register({
                           </span>
                         </Match>
                       </Switch>
-                      <span data-slot="apply-patch-file-path">{file.relativePath}</span>
+                      <span data-slot="apply-patch-file-path">{file.targetPath}</span>
                       <Show when={file.type !== "delete"}>
                         <DiffChanges changes={{ additions: file.additions, deletions: file.deletions }} />
                       </Show>

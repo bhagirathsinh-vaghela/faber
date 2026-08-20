@@ -1,7 +1,20 @@
 import { realpathSync } from "fs"
-import { dirname, join, relative } from "path"
+import { homedir } from "os"
+import { dirname, isAbsolute, join, relative, resolve as resolvePath } from "path"
 
 export namespace Filesystem {
+  export function expand(input: string) {
+    if (input === "~" || input === "$HOME") return homedir()
+    if (input.startsWith("~/")) return homedir() + input.slice(1)
+    if (input.startsWith("$HOME/")) return homedir() + input.slice(5)
+    return input
+  }
+
+  export function resolve(base: string, input: string) {
+    const expanded = expand(input)
+    return isAbsolute(expanded) ? expanded : resolvePath(base, expanded)
+  }
+
   export const exists = (p: string) =>
     Bun.file(p)
       .stat()

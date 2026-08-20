@@ -7,6 +7,7 @@ import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
 import { Instance } from "../project/instance"
+import { Filesystem } from "../util/filesystem"
 import { Identifier } from "../id/id"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
@@ -30,11 +31,8 @@ export const ReadTool = Tool.define("read", {
     })
     .strict(),
   async execute(params, ctx) {
-    let filepath = params.filePath
-    if (!path.isAbsolute(filepath)) {
-      filepath = path.resolve(Instance.directory, filepath)
-    }
-    const title = path.relative(Instance.worktree, filepath)
+    const filepath = Filesystem.resolve(Instance.directory, params.filePath)
+    const title = filepath
 
     await assertExternalDirectory(ctx, filepath, {
       bypass: Boolean(ctx.extra?.["bypassCwdCheck"]),
@@ -52,7 +50,9 @@ export const ReadTool = Tool.define("read", {
       const dir = path.dirname(filepath)
       const base = path.basename(filepath)
 
-      const dirEntries = fs.readdirSync(dir)
+      // A missing file often means a missing parent too, and readdirSync would
+      // then throw a raw ENOENT over the useful "File not found" below.
+      const dirEntries = fs.existsSync(dir) ? fs.readdirSync(dir) : []
       const suggestions = dirEntries
         .filter(
           (entry) =>

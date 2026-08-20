@@ -1,9 +1,9 @@
 import z from "zod"
 import { Tool } from "./tool"
-import path from "path"
 import { LSP } from "../lsp"
 import DESCRIPTION from "./lsp.txt"
 import { Instance } from "../project/instance"
+import { Filesystem } from "../util/filesystem"
 import { pathToFileURL } from "url"
 import { assertExternalDirectory } from "./external-directory"
 
@@ -60,7 +60,7 @@ export const LspTool = Tool.define("lsp", {
     }
 
     if (!args.filePath) throw new Error(`${args.operation} requires \`filePath\`.`)
-    const file = path.isAbsolute(args.filePath) ? args.filePath : path.join(Instance.directory, args.filePath)
+    const file = Filesystem.resolve(Instance.directory, args.filePath)
     await assertExternalDirectory(ctx, file)
 
     const exists = await Bun.file(file).exists()
@@ -75,12 +75,10 @@ export const LspTool = Tool.define("lsp", {
 
     await LSP.touchFile(file, true)
 
-    const relPath = path.relative(Instance.worktree, file)
-
     if (args.operation === "documentSymbol") {
       const symbols = await LSP.documentSymbol(pathToFileURL(file).href)
       return {
-        title: `documentSymbol ${relPath}`,
+        title: `documentSymbol ${file}`,
         metadata: { result: symbols },
         output: symbols.length === 0 ? "No symbols found" : JSON.stringify(symbols, null, 2),
       }
@@ -126,14 +124,13 @@ export const LspTool = Tool.define("lsp", {
     })()
 
     const target = args.symbol ?? `${position.line + 1}:${position.character + 1}`
-    const resolved = path.relative(Instance.worktree, position.file)
     const output = (() => {
       if (result.length === 0) return `No results found for ${args.operation}`
       return JSON.stringify(result, null, 2)
     })()
 
     return {
-      title: `${args.operation} ${resolved} ${target}`,
+      title: `${args.operation} ${position.file} ${target}`,
       metadata: { result },
       output,
     }

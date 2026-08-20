@@ -47,7 +47,7 @@ type AskInput = {
     filepath: string
     files: Array<{
       filePath: string
-      relativePath: string
+      targetPath: string
       type: "add" | "update" | "delete" | "move"
       diff: string
       before: string
@@ -127,7 +127,7 @@ describe("tool.apply_patch freeform", () => {
 
         const addFile = permissionCall.metadata.files.find((f) => f.type === "add")
         expect(addFile).toBeDefined()
-        expect(addFile!.relativePath).toBe("nested/new.txt")
+        expect(addFile!.targetPath).toBe(path.join(fixture.path, "nested", "new.txt"))
         expect(addFile!.after).toBe("created\n")
 
         const updateFile = permissionCall.metadata.files.find((f) => f.type === "update")
@@ -165,7 +165,7 @@ describe("tool.apply_patch freeform", () => {
 
         const moveFile = permissionCall.metadata.files[0]
         expect(moveFile.type).toBe("move")
-        expect(moveFile.relativePath).toBe("renamed/dir/name.txt")
+        expect(moveFile.targetPath).toBe(path.join(fixture.path, "renamed/dir/name.txt"))
         expect(moveFile.movePath).toBe(path.join(fixture.path, "renamed/dir/name.txt"))
         expect(moveFile.before).toBe("old content\n")
         expect(moveFile.after).toBe("new content\n")

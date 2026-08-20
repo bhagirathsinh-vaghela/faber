@@ -27,7 +27,7 @@ export const WriteTool = Tool.define("write", {
     })
     .strict(),
   async execute(params, ctx) {
-    const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+    const filepath = Filesystem.resolve(Instance.directory, params.filePath)
     await assertExternalDirectory(ctx, filepath)
 
     const file = Bun.file(filepath)
@@ -119,7 +119,7 @@ export const WriteTool = Tool.define("write", {
 
     const own = diagnostics[normalizedFilepath]
     return {
-      title: path.relative(Instance.worktree, filepath),
+      title: filepath,
       metadata: {
         // Persist only the written file's diagnostics, keyed by its path. The
         // renderers index this map by the written path; the whole LSP.diagnostics()
