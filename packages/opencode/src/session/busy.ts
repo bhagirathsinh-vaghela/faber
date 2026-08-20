@@ -156,8 +156,13 @@ export namespace SessionBusy {
 
   // Truth-source read for "is this session's own turn in flight". Mirrors the
   // SessionPrompt.state membership that assertNotBusy already gates on.
+  //
+  // A session id is unique across directories, so no directory is needed to
+  // resolve one. Requiring the ambient Instance would break the ping daemon,
+  // which asks this from a loop running detached from any context.
   export function busy(sessionID: string) {
-    return self.get(Instance.directory)?.has(sessionID) ?? false
+    for (const running of self.values()) if (running.has(sessionID)) return true
+    return false
   }
 
   // Level-triggered reconcile snapshot for the 5s tick, scoped to ONE open

@@ -18,6 +18,7 @@ import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
 import { Liveness } from "@/project/liveness"
 import { SessionRecent } from "./recent"
+import { SessionBusy } from "./busy"
 
 export const CACHE_TTL = 5 * 60 * 1000
 const DEFAULT_BEFORE_EXPIRY = 10
@@ -293,7 +294,11 @@ export namespace SessionPing {
         stamp(next.type === "ping" ? next.at : undefined)
         await sleep(next.type === "ping" ? next.delay : IDLE_TICK, signal)
         if (signal.aborted) break
-        if (next.type === "ping") await ping(sessionID, signal)
+        // evaluate() rejected a busy session already, but it decided BEFORE this
+        // sleep and a turn can start inside it. Re-testing here is what actually
+        // keeps the daemon off a live turn. The probe path skips this check: it
+        // is user-initiated and its caller wants the request made.
+        if (next.type === "ping" && !SessionBusy.busy(sessionID)) await ping(sessionID, signal)
       } catch (e: any) {
         if (e.name === "AbortError") break
         log.error("ping loop error", { sessionID, error: e })
@@ -314,6 +319,11 @@ export namespace SessionPing {
     if (!session) return { type: "idle" }
     // Subtasks/child sessions never ping; if one somehow started, stop it.
     if (session.parentID) return { type: "stop" }
+    // A turn in flight re-anchors the cache with every request it makes, so a
+    // ping alongside it buys nothing and costs a full cache write. It also reads
+    // the history the turn is still writing, which is how a ping came to persist
+    // a half-finished message over the finished one. Wait for the turn instead.
+    if (SessionBusy.busy(sessionID)) return { type: "idle" }
     // Stand down after too many consecutive misses (persistent network failure):
     // stay alive so an organic turn can re-arm via start(), but stop burning
     // cache-write cost on pings that keep failing. The user accepts a cold cache

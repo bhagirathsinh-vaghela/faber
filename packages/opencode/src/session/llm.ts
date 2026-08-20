@@ -46,6 +46,8 @@ export namespace LLM {
     messageIdToIndex?: Map<string, number>
     /** The assistant message being generated (to assign promptIndex) */
     assistantMessage?: MessageV2.Assistant
+    /** Persist the computed promptIndex. Only a caller that OWNS the turn may set this. */
+    persistPromptIndex?: boolean
     small?: boolean
     tools: Record<string, Tool>
     retries?: number
@@ -117,9 +119,14 @@ export namespace LLM {
       system.push(...original)
     }
 
-    // Assign prompt indices to session messages based on actual position in LLM prompt
-    // The final prompt is: [system blocks] + [model messages]
-    // messageIdToIndex maps session message ID -> index in model messages array
+    // The final prompt is [system blocks] + [model messages], so a message's
+    // block position is its index in the model messages plus the system count —
+    // which is known only here, after the plugins have shaped the system blocks.
+    //
+    // Persisting is the CALLER's to opt into. Every caller reaches this code, but
+    // only a turn owns the messages it is sending; a keepalive ping and a judge
+    // read the same history without owning it, and a write from them would
+    // reinstate whatever the turn changed after they read it.
     if (input.sessionMessages && input.messageIdToIndex) {
       const offset = system.length
       for (const msg of input.sessionMessages) {
@@ -128,16 +135,15 @@ export namespace LLM {
           msg.info.promptIndex = offset + modelIndex
         }
       }
-      // Persist indices for non-synthetic messages
-      for (const msg of input.sessionMessages) {
-        if (msg.info.synthetic) continue
-        await Session.updateMessage(msg.info)
-      }
-      // Assign promptIndex to the assistant message being generated
-      // It comes right after all the input messages
       if (input.assistantMessage) {
         input.assistantMessage.promptIndex = offset + input.messages.length
-        await Session.updateMessage(input.assistantMessage)
+      }
+      if (input.persistPromptIndex) {
+        for (const msg of input.sessionMessages) {
+          if (msg.info.synthetic) continue
+          await Session.updateMessage(msg.info)
+        }
+        if (input.assistantMessage) await Session.updateMessage(input.assistantMessage)
       }
     }
 

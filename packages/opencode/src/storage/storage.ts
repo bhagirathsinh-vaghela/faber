@@ -188,6 +188,27 @@ export namespace Storage {
     })
   }
 
+  // A whole-record write whose content depends on the record already on disk.
+  // `write` takes the same lock, so two writers never tear a file — but each
+  // holds a copy read before the lock, so the later write silently reinstates
+  // whatever the earlier one changed. Resolving inside the lock closes that
+  // window: `merge` sees the current record and returns what to store.
+  //
+  // A missing file yields undefined, which is how a first write is expressed.
+  export async function reconcile<T>(key: string[], merge: (stored: T | undefined) => T) {
+    const dir = await state().then((x) => x.dir)
+    const target = path.join(dir, ...key) + ".json"
+    return withErrorHandling(async () => {
+      using _ = await Lock.write(target)
+      const stored = await Bun.file(target)
+        .json()
+        .catch(() => undefined)
+      const merged = merge(stored as T | undefined)
+      await atomic(target, JSON.stringify(merged, null, 2))
+      return merged
+    })
+  }
+
   // Indented by default: these files are read by hand while debugging. `compact`
   // is for the few keys rewritten wholesale on a timer, where the indentation is
   // pure write amplification and no one reads the file directly.

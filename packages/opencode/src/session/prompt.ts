@@ -790,6 +790,7 @@ export namespace SessionPrompt {
         })(),
         sessionMessages,
         assistantMessage: processor.message,
+        persistPromptIndex: true,
         tools,
         model,
         cacheProbeIndex,

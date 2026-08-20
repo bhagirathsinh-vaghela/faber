@@ -575,8 +575,28 @@ export namespace Session {
   const broadcasted = new Map<string, string>()
   const BROADCASTED_CAP = 1000
 
+  // Only the turn that ran a message may end it, so a writer holding a copy read
+  // before it ended must not carry that copy's blank terminal fields to disk.
+  // `finish` is what the prompt loop reads to know a turn is answered; unsetting
+  // it makes a finished turn look pending, and the retry appends a second
+  // assistant block to a transcript already ending in one, which Anthropic
+  // rejects with a 400.
+  function preserveTerminal(incoming: MessageV2.Info, stored: MessageV2.Info | undefined): MessageV2.Info {
+    if (!stored || stored.role !== "assistant" || incoming.role !== "assistant") return incoming
+    if (incoming.finish || incoming.error) return incoming
+    if (!stored.finish && !stored.error && !stored.time.completed) return incoming
+    return {
+      ...incoming,
+      finish: stored.finish,
+      error: stored.error,
+      time: { ...incoming.time, completed: stored.time.completed },
+    }
+  }
+
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
-    await Storage.write(["message", msg.sessionID, msg.id], msg)
+    msg = await Storage.reconcile<MessageV2.Info>(["message", msg.sessionID, msg.id], (stored) =>
+      preserveTerminal(msg, stored),
+    )
     MessageV2.uncache(msg.id)
     // A message write is the only real-turn signal (pings never persist a
     // message). Stamp lastActivity with touch:false so it doesn't bump
