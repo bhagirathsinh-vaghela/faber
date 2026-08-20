@@ -176,6 +176,20 @@ export namespace Storage {
     })
   }
 
+  // The stored byte length, which a caller budgeting a cache needs alongside the
+  // value. Taken from the file the read already opened, since re-serializing the
+  // parsed value to measure it allocates a second copy of every record read.
+  export async function readSized<T>(key: string[]) {
+    const dir = await state().then((x) => x.dir)
+    const target = path.join(dir, ...key) + ".json"
+    return withErrorHandling(async () => {
+      using _ = await Lock.read(target)
+      const file = Bun.file(target)
+      const parsed = await file.json()
+      return { value: parsed as T, size: file.size }
+    })
+  }
+
   export async function update<T>(key: string[], fn: (draft: T) => void) {
     const dir = await state().then((x) => x.dir)
     const target = path.join(dir, ...key) + ".json"

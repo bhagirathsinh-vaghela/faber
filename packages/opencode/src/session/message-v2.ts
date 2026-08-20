@@ -693,17 +693,26 @@ export namespace MessageV2 {
   })
 
   export const parts = fn(Identifier.schema("message"), async (messageID) => {
-    const result = [] as MessageV2.Part[]
+    return sizedParts(messageID).then((x) => x.parts)
+  })
+
+  // Carries the stored byte total the cache budgets on, which the same reads
+  // already know. Measuring it afterwards means serializing every part again.
+  async function sizedParts(messageID: string) {
+    const parts = [] as MessageV2.Part[]
+    let size = 0
     for (const item of await Storage.list(["part", messageID])) {
       // A torn part file (e.g. a process killed mid-write) must drop only that
       // part, not throw and make the whole session unopenable. Session.list
       // already guards its per-file reads the same way.
-      const read = await Storage.read<MessageV2.Part>(item).catch(() => undefined)
-      if (read) result.push(read)
+      const read = await Storage.readSized<MessageV2.Part>(item).catch(() => undefined)
+      if (!read) continue
+      parts.push(read.value)
+      size += read.size
     }
-    result.sort((a, b) => (a.id > b.id ? 1 : -1))
-    return result
-  })
+    parts.sort((a, b) => (a.id > b.id ? 1 : -1))
+    return { parts, size }
+  }
 
   // Completed assistant turns are immutable, so re-reading one costs a directory
   // scan plus a file read per part for bytes that cannot have changed. Scrolling
@@ -711,11 +720,19 @@ export namespace MessageV2 {
   // limit rather than paging), so the same messages are re-read on every step.
   //
   // Budgeted in BYTES, not entries: part payloads range from a few hundred bytes
-  // to ~280KB, so an entry count cannot bound the footprint. A record larger than
-  // ENTRY_MAX is served but never stored, so one huge turn cannot evict the rest.
+  // to ~280KB, so an entry count cannot bound the footprint.
+  //
+  // Both bounds are sized against what a session actually costs on disk, because
+  // a bound below that turns the cache into pure overhead: every pass evicts what
+  // the pass before it read, and the re-read it exists to avoid happens anyway.
+  // The budget covers the largest sessions measured (~72MB) rather than the median,
+  // since a small session never approaches it and a large one is the only case
+  // where the re-read is expensive. ENTRY_MAX admits the largest single record
+  // observed (~382KB) for the same reason — a rejected record is re-read from
+  // disk on every pass forever, and the biggest turns are the costliest to redo.
   const cache = new Map<string, { record: WithParts; size: number }>()
-  const CACHE_MAX = 32 * 1024 * 1024
-  const ENTRY_MAX = 256 * 1024
+  const CACHE_MAX = 128 * 1024 * 1024
+  const ENTRY_MAX = 1024 * 1024
   let cached = 0
 
   export function uncache(messageID: string) {
@@ -748,14 +765,13 @@ export namespace MessageV2 {
         cache.set(input.messageID, hit)
         return hit.record
       }
-      const record = {
-        info: await Storage.read<MessageV2.Info>(["message", input.sessionID, input.messageID]),
-        parts: await parts(input.messageID),
-      }
+      const info = await Storage.readSized<MessageV2.Info>(["message", input.sessionID, input.messageID])
+      const stored = await sizedParts(input.messageID)
+      const record = { info: info.value, parts: stored.parts }
       // Only a finished assistant turn is safe to keep: a streaming one is
       // rewritten part by part, and a user message can still gain summary diffs.
       if (record.info.role === "assistant" && record.info.time.completed)
-        remember(record, JSON.stringify(record).length)
+        remember(record, info.size + stored.size)
       return record
     },
   )
