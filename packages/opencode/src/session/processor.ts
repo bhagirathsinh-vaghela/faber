@@ -102,8 +102,9 @@ export namespace SessionProcessor {
             // part stays "running" for the life of the session.
             const iterator = stream.fullStream[Symbol.asyncIterator]()
             const aborted = settled(input.abort)
+            using release = { [Symbol.dispose]: aborted.release }
             while (true) {
-              const step = await Promise.race([iterator.next(), aborted])
+              const step = await Promise.race([iterator.next(), aborted.promise])
               // Abandon the suspended tool rather than await it: returning the
               // iterator would join the same call that is refusing to finish.
               if (step === ABORTED) {

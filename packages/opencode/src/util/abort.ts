@@ -46,8 +46,41 @@ export const ABORTED = Symbol("aborted")
  *
  * It never rejects: a rejection would race as a throw and lose the abort's
  * place in whatever teardown the caller runs.
+ *
+ * `release` detaches the listener for the case the raced work finishes first,
+ * which `{ once: true }` alone does not cover — an undetached listener holds
+ * this promise on a signal that outlives the race.
  */
-export function settled(signal: AbortSignal): Promise<typeof ABORTED> {
-  if (signal.aborted) return Promise.resolve(ABORTED)
-  return new Promise((resolve) => signal.addEventListener("abort", () => resolve(ABORTED), { once: true }))
+export function settled(signal: AbortSignal) {
+  if (signal.aborted) return { promise: Promise.resolve(ABORTED), release: () => {} }
+  let onAbort!: () => void
+  const promise = new Promise<typeof ABORTED>((resolve) => {
+    onAbort = () => resolve(ABORTED)
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+  return { promise, release: () => signal.removeEventListener("abort", onAbort) }
+}
+
+/**
+ * The single sleep for every loop that waits on a long-lived signal.
+ *
+ * `{ once: true }` only detaches a listener that FIRES, so a sleep that resolves
+ * normally leaves its listener — and the timer and promise its closure holds —
+ * attached for the life of the signal. A daemon signal lives as long as the
+ * session, so each tick retains another. Detaching on the resolve path is what
+ * makes a loop's memory flat instead of proportional to how long it has run.
+ */
+export function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new DOMException("Aborted", "AbortError"))
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
 }

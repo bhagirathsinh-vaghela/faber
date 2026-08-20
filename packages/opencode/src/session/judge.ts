@@ -40,7 +40,14 @@ export namespace SessionJudge {
     // call carries its own deadline rather than inheriting an open-ended one.
     const deadline = new AbortController()
     const timer = setTimeout(() => deadline.abort(), input.timeout ?? DEFAULT_TIMEOUT)
-    input.abort?.addEventListener("abort", () => deadline.abort(), { once: true })
+    // The caller's signal outlives this call, so the listener is detached when the
+    // verdict settles; leaving it attached retains this whole invocation per judge.
+    const onCallerAbort = () => deadline.abort()
+    input.abort?.addEventListener("abort", onCallerAbort, { once: true })
+    const release = () => {
+      clearTimeout(timer)
+      input.abort?.removeEventListener("abort", onCallerAbort)
+    }
 
     const agent: Agent.Info = {
       name: "judge",
@@ -52,39 +59,43 @@ export namespace SessionJudge {
       permission: PermissionNext.fromConfig({ "*": "deny" }),
     }
 
-    const { stream } = await LLM.stream({
-      agent,
-      user: {
-        id: "judge",
+    try {
+      const { stream } = await LLM.stream({
+        agent,
+        user: {
+          id: "judge",
+          sessionID: input.sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: model.providerID, modelID: model.id },
+        } as MessageV2.User,
+        model,
+        // An explicit model is a deliberate capability choice, so only fall back to
+        // the small-model options when the caller left the model unspecified.
+        small: !input.model,
+        tools: {},
+        messages: [{ role: "user" as const, content: input.input }],
+        system: { env: [], globalInstructions: [], projectInstructions: [] },
         sessionID: input.sessionID,
-        role: "user",
-        time: { created: Date.now() },
-        agent: agent.name,
-        model: { providerID: model.providerID, modelID: model.id },
-      } as MessageV2.User,
-      model,
-      // An explicit model is a deliberate capability choice, so only fall back to
-      // the small-model options when the caller left the model unspecified.
-      small: !input.model,
-      tools: {},
-      messages: [{ role: "user" as const, content: input.input }],
-      system: { env: [], globalInstructions: [], projectInstructions: [] },
-      sessionID: input.sessionID,
-      abort: deadline.signal,
-      retries: 1,
-    })
+        abort: deadline.signal,
+        retries: 1,
+      })
 
-    const verdict = await stream.text.finally(() => clearTimeout(timer))
-    // A judge call never lands in the session's message list, so this log is the
-    // only place its cost is observable.
-    const usage = await stream.usage
-    log.info("judge", {
-      model: model.id,
-      chars: verdict.length,
-      input: usage.inputTokens,
-      output: usage.outputTokens,
-      cacheRead: usage.cachedInputTokens,
-    })
-    return verdict
+      const verdict = await stream.text
+      // A judge call never lands in the session's message list, so this log is the
+      // only place its cost is observable.
+      const usage = await stream.usage
+      log.info("judge", {
+        model: model.id,
+        chars: verdict.length,
+        input: usage.inputTokens,
+        output: usage.outputTokens,
+        cacheRead: usage.cachedInputTokens,
+      })
+      return verdict
+    } finally {
+      release()
+    }
   }
 }

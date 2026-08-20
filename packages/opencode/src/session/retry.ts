@@ -1,6 +1,7 @@
 import type { NamedError } from "@opencode-ai/util/error"
 import { MessageV2 } from "./message-v2"
 import { iife } from "@/util/iife"
+import * as Abort from "@/util/abort"
 
 export namespace SessionRetry {
   export const RETRY_INITIAL_DELAY = 2000
@@ -18,20 +19,7 @@ export namespace SessionRetry {
   export const RETRY_MAX_ATTEMPTS = 10
 
   export async function sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const abortHandler = () => {
-        clearTimeout(timeout)
-        reject(new DOMException("Aborted", "AbortError"))
-      }
-      const timeout = setTimeout(
-        () => {
-          signal.removeEventListener("abort", abortHandler)
-          resolve()
-        },
-        Math.min(ms, RETRY_MAX_DELAY),
-      )
-      signal.addEventListener("abort", abortHandler, { once: true })
-    })
+    return Abort.sleep(Math.min(ms, RETRY_MAX_DELAY), signal)
   }
 
   function clamp(ms: number) {

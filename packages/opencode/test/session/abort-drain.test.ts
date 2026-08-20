@@ -23,8 +23,9 @@ async function drain(stream: ReturnType<typeof suspended>, signal: AbortSignal) 
   const parts: Record<string, string> = {}
   const iterator = stream[Symbol.asyncIterator]()
   const aborted = settled(signal)
+  using release = { [Symbol.dispose]: aborted.release }
   while (true) {
-    const step = await Promise.race([iterator.next(), aborted])
+    const step = await Promise.race([iterator.next(), aborted.promise])
     if (step === ABORTED) {
       void iterator.return?.().catch(() => {})
       break
@@ -56,9 +57,9 @@ describe("session.processor abort drain", () => {
 
   test("settled resolves with ABORTED and never rejects", async () => {
     const controller = new AbortController()
-    const promise = settled(controller.signal)
+    const aborted = settled(controller.signal)
     controller.abort(new Error("stop"))
 
-    expect(await promise).toBe(ABORTED)
+    expect(await aborted.promise).toBe(ABORTED)
   })
 })
