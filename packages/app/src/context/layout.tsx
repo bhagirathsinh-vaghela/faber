@@ -1,9 +1,11 @@
 import { createStore, produce } from "solid-js/store"
 import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js"
+import { useLocation } from "@solidjs/router"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { captureFocus } from "@opencode-ai/ui/util/focus"
 import { useGlobalSync } from "./global-sync"
 import { useGlobalSDK } from "./global-sdk"
+import { useSettings } from "./settings"
 import { Project } from "@opencode-ai/sdk/v2"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
@@ -47,6 +49,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
   init: () => {
     const globalSdk = useGlobalSDK()
     const globalSync = useGlobalSync()
+    const settings = useSettings()
 
     const isRecord = (value: unknown): value is Record<string, unknown> =>
       typeof value === "object" && value !== null && !Array.isArray(value)
@@ -119,6 +122,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // persisted, so it always starts off on a fresh load/reload.
     const [zenOpened, setZenOpened] = createSignal(false)
 
+    // Which session each zen state belongs to, so leaving a session for the
+    // overview and coming back restores the toggle rather than re-applying the
+    // default. Deliberately a plain Map, not persisted state: a reload must
+    // still land outside zen, since that is the only way out of a session whose
+    // chrome is hidden.
+    const zenMemory = new Map<string, boolean>()
+
     // Toggling zen re-lays-out the chrome around the prompt (the slim zen dock
     // drops the model/agent cluster and action row), which blurs a focused
     // input. Snapshot focus before the flip and restore it after, in BOTH
@@ -130,14 +140,46 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const restore = captureFocus()
       zenFocus = restore
       setZenOpened(true)
+      rememberZen(true)
       restore()
     }
     const exitZen = () => {
       const restore = zenFocus
       zenFocus = undefined
       setZenOpened(false)
+      rememberZen(false)
       restore?.()
     }
+
+    // Zen slims the chrome around a transcript, so it only means anything on a
+    // session route. The overview has no transcript to slim, and reading the raw
+    // flag there hid the project rail and titlebar for no gain. Consumers read
+    // this gated value rather than the signal.
+    const location = useLocation()
+    const zenRoute = createMemo(() => /\/session(?:\/([^/?#]+))?/.exec(location.pathname))
+    const zenActive = createMemo(() => zenOpened() && zenRoute() !== null)
+
+    const rememberZen = (opened: boolean) => {
+      const id = zenRoute()?.[1]
+      if (id) zenMemory.set(id, opened)
+    }
+
+    // Landing on a session takes its remembered toggle, falling back to the
+    // zenDefault setting the first time that session is seen. This lives here
+    // rather than on the session page because that page unmounts on the way to
+    // the overview, which is exactly the trip the memory has to survive.
+    createEffect(
+      on(
+        () => zenRoute()?.[1],
+        (id) => {
+          if (!id) return
+          const next = zenMemory.get(id) ?? settings.general.zenDefault()
+          if (next === zenOpened()) return
+          if (next) enterZen()
+          else exitZen()
+        },
+      ),
+    )
 
     // Companion mode is zen inverted: zen keeps the transcript and slims the
     // dock, companion drops the transcript and keeps the dock whole. Ephemeral
@@ -543,7 +585,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       // only the scrollable message list and a floating exit pill. Deliberately
       // NOT persisted — it always resets to off on load/reload.
       zen: {
-        opened: zenOpened,
+        opened: zenActive,
         enter: enterZen,
         exit: exitZen,
         toggle() {

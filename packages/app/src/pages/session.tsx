@@ -48,7 +48,6 @@ import { useSync } from "@/context/sync"
 import { useMru } from "@/context/mru"
 import { useTerminal, type LocalPTY } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
-import { useSettings } from "@/context/settings"
 import { Terminal } from "@/components/terminal"
 import { checksum, base64Encode } from "@opencode-ai/util/encode"
 import { findLast } from "@opencode-ai/util/array"
@@ -272,7 +271,6 @@ function SessionReviewTab(props: SessionReviewTabProps) {
 
 export default function Page() {
   const layout = useLayout()
-  const settings = useSettings()
   const local = useLocal()
   const file = useFile()
   const sync = useSync()
@@ -825,23 +823,6 @@ export default function Page() {
         if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return
         focusedFor = key
         requestAnimationFrame(() => command.trigger("prompt.focus.end"))
-      },
-    ),
-  )
-
-  // Apply the persisted zen-default once per session id: opening or switching to
-  // a session enters zen when the setting is on, else leaves it. Guarded so a
-  // manual toggle within the same session isn't reverted by later re-renders;
-  // switching sessions re-applies the default.
-  let zenAppliedFor: string | undefined
-  createEffect(
-    on(
-      () => params.id,
-      (id) => {
-        if (!id || zenAppliedFor === id) return
-        zenAppliedFor = id
-        if (settings.general.zenDefault()) layout.zen.enter()
-        else layout.zen.exit()
       },
     ),
   )
