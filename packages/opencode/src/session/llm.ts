@@ -50,6 +50,10 @@ export namespace LLM {
     persistPromptIndex?: boolean
     small?: boolean
     tools: Record<string, Tool>
+    /** Whether the question tool is callable this turn. A tool the allowlist denies
+     * stays in `tools` (removing it would churn the cache prefix), so schema
+     * presence alone would promise a tool the runtime rejects. */
+    canAsk?: boolean
     retries?: number
     /** One-shot probe: place an extra cache marker at this block index for testing */
     cacheProbeIndex?: number
@@ -106,7 +110,11 @@ export namespace LLM {
     const projectBlock = [...input.system.projectInstructions, ...(input.user.system ? [input.user.system] : [])]
       .filter(Boolean)
       .join("\n")
-    const s2 = [envBlock, projectBlock].filter(Boolean).join("\n")
+    // S2, because a subtask allowlist can flip this per turn and S1 is the
+    // cross-session stable prefix. Nothing ahead of S1 carries a marker, so a
+    // byte moving there cascades a full miss.
+    const question = input.tools["question"] && input.canAsk !== false ? SystemPrompt.question() : ""
+    const s2 = [envBlock, projectBlock, question].filter(Boolean).join("\n")
     if (s2) system.push(s2)
 
     const original = clone(system)

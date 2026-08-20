@@ -4,6 +4,7 @@ import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
 
 import PROMPT_CODEX from "./prompt/codex_header.txt"
+import PROMPT_QUESTION from "./prompt/question.txt"
 import type { Provider } from "@/provider/provider"
 import { Instance } from "@/project/instance"
 import os from "os"
@@ -11,6 +12,10 @@ import os from "os"
 export namespace SystemPrompt {
   export function instructions() {
     return PROMPT_CODEX.trim()
+  }
+
+  export function question() {
+    return PROMPT_QUESTION.trim()
   }
 
   export function provider(model: Provider.Model) {

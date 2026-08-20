@@ -48,7 +48,7 @@ Usage notes:
 
 # Committing changes with git
 
-Only create commits when requested by the user. If unclear, ask first. When the user asks you to create a new git commit, follow these steps carefully:
+Only create commits when requested by the user. If unclear, ask first via the `question` tool. When the user asks you to create a new git commit, follow these steps carefully:
 
 Git Safety Protocol:
 - NEVER update the git config

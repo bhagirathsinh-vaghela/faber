@@ -197,6 +197,7 @@ export namespace SessionCompaction {
       abort: input.abort,
       sessionID: input.sessionID,
       tools,
+      canAsk: false,
       system,
       messages: [
         ...MessageV2.toModelMessages(input.messages, model).messages,
