@@ -158,8 +158,8 @@ export namespace SessionBusy {
   // SessionPrompt.state membership that assertNotBusy already gates on.
   //
   // A session id is unique across directories, so no directory is needed to
-  // resolve one. Requiring the ambient Instance would break the ping daemon,
-  // which asks this from a loop running detached from any context.
+  // resolve one. Reading the ambient Instance instead would throw for a caller
+  // running detached from any context.
   export function busy(sessionID: string) {
     for (const running of self.values()) if (running.has(sessionID)) return true
     return false

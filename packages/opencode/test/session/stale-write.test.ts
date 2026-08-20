@@ -212,11 +212,12 @@ describe("revert survives the terminal-field guard", () => {
   })
 })
 
-describe("SessionPing busy guard", () => {
-  // A probe is the cache-priming step of a cache-safe revert, so it must reach
-  // the provider even mid-turn. Its failure mode is silent — a swallowed probe
-  // still reverts and only loses the cache — which is why it is pinned here.
-  test("probe reaches provider resolution on a busy session", async () => {
+describe("SessionPing during a turn", () => {
+  // A ping must dispatch while a turn is in flight: a turn parked in a long
+  // tool call dispatches nothing, so the anchor sits still and the window
+  // lapses under it. Failure here is silent, costing only a cold cache, which
+  // is why it is pinned.
+  test("a ping on a busy session reaches provider resolution", async () => {
     await using workspace = await tmpdir({ git: true, config: { ping: { enabled: false } } })
     await Instance.provide({
       directory: workspace.path,
@@ -253,7 +254,7 @@ describe("SessionPing busy guard", () => {
 })
 
 describe("SessionBusy.busy", () => {
-  test("resolves without an ambient Instance, which the ping daemon lacks", async () => {
+  test("resolves without an ambient Instance", async () => {
     await using tmp = await tmpdir({ git: true })
     const sessionID = await Instance.provide({
       directory: tmp.path,
