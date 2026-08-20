@@ -18,6 +18,7 @@ import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
 import { Liveness } from "@/project/liveness"
 import { SessionRecent } from "./recent"
+import { sleep } from "@/util/abort"
 
 export const CACHE_TTL = 5 * 60 * 1000
 const DEFAULT_BEFORE_EXPIRY = 10
@@ -26,6 +27,10 @@ const DEFAULT_BEFORE_EXPIRY = 10
 // Coarse on purpose: when a window IS live the loop sleeps the exact time to
 // the ping instead, so this never affects ping timing.
 const IDLE_TICK = 10 * 1000
+// Floor under a due ping's sleep. A ping is worth firing slightly late; it is
+// never worth a spin, and the daemon cannot tell "due now" from "dispatched
+// nothing last pass" by the anchor alone.
+const MIN_TICK = 1000
 // Hard deadline for a single ping's stream. Healthy pings observed at 1.7-39s
 // against a 5m TTL, so 60s bounds a stalled body without ever clipping a live
 // one. Applies to the daemon's ping path ONLY — organic user turns are
@@ -291,9 +296,14 @@ export namespace SessionPing {
         if (signal.aborted) break
         if (next.type === "stop") break
         stamp(next.type === "ping" ? next.at : undefined)
-        await sleep(next.type === "ping" ? next.delay : IDLE_TICK, signal)
+        await sleep(pause(next), signal)
         if (signal.aborted) break
-        if (next.type === "ping") await ping(sessionID, signal)
+        if (next.type === "ping" && (await ping(sessionID, signal)) === "skipped") {
+          // A session with no message to send stays that way until a new turn,
+          // which re-anchors and re-arms; sleeping the idle tick keeps the
+          // daemon from rebuilding an unchanged history every pass.
+          await sleep(IDLE_TICK, signal)
+        }
       } catch (e: any) {
         if (e.name === "AbortError") break
         log.error("ping loop error", { sessionID, error: e })
@@ -306,6 +316,17 @@ export namespace SessionPing {
   }
 
   type Next = { type: "ping"; delay: number; at: number } | { type: "idle" } | { type: "stop" }
+
+  // How long the loop waits before acting on a decision. Only a DISPATCHED
+  // request moves the cache anchor, so any pass that reaches evaluate() without
+  // having dispatched gets the same already-due deadline back — a delay of 0.
+  // Sleeping that verbatim rebuilds the whole session history back-to-back at
+  // full CPU until the TTL lapses, with nothing reaching the log. The floor is
+  // what bounds a due-but-undispatched ping to one pass per tick.
+  export function pause(next: Next) {
+    if (next.type !== "ping") return IDLE_TICK
+    return Math.max(next.delay, MIN_TICK)
+  }
 
   // Tri-state, never throws — read failures surface as "idle" so a transient
   // hiccup retries instead of killing the daemon.
@@ -339,7 +360,7 @@ export namespace SessionPing {
 
     const session = await Session.get(sessionID)
     const msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
-    if (!msgs.length) return
+    if (!msgs.length) return "skipped" as const
 
     let lastUser: MessageV2.User | undefined
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -348,7 +369,7 @@ export namespace SessionPing {
         break
       }
     }
-    if (!lastUser) return
+    if (!lastUser) return "skipped" as const
 
     const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
     const snapshot = await SessionPin.get(sessionID)
@@ -520,18 +541,4 @@ export namespace SessionPing {
     log.info("ping miss", { sessionID, consecutive: misses.get(sessionID) })
   }
 
-  function sleep(ms: number, signal: AbortSignal) {
-    return new Promise<void>((resolve, reject) => {
-      if (signal.aborted) return reject(new DOMException("Aborted", "AbortError"))
-      const timer = setTimeout(resolve, ms)
-      signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timer)
-          reject(new DOMException("Aborted", "AbortError"))
-        },
-        { once: true },
-      )
-    })
-  }
 }
