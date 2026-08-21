@@ -80,37 +80,46 @@
   }
 }
 
-/* Safe-area insets for the installed PWA only, scoped to touch devices in
-   portrait. In a normal browser tab Safari's own chrome handles the inset, so
-   we gate on (display-mode: standalone) to avoid double-padding there. In
-   landscape iOS moves the insets to the sides, so a top/bottom pad would be
-   wrong; desktop has no insets. (hover: none) excludes pointer devices.
+/* Safe-area insets for the installed PWA, gated on the data-standalone
+   attribute entry.tsx publishes rather than a (display-mode: standalone) query
+   that iOS never matches. A normal browser tab needs no rule here because
+   Safari's own chrome already occupies the inset, which then reports 0 and
+   makes each declaration below inert.
 
-   Dock bottom padding is max(1rem, inset). The viewport meta carries
-   interactive-widget=resizes-content, so the browser shrinks the layout
-   viewport when the soft keyboard opens; the h-dvh root shrinks with it and the
-   bottom:0 dock rides up above the keyboard on its own, no JS. With the keyboard
-   down the inset seats the input above the home indicator; keyboard up, the
-   browser reflow already excludes the occluded strip, so the inset is a no-op
-   there. */
-@media (display-mode: standalone) and (hover: none) and (orientation: portrait) {
-  [data-slot="titlebar"] {
-    padding-top: env(safe-area-inset-top);
-    min-height: calc(2.5rem + env(safe-area-inset-top));
-    height: auto;
-  }
+   The insets themselves are the only device test: they are non-zero exactly
+   where a notch or home indicator intrudes, on whichever edges the current
+   orientation puts them. An orientation or pointer-type gate can only discard
+   an inset the device is still reporting: an iPad keeps its home indicator on
+   the bottom edge in landscape, and reports hover:hover whenever a trackpad or
+   mouse is paired.
 
-  [data-slot="prompt-dock"] {
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  }
+   Dock bottom padding is max(1rem, inset), so it doubles as the dock's resting
+   padding on a device with no inset at all. */
+#root[data-standalone] [data-slot="titlebar"] {
+  padding-top: env(safe-area-inset-top);
+  min-height: calc(2.5rem + env(safe-area-inset-top));
+  height: auto;
+}
 
-  /* Keyboard up (data-keyboard set by the iOS-standalone viewport fit in
-     entry.tsx): the home indicator is behind the keyboard and iOS's floating
-     form-assistant pill already separates the dock from the keyboard, so any
-     padding here is a dead band. Keep a hairline. */
-  #root[data-keyboard] [data-slot="prompt-dock"] {
-    padding-bottom: 4px;
-  }
+#root[data-standalone] [data-slot="prompt-dock"] {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* Side insets belong to the whole app, not the dock: a landscape notch cuts
+   into every column at once, and insetting one child would leave the rest
+   underneath it. max() preserves the root's own 1px hairline where there is no
+   inset to apply. */
+#root[data-standalone] {
+  padding-left: max(1px, env(safe-area-inset-left));
+  padding-right: max(1px, env(safe-area-inset-right));
+}
+
+/* Keyboard up (data-keyboard set by the iOS-standalone viewport fit in
+   entry.tsx): the home indicator is behind the keyboard and iOS's floating
+   form-assistant pill already separates the dock from the keyboard, so any
+   padding here is a dead band. Keep a hairline. */
+#root[data-standalone][data-keyboard] [data-slot="prompt-dock"] {
+  padding-bottom: 4px;
 }
 
 /* When window-controls-overlay is active the whole titlebar is a drag region

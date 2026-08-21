@@ -16,6 +16,22 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(en["error.dev.rootNotFound"])
 }
 
+// iOS Safari does not implement the (display-mode: standalone) media query and
+// reports an installed PWA through navigator.standalone instead, so a
+// query-only CSS gate is false on the one platform whose safe-area insets
+// matter. Publish both signals as an attribute the stylesheet can gate on.
+// Chromium and desktop installs can enter and leave standalone at runtime.
+if (root) {
+  const display = window.matchMedia("(display-mode: standalone)")
+  const flag = () =>
+    root.toggleAttribute(
+      "data-standalone",
+      display.matches || (navigator as unknown as { standalone?: boolean }).standalone === true,
+    )
+  display.addEventListener("change", flag)
+  flag()
+}
+
 // iOS standalone PWA only (navigator.standalone exists nowhere else): the
 // layout viewport shrinks for the soft keyboard but does not reliably grow
 // back on dismissal, so 100dvh sticks at the shrunken height until a refocus.
@@ -25,31 +41,65 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 // transitions, so focus/pageshow also trigger, each settling over ~600ms.
 const viewport = window.visualViewport
 if (root && viewport && (navigator as unknown as { standalone?: boolean }).standalone === true) {
-  // Keyboard DOWN, iOS can leave the whole viewport stack stuck ~62px short
-  // (vvH and innerHeight both read short, offsetTop 0) — no API reports the
-  // truth, so clamp to screen.height (standalone + viewport-fit=cover owns the
-  // screen). Keyboard UP, vvH is honest but iOS may pan the layout viewport
-  // (offsetTop > 0) to keep the focused input visible and scrollTo cannot
-  // always reset it; a top-anchored root then ends offsetTop short of the
-  // keyboard. vvH + offsetTop reaches the keyboard's top edge in either pan
-  // state. iOS screen sizes are portrait-locked; pick the axis by orientation.
   // vvH alone cannot classify keyboard state: after a blur-driven dismissal
   // (the dock's keyboard toggle) iOS keeps reporting the shrunken height with
-  // no event and no update — the small vvH IS the lie. Focus is the truth
-  // signal the OS can't fake: the iPhone soft keyboard only exists for a
-  // focused editable. Small vvH without one = stale, clamp to full.
+  // no event and no update — the small vvH is the lie. Focus is the signal the
+  // OS cannot fake, since a soft keyboard only exists for a focused editable.
   const editing = () => {
     const el = document.activeElement
     return !!el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || (el as HTMLElement).isContentEditable)
   }
+
+  // The window is the frame to fit, never the device: the same PWA runs as an
+  // iPad Split View pane, a Stage Manager window, and an iPadOS windowed app,
+  // all smaller than the display, so screen.height would size a bottom-anchored
+  // layout past the window bottom and the root's overflow:hidden would clip the
+  // dock away. innerHeight is the window but the keyboard shrinks it and WebKit
+  // can leave it stuck short, so hold the largest height this window has
+  // reported — growth is always real, nothing but a bigger window produces it.
+  let width = window.innerWidth
+  let full = 0
+  const measure = () => {
+    // A width change is the unambiguous window-resized signal, since a keyboard
+    // only ever changes height. Rotation, Split View and a window drag all
+    // cross it, and the held height then describes a box that no longer exists.
+    const reset = window.innerWidth !== width
+    width = window.innerWidth
+    // iOS reports 0 (and the insets as 0) while a cold-started PWA settles, so
+    // a reading is only evidence once it is positive. Latching a 0 would pin
+    // the root at zero height, and every later reading is discarded by the same
+    // max() that is meant to recover it.
+    if (window.innerHeight <= 0) return
+    full = reset ? window.innerHeight : Math.max(full, window.innerHeight)
+  }
+
+  // Keyboard up, vvH is honest but iOS may pan the layout viewport (offsetTop >
+  // 0) to keep the focused input visible and scrollTo cannot always reset it; a
+  // top-anchored root then ends offsetTop short of the keyboard. vvH + offsetTop
+  // reaches the keyboard's top edge in either pan state.
+  const keyboard = () => editing() && viewport.height < full - 300
+  const height = () => (keyboard() ? Math.round(viewport.height + viewport.offsetTop) : full)
+
+  // WebKit can leave the viewport stuck short after a standalone keyboard
+  // dismissal while firing nothing, so no listener can observe a recovery that
+  // never happens. Toggling display on a full-height element with a synchronous
+  // reflow between forces the re-measure, restoring the browser's own numbers
+  // for everything else on the page that reads them.
+  const unstick = () => {
+    if (editing() || window.innerHeight >= full - 4) return
+    root.style.display = "none"
+    void root.offsetHeight
+    root.style.display = ""
+  }
+
   let raf = 0
   const fit = () => {
-    const portrait = window.matchMedia("(orientation: portrait)").matches
-    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height)
-    const keyboard = editing() && viewport.height < full - 300
-    const height = keyboard ? Math.round(viewport.height + viewport.offsetTop) : full
-    root.style.height = `${height}px`
-    root.toggleAttribute("data-keyboard", keyboard)
+    measure()
+    // A 0 height would blank the app; the class-supplied h-dvh holds visibility
+    // until a positive reading arrives.
+    if (full <= 0) return
+    root.style.height = `${height()}px`
+    root.toggleAttribute("data-keyboard", keyboard())
     window.scrollTo(0, 0)
   }
   const settle = () => {
@@ -64,21 +114,28 @@ if (root && viewport && (navigator as unknown as { standalone?: boolean }).stand
   viewport.addEventListener("resize", settle)
   viewport.addEventListener("scroll", settle)
   window.addEventListener("focusin", settle)
-  window.addEventListener("focusout", settle)
   window.addEventListener("pageshow", settle)
+  window.addEventListener("focusout", () => {
+    settle()
+    // The keyboard needs ~140ms to finish closing; measuring before that reads
+    // a mid-animation size and mistakes it for the settled one.
+    setTimeout(() => {
+      unstick()
+      settle()
+    }, 140)
+  })
   fit()
   // Watchdog: iOS drops all of the above across some keyboard transitions
   // (observed: dismiss via the keyboard's own collapse key — no focusout, no
   // resize), leaving the root stuck at the stale height until the next event.
   // Poll cheaply and re-fit only on drift, so a missed event costs at most one
   // tick instead of persisting until refocus.
+  // measure() runs unconditionally, never behind the drift test it feeds: a
+  // stale height compares equal to itself, reporting no drift and suppressing
+  // the only call that could refresh it.
   setInterval(() => {
-    const height = parseFloat(root.style.height) || 0
-    const portrait = window.matchMedia("(orientation: portrait)").matches
-    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height)
-    const keyboard = editing() && viewport.height < full - 300
-    const target = keyboard ? Math.round(viewport.height + viewport.offsetTop) : full
-    if (Math.abs(height - target) > 1 || window.scrollY !== 0) fit()
+    measure()
+    if (Math.abs((parseFloat(root.style.height) || 0) - height()) > 1 || window.scrollY !== 0) fit()
   }, 300)
 }
 
