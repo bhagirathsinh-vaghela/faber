@@ -100,6 +100,11 @@ if (root && viewport && (navigator as unknown as { standalone?: boolean }).stand
     if (full <= 0) return
     root.style.height = `${height()}px`
     root.toggleAttribute("data-keyboard", keyboard())
+    // Fixed-position elements resolve against the layout viewport, which iOS
+    // leaves full-height behind the keyboard, so anything anchored to the
+    // window bottom lands under it while the root stops at the keyboard's top
+    // edge. Publish the gap between the two so such an element can bridge it.
+    document.documentElement.style.setProperty("--keyboard-inset", `${Math.max(0, full - height())}px`)
     window.scrollTo(0, 0)
   }
   const settle = () => {

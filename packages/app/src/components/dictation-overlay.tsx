@@ -104,7 +104,11 @@ export function DictationOverlay(props: {
         style={{ background: "rgba(0, 0, 0, 0.7)" }}
         onWheel={forwardWheel}
       />
-      <div class="fixed inset-x-0 top-[12%] md:top-[16%] z-[9999] flex justify-center pointer-events-none px-3 md:px-4">
+      {/* Anchored just above the prompt dock, so the transcript lands beside
+          the input it will be inserted into rather than across the screen from
+          it. --prompt-height is published on the root by the dock's resize
+          observer; the fallback only covers the frames before it lands. */}
+      <div class="fixed inset-x-0 bottom-[calc(var(--prompt-height,8rem)+var(--keyboard-inset,0px)+64px)] z-[9999] flex justify-center pointer-events-none px-3 md:px-4">
         <div
           ref={panelRef}
           class="pointer-events-auto w-full max-w-md flex flex-col gap-2 rounded-[1.75rem] border-[4.5px] bg-surface-raised-stronger-non-alpha p-2 transform-gpu isolate"

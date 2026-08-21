@@ -1832,6 +1832,9 @@ export default function Page() {
       if (next <= 0 || next === store.promptHeight) return
 
       setStore("promptHeight", next)
+      // On the root element, not the session panel: the dictation overlay
+      // portals to <body> and would otherwise inherit nothing to anchor to.
+      document.documentElement.style.setProperty("--prompt-height", `${next}px`)
 
       // A taller dock covers the tail; re-pin if following. The dock grows when
       // the busy bar mounts mid-stream, and the height change propagates through
@@ -2340,10 +2343,6 @@ export default function Page() {
           }}
           style={{
             width: isDesktop() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
-            // The slim zen dock is still measured by the promptDock ResizeObserver,
-            // so reserve its real height in both modes. The transcript otherwise
-            // scrolls under the visible zen dock and the bottom message is clipped.
-            "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             // In zen the titlebar stops drawing, so on mobile this panel clears
             // the device's top safe-area inset (status bar) plus a 1rem gap that
             // mirrors the bottom margin. --sat is 0 on desktop, where the WCO
