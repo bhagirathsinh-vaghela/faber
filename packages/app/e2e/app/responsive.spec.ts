@@ -367,6 +367,40 @@ test.describe("pointer capability", () => {
     expect(measured.clipped, "the bar must grow with the controls it holds").toEqual([])
   })
 
+  test("a glyph sits comfortably inside its control, neither cramped nor lost", async ({ page, gotoSession }) => {
+    await gotoSession()
+    await page.setViewportSize(VIEWPORTS.tabletLandscape)
+    await settle(page)
+
+    // A glyph adrift in an oversized box and one pressed against the edge are
+    // both wrong, and neither shows up in a size check. The ratio holds for
+    // whichever pointer is in use, so this reads the page as rendered.
+    const wrong = await page.evaluate(() =>
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-slot="titlebar"] button, [data-component="prompt-input"] button',
+        ),
+      ]
+        .filter((button) => {
+          const box = button.getBoundingClientRect()
+          return box.width >= 8 && box.height >= 8
+        })
+        .map((button) => {
+          const icon = button.querySelector("[data-component=icon]")
+          if (!icon) return null
+          const box = button.getBoundingClientRect()
+          const glyph = icon.getBoundingClientRect()
+          if (glyph.width < 4) return null
+          const ratio = glyph.width / Math.min(box.width, box.height)
+          if (ratio >= 0.35 && ratio <= 0.85) return null
+          return `${button.getAttribute("aria-label") ?? "unnamed"} ${Math.round(ratio * 100)}%`
+        })
+        .filter((entry): entry is string => entry !== null),
+    )
+
+    expect(wrong, "a glyph should fill between a third and five sixths of its control").toEqual([])
+  })
+
   test("growing a control for touch does not overflow the row holding it", async ({ page, gotoSession }) => {
     await gotoSession()
     await page.setViewportSize(VIEWPORTS.tabletLandscape)

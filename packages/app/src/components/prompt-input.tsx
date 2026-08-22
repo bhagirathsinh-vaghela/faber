@@ -2550,13 +2550,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Button
                       type="button"
                       variant="ghost"
-                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11"} items-center justify-center`}
+                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"} items-center justify-center`}
                       onClick={() => dialog.show(() => <DialogDock />)}
                       aria-label="Customize fields"
                     >
-                      {/* The desktop shrink would beat the companion wrapper size
-                        and leave a 16px glyph in a 72px button. */}
-                      <Icon name="sliders" size="medium" class={companion() ? undefined : "!size-4"} />
+                      <Icon name="sliders" size="medium" />
                     </Button>
                   </Tooltip>
                 </span>
@@ -2577,7 +2575,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       variant="ghost"
                       onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
                       classList={{
-                        "flex size-6 items-center justify-center": true,
+                        "flex size-6 any-pointer-coarse:size-11 any-pointer-coarse:[&_[data-component=icon]]:!size-6 items-center justify-center": true,
                         "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
                         "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
                       }}
@@ -2692,7 +2690,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     type="button"
                     icon="stop"
                     variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "h-6 w-4.5 any-pointer-coarse:size-11"}
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"}
                     aria-label={language.t("prompt.action.stop")}
                     onClick={abort}
                   />
@@ -2721,7 +2719,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     disabled={!submittable()}
                     icon="arrow-up"
                     variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "h-6 w-4.5 any-pointer-coarse:size-11"}
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"}
                     aria-label={language.t("prompt.action.send")}
                     {...preserveFocus()}
                   />
