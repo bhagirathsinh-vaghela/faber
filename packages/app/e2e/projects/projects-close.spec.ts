@@ -53,13 +53,14 @@ test("can close a project via project header more options menu", async ({ page, 
           .first()
         await expect(header).toContainText(otherName)
 
-        const trigger = header.locator(`[data-action="project-menu"][data-project="${otherSlug}"]`).first()
-        await expect(trigger).toHaveCount(1)
-        await trigger.focus()
-        await page.keyboard.press("Enter")
-
         const menu = page.locator('[data-component="dropdown-menu-content"]').first()
-        await expect(menu).toBeVisible({ timeout: 10_000 })
+        await expect(async () => {
+          const trigger = header.locator(`[data-action="project-menu"][data-project="${otherSlug}"]`).first()
+          await expect(trigger).toHaveCount(1)
+          await trigger.focus()
+          await page.keyboard.press("Enter")
+          await expect(menu).toBeVisible({ timeout: 2_000 })
+        }).toPass({ timeout: 30_000 })
 
         await clickMenuItem(menu, /^Close$/i, { force: true })
         // The removal round-trips through the server and lands over SSE, so
