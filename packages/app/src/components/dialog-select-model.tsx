@@ -24,12 +24,17 @@ const ModelList: Component<{
   const local = useLocal()
   const language = useLanguage()
 
-  const models = createMemo(() =>
-    local.model
+  const models = createMemo(() => {
+    const current = local.model.current()
+    return local.model
       .list()
-      .filter((m) => local.model.visible({ modelID: m.id, providerID: m.provider.id }))
-      .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
-  )
+      .filter(
+        (m) =>
+          (m.id === current?.id && m.provider.id === current.provider.id) ||
+          local.model.visible({ modelID: m.id, providerID: m.provider.id }),
+      )
+      .filter((m) => (props.provider ? m.provider.id === props.provider : true))
+  })
 
   return (
     <List
