@@ -40,7 +40,11 @@ export function Titlebar() {
   // session portal so it stays reachable in every layout it can switch between.
   const shell = useShell()
   const surfaceLabel = () =>
-    shell.compact() ? language.t("surface.toggle.desktop") : language.t("surface.toggle.mobile")
+    shell.forced()
+      ? language.t("surface.toggle.auto")
+      : shell.compact()
+        ? language.t("surface.toggle.desktop")
+        : language.t("surface.toggle.mobile")
 
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
@@ -183,7 +187,7 @@ export function Titlebar() {
     <header
       data-slot="titlebar"
       data-wco={overlay() ? "" : undefined}
-      class="h-12 wide:h-10 shrink-0 bg-background-base relative"
+      class="@container/titlebar h-12 wide:h-10 shrink-0 bg-background-base relative"
       classList={{ hidden: layout.zen.opened() }}
       style={{
         "min-height": minHeight(),
@@ -234,7 +238,7 @@ export function Titlebar() {
         <StatusPopover />
         <Tooltip value={surfaceLabel()} placement="bottom" gutter={8}>
           <IconButton
-            icon={shell.compact() ? "monitor" : "smartphone"}
+            icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
             iconSize="medium"
             variant={shell.forced() ? "primary" : "ghost"}
             class="size-10 shrink-0 p-0"
@@ -259,7 +263,11 @@ export function Titlebar() {
         </Show>
       </div>
 
-      <div class="hidden expanded:grid grid-cols-[auto_minmax(0,1fr)_auto] items-center size-full">
+      {/* minmax(0,auto) on the flanks rather than auto: a forced wide layout on
+          a narrow window must still fit, and an auto track refuses to shrink
+          below its content, so the centre column overflowed onto the controls
+          beside it. */}
+      <div class="hidden expanded:grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center size-full">
         <div
           classList={{
             "flex items-center min-w-0": true,
@@ -341,7 +349,7 @@ export function Titlebar() {
               <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>
                 <Button
                   variant={shell.forced() ? "primary" : "ghost"}
-                  icon={shell.compact() ? "monitor" : "smartphone"}
+                  icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
                   class="size-6 p-0"
                   onClick={shell.toggle}
                   aria-label={surfaceLabel()}
@@ -351,8 +359,10 @@ export function Titlebar() {
           </div>
         </div>
 
-        <div class="min-w-0 flex items-center justify-center pointer-events-none lg:absolute lg:inset-0 lg:flex lg:items-center lg:justify-center">
-          <div id="opencode-titlebar-center" class="pointer-events-auto w-full min-w-0 flex justify-center lg:w-fit" />
+        {/* Centred by the grid's middle column, which yields space to its
+            neighbours rather than floating above them and covering controls. */}
+        <div class="min-w-0 flex items-center justify-center">
+          <div id="opencode-titlebar-center" class="w-full min-w-0 flex justify-center" />
         </div>
 
         <div
@@ -362,11 +372,9 @@ export function Titlebar() {
           }}
           onMouseDown={drag}
         >
-          {/* Rendered here rather than portalled in by the session header, so
-              the server indicator shows on every route and not only inside a
-              session. */}
-          <StatusPopover />
-          <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end" />
+          <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end">
+            <StatusPopover />
+          </div>
           <Show when={windows()}>
             <div class="w-6 shrink-0" />
             <div data-tauri-decorum-tb class="flex flex-row" />

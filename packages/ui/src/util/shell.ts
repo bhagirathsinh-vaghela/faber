@@ -75,11 +75,12 @@ const shell = createRoot(() => {
     wide: createMemo(() => active() !== "compact"),
     expanded: createMemo(() => active() === "expanded"),
     force,
-    // Cycling between the two ends is the whole gesture; landing back on what
-    // the window would have chosen releases the pin so it tracks again.
     toggle() {
-      const next: SizeClass = active() === "compact" ? "expanded" : "compact"
-      force(next === natural() ? undefined : next)
+      if (forced()) {
+        force(undefined)
+        return
+      }
+      force(natural() === "compact" ? "expanded" : "compact")
     },
   }
 })

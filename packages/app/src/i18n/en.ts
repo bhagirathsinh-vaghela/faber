@@ -210,6 +210,7 @@ export const dict = {
   "common.reload": "Reload",
   "surface.toggle.mobile": "Switch to mobile layout",
   "surface.toggle.desktop": "Switch to desktop layout",
+  "surface.toggle.auto": "Match the layout to the window",
   "common.loading": "Loading",
   "common.loading.ellipsis": "...",
   "common.cancel": "Cancel",

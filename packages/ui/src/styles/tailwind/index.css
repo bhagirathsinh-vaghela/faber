@@ -37,6 +37,26 @@
   }
 }
 
+/* A panel's roomy layout needs BOTH enough room in its own box AND a shell that
+   was not asked for the compact one. A bare container query answers only the
+   first, so forcing compact left a wide dock rendering its roomy row: the
+   container cannot see an intent expressed on the root. */
+@custom-variant dock-wide {
+  &:where(:root:not([data-size-class="compact"]) *) {
+    @container dock (width >= 42rem) {
+      @slot;
+    }
+  }
+}
+
+@custom-variant panel-wide {
+  &:where(:root:not([data-size-class="compact"]) *) {
+    @container panel (width >= 42rem) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   --*: initial;
 
