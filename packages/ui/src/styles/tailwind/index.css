@@ -17,19 +17,22 @@
    topology; a component sized by its own box wants a container query, and
    anything about the device wants a capability query. */
 @custom-variant compact {
-  &:where([data-size-class="compact"] *) {
+  &:where(:root[data-size-class="compact"] *) {
     @slot;
   }
 }
 
+/* Anchored to :root, not a bare :not(). An unanchored negation matches every
+   ancestor that is not the compact root, including body, so the descendant
+   combinator made it true at every size. */
 @custom-variant wide {
-  &:where(:not([data-size-class="compact"]) *) {
+  &:where(:root:not([data-size-class="compact"]) *) {
     @slot;
   }
 }
 
 @custom-variant expanded {
-  &:where([data-size-class="expanded"] *) {
+  &:where(:root[data-size-class="expanded"] *) {
     @slot;
   }
 }
