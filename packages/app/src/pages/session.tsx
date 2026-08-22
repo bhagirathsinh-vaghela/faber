@@ -2312,7 +2312,7 @@ export default function Page() {
             layout.zen.toggle()
           }}
           aria-label={layout.zen.opened() ? language.t("zen.exit") : language.t("zen.enter")}
-          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing wide:cursor-pointer wide:active:cursor-pointer hover:bg-surface-raised-base-hover"
+          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing @2xl/panel:cursor-pointer @2xl/panel:active:cursor-pointer hover:bg-surface-raised-base-hover"
           classList={{ "transition-none": drag() !== null }}
           style={{
             // Measured top-right corner anchor (both platforms + mobile drag).
@@ -2328,7 +2328,7 @@ export default function Page() {
             height: `${pillSize()}px`,
           }}
         >
-          <span class="text-2xl wide:text-lg leading-none select-none" aria-hidden="true">
+          <span class="text-2xl @2xl/panel:text-lg leading-none select-none" aria-hidden="true">
             {layout.zen.opened() ? "🌐" : "🧘"}
           </span>
         </button>
@@ -2337,7 +2337,7 @@ export default function Page() {
         {/* Session panel */}
         <div
           classList={{
-            "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
+            "@container/panel relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
             "flex-1 pt-0 wide:pt-3": true,
             "wide:flex-none": layout.fileTree.opened(),
           }}
@@ -2584,11 +2584,11 @@ export default function Page() {
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,
                               "w-full": true,
-                              "px-4 wide:px-0": true,
-                              "wide:max-w-[95%] wide:mx-auto": centered(),
+                              "px-4 @2xl/panel:px-0": true,
+                              "@2xl/panel:max-w-[95%] @2xl/panel:mx-auto": centered(),
                             }}
                           >
-                            <div class="h-6 wide:h-7 flex items-center gap-1">
+                            <div class="h-6 @2xl/panel:h-7 flex items-center gap-1">
                               <Show when={info()?.parentID}>
                                 <IconButton
                                   tabIndex={-1}
@@ -2666,7 +2666,7 @@ export default function Page() {
                           class="flex flex-col gap-4 items-start justify-start transition-[margin]"
                           classList={{
                             "w-full": true,
-                            "wide:max-w-[95%] wide:mx-auto": centered(),
+                            "@2xl/panel:max-w-[95%] @2xl/panel:mx-auto": centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
                           }}
@@ -2718,7 +2718,7 @@ export default function Page() {
                                   // The last turn carries the floating-dock
                                   // clearance so virtua's align:"end" lands the
                                   // message above the dock, not under it.
-                                  "!pb-[calc(var(--prompt-height,8rem)+12px)] wide:!pb-[calc(var(--prompt-height,10rem)+12px)]":
+                                  "!pb-[calc(var(--prompt-height,8rem)+12px)] @2xl/panel:!pb-[calc(var(--prompt-height,10rem)+12px)]":
                                     index() === lastIndex(),
                                 }}
                               >
@@ -2735,7 +2735,7 @@ export default function Page() {
                                   classes={{
                                     root: "min-w-0 w-full relative",
                                     content: "flex flex-col justify-between !overflow-visible",
-                                    container: "w-full px-4 wide:px-0",
+                                    container: "w-full px-4 @2xl/panel:px-0",
                                   }}
                                 />
                               </div>
@@ -2781,7 +2781,7 @@ export default function Page() {
               // inside can know how much room it has, which is why the question
               // panel used to guess with a hardcoded max-height. With the chain
               // bounded, its inner scroller resolves a real height and engages.
-              "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 wide:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
+              "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 @2xl/panel:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
               // Zen keeps a slimmed dock (input + attach + submit + question/permission
               // prompts) rather than hiding it, so questions stay answerable in zen.
               // PromptInput drops its own chrome via useLayout().zen. Only the mobile
@@ -2798,7 +2798,7 @@ export default function Page() {
               ref={(el) => (promptInner = el)}
               classList={{
                 "w-full pointer-events-auto flex flex-col min-h-0": true,
-                "wide:max-w-[95%] wide:mx-auto": centered(),
+                "@2xl/panel:max-w-[95%] @2xl/panel:mx-auto": centered(),
               }}
             >
               <Show when={revertMessageID()}>
@@ -2892,7 +2892,7 @@ export default function Page() {
               <Show
                 when={prompt.ready()}
                 fallback={
-                  <div class="w-full min-h-32 wide:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
+                  <div class="w-full min-h-32 @2xl/panel:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
                     {handoff.prompt || language.t("prompt.loading")}
                   </div>
                 }

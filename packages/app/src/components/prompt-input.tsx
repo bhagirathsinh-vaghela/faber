@@ -1976,7 +1976,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   return (
-    <div class="relative size-full _max-h-[320px] flex flex-col gap-1 wide:gap-3 [--dock-font-size:var(--font-size-x-small)] wide:[--dock-font-size:var(--font-size-small)]">
+    /* An element cannot match a container query against itself, so the styled
+       classes sit one level inside the declaration. */
+    <div class="@container/dock size-full">
+      <div class="relative size-full _max-h-[320px] flex flex-col gap-1 @2xl/dock:gap-3 [--dock-font-size:var(--font-size-x-small)] @2xl/dock:[--dock-font-size:var(--font-size-small)]">
       <Show when={store.popover}>
         <div
           ref={(el) => {
@@ -2241,13 +2244,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         <div
           classList={{
             contents: true,
-            "wide:flex wide:flex-row wide:items-center": zen(),
+            "@2xl/dock:flex @2xl/dock:flex-row @2xl/dock:items-center": zen(),
           }}
         >
           <div
             classList={{
               "relative overflow-y-auto min-w-0": true,
-              "wide:flex-1": zen(),
+              "@2xl/dock:flex-1": zen(),
               "max-h-[240px]": !companionTall(),
               "max-h-[45vh]": companionTall(),
             }}
@@ -2279,9 +2282,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               onKeyDown={handleKeyDown}
               classList={{
                 "select-text": true,
-                "w-full px-2 text-13-semibold wide:px-3 wide:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
-                "pt-2 pb-0 wide:py-3": !zen(),
-                "pt-2 pb-0 wide:py-2.5": zen(),
+                "w-full px-2 text-13-semibold @2xl/dock:px-3 @2xl/dock:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
+                "pt-2 pb-0 @2xl/dock:py-3": !zen(),
+                "pt-2 pb-0 @2xl/dock:py-2.5": zen(),
                 // Hold the tall surface open on an empty draft, so entering
                 // companion doesn't collapse the dock back to one line.
                 "min-h-[28vh]": companionTall(),
@@ -2293,11 +2296,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Show when={!prompt.dirty()}>
               <div
                 classList={{
-                  "absolute top-0 inset-x-0 px-2 text-13-regular wide:px-3 wide:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
+                  "absolute top-0 inset-x-0 px-2 text-13-regular @2xl/dock:px-3 @2xl/dock:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
                   // Mirror the editor's vertical padding so the placeholder sits
                   // exactly where typed text will appear.
-                  "pt-2 pb-0 wide:py-3": !zen(),
-                  "pt-2 pb-0 wide:py-2.5": zen(),
+                  "pt-2 pb-0 @2xl/dock:py-3": !zen(),
+                  "pt-2 pb-0 @2xl/dock:py-2.5": zen(),
                 }}
               >
                 {store.mode === "shell"
@@ -2314,17 +2317,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             classList={{
               // Mobile stacks so the dock info line (when expanded) sits above the
               // flat button row; desktop keeps them side by side.
-              "flex flex-col wide:flex-row wide:items-center wide:justify-between gap-2": true,
+              "flex flex-col @2xl/dock:flex-row @2xl/dock:items-center @2xl/dock:justify-between gap-2": true,
               // Default: the button row sits below the input. The mobile pt-2
               // mirrors the editor's own pt-2 (symmetric space above/below the
               // text), and pb-1.5 keeps the buttons off the bottom border. On
               // mobile this holds in zen too, giving the same two-row layout as
               // the collapsed dock.
-              "relative px-3 pt-2 pb-1.5 wide:pt-0 wide:py-1.5": !zen(),
-              "relative px-3 pt-2 pb-1.5 wide:pt-0 wide:pb-0": zen(),
+              "relative px-3 pt-2 pb-1.5 @2xl/dock:pt-0 @2xl/dock:py-1.5": !zen(),
+              "relative px-3 pt-2 pb-1.5 @2xl/dock:pt-0 @2xl/dock:pb-0": zen(),
               // Desktop zen keeps the original single row: buttons sit at the
               // input's right edge (the mobile stack still applies below md).
-              "wide:shrink-0 wide:px-2 wide:pt-0 wide:pb-0": zen(),
+              "@2xl/dock:shrink-0 @2xl/dock:px-2 @2xl/dock:pt-0 @2xl/dock:pb-0": zen(),
             }}
           >
             <div
@@ -2333,7 +2336,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
                 hidden: zen(),
                 // Mobile: hidden unless the chevron expands it. Desktop always shows.
-                "hidden wide:flex": !zen() && !dockInfoOpen(),
+                "hidden @2xl/dock:flex": !zen() && !dockInfoOpen(),
               }}
             >
               {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
@@ -2514,7 +2517,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </span>
               </Show>
             </div>
-            <div class="flex items-center justify-between flex-1 wide:flex-none wide:justify-end wide:gap-1 shrink-0">
+            <div class="flex items-center justify-between flex-1 @2xl/dock:flex-none @2xl/dock:justify-end @2xl/dock:gap-1 shrink-0">
               {/* Mobile only: grabber toggles the dock info line + chip row
                 together (both collapsed by default). Outward arrows = expand;
                 inward arrows = collapse. */}
@@ -2523,7 +2526,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class={`wide:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
+                    class={`@2xl/dock:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
                     onClick={() => setDockInfoOpen((v) => !v)}
                     aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                     aria-expanded={dockInfoOpen()}
@@ -2540,7 +2543,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <span
                   classList={{
                     contents: dockInfoOpen(),
-                    "hidden wide:contents": !dockInfoOpen(),
+                    "hidden @2xl/dock:contents": !dockInfoOpen(),
                   }}
                 >
                   <Tooltip placement="top" value="Customize fields">
@@ -2558,12 +2561,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Tooltip>
                 </span>
               </Show>
-              {/* Auto-accept is desktop-only in the footer. The whole wrapper is
-                display:none on mobile (wide:contents on desktop) so it leaves no
-                flex slot — otherwise its tooltip wrapper would break the mobile
-                row's even spread. */}
+              {/* Auto-accept only appears once the dock is wide enough. The
+                wrapper collapses to display:none rather than an empty box, so
+                it leaves no flex slot; a tooltip wrapper holding a slot would
+                break the narrow row's even spread. */}
               <Show when={permission.permissionsEnabled() && params.id && !zen()}>
-                <span class="hidden wide:contents">
+                <span class="hidden @2xl/dock:contents">
                   <TooltipKeybind
                     placement="top"
                     gutter={8}
@@ -2608,7 +2611,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               {/* Mobile: contents so keyboard/mic/photo are flat siblings of the
                 chevron/customize/send in one justify-between row. Desktop keeps
                 them grouped. */}
-              <div class="contents wide:flex wide:items-center wide:gap-1 wide:mr-1">
+              <div class="contents @2xl/dock:flex @2xl/dock:items-center @2xl/dock:gap-1 @2xl/dock:mr-1">
                 {/* Always shown on a coarse pointer (mobile), never gated on
                   keyboardWanted — so tapping it can't unmount it mid-gesture and
                   blur the editor on release. Stable element = stable focus. */}
@@ -2753,8 +2756,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <div
               classList={{
                 "border-t border-border-weak-base px-3 flex flex-row flex-wrap items-center justify-between gap-1.5": true,
-                "hidden wide:flex": !dockInfoOpen(),
-                "pt-2 pb-0 wide:py-1": true,
+                "hidden @2xl/dock:flex": !dockInfoOpen(),
+                "pt-2 pb-0 @2xl/dock:py-1": true,
               }}
             >
               {/* Statusline is runtime telemetry with nothing to show pre-turn;
@@ -2768,6 +2771,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </Show>
         </Show>
       </form>
+      </div>
     </div>
   )
 }

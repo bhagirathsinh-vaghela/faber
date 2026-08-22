@@ -68,7 +68,7 @@ export function Statusline() {
       {(s) => (
         <UsageLine
           flat
-          class="px-2 py-0 wide:py-1"
+          class="px-2 py-0 @2xl/dock:py-1"
           stats={s()}
           totals={totals()}
           cost={sessionCost()}
