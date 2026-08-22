@@ -2,6 +2,10 @@ import { test, expect } from "../fixtures"
 import { promptSelector } from "../selectors"
 import { closeDialog, openSettings } from "../actions"
 
+// Both tests replace the same server-owned preference document wholesale, so
+// running them in parallel lets one save clobber the other's.
+test.describe.configure({ mode: "serial" })
+
 test("hiding a model removes it from the model picker", async ({ page, gotoSession }) => {
   await gotoSession()
 
