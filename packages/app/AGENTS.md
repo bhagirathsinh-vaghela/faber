@@ -33,6 +33,13 @@ keeps a stylesheet from reaching a different verdict than the JS beside it, and
 it is what makes a forced class reach rules that never learn it exists. A test
 fails if a width media query reappears anywhere.
 
+The key, thresholds, and classification live in `ui/util/size-class.ts`. The
+pre-paint script (`public/oc-theme-preload.js`) cannot import it, so it carries
+a copy that `shell-preload-parity.test.ts` pins to the module. A pinned layout
+is per-tab (sessionStorage): each client connected to the server decides its
+own view, and the toggle cycles auto → compact → expanded → auto so both ends
+are reachable from any natural class.
+
 Three constraints that are not obvious and have each caused a bug:
 
 - **An element cannot match a container query it declares.** Put the
