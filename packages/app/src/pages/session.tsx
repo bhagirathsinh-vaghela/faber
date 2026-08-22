@@ -2220,10 +2220,11 @@ export default function Page() {
     }
   })
 
-  // A dragged control sized for a fingertip, so it follows the pointer rather
-  // than the width: a tablet renders the roomy layout and is still touched.
+  // Sized for a fingertip on every device: the pill floats over content, so it
+  // gets the enhanced touch target even under a mouse, and a touch pointer a
+  // little more.
   const coarse = createCoarsePointer()
-  const pillSize = () => (coarse() ? 52 : 40)
+  const pillSize = () => (coarse() ? 56 : 52)
   const PILL_MARGIN = 16
   const DRAG_THRESHOLD = 6
   // Read a safe-area inset (exposed as a CSS var in index.css) as a number, so
@@ -2319,7 +2320,10 @@ export default function Page() {
             layout.zen.toggle()
           }}
           aria-label={layout.zen.opened() ? language.t("zen.exit") : language.t("zen.enter")}
-          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing panel-wide:cursor-pointer panel-wide:active:cursor-pointer hover:bg-surface-raised-base-hover"
+          // wide:, not panel-wide:: the pill portals to <body>, where no
+          // ancestor declares a container, so a container variant never
+          // matches and the class silently does nothing.
+          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing wide:cursor-pointer wide:active:cursor-pointer hover:bg-surface-raised-base-hover"
           classList={{ "transition-none": drag() !== null }}
           style={{
             // Measured top-right corner anchor (both platforms + mobile drag).
@@ -2335,7 +2339,7 @@ export default function Page() {
             height: `${pillSize()}px`,
           }}
         >
-          <span class="text-lg any-pointer-coarse:text-xl leading-none select-none" aria-hidden="true">
+          <span class="text-xl leading-none select-none" aria-hidden="true">
             {layout.zen.opened() ? "🌐" : "🧘"}
           </span>
         </button>

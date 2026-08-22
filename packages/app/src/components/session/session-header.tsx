@@ -1,5 +1,4 @@
 import { createMemo, onCleanup, onMount, Show } from "solid-js"
-import { useShell } from "@/utils/mobile"
 import { Portal } from "solid-js/web"
 import { useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
@@ -44,7 +43,6 @@ export function SessionHeader() {
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const view = createMemo(() => layout.view(sessionKey))
-  const wide = useShell().wide
 
   // One intent, two presentations: with room the review opens beside the
   // transcript, without it the panel replaces it. The toggle records only that
