@@ -215,7 +215,7 @@ export function Titlebar() {
           iconSize="medium"
           variant="ghost"
           class="size-10 shrink-0 rounded-md"
-          onClick={layout.mobileSidebar.toggle}
+          onClick={layout.overlaySidebar.toggle}
           aria-label={language.t("sidebar.menu.toggle")}
         />
         {/* Search + server indicator live here (not in SessionHeader) so they

@@ -151,13 +151,13 @@ export default function Layout(props: ParentProps) {
     return layout.projects.list().find((project) => project.worktree === id)
   })
 
-  // Closing the mobile drawer clears the previewed project, so reopening starts
-  // on the current project rather than a stale preview. Scoped to the drawer's
-  // open→close transition: a plain createEffect would fire on desktop too (where
-  // mobileSidebar is always closed) and wipe every icon click.
+  // Closing the overlay sidebar clears the previewed project, so reopening
+  // starts on the current project rather than a stale preview. Scoped to its
+  // open→close transition: a plain createEffect would also fire where the
+  // sidebar docks and never opens as an overlay, wiping every icon click.
   createEffect(
     on(
-      () => layout.mobileSidebar.opened(),
+      () => layout.overlaySidebar.opened(),
       (opened) => {
         if (opened) return
         setState("previewProject", undefined)
@@ -167,16 +167,16 @@ export default function Layout(props: ParentProps) {
   )
 
   // Navigating (route change) clears any preview so the panel follows the new
-  // route rather than the project icon last clicked. Also collapse the mobile
-  // drawer on any navigation — doing it here (one place, on the route change)
-  // instead of in each nav handler guarantees it closes no matter how the
-  // navigation happened, so it can't get stuck open.
+  // route rather than the project icon last clicked. It also dismisses the
+  // overlay sidebar, which covers the content it just navigated to. Doing it
+  // here, on the route change, rather than in each nav handler is what
+  // guarantees it closes however the navigation happened.
   createEffect(
     on(
       () => ({ dir: params.dir, id: params.id }),
       () => {
         setState("previewProject", undefined)
-        layout.mobileSidebar.hide()
+        layout.overlaySidebar.hide()
       },
       { defer: true },
     ),
@@ -198,11 +198,11 @@ export default function Layout(props: ParentProps) {
   // there is left alone. A click anywhere else ONLY closes the flyout and is
   // swallowed — it must not trigger whatever sits under the pointer.
   //
-  // Desktop only: this keys off state.nav (the desktop nav). The mobile drawer
-  // is a separate <nav> with its own backdrop, so its icons aren't in state.nav
-  // and would be wrongly treated as "outside" — swallowing every icon tap.
+  // Scoped to the docked nav, since it keys off state.nav. The overlay sidebar
+  // is a separate <nav> with its own backdrop, so its icons are not inside
+  // state.nav and every tap on one would read as "outside" and be swallowed.
   createEffect(() => {
-    if (layout.mobileSidebar.opened()) return
+    if (layout.overlaySidebar.opened()) return
     if (!flyoutOpen()) return
     const outside = (event: Event) => {
       const target = event.target as Node | null
@@ -1165,14 +1165,14 @@ export default function Layout(props: ParentProps) {
     // Opening a project lands on the sessions list, never a session. Opening a
     // session is a separate, explicit action; project-open must not arm a ping.
     navigate(`/${base64Encode(directory)}`)
-    layout.mobileSidebar.hide()
+    layout.overlaySidebar.hide()
   }
 
   function navigateToSession(session: Session | undefined) {
     if (!session) return
     if (!layout.sidebar.opened()) setState("hoverSession", undefined)
     navigate(`/${base64Encode(session.directory)}/session/${session.id}`)
-    layout.mobileSidebar.hide()
+    layout.overlaySidebar.hide()
   }
 
   function openProject(directory: string, navigate = true) {
@@ -1408,7 +1408,7 @@ export default function Layout(props: ParentProps) {
           onClick: () => {
             const href = `/${base64Encode(directory)}/session`
             navigate(href)
-            layout.mobileSidebar.hide()
+            layout.overlaySidebar.hide()
           },
         },
         {
@@ -2293,7 +2293,7 @@ export default function Layout(props: ParentProps) {
                           setState("previewProject", undefined)
                         }
                         navigate(`/${base64Encode(p().worktree)}/session`)
-                        layout.mobileSidebar.hide()
+                        layout.overlaySidebar.hide()
                       }}
                     >
                       {language.t("command.session.new")}
@@ -2475,25 +2475,25 @@ export default function Layout(props: ParentProps) {
         <div class="expanded:hidden">
           <div
             classList={{
-              "fixed inset-x-0 top-10 bottom-0 z-40 transition-opacity duration-200": true,
-              "opacity-100 pointer-events-auto": layout.mobileSidebar.opened(),
-              "opacity-0 pointer-events-none": !layout.mobileSidebar.opened(),
+              "fixed inset-x-0 top-[var(--titlebar-height)] bottom-0 z-40 transition-opacity duration-200": true,
+              "opacity-100 pointer-events-auto": layout.overlaySidebar.opened(),
+              "opacity-0 pointer-events-none": !layout.overlaySidebar.opened(),
             }}
             onClick={(e) => {
-              if (e.target === e.currentTarget) layout.mobileSidebar.hide()
+              if (e.target === e.currentTarget) layout.overlaySidebar.hide()
             }}
           />
           <nav
             aria-label={language.t("sidebar.nav.projectsAndSessions")}
             data-component="sidebar-nav-mobile"
             classList={{
-              "@container fixed top-10 bottom-0 left-0 z-50 bg-background-base transition-transform duration-200 ease-out": true,
+              "@container fixed top-[var(--titlebar-height)] bottom-0 left-0 z-50 bg-background-base transition-transform duration-200 ease-out": true,
               // Rail-only width when no project panel is showing (overview, no
               // current project); expand to fit the session panel once one is.
               "w-72": previewProject() !== undefined,
               "w-16": previewProject() === undefined,
-              "translate-x-0": layout.mobileSidebar.opened(),
-              "-translate-x-full": !layout.mobileSidebar.opened(),
+              "translate-x-0": layout.overlaySidebar.opened(),
+              "-translate-x-full": !layout.overlaySidebar.opened(),
             }}
             onClick={(e) => e.stopPropagation()}
           >

@@ -101,6 +101,21 @@
   height: auto;
 }
 
+/* Anything anchored below the titlebar reads this rather than repeating its
+   height, which varies with the size class and grows by the safe-area inset in
+   a standalone PWA. */
+:root {
+  --titlebar-height: 3rem;
+}
+
+:root:not([data-size-class="compact"]) {
+  --titlebar-height: 2.5rem;
+}
+
+#root[data-standalone] {
+  --titlebar-height: calc(2.5rem + env(safe-area-inset-top));
+}
+
 #root[data-standalone] [data-slot="prompt-dock"] {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
@@ -282,7 +297,6 @@
     color-mix(in srgb, var(--stream-accent, var(--icon-interactive-base)) 50%, transparent) 70%,
     transparent 100%
   );
-  will-change: transform;
   animation: busy-bar-pulse 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
 }
 

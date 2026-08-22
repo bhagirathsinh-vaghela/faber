@@ -572,7 +572,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("session", "width", width)
         },
       },
-      mobileSidebar: {
+      // Without room to dock, the sidebar is an overlay: it covers the content
+      // rather than displacing it, so it dismisses on navigation the way the
+      // docked one must not. Tracked apart from `sidebar.opened` because the
+      // docked rail stays on screen when closed while this leaves entirely.
+      overlaySidebar: {
         opened: createMemo(() => store.mobileSidebar?.opened ?? false),
         show() {
           setStore("mobileSidebar", "opened", true)
