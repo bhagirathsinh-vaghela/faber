@@ -93,19 +93,33 @@ if (root && viewport && (navigator as unknown as { standalone?: boolean }).stand
   }
 
   let raf = 0
+  // fit() runs every frame while settling. --keyboard-inset inherits from the
+  // root, so rewriting an unchanged value invalidates the whole document's style
+  // instead of costing nothing, and a redundant height write is what feeds
+  // WebKit's resize loop.
+  let appliedHeight = -1
+  let appliedInset = -1
   const fit = () => {
     measure()
     // A 0 height would blank the app; the class-supplied h-dvh holds visibility
     // until a positive reading arrives.
     if (full <= 0) return
-    root.style.height = `${height()}px`
+    const next = height()
+    if (next !== appliedHeight) {
+      appliedHeight = next
+      root.style.height = `${next}px`
+    }
     root.toggleAttribute("data-keyboard", keyboard())
     // Fixed-position elements resolve against the layout viewport, which iOS
     // leaves full-height behind the keyboard, so anything anchored to the
     // window bottom lands under it while the root stops at the keyboard's top
     // edge. Publish the gap between the two so such an element can bridge it.
-    document.documentElement.style.setProperty("--keyboard-inset", `${Math.max(0, full - height())}px`)
-    window.scrollTo(0, 0)
+    const inset = Math.max(0, full - next)
+    if (inset !== appliedInset) {
+      appliedInset = inset
+      document.documentElement.style.setProperty("--keyboard-inset", `${inset}px`)
+    }
+    if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0)
   }
   const settle = () => {
     cancelAnimationFrame(raf)
