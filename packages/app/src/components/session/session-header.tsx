@@ -189,7 +189,7 @@ export function SessionHeader() {
                       onClick={toggleWarm}
                       aria-label={language.t("session.keepWarm.arm")}
                       aria-pressed={currentSession()?.keepWarm === true}
-                      class="flex items-center justify-center size-6 any-pointer-coarse:size-10 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6 [&_[data-component=icon]]:!text-icon-strong-base"
+                      class="flex items-center justify-center size-6 any-pointer-coarse:size-10 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6 [&_[data-component=icon]]:!text-icon-strong-base"
                       classList={{
                         "opacity-100": currentSession()?.keepWarm === true,
                         "opacity-40": !currentSession()?.keepWarm,
@@ -207,7 +207,7 @@ export function SessionHeader() {
                       icon="text-cursor-input"
                       iconSize="medium"
                       variant={layout.companion.opened() ? "primary" : "ghost"}
-                      class="size-6 any-pointer-coarse:size-10 [&_[data-component=icon]]:!size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
+                      class="size-6 any-pointer-coarse:size-10 [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
                       onClick={() => layout.companion.toggle()}
                       aria-pressed={layout.companion.opened()}
                       aria-label={
@@ -222,7 +222,7 @@ export function SessionHeader() {
                       variant="ghost"
                       onClick={stopSession}
                       aria-label={language.t("session.stop")}
-                      class="size-6 any-pointer-coarse:size-10 [&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-component=icon]]:!size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6 hover:!bg-surface-critical-weak"
+                      class="size-6 any-pointer-coarse:size-10 [&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6 hover:!bg-surface-critical-weak"
                     />
                   </Tooltip>
                 </div>
