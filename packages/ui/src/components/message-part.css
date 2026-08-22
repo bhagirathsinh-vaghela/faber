@@ -505,7 +505,6 @@
     color-mix(in srgb, var(--stream-accent) 50%, transparent) 70%,
     transparent 100%
   );
-  will-change: transform;
   /* Slower + gentle sinusoidal easing for a calm, smooth ping-pong. */
   animation: stream-bar-pulse 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
 }

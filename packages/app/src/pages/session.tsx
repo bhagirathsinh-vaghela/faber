@@ -2924,12 +2924,14 @@ export default function Page() {
           </Show>
         </div>
 
-        {/* Desktop side panel - hidden on mobile */}
+        {/* Sits beside the transcript when there is room for both. Contained so
+            a streamed delta next door cannot relayout the diff, the more
+            expensive of the two subtrees. */}
         <Show when={wide() && layout.fileTree.opened()}>
           <aside
             id="review-panel"
             aria-label={language.t("session.panel.reviewAndFiles")}
-            class="relative flex-1 min-w-0 h-full border-l border-border-weak-base flex"
+            class="relative flex-1 min-w-0 h-full border-l border-border-weak-base flex contain-content"
           >
             <div class="flex-1 min-w-0 h-full">
               <Show
@@ -3745,7 +3747,7 @@ export default function Page() {
           id="terminal-panel"
           role="region"
           aria-label={language.t("terminal.title")}
-          class="relative w-full flex flex-col shrink-0 border-t border-border-weak-base"
+          class="relative w-full flex flex-col shrink-0 border-t border-border-weak-base contain-content"
           style={{ height: `${layout.terminal.height()}px` }}
         >
           <ResizeHandle
