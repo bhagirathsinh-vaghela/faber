@@ -279,6 +279,74 @@ test.describe("pointer capability", () => {
     expect(target.fine, "WCAG 2.5.8 target size (minimum)").toBeGreaterThanOrEqual(24)
     expect(target.coarse, "WCAG 2.5.5 target size (enhanced)").toBeGreaterThanOrEqual(44)
   })
+
+  test("every chrome control grows for a finger, in both layouts", async ({ page, gotoSession }) => {
+    await gotoSession()
+
+    // A tablet renders the roomy chrome AND is touched, so the two layouts
+    // cannot each assume an input: sizing the wide one for a mouse alone left
+    // 24px targets under a finger.
+    for (const name of ["phone", "tabletLandscape"] as const) {
+      await page.setViewportSize(VIEWPORTS[name])
+      await settle(page)
+
+      const small = await page.evaluate(() => {
+        // The pointer type cannot be emulated per-page, so each control is
+        // asked whether it carries a rule that would enlarge it on a coarse
+        // one. A control sized only for a mouse has none.
+        return [...document.querySelectorAll<HTMLElement>('[data-slot="titlebar"] button')]
+          .filter((button) => button.getBoundingClientRect().width > 0)
+          .filter((button) => {
+            const box = button.getBoundingClientRect()
+            if (box.width >= 40 && box.height >= 40) return false
+            const carrier = button.closest("[class*='any-pointer-coarse:']") ?? button
+            return !/any-pointer-coarse:(size|h)-(?:10|11)/.test(carrier.className)
+          })
+          .map((button) => button.getAttribute("aria-label") ?? "unnamed")
+      })
+
+      expect(small, `${name}: every control must grow on a coarse pointer`).toEqual([])
+    }
+  })
+
+  test("growing a control for touch does not overflow the row holding it", async ({ page, gotoSession }) => {
+    await gotoSession()
+    await page.setViewportSize(VIEWPORTS.tabletLandscape)
+    await settle(page)
+
+    // Enlarging a target is only safe if its container yields. A row with a
+    // fixed height clips the bigger control instead of growing with it, which
+    // turns a fixed target into a hidden one.
+    const clipped = await page.evaluate(() => {
+      const forced = document.createElement("style")
+      forced.textContent = `
+        [data-slot="titlebar"] button,
+        [data-component="prompt-input"] button,
+        [data-component="question-panel"] button {
+          min-width: 44px !important;
+          min-height: 44px !important;
+        }
+      `
+      document.head.appendChild(forced)
+
+      const overflowing = [...document.querySelectorAll<HTMLElement>("button")]
+        .filter((button) => button.getBoundingClientRect().width > 0)
+        .filter((button) => {
+          const parent = button.parentElement
+          if (!parent) return false
+          const box = button.getBoundingClientRect()
+          const bounds = parent.getBoundingClientRect()
+          if (getComputedStyle(parent).overflow === "visible") return false
+          return box.bottom > bounds.bottom + 1 || box.right > bounds.right + 1
+        })
+        .map((button) => button.getAttribute("aria-label") ?? "unnamed")
+
+      forced.remove()
+      return overflowing
+    })
+
+    expect(clipped, "a touch-sized control must not be clipped by its row").toEqual([])
+  })
 })
 
 test.describe("chrome geometry", () => {

@@ -97,7 +97,7 @@ export function SessionHeader() {
           <Portal mount={mount()}>
             <button
               type="button"
-              class="hidden @2xl/titlebar:flex w-[320px] max-w-full min-w-0 shrink p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
+              class="hidden @2xl/titlebar:flex w-[320px] max-w-full min-w-0 shrink any-pointer-coarse:h-10 p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
               onClick={() => command.trigger("file.open")}
               aria-label={language.t("session.header.searchFiles")}
             >
@@ -189,7 +189,7 @@ export function SessionHeader() {
                       onClick={toggleWarm}
                       aria-label={language.t("session.keepWarm.arm")}
                       aria-pressed={currentSession()?.keepWarm === true}
-                      class="flex items-center justify-center size-6 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!size-4 [&_[data-component=icon]]:!text-icon-strong-base"
+                      class="flex items-center justify-center size-6 any-pointer-coarse:size-10 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!size-4 [&_[data-component=icon]]:!text-icon-strong-base"
                       classList={{
                         "opacity-100": currentSession()?.keepWarm === true,
                         "opacity-40": !currentSession()?.keepWarm,
@@ -207,7 +207,7 @@ export function SessionHeader() {
                       icon="text-cursor-input"
                       iconSize="medium"
                       variant={layout.companion.opened() ? "primary" : "ghost"}
-                      class="size-6 [&_[data-component=icon]]:!size-4"
+                      class="size-6 any-pointer-coarse:size-10 [&_[data-component=icon]]:!size-4"
                       onClick={() => layout.companion.toggle()}
                       aria-pressed={layout.companion.opened()}
                       aria-label={
@@ -222,7 +222,7 @@ export function SessionHeader() {
                       variant="ghost"
                       onClick={stopSession}
                       aria-label={language.t("session.stop")}
-                      class="size-6 [&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-component=icon]]:!size-4 hover:!bg-surface-critical-weak"
+                      class="size-6 any-pointer-coarse:size-10 [&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-component=icon]]:!size-4 hover:!bg-surface-critical-weak"
                     />
                   </Tooltip>
                 </div>
@@ -234,7 +234,7 @@ export function SessionHeader() {
                 >
                   <Button
                     variant="ghost"
-                    class="group/terminal-toggle size-6 p-0"
+                    class="group/terminal-toggle size-6 any-pointer-coarse:size-10 p-0"
                     onClick={() => view().terminal.toggle()}
                     aria-label={language.t("command.terminal.toggle")}
                     aria-expanded={view().terminal.opened()}
@@ -264,7 +264,7 @@ export function SessionHeader() {
                 <TooltipKeybind title={language.t("command.review.toggle")} keybind={command.keybind("review.toggle")}>
                   <Button
                     variant="ghost"
-                    class="group/file-tree-toggle size-6 p-0"
+                    class="group/file-tree-toggle size-6 any-pointer-coarse:size-10 p-0"
                     onClick={toggleReview}
                     aria-label={language.t("command.review.toggle")}
                     aria-expanded={reviewActive()}

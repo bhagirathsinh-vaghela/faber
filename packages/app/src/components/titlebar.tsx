@@ -288,7 +288,7 @@ export function Titlebar() {
               <Button
                 variant="ghost"
                 icon="house"
-                class="size-6 p-0"
+                class="size-6 any-pointer-coarse:size-10 p-0"
                 onClick={goHome}
                 aria-label={language.t("common.home")}
               />
@@ -301,7 +301,7 @@ export function Titlebar() {
             >
               <Button
                 variant="ghost"
-                class="group/sidebar-toggle size-6 p-0"
+                class="group/sidebar-toggle size-6 any-pointer-coarse:size-10 p-0"
                 onClick={layout.sidebar.toggle}
                 aria-label={language.t("command.sidebar.toggle")}
                 aria-expanded={layout.sidebar.opened()}
@@ -330,7 +330,7 @@ export function Titlebar() {
                 <Button
                   variant="ghost"
                   icon="arrow-left"
-                  class="size-6 p-0"
+                  class="size-6 any-pointer-coarse:size-10 p-0"
                   disabled={!canBack()}
                   onClick={back}
                   aria-label={language.t("common.goBack")}
@@ -340,7 +340,7 @@ export function Titlebar() {
                 <Button
                   variant="ghost"
                   icon="arrow-right"
-                  class="size-6 p-0"
+                  class="size-6 any-pointer-coarse:size-10 p-0"
                   disabled={!canForward()}
                   onClick={forward}
                   aria-label={language.t("common.goForward")}
@@ -350,7 +350,7 @@ export function Titlebar() {
                 <Button
                   variant={shell.forced() ? "primary" : "ghost"}
                   icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
-                  class="size-6 p-0"
+                  class="size-6 any-pointer-coarse:size-10 p-0"
                   onClick={shell.toggle}
                   aria-label={surfaceLabel()}
                 />
