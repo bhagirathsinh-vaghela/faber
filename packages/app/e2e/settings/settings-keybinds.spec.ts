@@ -34,20 +34,20 @@ test("changing sidebar toggle keybind works", async ({ page, gotoSession }) => {
 
   const main = page.locator("main")
   const initialClasses = (await main.getAttribute("class")) ?? ""
-  const initiallyClosed = initialClasses.includes("xl:border-l")
+  const initiallyClosed = initialClasses.includes("expanded:border-l")
 
   await page.keyboard.press(`${modKey}+Shift+H`)
   await page.waitForTimeout(100)
 
   const afterToggleClasses = (await main.getAttribute("class")) ?? ""
-  const afterToggleClosed = afterToggleClasses.includes("xl:border-l")
+  const afterToggleClosed = afterToggleClasses.includes("expanded:border-l")
   expect(afterToggleClosed).toBe(!initiallyClosed)
 
   await page.keyboard.press(`${modKey}+Shift+H`)
   await page.waitForTimeout(100)
 
   const finalClasses = (await main.getAttribute("class")) ?? ""
-  const finalClosed = finalClasses.includes("xl:border-l")
+  const finalClosed = finalClasses.includes("expanded:border-l")
   expect(finalClosed).toBe(initiallyClosed)
 })
 

@@ -58,7 +58,7 @@ export async function closeDialog(page: Page, dialog: Locator) {
 export async function isSidebarClosed(page: Page) {
   const main = page.locator("main")
   const classes = (await main.getAttribute("class")) ?? ""
-  return classes.includes("xl:border-l")
+  return classes.includes("expanded:border-l")
 }
 
 export async function toggleSidebar(page: Page) {
@@ -69,13 +69,13 @@ export async function toggleSidebar(page: Page) {
 export async function openSidebar(page: Page) {
   if (!(await isSidebarClosed(page))) return
   await toggleSidebar(page)
-  await expect(page.locator("main")).not.toHaveClass(/xl:border-l/)
+  await expect(page.locator("main")).not.toHaveClass(/expanded:border-l/)
 }
 
 export async function closeSidebar(page: Page) {
   if (await isSidebarClosed(page)) return
   await toggleSidebar(page)
-  await expect(page.locator("main")).toHaveClass(/xl:border-l/)
+  await expect(page.locator("main")).toHaveClass(/expanded:border-l/)
 }
 
 export async function openSettings(page: Page) {

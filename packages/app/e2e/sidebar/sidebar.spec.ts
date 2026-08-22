@@ -7,8 +7,8 @@ test("sidebar can be collapsed and expanded", async ({ page, gotoSession }) => {
   await openSidebar(page)
 
   await toggleSidebar(page)
-  await expect(page.locator("main")).toHaveClass(/xl:border-l/)
+  await expect(page.locator("main")).toHaveClass(/expanded:border-l/)
 
   await toggleSidebar(page)
-  await expect(page.locator("main")).not.toHaveClass(/xl:border-l/)
+  await expect(page.locator("main")).not.toHaveClass(/expanded:border-l/)
 })
