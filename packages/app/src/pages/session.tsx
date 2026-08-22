@@ -1460,7 +1460,9 @@ export default function Page() {
       .filter((tab) => tab !== "context"),
   )
 
-  const mobileChanges = createMemo(() => !wide() && view().mobileChanges.opened())
+  // Without room for a split, an open review replaces the transcript rather
+  // than sitting beside it. Same intent, different presentation.
+  const reviewReplacesTranscript = createMemo(() => !wide() && layout.fileTree.opened())
 
   const fileTreeTab = () => layout.fileTree.tab()
   const setFileTreeTab = (value: "changes" | "all") => layout.fileTree.setTab(value)
@@ -1641,7 +1643,9 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const wants = wide() ? layout.fileTree.opened() && fileTreeTab() === "changes" : view().mobileChanges.opened()
+    // The split shows a file tree that can sit on either tab; the replacing
+    // presentation only ever shows changes, so it needs no tab test.
+    const wants = layout.fileTree.opened() && (!wide() || fileTreeTab() === "changes")
     if (!wants) return
     if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
@@ -2371,7 +2375,7 @@ export default function Page() {
                   }
                 >
                   <Show
-                    when={!mobileChanges()}
+                    when={!reviewReplacesTranscript()}
                     fallback={
                       <div class="relative h-full overflow-hidden">
                         <Switch>
@@ -2387,8 +2391,8 @@ export default function Page() {
                               <SessionReviewTab
                                 diffs={diffs}
                                 view={view}
-                                diffStyle={layout.review.mobileDiffStyle()}
-                                onDiffStyleChange={layout.review.setMobileDiffStyle}
+                                diffStyle={layout.review.narrowDiffStyle()}
+                                onDiffStyleChange={layout.review.setNarrowDiffStyle}
                                 focusedFile={activeDiff()}
                                 onOpenFile={(path) => params.id && sync.session.diffFile(params.id, path)}
                                 onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
@@ -2786,7 +2790,7 @@ export default function Page() {
               // prompts) rather than hiding it, so questions stay answerable in zen.
               // PromptInput drops its own chrome via useLayout().zen. Only the mobile
               // Changes tab hides the dock outright.
-              hidden: mobileChanges(),
+              hidden: reviewReplacesTranscript(),
             }}
           >
             {/* flex column + min-h-0 so the constraint from the bounded dock

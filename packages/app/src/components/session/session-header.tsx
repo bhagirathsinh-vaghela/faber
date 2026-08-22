@@ -47,10 +47,11 @@ export function SessionHeader() {
   const view = createMemo(() => layout.view(sessionKey))
   const wide = useShell().wide
 
-  // The review toggle drives the desktop split panel; on mobile there is no
-  // split, so it flips the session panel between transcript and changes.
-  const toggleReview = () => (wide() ? layout.fileTree.toggle() : view().mobileChanges.toggle())
-  const reviewActive = () => (wide() ? layout.fileTree.opened() : view().mobileChanges.opened())
+  // One intent, two presentations: with room the review opens beside the
+  // transcript, without it the panel replaces it. The toggle records only that
+  // review is wanted; the layout decides how that looks.
+  const toggleReview = () => layout.fileTree.toggle()
+  const reviewActive = () => layout.fileTree.opened()
 
   function stopSession() {
     const id = params.id

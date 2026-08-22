@@ -71,10 +71,19 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
       })()
 
-      if (migratedFileTree === fileTree) return value
+      const review = value.review
+      const migratedReview = (() => {
+        if (!isRecord(review)) return review
+        if (!("mobileDiffStyle" in review)) return review
+        const { mobileDiffStyle, ...rest } = review
+        return { ...rest, narrowDiffStyle: mobileDiffStyle }
+      })()
+
+      if (migratedFileTree === fileTree && migratedReview === review) return value
       return {
         ...value,
         fileTree: migratedFileTree,
+        review: migratedReview,
       }
     }
 
@@ -94,13 +103,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           height: 280,
           opened: false,
         },
-        // Mobile-only: whether the session panel shows the changes/diff view
-        // instead of the transcript. Desktop uses fileTree.opened instead; on
-        // mobile the header's review toggle flips this.
-        mobileChanges: false,
         review: {
           diffStyle: "split" as ReviewDiffStyle,
-          mobileDiffStyle: "unified" as ReviewDiffStyle,
+          narrowDiffStyle: "unified" as ReviewDiffStyle,
         },
         fileTree: {
           opened: true,
@@ -508,15 +513,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           }
           setStore("review", "diffStyle", diffStyle)
         },
-        // Mobile has no split layout, so it defaults to unified but stays
-        // switchable, tracked separately from the desktop preference.
-        mobileDiffStyle: createMemo(() => store.review?.mobileDiffStyle ?? "unified"),
-        setMobileDiffStyle(diffStyle: ReviewDiffStyle) {
+        narrowDiffStyle: createMemo(() => store.review?.narrowDiffStyle ?? "unified"),
+        setNarrowDiffStyle(diffStyle: ReviewDiffStyle) {
           if (!store.review) {
-            setStore("review", { mobileDiffStyle: diffStyle })
+            setStore("review", { narrowDiffStyle: diffStyle })
             return
           }
-          setStore("review", "mobileDiffStyle", diffStyle)
+          setStore("review", "narrowDiffStyle", diffStyle)
         },
       },
       fileTree: {
@@ -638,12 +641,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("terminal", "opened", next)
         }
 
-        const mobileChangesOpened = createMemo(() => store.mobileChanges ?? false)
-        function setMobileChanges(next: boolean) {
-          if ((store.mobileChanges ?? false) === next) return
-          setStore("mobileChanges", next)
-        }
-
         return {
           scroll(tab: string) {
             return scroll.scroll(key(), tab)
@@ -661,18 +658,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             toggle() {
               setTerminalOpened(!terminalOpened())
-            },
-          },
-          mobileChanges: {
-            opened: mobileChangesOpened,
-            open() {
-              setMobileChanges(true)
-            },
-            close() {
-              setMobileChanges(false)
-            },
-            toggle() {
-              setMobileChanges(!mobileChangesOpened())
             },
           },
           review: {
