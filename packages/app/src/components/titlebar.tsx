@@ -325,7 +325,9 @@ export function Titlebar() {
                 </div>
               </Button>
             </TooltipKeybind>
-            <div class="flex items-center gap-1 shrink-0">
+            {/* First to go when the bar cannot hold every control, since a
+                browser and a trackpad both offer the same navigation. */}
+            <div class="hidden @2xl/titlebar:flex items-center gap-1 shrink-0">
               <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={2000}>
                 <Button
                   variant="ghost"
@@ -346,16 +348,18 @@ export function Titlebar() {
                   aria-label={language.t("common.goForward")}
                 />
               </Tooltip>
-              <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>
-                <Button
-                  variant={shell.forced() ? "primary" : "ghost"}
-                  icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
-                  class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
-                  onClick={shell.toggle}
-                  aria-label={surfaceLabel()}
-                />
-              </Tooltip>
             </div>
+            {/* A forced layout can only be undone from here, so this control
+                stays whatever else the bar sheds. */}
+            <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>
+              <Button
+                variant={shell.forced() ? "primary" : "ghost"}
+                icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
+                class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+                onClick={shell.toggle}
+                aria-label={surfaceLabel()}
+              />
+            </Tooltip>
           </div>
         </div>
 

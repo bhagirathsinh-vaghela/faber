@@ -129,12 +129,12 @@ test.describe("forced size class", () => {
       await settle(page)
       const natural = await sizeClass(page)
 
-      const toggle = page.locator("[aria-label*='layout']").locator("visible=true").first()
-      await toggle.click()
+      const toggle = () => page.locator("[aria-label*='layout']").locator("visible=true").first()
+      await toggle().click()
       await settle(page)
       expect(await sizeClass(page), `${name}: press must change the layout`).not.toBe(natural)
 
-      await toggle.click()
+      await toggle().click()
       await settle(page)
       expect(await sizeClass(page), `${name}: second press returns to the window's own answer`).toBe(natural)
     }
@@ -512,6 +512,71 @@ test.describe("chrome geometry", () => {
       })
 
       expect(blocked, `${name}: no control may be covered by another element`).toEqual([])
+    }
+  })
+
+  test("the roomy chrome sheds controls rather than stacking them", async ({ page, gotoSession }) => {
+    await gotoSession()
+
+    // Asking for the wide layout on a phone is a legitimate request, so it has
+    // to degrade: a row of fixed-width controls that refuses to shrink puts one
+    // control on top of the next instead of giving way.
+    for (const name of ["phone", "tabletPortrait", "desktop"] as const) {
+      await page.setViewportSize(VIEWPORTS[name])
+      await settle(page)
+      // Driven through the control rather than storage, so the layout is left
+      // as this test found it.
+      if ((await sizeClass(page)) !== "expanded") {
+        await page.locator("[aria-label*='layout']").locator("visible=true").first().click()
+        await settle(page)
+      }
+
+      const collisions = await page.evaluate(() => {
+        const boxes = [...document.querySelectorAll<HTMLElement>('[data-slot="titlebar"] button')]
+          .filter((button) => button.getBoundingClientRect().width > 0)
+          .map((button) => ({
+            label: button.getAttribute("aria-label") ?? "unnamed",
+            rect: button.getBoundingClientRect(),
+          }))
+          .sort((a, b) => a.rect.left - b.rect.left)
+
+        return boxes
+          .slice(0, -1)
+          .filter((entry, index) => entry.rect.right > boxes[index + 1].rect.left + 1)
+          .map((entry, index) => `${entry.label} over ${boxes[index + 1].label}`)
+      })
+
+      expect(collisions, `${name}: forced wide layout must not overlap its own controls`).toEqual([])
+    }
+  })
+
+  test("the layout control survives every layout it can produce", async ({ page, gotoSession }) => {
+    await gotoSession()
+
+    // Whatever a narrow bar sheds, it cannot shed this one: a forced layout is
+    // only undoable from here, so losing it strands the user in the layout they
+    // picked with no way back short of clearing storage.
+    for (const name of ["phone", "tabletPortrait", "desktop"] as const) {
+      await page.setViewportSize(VIEWPORTS[name])
+      await settle(page)
+
+      const visible = () =>
+        page.evaluate(
+          () =>
+            [...document.querySelectorAll<HTMLElement>("[aria-label*='layout']")].filter(
+              (button) => button.getBoundingClientRect().width > 0,
+            ).length,
+        )
+
+      expect(await visible(), `${name}: the control must be reachable before forcing`).toBe(1)
+
+      await page.locator("[aria-label*='layout']").locator("visible=true").first().click()
+      await settle(page)
+
+      expect(await visible(), `${name}: the control must survive the layout it just forced`).toBe(1)
+
+      await page.locator("[aria-label*='layout']").locator("visible=true").first().click()
+      await settle(page)
     }
   })
 
