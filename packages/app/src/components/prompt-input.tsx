@@ -132,7 +132,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // chain would now shrink the editor on its own, but yielding outright gives
   // the panel the whole gap rather than making it fight for a share.
   const companionTall = () => companion() && question.pending().length === 0
-  const actionButton = () => (companion() ? "size-[72px]! px-1" : "size-11 wide:size-6 px-1")
+  const actionButton = () => (companion() ? "size-[72px]! px-1" : "size-6 any-pointer-coarse:size-11 px-1")
   // Icon sizes through its WRAPPER: [data-component=icon] is the sized box and
   // the svg inside is width:100% of it, so a class on the svg alone only moves
   // its height and leaves a stretched sliver. Target the wrapper instead. The
@@ -140,7 +140,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const actionIcon = () =>
     companion()
       ? "[&>[data-component=icon]]:!size-9"
-      : "[&>[data-component=icon]]:!size-6 wide:[&>[data-component=icon]]:!size-[18px]"
+      : "[&>[data-component=icon]]:!size-[18px] any-pointer-coarse:[&>[data-component=icon]]:!size-6"
   const comments = useComments()
   const stash = useStash()
   const params = useParams()
@@ -2550,13 +2550,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Button
                       type="button"
                       variant="ghost"
-                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 wide:size-6"} items-center justify-center`}
+                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11"} items-center justify-center`}
                       onClick={() => dialog.show(() => <DialogDock />)}
                       aria-label="Customize fields"
                     >
                       {/* The desktop shrink would beat the companion wrapper size
                         and leave a 16px glyph in a 72px button. */}
-                      <Icon name="sliders" size="medium" class={companion() ? undefined : "wide:!size-4"} />
+                      <Icon name="sliders" size="medium" class={companion() ? undefined : "!size-4"} />
                     </Button>
                   </Tooltip>
                 </span>
@@ -2692,7 +2692,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     type="button"
                     icon="stop"
                     variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 wide:h-6 wide:w-4.5"}
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "h-6 w-4.5 any-pointer-coarse:size-11"}
                     aria-label={language.t("prompt.action.stop")}
                     onClick={abort}
                   />
@@ -2721,7 +2721,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     disabled={!submittable()}
                     icon="arrow-up"
                     variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 wide:h-6 wide:w-4.5"}
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "h-6 w-4.5 any-pointer-coarse:size-11"}
                     aria-label={language.t("prompt.action.send")}
                     {...preserveFocus()}
                   />

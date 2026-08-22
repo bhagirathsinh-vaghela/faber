@@ -108,7 +108,7 @@ export function DictationOverlay(props: {
           the input it will be inserted into rather than across the screen from
           it. --prompt-height is published on the root by the dock's resize
           observer; the fallback only covers the frames before it lands. */}
-      <div class="fixed inset-x-0 bottom-[calc(var(--prompt-height,8rem)+var(--keyboard-inset,0px)+64px)] z-[9999] flex justify-center pointer-events-none px-3 wide:px-4">
+      <div class="fixed inset-x-0 bottom-[calc(var(--prompt-height,8rem)+var(--keyboard-inset,0px)+64px)] z-[9999] flex justify-center pointer-events-none px-4">
         <div
           ref={panelRef}
           class="pointer-events-auto w-full max-w-md flex flex-col gap-2 rounded-[1.75rem] border-[4.5px] bg-surface-raised-stronger-non-alpha p-2 transform-gpu isolate"
@@ -143,25 +143,25 @@ export function DictationOverlay(props: {
           </div>
           <div class="shrink-0 flex flex-row items-end justify-end gap-2 px-2 pb-1">
             <div class="flex flex-col items-center gap-0.5">
-              <kbd class="hidden wide:block text-11-regular text-text-weak">esc</kbd>
+              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weak">esc</kbd>
               <IconButton
                 type="button"
                 variant="secondary"
                 size="large"
                 icon="close"
-                class="size-11 wide:size-8"
+                class="size-8 any-pointer-coarse:size-11"
                 aria-label={language.t("dictation.discard")}
                 onClick={() => finish("discard")}
               />
             </div>
             <div class="flex flex-col items-center gap-0.5">
-              <kbd class="hidden wide:block text-11-regular text-text-weak">↵</kbd>
+              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weak">↵</kbd>
               <IconButton
                 type="button"
                 variant="primary"
                 size="large"
                 icon="check"
-                class="size-11 wide:size-8"
+                class="size-8 any-pointer-coarse:size-11"
                 aria-label={language.t("dictation.accept")}
                 onClick={() => finish("accept")}
               />
