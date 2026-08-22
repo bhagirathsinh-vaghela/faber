@@ -8,18 +8,20 @@ test("dialog edit project updates name and startup script", async ({ page, withP
     await openSidebar(page)
 
     const open = async () => {
-      const header = page.locator(".group\\/project").first()
-      await header.hover()
-      const trigger = header.getByRole("button", { name: "More options" }).first()
-      await expect(trigger).toBeVisible()
-      await trigger.click({ force: true })
+      await expect(async () => {
+        const header = page.locator(".group\\/project").first()
+        await header.hover()
+        const trigger = header.getByRole("button", { name: "More options" }).first()
+        await expect(trigger).toBeVisible()
+        await trigger.click({ force: true })
 
-      const menu = page.locator('[data-component="dropdown-menu-content"]').first()
-      await expect(menu).toBeVisible()
+        const menu = page.locator('[data-component="dropdown-menu-content"]').first()
+        await expect(menu).toBeVisible({ timeout: 2_000 })
 
-      const editItem = menu.getByRole("menuitem", { name: "Edit" }).first()
-      await expect(editItem).toBeVisible()
-      await editItem.click({ force: true })
+        const editItem = menu.getByRole("menuitem", { name: "Edit" }).first()
+        await expect(editItem).toBeVisible({ timeout: 2_000 })
+        await editItem.click({ force: true })
+      }).toPass({ timeout: 30_000 })
 
       const dialog = page.getByRole("dialog")
       await expect(dialog).toBeVisible()

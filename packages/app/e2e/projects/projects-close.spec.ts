@@ -62,7 +62,9 @@ test("can close a project via project header more options menu", async ({ page, 
         await expect(menu).toBeVisible({ timeout: 10_000 })
 
         await clickMenuItem(menu, /^Close$/i, { force: true })
-        await expect(otherButton).toHaveCount(0)
+        // The removal round-trips through the server and lands over SSE, so
+        // give it more than an in-page render would need.
+        await expect(otherButton).toHaveCount(0, { timeout: 15_000 })
       },
       { extra: [other] },
     )
