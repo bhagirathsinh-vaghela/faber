@@ -107,7 +107,7 @@ export function PromptActionBar() {
     // Mobile: display:contents so this component's ChipGroup is a direct child
     // of the dock chip row and spreads with the usage chips (no left/right
     // split). Desktop keeps its own flex wrapper.
-    <div class="contents md:flex md:flex-row md:flex-wrap md:items-center md:gap-1.5">
+    <div class="contents wide:flex wide:flex-row wide:flex-wrap wide:items-center wide:gap-1.5">
       <ChipGroup>
         {/* pending: display-only (no onClick), but same weight/color as its
             interactive siblings. */}

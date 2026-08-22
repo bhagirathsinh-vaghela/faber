@@ -89,7 +89,7 @@ export function UsageLine(props: {
     <div
       classList={{
         "flex flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5": !props.flat,
-        "contents md:flex md:flex-row md:flex-wrap md:items-center md:gap-x-1.5 md:gap-y-0.5": props.flat,
+        "contents wide:flex wide:flex-row wide:flex-wrap wide:items-center wide:gap-x-1.5 wide:gap-y-0.5": props.flat,
         [props.class ?? "pt-0.5"]: true,
       }}
     >

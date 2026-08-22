@@ -6,6 +6,34 @@
 
 @import "../index.css";
 
+/* Shell topology variants. These select on the `data-size-class` attribute that
+   util/shell.ts publishes, rather than running their own @media, so a stylesheet
+   cannot reach a different verdict than the JS reading the same value — the
+   failure that put mobile chrome around desktop content on a tablet. A forced
+   class is honoured here for free.
+
+   `wide:` means "there is room for more than one pane" and is the direct
+   replacement for the old desktop/mobile split. Use these ONLY for shell
+   topology; a component sized by its own box wants a container query, and
+   anything about the device wants a capability query. */
+@custom-variant compact {
+  &:where([data-size-class="compact"] *) {
+    @slot;
+  }
+}
+
+@custom-variant wide {
+  &:where(:not([data-size-class="compact"]) *) {
+    @slot;
+  }
+}
+
+@custom-variant expanded {
+  &:where([data-size-class="expanded"] *) {
+    @slot;
+  }
+}
+
 @theme {
   --*: initial;
 

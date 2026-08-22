@@ -1,5 +1,5 @@
 import { createMemo, onCleanup, onMount, Show } from "solid-js"
-import { createMediaQuery } from "@solid-primitives/media"
+import { useShell } from "@/utils/mobile"
 import { Portal } from "solid-js/web"
 import { useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
@@ -45,12 +45,12 @@ export function SessionHeader() {
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const view = createMemo(() => layout.view(sessionKey))
-  const isDesktop = createMediaQuery("(min-width: 768px)")
+  const wide = useShell().wide
 
   // The review toggle drives the desktop split panel; on mobile there is no
   // split, so it flips the session panel between transcript and changes.
-  const toggleReview = () => (isDesktop() ? layout.fileTree.toggle() : view().mobileChanges.toggle())
-  const reviewActive = () => (isDesktop() ? layout.fileTree.opened() : view().mobileChanges.opened())
+  const toggleReview = () => (wide() ? layout.fileTree.toggle() : view().mobileChanges.toggle())
+  const reviewActive = () => (wide() ? layout.fileTree.opened() : view().mobileChanges.opened())
 
   function stopSession() {
     const id = params.id
@@ -97,7 +97,7 @@ export function SessionHeader() {
           <Portal mount={mount()}>
             <button
               type="button"
-              class="hidden md:flex w-[320px] max-w-full min-w-0 p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
+              class="hidden wide:flex w-[320px] max-w-full min-w-0 p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
               onClick={() => command.trigger("file.open")}
               aria-label={language.t("session.header.searchFiles")}
             >
@@ -125,27 +125,6 @@ export function SessionHeader() {
                 they show on every route. Only the session-scoped controls
                 portal here. */}
             <Show when={currentSession()}>
-              <Tooltip
-                value={
-                  currentSession()?.keepWarm ? language.t("session.keepWarm.armed") : language.t("session.keepWarm.arm")
-                }
-                placement="top"
-                gutter={8}
-              >
-                <button
-                  type="button"
-                  onClick={toggleWarm}
-                  aria-label={language.t("session.keepWarm.arm")}
-                  aria-pressed={currentSession()?.keepWarm === true}
-                  class="flex items-center justify-center size-10 shrink-0 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:!text-icon-strong-base"
-                  classList={{
-                    "opacity-100": currentSession()?.keepWarm === true,
-                    "opacity-40": !currentSession()?.keepWarm,
-                  }}
-                >
-                  <Icon name="sparkles" size="medium" />
-                </button>
-              </Tooltip>
               {/* Companion toggle sits immediately left of Stop. It lives here
                   rather than in the shared Titlebar so it can be ordered among
                   the session-scoped controls, which all portal into this mount. */}
@@ -249,7 +228,7 @@ export function SessionHeader() {
                   </Tooltip>
                 </div>
               </Show>
-              <div class="hidden md:flex items-center gap-3 ml-2 shrink-0">
+              <div class="hidden wide:flex items-center gap-3 ml-2 shrink-0">
                 <TooltipKeybind
                   title={language.t("command.terminal.toggle")}
                   keybind={command.keybind("terminal.toggle")}

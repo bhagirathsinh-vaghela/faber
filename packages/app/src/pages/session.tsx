@@ -11,7 +11,7 @@ import {
   on,
   type JSX,
 } from "solid-js"
-import { createMediaQuery } from "@solid-primitives/media"
+import { useShell } from "@/utils/mobile"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
@@ -371,8 +371,8 @@ export default function Page() {
     })
   }
 
-  const isDesktop = createMediaQuery("(min-width: 768px)")
-  const centered = createMemo(() => isDesktop() && !layout.fileTree.opened())
+  const wide = useShell().wide
+  const centered = createMemo(() => wide() && !layout.fileTree.opened())
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -1460,7 +1460,7 @@ export default function Page() {
       .filter((tab) => tab !== "context"),
   )
 
-  const mobileChanges = createMemo(() => !isDesktop() && view().mobileChanges.opened())
+  const mobileChanges = createMemo(() => !wide() && view().mobileChanges.opened())
 
   const fileTreeTab = () => layout.fileTree.tab()
   const setFileTreeTab = (value: "changes" | "all") => layout.fileTree.setTab(value)
@@ -1641,7 +1641,7 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const wants = isDesktop() ? layout.fileTree.opened() && fileTreeTab() === "changes" : view().mobileChanges.opened()
+    const wants = wide() ? layout.fileTree.opened() && fileTreeTab() === "changes" : view().mobileChanges.opened()
     if (!wants) return
     if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
@@ -1650,7 +1650,7 @@ export default function Page() {
   })
 
   createEffect(() => {
-    if (!isDesktop()) return
+    if (!wide()) return
     if (!layout.fileTree.opened()) return
     if (sync.status === "loading") return
 
@@ -2216,7 +2216,7 @@ export default function Page() {
     }
   })
 
-  const pillSize = () => (isDesktop() ? 40 : 52)
+  const pillSize = () => (wide() ? 40 : 52)
   const PILL_MARGIN = 16
   const DRAG_THRESHOLD = 6
   // Read a safe-area inset (exposed as a CSS var in index.css) as a number, so
@@ -2265,7 +2265,7 @@ export default function Page() {
   // click, which is what separates "moved the pill" from "tapped the pill".
   let dragged = false
   function startPillDrag(e: PointerEvent) {
-    if (isDesktop()) return
+    if (wide()) return
     const startX = e.clientX
     const startY = e.clientY
     dragged = false
@@ -2312,7 +2312,7 @@ export default function Page() {
             layout.zen.toggle()
           }}
           aria-label={layout.zen.opened() ? language.t("zen.exit") : language.t("zen.enter")}
-          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing md:cursor-pointer md:active:cursor-pointer hover:bg-surface-raised-base-hover"
+          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing wide:cursor-pointer wide:active:cursor-pointer hover:bg-surface-raised-base-hover"
           classList={{ "transition-none": drag() !== null }}
           style={{
             // Measured top-right corner anchor (both platforms + mobile drag).
@@ -2328,21 +2328,21 @@ export default function Page() {
             height: `${pillSize()}px`,
           }}
         >
-          <span class="text-2xl md:text-lg leading-none select-none" aria-hidden="true">
+          <span class="text-2xl wide:text-lg leading-none select-none" aria-hidden="true">
             {layout.zen.opened() ? "🌐" : "🧘"}
           </span>
         </button>
       </Portal>
-      <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+      <div class="flex-1 min-h-0 flex flex-col wide:flex-row">
         {/* Session panel */}
         <div
           classList={{
             "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
-            "flex-1 pt-0 md:pt-3": true,
-            "md:flex-none": layout.fileTree.opened(),
+            "flex-1 pt-0 wide:pt-3": true,
+            "wide:flex-none": layout.fileTree.opened(),
           }}
           style={{
-            width: isDesktop() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
+            width: wide() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
             // In zen the titlebar stops drawing, so on mobile this panel clears
             // the device's top safe-area inset (status bar) plus a 1rem gap that
             // mirrors the bottom margin. --sat is 0 on desktop, where the WCO
@@ -2567,13 +2567,13 @@ export default function Page() {
                           // from the landing offset overwrites that anchor with a
                           // neighbor, so the next step counts from the wrong
                           // message. Same gesture guard the follow logic uses.
-                          if (isDesktop() && !settling && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
+                          if (wide() && !settling && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
                         style={{
                           "--session-title-height":
                             !layout.zen.opened() && (info()?.title || info()?.parentID)
-                              ? isDesktop()
+                              ? wide()
                                 ? "28px"
                                 : "24px"
                               : "0px",
@@ -2584,11 +2584,11 @@ export default function Page() {
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,
                               "w-full": true,
-                              "px-4 md:px-0": true,
-                              "md:max-w-[95%] md:mx-auto": centered(),
+                              "px-4 wide:px-0": true,
+                              "wide:max-w-[95%] wide:mx-auto": centered(),
                             }}
                           >
-                            <div class="h-6 md:h-7 flex items-center gap-1">
+                            <div class="h-6 wide:h-7 flex items-center gap-1">
                               <Show when={info()?.parentID}>
                                 <IconButton
                                   tabIndex={-1}
@@ -2666,7 +2666,7 @@ export default function Page() {
                           class="flex flex-col gap-4 items-start justify-start transition-[margin]"
                           classList={{
                             "w-full": true,
-                            "md:max-w-[95%] md:mx-auto": centered(),
+                            "wide:max-w-[95%] wide:mx-auto": centered(),
                             "mt-0.5": centered(),
                             "mt-0": !centered(),
                           }}
@@ -2718,7 +2718,7 @@ export default function Page() {
                                   // The last turn carries the floating-dock
                                   // clearance so virtua's align:"end" lands the
                                   // message above the dock, not under it.
-                                  "!pb-[calc(var(--prompt-height,8rem)+12px)] md:!pb-[calc(var(--prompt-height,10rem)+12px)]":
+                                  "!pb-[calc(var(--prompt-height,8rem)+12px)] wide:!pb-[calc(var(--prompt-height,10rem)+12px)]":
                                     index() === lastIndex(),
                                 }}
                               >
@@ -2735,7 +2735,7 @@ export default function Page() {
                                   classes={{
                                     root: "min-w-0 w-full relative",
                                     content: "flex flex-col justify-between !overflow-visible",
-                                    container: "w-full px-4 md:px-0",
+                                    container: "w-full px-4 wide:px-0",
                                   }}
                                 />
                               </div>
@@ -2781,7 +2781,7 @@ export default function Page() {
               // inside can know how much room it has, which is why the question
               // panel used to guess with a hardcoded max-height. With the chain
               // bounded, its inner scroller resolves a real height and engages.
-              "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
+              "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 wide:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
               // Zen keeps a slimmed dock (input + attach + submit + question/permission
               // prompts) rather than hiding it, so questions stay answerable in zen.
               // PromptInput drops its own chrome via useLayout().zen. Only the mobile
@@ -2798,7 +2798,7 @@ export default function Page() {
               ref={(el) => (promptInner = el)}
               classList={{
                 "w-full pointer-events-auto flex flex-col min-h-0": true,
-                "md:max-w-[95%] md:mx-auto": centered(),
+                "wide:max-w-[95%] wide:mx-auto": centered(),
               }}
             >
               <Show when={revertMessageID()}>
@@ -2892,7 +2892,7 @@ export default function Page() {
               <Show
                 when={prompt.ready()}
                 fallback={
-                  <div class="w-full min-h-32 md:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
+                  <div class="w-full min-h-32 wide:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
                     {handoff.prompt || language.t("prompt.loading")}
                   </div>
                 }
@@ -2909,7 +2909,7 @@ export default function Page() {
             </div>
           </div>
 
-          <Show when={isDesktop() && layout.fileTree.opened()}>
+          <Show when={wide() && layout.fileTree.opened()}>
             <ResizeHandle
               direction="horizontal"
               size={layout.session.width()}
@@ -2921,7 +2921,7 @@ export default function Page() {
         </div>
 
         {/* Desktop side panel - hidden on mobile */}
-        <Show when={isDesktop() && layout.fileTree.opened()}>
+        <Show when={wide() && layout.fileTree.opened()}>
           <aside
             id="review-panel"
             aria-label={language.t("session.panel.reviewAndFiles")}
@@ -3736,7 +3736,7 @@ export default function Page() {
         </Show>
       </div>
 
-      <Show when={isDesktop() && view().terminal.opened()}>
+      <Show when={wide() && view().terminal.opened()}>
         <div
           id="terminal-panel"
           role="region"

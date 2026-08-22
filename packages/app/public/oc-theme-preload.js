@@ -1,4 +1,18 @@
 ;(function () {
+  // Must land before first paint. The `wide:` variant matches when the
+  // attribute is absent, so without this a phone paints one frame of the
+  // multi-pane layout. Thresholds and key mirror ui/util/shell.ts.
+  var forced = localStorage.getItem("opencode-size-class")
+  var sizeClass =
+    forced === "compact" || forced === "medium" || forced === "expanded"
+      ? forced
+      : innerWidth < 600
+        ? "compact"
+        : innerWidth < 840 || innerHeight < 480
+          ? "medium"
+          : "expanded"
+  document.documentElement.dataset.sizeClass = sizeClass
+
   var scheme = localStorage.getItem("opencode-color-scheme") || "system"
   var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
   var mode = isDark ? "dark" : "light"

@@ -73,9 +73,11 @@
     margin-bottom: 1rem;
   }
 
-  /* Mobile: tighten the loose 180% line-height and the inter-block spacing so
-     the transcript packs more content into the precious vertical space. */
-  @media (max-width: 767px) {
+  /* Compact: tighten the loose 180% line-height and the inter-block spacing so
+     the transcript packs more content into the precious vertical space. Keyed
+     to the shell's published size class rather than its own media query, so it
+     cannot disagree with the layout around it. */
+  [data-size-class="compact"] & {
     line-height: var(--line-height-large);
 
     p {

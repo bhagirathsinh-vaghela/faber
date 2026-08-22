@@ -208,6 +208,8 @@ export const dict = {
   "common.goBack": "Back",
   "common.goForward": "Forward",
   "common.reload": "Reload",
+  "surface.toggle.mobile": "Switch to mobile layout",
+  "surface.toggle.desktop": "Switch to desktop layout",
   "common.loading": "Loading",
   "common.loading.ellipsis": "...",
   "common.cancel": "Cancel",

@@ -119,6 +119,8 @@ const icons = {
   // would collide with the dock's dictation button, and the layout-* family is
   // already taken by the sidebar/terminal/review panel toggles. Scaled ×0.8333.
   "text-cursor-input": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"/><path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"/><path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"/><path d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1"/><path d="M9 6v12"/></g>`,
+  monitor: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></g>`,
+  smartphone: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></g>`,
 }
 
 export interface IconProps extends ComponentProps<"svg"> {

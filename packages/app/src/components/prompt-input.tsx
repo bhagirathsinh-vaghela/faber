@@ -132,7 +132,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // chain would now shrink the editor on its own, but yielding outright gives
   // the panel the whole gap rather than making it fight for a share.
   const companionTall = () => companion() && question.pending().length === 0
-  const actionButton = () => (companion() ? "size-[72px]! px-1" : "size-11 md:size-6 px-1")
+  const actionButton = () => (companion() ? "size-[72px]! px-1" : "size-11 wide:size-6 px-1")
   // Icon sizes through its WRAPPER: [data-component=icon] is the sized box and
   // the svg inside is width:100% of it, so a class on the svg alone only moves
   // its height and leaves a stretched sliver. Target the wrapper instead. The
@@ -140,7 +140,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const actionIcon = () =>
     companion()
       ? "[&>[data-component=icon]]:!size-9"
-      : "[&>[data-component=icon]]:!size-6 md:[&>[data-component=icon]]:!size-[18px]"
+      : "[&>[data-component=icon]]:!size-6 wide:[&>[data-component=icon]]:!size-[18px]"
   const comments = useComments()
   const stash = useStash()
   const params = useParams()
@@ -1976,7 +1976,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   return (
-    <div class="relative size-full _max-h-[320px] flex flex-col gap-1 md:gap-3 [--dock-font-size:var(--font-size-x-small)] md:[--dock-font-size:var(--font-size-small)]">
+    <div class="relative size-full _max-h-[320px] flex flex-col gap-1 wide:gap-3 [--dock-font-size:var(--font-size-x-small)] wide:[--dock-font-size:var(--font-size-small)]">
       <Show when={store.popover}>
         <div
           ref={(el) => {
@@ -2241,13 +2241,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         <div
           classList={{
             contents: true,
-            "md:flex md:flex-row md:items-center": zen(),
+            "wide:flex wide:flex-row wide:items-center": zen(),
           }}
         >
           <div
             classList={{
               "relative overflow-y-auto min-w-0": true,
-              "md:flex-1": zen(),
+              "wide:flex-1": zen(),
               "max-h-[240px]": !companionTall(),
               "max-h-[45vh]": companionTall(),
             }}
@@ -2279,9 +2279,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               onKeyDown={handleKeyDown}
               classList={{
                 "select-text": true,
-                "w-full px-2 text-13-semibold md:px-3 md:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
-                "pt-2 pb-0 md:py-3": !zen(),
-                "pt-2 pb-0 md:py-2.5": zen(),
+                "w-full px-2 text-13-semibold wide:px-3 wide:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
+                "pt-2 pb-0 wide:py-3": !zen(),
+                "pt-2 pb-0 wide:py-2.5": zen(),
                 // Hold the tall surface open on an empty draft, so entering
                 // companion doesn't collapse the dock back to one line.
                 "min-h-[28vh]": companionTall(),
@@ -2293,11 +2293,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Show when={!prompt.dirty()}>
               <div
                 classList={{
-                  "absolute top-0 inset-x-0 px-2 text-13-regular md:px-3 md:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
+                  "absolute top-0 inset-x-0 px-2 text-13-regular wide:px-3 wide:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
                   // Mirror the editor's vertical padding so the placeholder sits
                   // exactly where typed text will appear.
-                  "pt-2 pb-0 md:py-3": !zen(),
-                  "pt-2 pb-0 md:py-2.5": zen(),
+                  "pt-2 pb-0 wide:py-3": !zen(),
+                  "pt-2 pb-0 wide:py-2.5": zen(),
                 }}
               >
                 {store.mode === "shell"
@@ -2314,17 +2314,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             classList={{
               // Mobile stacks so the dock info line (when expanded) sits above the
               // flat button row; desktop keeps them side by side.
-              "flex flex-col md:flex-row md:items-center md:justify-between gap-2": true,
+              "flex flex-col wide:flex-row wide:items-center wide:justify-between gap-2": true,
               // Default: the button row sits below the input. The mobile pt-2
               // mirrors the editor's own pt-2 (symmetric space above/below the
               // text), and pb-1.5 keeps the buttons off the bottom border. On
               // mobile this holds in zen too, giving the same two-row layout as
               // the collapsed dock.
-              "relative px-3 pt-2 pb-1.5 md:pt-0 md:py-1.5": !zen(),
-              "relative px-3 pt-2 pb-1.5 md:pt-0 md:pb-0": zen(),
+              "relative px-3 pt-2 pb-1.5 wide:pt-0 wide:py-1.5": !zen(),
+              "relative px-3 pt-2 pb-1.5 wide:pt-0 wide:pb-0": zen(),
               // Desktop zen keeps the original single row: buttons sit at the
               // input's right edge (the mobile stack still applies below md).
-              "md:shrink-0 md:px-2 md:pt-0 md:pb-0": zen(),
+              "wide:shrink-0 wide:px-2 wide:pt-0 wide:pb-0": zen(),
             }}
           >
             <div
@@ -2333,7 +2333,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
                 hidden: zen(),
                 // Mobile: hidden unless the chevron expands it. Desktop always shows.
-                "hidden md:flex": !zen() && !dockInfoOpen(),
+                "hidden wide:flex": !zen() && !dockInfoOpen(),
               }}
             >
               {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
@@ -2514,7 +2514,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </span>
               </Show>
             </div>
-            <div class="flex items-center justify-between flex-1 md:flex-none md:justify-end md:gap-1 shrink-0">
+            <div class="flex items-center justify-between flex-1 wide:flex-none wide:justify-end wide:gap-1 shrink-0">
               {/* Mobile only: grabber toggles the dock info line + chip row
                 together (both collapsed by default). Outward arrows = expand;
                 inward arrows = collapse. */}
@@ -2523,7 +2523,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    class={`md:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
+                    class={`wide:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
                     onClick={() => setDockInfoOpen((v) => !v)}
                     aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                     aria-expanded={dockInfoOpen()}
@@ -2540,30 +2540,30 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <span
                   classList={{
                     contents: dockInfoOpen(),
-                    "hidden md:contents": !dockInfoOpen(),
+                    "hidden wide:contents": !dockInfoOpen(),
                   }}
                 >
                   <Tooltip placement="top" value="Customize fields">
                     <Button
                       type="button"
                       variant="ghost"
-                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:size-6"} items-center justify-center`}
+                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 wide:size-6"} items-center justify-center`}
                       onClick={() => dialog.show(() => <DialogDock />)}
                       aria-label="Customize fields"
                     >
                       {/* The desktop shrink would beat the companion wrapper size
                         and leave a 16px glyph in a 72px button. */}
-                      <Icon name="sliders" size="medium" class={companion() ? undefined : "md:!size-4"} />
+                      <Icon name="sliders" size="medium" class={companion() ? undefined : "wide:!size-4"} />
                     </Button>
                   </Tooltip>
                 </span>
               </Show>
               {/* Auto-accept is desktop-only in the footer. The whole wrapper is
-                display:none on mobile (md:contents on desktop) so it leaves no
+                display:none on mobile (wide:contents on desktop) so it leaves no
                 flex slot — otherwise its tooltip wrapper would break the mobile
                 row's even spread. */}
               <Show when={permission.permissionsEnabled() && params.id && !zen()}>
-                <span class="hidden md:contents">
+                <span class="hidden wide:contents">
                   <TooltipKeybind
                     placement="top"
                     gutter={8}
@@ -2608,7 +2608,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               {/* Mobile: contents so keyboard/mic/photo are flat siblings of the
                 chevron/customize/send in one justify-between row. Desktop keeps
                 them grouped. */}
-              <div class="contents md:flex md:items-center md:gap-1 md:mr-1">
+              <div class="contents wide:flex wide:items-center wide:gap-1 wide:mr-1">
                 {/* Always shown on a coarse pointer (mobile), never gated on
                   keyboardWanted — so tapping it can't unmount it mid-gesture and
                   blur the editor on release. Stable element = stable focus. */}
@@ -2689,7 +2689,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     type="button"
                     icon="stop"
                     variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 wide:h-6 wide:w-4.5"}
                     aria-label={language.t("prompt.action.stop")}
                     onClick={abort}
                   />
@@ -2718,7 +2718,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     disabled={!submittable()}
                     icon="arrow-up"
                     variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 md:h-6 md:w-4.5"}
+                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11 wide:h-6 wide:w-4.5"}
                     aria-label={language.t("prompt.action.send")}
                     {...preserveFocus()}
                   />
@@ -2753,8 +2753,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <div
               classList={{
                 "border-t border-border-weak-base px-3 flex flex-row flex-wrap items-center justify-between gap-1.5": true,
-                "hidden md:flex": !dockInfoOpen(),
-                "pt-2 pb-0 md:py-1": true,
+                "hidden wide:flex": !dockInfoOpen(),
+                "pt-2 pb-0 wide:py-1": true,
               }}
             >
               {/* Statusline is runtime telemetry with nothing to show pre-turn;

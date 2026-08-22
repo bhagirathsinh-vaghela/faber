@@ -804,20 +804,20 @@ function Panel(props: {
                       <Button
                         type="button"
                         variant="ghost"
-                        class="size-11 md:size-6 px-1"
+                        class="size-11 wide:size-6 px-1"
                         // Raising the keyboard is gated on live user activation,
                         // so it acts on press rather than click.
                         {...gestureAction(requestKeyboard)}
                         aria-label={language.t("prompt.action.showKeyboard")}
                       >
-                        <Icon name="keyboard" class="size-6 md:size-4.5" />
+                        <Icon name="keyboard" class="size-6 wide:size-4.5" />
                       </Button>
                     </Show>
                     <Show when={dictation.supported()}>
                       <Button
                         type="button"
                         variant="ghost"
-                        class="size-11 md:size-6 px-1"
+                        class="size-11 wide:size-6 px-1"
                         data-dictation-toggle
                         data-dictation-focused={dictationTargeted() ? "" : undefined}
                         onClick={toggleDictation}
@@ -828,7 +828,7 @@ function Panel(props: {
                       >
                         <Icon
                           name="mic"
-                          class="size-6 md:size-4.5"
+                          class="size-6 wide:size-4.5"
                           classList={{ "text-icon-critical-base animate-pulse": dictating() }}
                           style={dictationTargeted() ? { color: accent() } : undefined}
                         />
@@ -841,7 +841,7 @@ function Panel(props: {
                       variant="primary"
                       size="large"
                       icon={multi() ? "plus" : "check"}
-                      class="size-11 md:size-8"
+                      class="size-11 wide:size-8"
                       aria-label={multi() ? "Add" : "Submit"}
                     />
                   </form>
@@ -886,26 +886,26 @@ function Panel(props: {
           where there is no keyboard. */}
       <div class="flex shrink-0 flex-row items-end gap-2 justify-end px-4 pb-3">
         <div class="flex flex-col items-center gap-0.5">
-          <kbd class="hidden md:block text-11-regular text-text-weak">⌥D</kbd>
+          <kbd class="hidden wide:block text-11-regular text-text-weak">⌥D</kbd>
           <IconButton
             type="button"
             variant="secondary"
             size="large"
             icon="close"
-            class="size-11 md:size-8"
+            class="size-11 wide:size-8"
             aria-label="Dismiss"
             onClick={reject}
           />
         </div>
         <Show when={multiRequest()}>
           <div class="flex flex-col items-center gap-0.5">
-            <kbd class="hidden md:block text-11-regular text-text-weak">⇥</kbd>
+            <kbd class="hidden wide:block text-11-regular text-text-weak">⇥</kbd>
             <IconButton
               type="button"
               variant="ghost"
               size="large"
               icon="arrow-right"
-              class="size-11 md:size-8"
+              class="size-11 wide:size-8"
               aria-label="Next question"
               onClick={() => cycleRequest(1)}
             />
@@ -913,13 +913,13 @@ function Panel(props: {
         </Show>
         <Show when={confirm() || single()}>
           <div class="flex flex-col items-center gap-0.5">
-            <kbd class="hidden md:block text-11-regular text-text-weak">↵</kbd>
+            <kbd class="hidden wide:block text-11-regular text-text-weak">↵</kbd>
             <IconButton
               type="button"
               variant="primary"
               size="large"
               icon="check"
-              class="size-11 md:size-8"
+              class="size-11 wide:size-8"
               aria-label="Submit"
               onClick={single() ? () => activate(store.selected) : submit}
             />

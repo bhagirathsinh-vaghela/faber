@@ -13,7 +13,7 @@ import { usePlatform } from "@/context/platform"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { StatusPopover } from "@/components/status-popover"
-import { createStandalone } from "@/utils/mobile"
+import { createStandalone, useShell } from "@/utils/mobile"
 
 export function Titlebar() {
   const layout = useLayout()
@@ -34,6 +34,13 @@ export function Titlebar() {
   // reload button in the mobile row only in that mode; a normal tab already has
   // the browser's own reload.
   const standalone = createStandalone()
+
+  // Labelled and iconed with the layout it switches TO, so the glyph reads as a
+  // destination rather than a status. Lives in the shared titlebar rather than a
+  // session portal so it stays reachable in every layout it can switch between.
+  const shell = useShell()
+  const surfaceLabel = () =>
+    shell.compact() ? language.t("surface.toggle.desktop") : language.t("surface.toggle.mobile")
 
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
@@ -176,7 +183,7 @@ export function Titlebar() {
     <header
       data-slot="titlebar"
       data-wco={overlay() ? "" : undefined}
-      class="h-12 md:h-10 shrink-0 bg-background-base relative"
+      class="h-12 wide:h-10 shrink-0 bg-background-base relative"
       classList={{ hidden: layout.zen.opened() }}
       style={{
         "min-height": minHeight(),
@@ -194,7 +201,7 @@ export function Titlebar() {
           (search, status, keep-warm, stop, review) portal into
           #opencode-titlebar-mobile as direct siblings, so justify-between
           spreads all of them evenly across the width. */}
-      <div class="xl:hidden flex items-center justify-between size-full px-1 min-w-0 overflow-hidden">
+      <div class="expanded:hidden flex items-center justify-between size-full px-1 min-w-0 overflow-hidden">
         <IconButton
           icon="house-mobile"
           iconSize="medium"
@@ -225,6 +232,16 @@ export function Titlebar() {
           />
         </Tooltip>
         <StatusPopover />
+        <Tooltip value={surfaceLabel()} placement="bottom" gutter={8}>
+          <IconButton
+            icon={shell.compact() ? "monitor" : "smartphone"}
+            iconSize="medium"
+            variant={shell.forced() ? "primary" : "ghost"}
+            class="size-10 shrink-0 p-0"
+            onClick={shell.toggle}
+            aria-label={surfaceLabel()}
+          />
+        </Tooltip>
         <div id="opencode-titlebar-mobile" class="contents" />
         {/* Reload pinned rightmost: installed PWA has no address-bar reload, so
             this is the in-app substitute, placed at the end of the row. */}
@@ -242,7 +259,7 @@ export function Titlebar() {
         </Show>
       </div>
 
-      <div class="hidden xl:grid grid-cols-[auto_minmax(0,1fr)_auto] items-center size-full">
+      <div class="hidden expanded:grid grid-cols-[auto_minmax(0,1fr)_auto] items-center size-full">
         <div
           classList={{
             "flex items-center min-w-0": true,
@@ -255,7 +272,7 @@ export function Titlebar() {
           </Show>
           <div class="flex items-center gap-3 shrink-0">
             <Tooltip
-              class="hidden xl:flex shrink-0 ml-2"
+              class="hidden expanded:flex shrink-0 ml-2"
               placement="bottom"
               value={language.t("common.home")}
               openDelay={2000}
@@ -269,7 +286,7 @@ export function Titlebar() {
               />
             </Tooltip>
             <TooltipKeybind
-              class="hidden xl:flex shrink-0"
+              class="hidden expanded:flex shrink-0"
               placement="bottom"
               title={language.t("command.sidebar.toggle")}
               keybind={command.keybind("sidebar.toggle")}
@@ -300,7 +317,7 @@ export function Titlebar() {
                 </div>
               </Button>
             </TooltipKeybind>
-            <div class="hidden xl:flex items-center gap-1 shrink-0">
+            <div class="hidden expanded:flex items-center gap-1 shrink-0">
               <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={2000}>
                 <Button
                   variant="ghost"
@@ -319,6 +336,15 @@ export function Titlebar() {
                   disabled={!canForward()}
                   onClick={forward}
                   aria-label={language.t("common.goForward")}
+                />
+              </Tooltip>
+              <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>
+                <Button
+                  variant={shell.forced() ? "primary" : "ghost"}
+                  icon={shell.compact() ? "monitor" : "smartphone"}
+                  class="size-6 p-0"
+                  onClick={shell.toggle}
+                  aria-label={surfaceLabel()}
                 />
               </Tooltip>
             </div>

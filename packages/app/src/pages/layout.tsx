@@ -61,7 +61,7 @@ import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
-import { createMediaQuery } from "@solid-primitives/media"
+import { useShell } from "@/utils/mobile"
 
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
@@ -623,7 +623,7 @@ export default function Layout(props: ParentProps) {
   // the one currency it cannot spare: iOS discards a tab on memory pressure, so
   // the reward for a faster swipe is losing the session entirely. Small screens
   // fetch on open instead.
-  const smallScreen = createMediaQuery("(max-width: 767px)")
+  const compact = useShell().compact
   const prefetchChunk = 200
   const prefetchConcurrency = 1
   const prefetchPendingLimit = 6
@@ -765,7 +765,7 @@ export default function Layout(props: ParentProps) {
   const prefetchSession = (session: Session, priority: "high" | "low" = "low") => {
     const directory = session.directory
     if (!directory) return
-    if (smallScreen()) return
+    if (compact()) return
 
     // Never prefetch a live session: its transcript is arriving over SSE, and a
     // full-window refetch reconciles the parts store, clobbering deltas already
@@ -2442,7 +2442,7 @@ export default function Layout(props: ParentProps) {
           data-component="sidebar-nav-desktop"
           classList={{
             hidden: true,
-            "xl:block": !layout.zen.opened(),
+            "expanded:block": !layout.zen.opened(),
             "relative shrink-0": true,
           }}
           style={{ width: layout.sidebar.opened() ? `${Math.max(layout.sidebar.width(), 244)}px` : "64px" }}
@@ -2472,7 +2472,7 @@ export default function Layout(props: ParentProps) {
             />
           </Show>
         </nav>
-        <div class="xl:hidden">
+        <div class="expanded:hidden">
           <div
             classList={{
               "fixed inset-x-0 top-10 bottom-0 z-40 transition-opacity duration-200": true,
@@ -2504,7 +2504,7 @@ export default function Layout(props: ParentProps) {
         <main
           classList={{
             "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base": true,
-            "xl:border-l xl:rounded-tl-sm": !layout.sidebar.opened() && !layout.zen.opened(),
+            "expanded:border-l expanded:rounded-tl-sm": !layout.sidebar.opened() && !layout.zen.opened(),
           }}
         >
           {props.children}

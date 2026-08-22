@@ -1,6 +1,6 @@
 import { checksum } from "@opencode-ai/util/encode"
 import { FileDiff, type SelectedLineRange } from "@pierre/diffs"
-import { createMediaQuery } from "@solid-primitives/media"
+import { createElementSize } from "@solid-primitives/resize-observer"
 import { createEffect, createMemo, createSignal, onCleanup, splitProps } from "solid-js"
 import { createDefaultOptions, type DiffProps, styleVariables } from "../pierre"
 import { getWorkerPool, setDiffTheme } from "../pierre/worker"
@@ -75,7 +75,13 @@ export function Diff<T>(props: DiffProps<T>) {
     "onRendered",
   ])
 
-  const mobile = createMediaQuery("(max-width: 640px)")
+  // Line numbers are dropped when the diff itself is too narrow to spare the
+  // gutter, which is a question about this element's box: the same diff renders
+  // in a resizable review pane, a full-width tab, and a phone. Keying it to the
+  // viewport stripped the gutter on a wide monitor whenever the pane was narrow,
+  // and kept it on a phone whose window was forced wide.
+  const size = createElementSize(() => container)
+  const narrow = createMemo(() => (size.width ?? Infinity) < 640)
   const theme = useDiffTheme()
 
   const options = createMemo(() => {
@@ -88,7 +94,7 @@ export function Diff<T>(props: DiffProps<T>) {
       ...createDefaultOptions(props.diffStyle, name),
       ...others,
     }
-    if (!mobile()) return opts
+    if (!narrow()) return opts
     return {
       ...opts,
       disableLineNumbers: true,
