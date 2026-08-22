@@ -33,8 +33,16 @@ test("can send a prompt and receive a reply", async ({ page, sdk, gotoSession })
       .poll(
         async () => {
           const messages = await sdk.session.messages({ sessionID, limit: 50 }).then((r) => r.data ?? [])
-          return messages
-            .filter((m) => m.info.role === "assistant")
+          const assistant = messages.filter((m) => m.info.role === "assistant")
+
+          // A provider failure (quota, auth, network) never yields the token,
+          // so waiting out the whole poll only obscures it. Surface it now.
+          const failure = assistant
+            .map((m) => (m.info.role === "assistant" ? m.info.error : undefined))
+            .find((e) => e !== undefined)
+          if (failure) throw new Error(`Assistant turn failed: ${JSON.stringify(failure)}`)
+
+          return assistant
             .flatMap((m) => m.parts)
             .filter((p) => p.type === "text")
             .map((p) => p.text)
