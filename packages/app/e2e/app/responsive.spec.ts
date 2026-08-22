@@ -100,9 +100,31 @@ test.describe("forced size class", () => {
     await settle(page)
     expect(await sizeClass(page), "a press while pinned hands the decision back to the window").toBe("expanded")
     expect(
-      await page.evaluate(() => localStorage.getItem("opencode-size-class")),
+      await page.evaluate(() => sessionStorage.getItem("opencode-size-class")),
       "releasing the pin clears the stored override",
     ).toBeNull()
+  })
+
+  test("a pinned layout belongs to its tab alone", async ({ page, context, gotoSession }) => {
+    await gotoSession()
+    await page.setViewportSize(VIEWPORTS.desktop)
+    await settle(page)
+
+    await page.locator("[aria-label*='layout']").locator("visible=true").first().click()
+    await settle(page)
+    expect(await sizeClass(page)).toBe("compact")
+
+    // Every client decides its own view: a second tab on the same server must
+    // come up with the window's answer, not the first tab's pin.
+    const second = await context.newPage()
+    await second.setViewportSize(VIEWPORTS.desktop)
+    await second.goto(page.url())
+    await second.waitForLoadState("domcontentloaded")
+    expect(
+      await second.evaluate(() => document.documentElement.dataset.sizeClass),
+      "a new tab must not inherit another tab's pin",
+    ).toBe("expanded")
+    await second.close()
   })
 
   test("survives a reload without flashing the other layout", async ({ page, gotoSession }) => {
@@ -121,7 +143,7 @@ test.describe("forced size class", () => {
     expect(await sizeClass(page), "the forced class is applied before first paint").toBe("compact")
   })
 
-  test("is reachable from every natural size class", async ({ page, gotoSession }) => {
+  test("both ends and auto are reachable from every natural size class", async ({ page, gotoSession }) => {
     await gotoSession()
 
     for (const name of ["phone", "tabletPortrait", "desktop"] as const) {
@@ -130,13 +152,21 @@ test.describe("forced size class", () => {
       const natural = await sizeClass(page)
 
       const toggle = () => page.locator("[aria-label*='layout']").locator("visible=true").first()
-      await toggle().click()
-      await settle(page)
-      expect(await sizeClass(page), `${name}: press must change the layout`).not.toBe(natural)
 
-      await toggle().click()
-      await settle(page)
-      expect(await sizeClass(page), `${name}: second press returns to the window's own answer`).toBe(natural)
+      const seen = new Set<string>()
+      for (let press = 0; press < 3; press++) {
+        await toggle().click()
+        await settle(page)
+        const forced = await page.evaluate(() => sessionStorage.getItem("opencode-size-class"))
+        if (!forced) break
+        seen.add(forced)
+      }
+
+      for (const end of ["compact", "expanded"]) {
+        if (end === natural) continue
+        expect(seen.has(end), `${name}: the cycle must reach ${end}`).toBe(true)
+      }
+      expect(await sizeClass(page), `${name}: the cycle must end back at the window's own answer`).toBe(natural)
     }
   })
 })
@@ -524,12 +554,13 @@ test.describe("chrome geometry", () => {
     for (const name of ["phone", "tabletPortrait", "desktop"] as const) {
       await page.setViewportSize(VIEWPORTS[name])
       await settle(page)
-      // Driven through the control rather than storage, so the layout is left
-      // as this test found it.
-      if ((await sizeClass(page)) !== "expanded") {
+      // Driven through the control rather than storage, so the path a user
+      // would take is the path under test.
+      for (let press = 0; press < 3 && (await sizeClass(page)) !== "expanded"; press++) {
         await page.locator("[aria-label*='layout']").locator("visible=true").first().click()
         await settle(page)
       }
+      expect(await sizeClass(page), `${name}: the cycle must offer the wide layout`).toBe("expanded")
 
       const collisions = await page.evaluate(() => {
         const boxes = [...document.querySelectorAll<HTMLElement>('[data-slot="titlebar"] button')]

@@ -1,8 +1,11 @@
 ;(function () {
   // Must land before first paint. The `wide:` variant matches when the
   // attribute is absent, so without this a phone paints one frame of the
-  // multi-pane layout. Thresholds and key mirror ui/util/shell.ts.
-  var forced = localStorage.getItem("opencode-size-class")
+  // multi-pane layout. This file cannot import ui/util/size-class.ts (a
+  // pre-paint classic script runs before any bundle exists), so the key and
+  // thresholds are duplicated here and shell-preload-parity.test.ts fails the
+  // suite when the two disagree.
+  var forced = sessionStorage.getItem("opencode-size-class")
   var sizeClass =
     forced === "compact" || forced === "medium" || forced === "expanded"
       ? forced

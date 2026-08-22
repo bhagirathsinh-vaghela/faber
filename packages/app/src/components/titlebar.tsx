@@ -39,12 +39,16 @@ export function Titlebar() {
   // destination rather than a status. Lives in the shared titlebar rather than a
   // session portal so it stays reachable in every layout it can switch between.
   const shell = useShell()
-  const surfaceLabel = () =>
-    shell.forced()
-      ? language.t("surface.toggle.auto")
-      : shell.compact()
-        ? language.t("surface.toggle.desktop")
-        : language.t("surface.toggle.mobile")
+  const surfaceLabel = () => {
+    const next = shell.next()
+    if (!next) return language.t("surface.toggle.auto")
+    return next === "compact" ? language.t("surface.toggle.mobile") : language.t("surface.toggle.desktop")
+  }
+  const surfaceIcon = () => {
+    const next = shell.next()
+    if (!next) return "monitor-smartphone" as const
+    return next === "compact" ? ("smartphone" as const) : ("monitor" as const)
+  }
 
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
@@ -238,7 +242,7 @@ export function Titlebar() {
         <StatusPopover />
         <Tooltip value={surfaceLabel()} placement="bottom" gutter={8}>
           <IconButton
-            icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
+            icon={surfaceIcon()}
             iconSize="medium"
             variant={shell.forced() ? "primary" : "ghost"}
             class="size-10 shrink-0 p-0"
@@ -354,7 +358,7 @@ export function Titlebar() {
             <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>
               <Button
                 variant={shell.forced() ? "primary" : "ghost"}
-                icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
+                icon={surfaceIcon()}
                 class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
                 onClick={shell.toggle}
                 aria-label={surfaceLabel()}
