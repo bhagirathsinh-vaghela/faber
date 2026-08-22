@@ -67,6 +67,9 @@ export function StatusPopover() {
         class:
           "rounded-sm h-[24px] max-w-[140px] min-w-0 shrink py-1.5 pr-3 pl-2 gap-2 border-none shadow-none data-[expanded]:bg-surface-raised-base-active",
         style: { scale: 1 },
+        // The visible label is the server's short name, which says nothing
+        // about what the control opens.
+        "aria-label": language.t("status.popover.trigger"),
       }}
       trigger={
         <div class="flex items-center gap-1.5 min-w-0">
