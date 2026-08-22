@@ -15,7 +15,7 @@ test("status popover opens and shows tabs", async ({ page, gotoSession }) => {
   await expect(popoverBody).toHaveCount(0)
 })
 
-test("status popover servers tab shows current server", async ({ page, gotoSession }) => {
+test("status popover servers tab shows the connected machine", async ({ page, gotoSession }) => {
   await gotoSession()
 
   const { popoverBody } = await openStatusPopover(page)
@@ -23,8 +23,9 @@ test("status popover servers tab shows current server", async ({ page, gotoSessi
   const serversTab = popoverBody.getByRole("tab", { name: /servers/i })
   await expect(serversTab).toHaveAttribute("aria-selected", "true")
 
-  const serverList = popoverBody.locator('[role="tabpanel"]').first()
-  await expect(serverList.locator("button").first()).toBeVisible()
+  const machineRow = popoverBody.locator('[role="tabpanel"]').first()
+  await expect(machineRow).toBeVisible()
+  await expect(machineRow).not.toHaveText("")
 })
 
 test("status popover can switch to mcp tab", async ({ page, gotoSession }) => {

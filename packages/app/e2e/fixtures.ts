@@ -1,5 +1,5 @@
-import { test as base, expect, type Page } from "@playwright/test"
-import { cleanupTestProject, createTestProject, seedProjects } from "./actions"
+import { test as base, expect } from "@playwright/test"
+import { cleanupTestProject, createTestProject } from "./actions"
 import { promptSelector } from "./selectors"
 import { createSdk, dirSlug, getWorktree, sessionPath } from "./utils"
 
@@ -23,6 +23,20 @@ type WorkerFixtures = {
   slug: string
 }
 
+async function openSidebarProjects(worktrees: string[]) {
+  const sdk = createSdk()
+  for (const worktree of worktrees) {
+    await sdk.global.projects.openAdd({ directory: worktree })
+  }
+}
+
+async function closeSidebarProjects(worktrees: string[]) {
+  const sdk = createSdk()
+  for (const worktree of worktrees) {
+    await sdk.global.projects.close({ directory: worktree }).catch(() => undefined)
+  }
+}
+
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   directory: [
     async ({}, use) => {
@@ -41,8 +55,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(createSdk(directory))
   },
   gotoSession: async ({ page, directory }, use) => {
-    await seedStorage(page, { directory })
-
     const gotoSession = async (sessionID?: string) => {
       await page.goto(sessionPath(directory, sessionID))
       await expect(page.locator(promptSelector)).toBeVisible()
@@ -53,7 +65,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(async (callback, options) => {
       const directory = await createTestProject()
       const slug = dirSlug(directory)
-      await seedStorage(page, { directory, extra: options?.extra })
+      const projectWorktrees = [directory, ...(options?.extra ?? [])]
+      await openSidebarProjects(projectWorktrees)
 
       const gotoSession = async (sessionID?: string) => {
         await page.goto(sessionPath(directory, sessionID))
@@ -64,24 +77,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         await gotoSession()
         return await callback({ directory, slug, gotoSession })
       } finally {
+        await closeSidebarProjects(projectWorktrees)
         await cleanupTestProject(directory)
       }
     })
   },
 })
-
-async function seedStorage(page: Page, input: { directory: string; extra?: string[] }) {
-  await seedProjects(page, input)
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      "opencode.global.dat:model",
-      JSON.stringify({
-        recent: [{ providerID: "opencode", modelID: "big-pickle" }],
-        user: [],
-        variant: {},
-      }),
-    )
-  })
-}
 
 export { expect }

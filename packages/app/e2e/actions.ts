@@ -3,7 +3,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { execSync } from "node:child_process"
-import { modKey, serverUrl } from "./utils"
+import { modKey } from "./utils"
 import {
   sessionItemSelector,
   dropdownMenuTriggerSelector,
@@ -96,62 +96,11 @@ export async function openSettings(page: Page) {
   return dialog
 }
 
-export async function seedProjects(page: Page, input: { directory: string; extra?: string[] }) {
-  await page.addInitScript(
-    (args: { directory: string; serverUrl: string; extra: string[] }) => {
-      const key = "opencode.global.dat:server"
-      const raw = localStorage.getItem(key)
-      const parsed = (() => {
-        if (!raw) return undefined
-        try {
-          return JSON.parse(raw) as unknown
-        } catch {
-          return undefined
-        }
-      })()
-
-      const store = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
-      const list = Array.isArray(store.list) ? store.list : []
-      const lastProject = store.lastProject && typeof store.lastProject === "object" ? store.lastProject : {}
-      const projects = store.projects && typeof store.projects === "object" ? store.projects : {}
-      const nextProjects = { ...(projects as Record<string, unknown>) }
-
-      const add = (origin: string, directory: string) => {
-        const current = nextProjects[origin]
-        const items = Array.isArray(current) ? current : []
-        const existing = items.filter(
-          (p): p is { worktree: string; expanded?: boolean } =>
-            !!p &&
-            typeof p === "object" &&
-            "worktree" in p &&
-            typeof (p as { worktree?: unknown }).worktree === "string",
-        )
-
-        if (existing.some((p) => p.worktree === directory)) return
-        nextProjects[origin] = [{ worktree: directory, expanded: true }, ...existing]
-      }
-
-      const directories = [args.directory, ...args.extra]
-      for (const directory of directories) {
-        add("local", directory)
-        add(args.serverUrl, directory)
-      }
-
-      localStorage.setItem(
-        key,
-        JSON.stringify({
-          list,
-          projects: nextProjects,
-          lastProject,
-        }),
-      )
-    },
-    { directory: input.directory, serverUrl, extra: input.extra ?? [] },
-  )
-}
-
 export async function createTestProject() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-e2e-project-"))
+  // realpath: macOS tmpdir is a symlink (/var → /private/var) and the server
+  // keys projects by resolved path, so an unresolved path never matches the
+  // sidebar's data-project attribute.
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "opencode-e2e-project-")))
 
   await fs.writeFile(path.join(root, "README.md"), "# e2e\n")
 

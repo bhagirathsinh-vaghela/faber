@@ -1,6 +1,6 @@
 import { test, expect } from "../fixtures"
 import { serverName, serverUrl } from "../utils"
-import { clickListItem, closeDialog, clickMenuItem } from "../actions"
+import { closeDialog, clickMenuItem, openPalette } from "../actions"
 
 const DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl"
 
@@ -15,18 +15,11 @@ test("can set a default server on web", async ({ page, gotoSession }) => {
 
   await gotoSession()
 
-  const status = page.getByRole("button", { name: "Status" })
-  await expect(status).toBeVisible()
-  const popover = page.locator('[data-component="popover-content"]').filter({ hasText: "Manage servers" })
-
-  const ensurePopoverOpen = async () => {
-    if (await popover.isVisible()) return
-    await status.click()
-    await expect(popover).toBeVisible()
-  }
-
-  await ensurePopoverOpen()
-  await popover.getByRole("button", { name: "Manage servers" }).click()
+  // The status popover shows the connected machine only; the server manager
+  // moved behind the palette's "Switch server" command.
+  const palette = await openPalette(page)
+  await palette.getByRole("textbox").first().fill("Switch server")
+  await palette.locator('[data-slot="list-item"]').filter({ hasText: "Switch server" }).first().click()
 
   const dialog = page.getByRole("dialog")
   await expect(dialog).toBeVisible()
@@ -46,10 +39,4 @@ test("can set a default server on web", async ({ page, gotoSession }) => {
   await expect(row.getByText("Default", { exact: true })).toBeVisible()
 
   await closeDialog(page, dialog)
-
-  await ensurePopoverOpen()
-
-  const serverRow = popover.locator("button").filter({ hasText: serverName }).first()
-  await expect(serverRow).toBeVisible()
-  await expect(serverRow.getByText("Default", { exact: true })).toBeVisible()
 })

@@ -2,7 +2,6 @@ import { test, expect, settingsKey } from "../fixtures"
 import { closeDialog, openSettings } from "../actions"
 import {
   settingsColorSchemeSelector,
-  settingsFontSelector,
   settingsLanguageSelectSelector,
   settingsNotificationsAgentSelector,
   settingsNotificationsErrorsSelector,
@@ -25,29 +24,15 @@ test("smoke settings dialog opens, switches tabs, closes", async ({ page, gotoSe
   await closeDialog(page, dialog)
 })
 
-test("changing language updates settings labels", async ({ page, gotoSession }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem("opencode.global.dat:language", JSON.stringify({ locale: "en" }))
-  })
-
+// A language switcher must not appear while the app ships a single fixed
+// locale: a control that changes nothing reads as broken.
+test("settings offers no language switcher", async ({ page, gotoSession }) => {
   await gotoSession()
 
   const dialog = await openSettings(page)
 
-  const heading = dialog.getByRole("heading", { level: 2 })
-  await expect(heading).toHaveText("General")
-
-  const select = dialog.locator(settingsLanguageSelectSelector)
-  await expect(select).toBeVisible()
-  await select.locator('[data-slot="select-select-trigger"]').click()
-
-  await page.locator('[data-slot="select-select-item"]').filter({ hasText: "Deutsch" }).click()
-
-  await expect(heading).toHaveText("Allgemein")
-
-  await select.locator('[data-slot="select-select-trigger"]').click()
-  await page.locator('[data-slot="select-select-item"]').filter({ hasText: "English" }).click()
-  await expect(heading).toHaveText("General")
+  await expect(dialog.getByRole("heading", { level: 2 })).toHaveText("General")
+  await expect(dialog.locator(settingsLanguageSelectSelector)).toHaveCount(0)
 })
 
 test("changing color scheme persists in localStorage", async ({ page, gotoSession }) => {
@@ -107,36 +92,28 @@ test("changing theme persists in localStorage", async ({ page, gotoSession }) =>
   expect(dataTheme).toBe(storedThemeId)
 })
 
-test("changing font persists in localStorage and updates CSS variable", async ({ page, gotoSession }) => {
+test("changing the body font updates the mono font variable", async ({ page, gotoSession }) => {
   await gotoSession()
 
   const dialog = await openSettings(page)
-  const select = dialog.locator(settingsFontSelector)
+  await dialog.getByRole("tab", { name: "Customization" }).click()
+
+  const select = dialog.locator('[data-slot="select-select-trigger"]').first()
   await expect(select).toBeVisible()
 
   const initialFontFamily = await page.evaluate(() => {
     return getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono")
   })
-  expect(initialFontFamily).toContain("IBM Plex Mono")
 
-  await select.locator('[data-slot="select-select-trigger"]').click()
-
+  await select.click()
   const items = page.locator('[data-slot="select-select-item"]')
   await items.nth(2).click()
 
-  await page.waitForTimeout(100)
-
-  const stored = await page.evaluate((key) => {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : null
-  }, settingsKey)
-
-  expect(stored?.appearance?.font).not.toBe("ibm-plex-mono")
-
-  const newFontFamily = await page.evaluate(() => {
-    return getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono")
-  })
-  expect(newFontFamily).not.toBe(initialFontFamily)
+  await expect
+    .poll(() =>
+      page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono")),
+    )
+    .not.toBe(initialFontFamily)
 })
 
 test("toggling notification agent switch updates localStorage", async ({ page, gotoSession }) => {
