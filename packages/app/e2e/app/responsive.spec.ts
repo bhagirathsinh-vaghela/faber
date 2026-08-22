@@ -309,6 +309,64 @@ test.describe("pointer capability", () => {
     }
   })
 
+  test("the glyph grows with the control, not just its hit area", async ({ page, gotoSession }) => {
+    await gotoSession()
+    await page.setViewportSize(VIEWPORTS.tabletLandscape)
+    await settle(page)
+
+    // Growing only the box leaves a small glyph floating in a large target,
+    // which reads as untouched even though the hit area is correct.
+    // The pointer type cannot be emulated per-page, so the coarse rules are
+    // collected and applied to measure what a touch device actually renders.
+    // Asserting on class names instead would pass on a rule that never wins.
+    const measured = await page.evaluate(() => {
+      const coarse: string[] = []
+      const walk = (list: CSSRuleList) => {
+        for (const rule of list) {
+          if ((rule as CSSMediaRule).conditionText === "(any-pointer: coarse)") {
+            for (const inner of (rule as CSSMediaRule).cssRules) coarse.push(inner.cssText)
+            continue
+          }
+          const nested = (rule as CSSGroupingRule).cssRules
+          if (nested) walk(nested)
+        }
+      }
+      for (const sheet of document.styleSheets) {
+        try {
+          walk(sheet.cssRules)
+        } catch {}
+      }
+
+      const patch = document.createElement("style")
+      patch.textContent = coarse.join("\n")
+      document.head.appendChild(patch)
+
+      const titlebar = document.querySelector('[data-slot="titlebar"]')!
+      const bar = titlebar.getBoundingClientRect()
+      const small: string[] = []
+      const clipped: string[] = []
+
+      for (const button of titlebar.querySelectorAll<HTMLElement>("button")) {
+        const box = button.getBoundingClientRect()
+        if (box.width === 0) continue
+        if (box.top < bar.top - 1 || box.bottom > bar.bottom + 1) {
+          clipped.push(button.getAttribute("aria-label") ?? "unnamed")
+        }
+        const icon = button.querySelector("[data-component=icon]")
+        if (!icon) continue
+        if (icon.getBoundingClientRect().width < 20) {
+          small.push(button.getAttribute("aria-label") ?? "unnamed")
+        }
+      }
+
+      patch.remove()
+      return { small, clipped }
+    })
+
+    expect(measured.small, "a touch-sized control must scale its glyph too").toEqual([])
+    expect(measured.clipped, "the bar must grow with the controls it holds").toEqual([])
+  })
+
   test("growing a control for touch does not overflow the row holding it", async ({ page, gotoSession }) => {
     await gotoSession()
     await page.setViewportSize(VIEWPORTS.tabletLandscape)

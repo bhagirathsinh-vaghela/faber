@@ -112,6 +112,14 @@
   --titlebar-height: 2.5rem;
 }
 
+/* Touch targets are taller than a mouse needs, so the bar holding them grows
+   to match rather than clipping them. */
+@media (any-pointer: coarse) {
+  :root:not([data-size-class="compact"]) {
+    --titlebar-height: 3rem;
+  }
+}
+
 #root[data-standalone] {
   --titlebar-height: calc(2.5rem + env(safe-area-inset-top));
 }

@@ -187,7 +187,7 @@ export function Titlebar() {
     <header
       data-slot="titlebar"
       data-wco={overlay() ? "" : undefined}
-      class="@container/titlebar h-12 wide:h-10 shrink-0 bg-background-base relative"
+      class="@container/titlebar h-12 wide:h-10 any-pointer-coarse:wide:h-12 shrink-0 bg-background-base relative"
       classList={{ hidden: layout.zen.opened() }}
       style={{
         "min-height": minHeight(),
@@ -288,7 +288,7 @@ export function Titlebar() {
               <Button
                 variant="ghost"
                 icon="house"
-                class="size-6 any-pointer-coarse:size-10 p-0"
+                class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
                 onClick={goHome}
                 aria-label={language.t("common.home")}
               />
@@ -301,12 +301,12 @@ export function Titlebar() {
             >
               <Button
                 variant="ghost"
-                class="group/sidebar-toggle size-6 any-pointer-coarse:size-10 p-0"
+                class="group/sidebar-toggle size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
                 onClick={layout.sidebar.toggle}
                 aria-label={language.t("command.sidebar.toggle")}
                 aria-expanded={layout.sidebar.opened()}
               >
-                <div class="relative flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
+                <div class="relative flex items-center justify-center size-4 any-pointer-coarse:size-6 [&>*]:absolute [&>*]:inset-0">
                   <Icon
                     size="small"
                     name={layout.sidebar.opened() ? "layout-left-full" : "layout-left"}
@@ -330,7 +330,7 @@ export function Titlebar() {
                 <Button
                   variant="ghost"
                   icon="arrow-left"
-                  class="size-6 any-pointer-coarse:size-10 p-0"
+                  class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
                   disabled={!canBack()}
                   onClick={back}
                   aria-label={language.t("common.goBack")}
@@ -340,7 +340,7 @@ export function Titlebar() {
                 <Button
                   variant="ghost"
                   icon="arrow-right"
-                  class="size-6 any-pointer-coarse:size-10 p-0"
+                  class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
                   disabled={!canForward()}
                   onClick={forward}
                   aria-label={language.t("common.goForward")}
@@ -350,7 +350,7 @@ export function Titlebar() {
                 <Button
                   variant={shell.forced() ? "primary" : "ghost"}
                   icon={shell.forced() ? "monitor-smartphone" : shell.compact() ? "monitor" : "smartphone"}
-                  class="size-6 any-pointer-coarse:size-10 p-0"
+                  class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
                   onClick={shell.toggle}
                   aria-label={surfaceLabel()}
                 />
