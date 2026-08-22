@@ -50,6 +50,9 @@ export type ChipProps = {
   // does not break the ChipGroup divider/border-collapse layout.
   tooltip?: JSX.Element
   tooltipPlacement?: "top" | "bottom" | "left" | "right"
+  // An interactive chip's value alone rarely names its action for a screen
+  // reader ("36k/200k" says nothing about opening the context panel).
+  "aria-label"?: string
 }
 
 const seg =

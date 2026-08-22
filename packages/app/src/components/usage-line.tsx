@@ -65,6 +65,9 @@ export function UsageLine(props: {
   // column with the transparent alignment bar), instead of a custom blob that
   // sat misaligned.
   leading?: { icon: JSX.Element; value: JSX.Element; tooltip?: JSX.Element; accent?: string }
+  // Opens the session's context panel. Only the live dock passes this; a
+  // per-message footer is a snapshot with nothing to open.
+  onContextClick?: () => void
   class?: string
   // Dock variant on mobile: the outer wrapper is display:contents so the chip
   // groups become direct children of the dock chip row and spread evenly with
@@ -111,6 +114,8 @@ export function UsageLine(props: {
             accent="usage-id-context"
             fill={props.stats.percentage / 100}
             fillColor={contextFill()}
+            onClick={props.onContextClick}
+            aria-label={props.onContextClick ? "View context usage" : undefined}
             tooltip={`Context window: ${tokens(props.stats.total)} of ${tokens(props.stats.limit)} used — how full the conversation is before older turns drop off.`}
           >
             {tokens(props.stats.total)}/{tokens(props.stats.limit)}

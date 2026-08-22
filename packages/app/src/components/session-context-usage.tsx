@@ -6,9 +6,9 @@ import { useParams } from "@solidjs/router"
 import { AssistantMessage } from "@opencode-ai/sdk/v2/client"
 import { findLast } from "@opencode-ai/util/array"
 
-import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
 import { useLanguage } from "@/context/language"
+import { useOpenContext } from "@/hooks/use-open-context"
 
 interface SessionContextUsageProps {
   variant?: "button" | "indicator"
@@ -17,12 +17,10 @@ interface SessionContextUsageProps {
 export function SessionContextUsage(props: SessionContextUsageProps) {
   const sync = useSync()
   const params = useParams()
-  const layout = useLayout()
   const language = useLanguage()
+  const openContext = useOpenContext()
 
   const variant = createMemo(() => props.variant ?? "button")
-  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey))
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
 
   const usd = createMemo(
@@ -54,14 +52,6 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
       percentage: model?.limit.context ? Math.round((total / model.limit.context) * 100) : null,
     }
   })
-
-  const openContext = () => {
-    if (!params.id) return
-    layout.fileTree.open()
-    layout.fileTree.setTab("all")
-    tabs().open("context")
-    tabs().setActive("context")
-  }
 
   const circle = () => (
     <div class="flex items-center justify-center">

@@ -26,13 +26,10 @@ test("context panel can be opened from the prompt", async ({ page, sdk, gotoSess
 
     await gotoSession(session.id)
 
-    const contextButton = page
-      .locator('[data-component="button"]')
-      .filter({ has: page.locator('[data-component="progress-circle"]').first() })
-      .first()
+    const contextChip = page.getByRole("button", { name: "View context usage" }).first()
 
-    await expect(contextButton).toBeVisible()
-    await contextButton.click()
+    await expect(contextChip).toBeVisible()
+    await contextChip.click()
 
     const tabs = page.locator('[data-component="tabs"][data-variant="normal"]')
     await expect(tabs.getByRole("tab", { name: "Context" })).toBeVisible()

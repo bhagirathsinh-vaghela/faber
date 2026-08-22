@@ -4,6 +4,7 @@ import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { useTicker } from "@/context/ticker"
 import { useParams } from "@solidjs/router"
+import { useOpenContext } from "@/hooks/use-open-context"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
 import { beforeExpiryMs, pingCountdown } from "@/utils/cache-countdown"
 
@@ -16,6 +17,7 @@ export function Statusline() {
   const sync = useSync()
   const globalSync = useGlobalSync()
   const params = useParams()
+  const openContext = useOpenContext()
 
   const session = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
 
@@ -72,6 +74,7 @@ export function Statusline() {
           stats={s()}
           totals={totals()}
           cost={sessionCost()}
+          onContextClick={openContext}
           leading={{
             accent: "model",
             icon: <CountdownRing fraction={cacheFraction()} color="var(--model)" />,
