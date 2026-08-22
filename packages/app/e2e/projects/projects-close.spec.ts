@@ -1,9 +1,9 @@
 import { test, expect } from "../fixtures"
 import { createTestProject, cleanupTestProject, openSidebar, clickMenuItem } from "../actions"
-import { projectCloseHoverSelector, projectCloseMenuSelector, projectSwitchSelector } from "../selectors"
+import { projectCloseMenuSelector, projectSwitchSelector } from "../selectors"
 import { dirSlug } from "../utils"
 
-test("can close a project via hover card close button", async ({ page, withProject }) => {
+test("can close a project via the icon context menu", async ({ page, withProject }) => {
   await page.setViewportSize({ width: 1400, height: 800 })
 
   const other = await createTestProject()
@@ -16,11 +16,11 @@ test("can close a project via hover card close button", async ({ page, withProje
 
         const otherButton = page.locator(projectSwitchSelector(otherSlug)).first()
         await expect(otherButton).toBeVisible()
-        await otherButton.hover()
+        await otherButton.click({ button: "right" })
 
-        const close = page.locator(projectCloseHoverSelector(otherSlug)).first()
-        await expect(close).toBeVisible()
-        await close.click()
+        const closeItem = page.locator(projectCloseMenuSelector(otherSlug)).first()
+        await expect(closeItem).toBeVisible()
+        await closeItem.click()
 
         await expect(otherButton).toHaveCount(0)
       },
@@ -46,8 +46,6 @@ test("can close a project via project header more options menu", async ({ page, 
         const otherButton = page.locator(projectSwitchSelector(otherSlug)).first()
         await expect(otherButton).toBeVisible()
         await otherButton.click()
-
-        await expect(page).toHaveURL(new RegExp(`/${otherSlug}/session`))
 
         const header = page
           .locator(".group\\/project")

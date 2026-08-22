@@ -23,6 +23,7 @@ import { PromptInput } from "@/components/prompt-input"
 import { QuestionPanel } from "@/components/question-panel"
 import { MessageFooter } from "@/components/message-footer"
 import { SessionContextUsage } from "@/components/session-context-usage"
+import { useOpenContext } from "@/hooks/use-open-context"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { InlineInput } from "@opencode-ai/ui/inline-input"
 import { Button } from "@opencode-ai/ui/button"
@@ -373,6 +374,7 @@ export default function Page() {
 
   const wide = useShell().wide
   const centered = createMemo(() => wide() && !layout.fileTree.opened())
+  const openContextPanel = useOpenContext()
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -982,6 +984,13 @@ export default function Page() {
 
         addSelectionToContext(path, selectionFromLines(range))
       },
+    },
+    {
+      id: "context.view",
+      title: language.t("command.context.view"),
+      description: "",
+      category: language.t("command.category.context"),
+      onSelect: openContextPanel,
     },
     {
       id: "terminal.toggle",

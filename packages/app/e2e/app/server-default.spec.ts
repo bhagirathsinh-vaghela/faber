@@ -24,7 +24,7 @@ test("can set a default server on web", async ({ page, gotoSession }) => {
   const dialog = page.getByRole("dialog")
   await expect(dialog).toBeVisible()
 
-  const row = dialog.locator('[data-slot="list-item"]').filter({ hasText: serverName }).first()
+  const row = dialog.locator('[data-slot="list-item-row"]').filter({ hasText: serverName }).first()
   await expect(row).toBeVisible()
 
   const menuTrigger = row.locator('[data-slot="dropdown-menu-trigger"]').first()

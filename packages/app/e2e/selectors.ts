@@ -19,15 +19,10 @@ export const sidebarNavSelector = '[data-component="sidebar-nav-desktop"]'
 export const projectSwitchSelector = (slug: string) =>
   `${sidebarNavSelector} [data-action="project-switch"][data-project="${slug}"]`
 
-export const projectCloseHoverSelector = (slug: string) => `[data-action="project-close-hover"][data-project="${slug}"]`
-
 export const projectMenuTriggerSelector = (slug: string) =>
   `${sidebarNavSelector} [data-action="project-menu"][data-project="${slug}"]`
 
 export const projectCloseMenuSelector = (slug: string) => `[data-action="project-close-menu"][data-project="${slug}"]`
-
-export const projectWorkspacesToggleSelector = (slug: string) =>
-  `[data-action="project-workspaces-toggle"][data-project="${slug}"]`
 
 export const titlebarRightSelector = "#opencode-titlebar-right"
 
@@ -40,12 +35,6 @@ export const dropdownMenuContentSelector = '[data-component="dropdown-menu-conte
 export const inlineInputSelector = '[data-component="inline-input"]'
 
 export const sessionItemSelector = (sessionID: string) => `${sidebarNavSelector} [data-session-id="${sessionID}"]`
-
-export const workspaceItemSelector = (slug: string) =>
-  `${sidebarNavSelector} [data-component="workspace-item"][data-workspace="${slug}"]`
-
-export const workspaceMenuTriggerSelector = (slug: string) =>
-  `${sidebarNavSelector} [data-action="workspace-menu"][data-workspace="${slug}"]`
 
 export const listItemSelector = '[data-slot="list-item"]'
 

@@ -16,7 +16,9 @@ test("hiding a model removes it from the model picker", async ({ page, gotoSessi
   const picker = page.getByRole("dialog")
   await expect(picker).toBeVisible()
 
-  const target = picker.locator('[data-slot="list-item"]').first()
+  // The model in use stays listed even when hidden, so hiding it would not
+  // remove it from the picker; exercise a model that can actually disappear.
+  const target = picker.locator('[data-slot="list-item"]:not([data-selected="true"])').first()
   await expect(target).toBeVisible()
 
   const key = await target.getAttribute("data-key")
@@ -74,7 +76,7 @@ test("showing a hidden model restores it to the model picker", async ({ page, go
   const picker = page.getByRole("dialog")
   await expect(picker).toBeVisible()
 
-  const target = picker.locator('[data-slot="list-item"]').first()
+  const target = picker.locator('[data-slot="list-item"]:not([data-selected="true"])').first()
   await expect(target).toBeVisible()
 
   const key = await target.getAttribute("data-key")

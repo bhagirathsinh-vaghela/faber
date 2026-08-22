@@ -9,14 +9,11 @@ import {
   dropdownMenuTriggerSelector,
   dropdownMenuContentSelector,
   projectMenuTriggerSelector,
-  projectWorkspacesToggleSelector,
   titlebarRightSelector,
   popoverBodySelector,
   listItemSelector,
   listItemKeySelector,
   listItemKeyStartsWithSelector,
-  workspaceItemSelector,
-  workspaceMenuTriggerSelector,
 } from "./selectors"
 import type { createSdk } from "./utils"
 
@@ -277,36 +274,3 @@ export async function openProjectMenu(page: Page, projectSlug: string) {
   return menu
 }
 
-export async function setWorkspacesEnabled(page: Page, projectSlug: string, enabled: boolean) {
-  const current = await page
-    .getByRole("button", { name: "New workspace" })
-    .first()
-    .isVisible()
-    .then((x) => x)
-    .catch(() => false)
-
-  if (current === enabled) return
-
-  await openProjectMenu(page, projectSlug)
-
-  const toggle = page.locator(projectWorkspacesToggleSelector(projectSlug)).first()
-  await expect(toggle).toBeVisible()
-  await toggle.click({ force: true })
-
-  const expected = enabled ? "New workspace" : "New session"
-  await expect(page.getByRole("button", { name: expected }).first()).toBeVisible()
-}
-
-export async function openWorkspaceMenu(page: Page, workspaceSlug: string) {
-  const item = page.locator(workspaceItemSelector(workspaceSlug)).first()
-  await expect(item).toBeVisible()
-  await item.hover()
-
-  const trigger = page.locator(workspaceMenuTriggerSelector(workspaceSlug)).first()
-  await expect(trigger).toBeVisible()
-  await trigger.click({ force: true })
-
-  const menu = page.locator(dropdownMenuContentSelector).first()
-  await expect(menu).toBeVisible()
-  return menu
-}

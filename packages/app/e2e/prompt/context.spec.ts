@@ -1,6 +1,5 @@
 import { test, expect } from "../fixtures"
-import { promptSelector } from "../selectors"
-import { withSession } from "../actions"
+import { openPalette, withSession } from "../actions"
 
 test("context panel can be opened from the prompt", async ({ page, sdk, gotoSession }) => {
   const title = `e2e smoke context ${Date.now()}`
@@ -26,10 +25,9 @@ test("context panel can be opened from the prompt", async ({ page, sdk, gotoSess
 
     await gotoSession(session.id)
 
-    const contextChip = page.getByRole("button", { name: "View context usage" }).first()
-
-    await expect(contextChip).toBeVisible()
-    await contextChip.click()
+    const palette = await openPalette(page)
+    await palette.getByRole("textbox").first().fill("View context")
+    await palette.locator('[data-slot="list-item"]').filter({ hasText: "View context" }).first().click()
 
     const tabs = page.locator('[data-component="tabs"][data-variant="normal"]')
     await expect(tabs.getByRole("tab", { name: "Context" })).toBeVisible()

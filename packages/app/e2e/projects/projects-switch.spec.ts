@@ -1,5 +1,5 @@
 import { test, expect } from "../fixtures"
-import { defocus, createTestProject, cleanupTestProject } from "../actions"
+import { createTestProject, cleanupTestProject, openSidebar } from "../actions"
 import { projectSwitchSelector } from "../selectors"
 import { dirSlug } from "../utils"
 
@@ -9,23 +9,23 @@ test("can switch between projects from sidebar", async ({ page, withProject }) =
   const other = await createTestProject()
   const otherSlug = dirSlug(other)
 
+  // A project icon click previews its sessions in the panel without
+  // navigating; the panel's New session button is what changes the route.
+  const switchTo = async (slug: string) => {
+    const icon = page.locator(projectSwitchSelector(slug)).first()
+    await expect(icon).toBeVisible()
+    await icon.click()
+    await page.getByRole("button", { name: "New session" }).first().click()
+    await expect(page).toHaveURL(new RegExp(`/${slug}/session`))
+  }
+
   try {
     await withProject(
       async ({ directory }) => {
-        await defocus(page)
+        await openSidebar(page)
 
-        const currentSlug = dirSlug(directory)
-        const otherButton = page.locator(projectSwitchSelector(otherSlug)).first()
-        await expect(otherButton).toBeVisible()
-        await otherButton.click()
-
-        await expect(page).toHaveURL(new RegExp(`/${otherSlug}/session`))
-
-        const currentButton = page.locator(projectSwitchSelector(currentSlug)).first()
-        await expect(currentButton).toBeVisible()
-        await currentButton.click()
-
-        await expect(page).toHaveURL(new RegExp(`/${currentSlug}/session`))
+        await switchTo(otherSlug)
+        await switchTo(dirSlug(directory))
       },
       { extra: [other] },
     )
