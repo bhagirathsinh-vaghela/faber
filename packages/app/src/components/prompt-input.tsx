@@ -2517,7 +2517,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </span>
               </Show>
             </div>
-            <div class="flex items-center justify-between flex-1 dock-wide:flex-none dock-wide:justify-end dock-wide:gap-1 shrink-0">
+            <div class="flex items-center justify-between flex-1 py-1 dock-wide:flex-none dock-wide:justify-end dock-wide:gap-1 shrink-0">
               {/* Mobile only: grabber toggles the dock info line + chip row
                 together (both collapsed by default). Outward arrows = expand;
                 inward arrows = collapse. */}

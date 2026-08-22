@@ -11,7 +11,7 @@ import {
   on,
   type JSX,
 } from "solid-js"
-import { useShell } from "@/utils/mobile"
+import { createCoarsePointer, useShell } from "@/utils/mobile"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
@@ -2220,7 +2220,10 @@ export default function Page() {
     }
   })
 
-  const pillSize = () => (wide() ? 40 : 52)
+  // A dragged control sized for a fingertip, so it follows the pointer rather
+  // than the width: a tablet renders the roomy layout and is still touched.
+  const coarse = createCoarsePointer()
+  const pillSize = () => (coarse() ? 52 : 40)
   const PILL_MARGIN = 16
   const DRAG_THRESHOLD = 6
   // Read a safe-area inset (exposed as a CSS var in index.css) as a number, so
@@ -2332,7 +2335,7 @@ export default function Page() {
             height: `${pillSize()}px`,
           }}
         >
-          <span class="text-2xl panel-wide:text-lg leading-none select-none" aria-hidden="true">
+          <span class="text-lg any-pointer-coarse:text-xl leading-none select-none" aria-hidden="true">
             {layout.zen.opened() ? "🌐" : "🧘"}
           </span>
         </button>

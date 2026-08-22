@@ -401,6 +401,34 @@ test.describe("pointer capability", () => {
     expect(wrong, "a glyph should fill between a third and five sixths of its control").toEqual([])
   })
 
+  test("a filled control has room inside the row it sits in", async ({ page, gotoSession }) => {
+    await gotoSession()
+    await page.setViewportSize(VIEWPORTS.tabletPortrait)
+    await settle(page)
+
+    // A row that takes its height from its tallest child leaves a painted
+    // button touching the row edge, which reads as clipped however well the
+    // glyph is centred inside it.
+    const flush = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('[data-component="prompt-input"] button')]
+        .filter((button) => {
+          const box = button.getBoundingClientRect()
+          if (box.width < 8) return false
+          return getComputedStyle(button).backgroundColor !== "rgba(0, 0, 0, 0)"
+        })
+        .filter((button) => {
+          const row = button.parentElement
+          if (!row) return false
+          const box = button.getBoundingClientRect()
+          const bounds = row.getBoundingClientRect()
+          return box.top - bounds.top < 1 || bounds.bottom - box.bottom < 1
+        })
+        .map((button) => button.getAttribute("aria-label") ?? "unnamed"),
+    )
+
+    expect(flush, "a painted control needs space between it and its row").toEqual([])
+  })
+
   test("growing a control for touch does not overflow the row holding it", async ({ page, gotoSession }) => {
     await gotoSession()
     await page.setViewportSize(VIEWPORTS.tabletLandscape)
