@@ -1610,11 +1610,6 @@ export default function Layout(props: ParentProps) {
   })
 
   createEffect(() => {
-    const sidebarWidth = layout.sidebar.opened() ? layout.sidebar.width() : 48
-    document.documentElement.style.setProperty("--dialog-left-margin", `${sidebarWidth}px`)
-  })
-
-  createEffect(() => {
     const project = currentProject()
     if (!project) return
     globalSync.project.loadSessions(project.worktree)

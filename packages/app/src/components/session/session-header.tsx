@@ -17,7 +17,6 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { Keybind } from "@opencode-ai/ui/keybind"
-import { StatusPopover } from "../status-popover"
 
 export function SessionHeader() {
   const layout = useLayout()
@@ -98,7 +97,7 @@ export function SessionHeader() {
           <Portal mount={mount()}>
             <button
               type="button"
-              class="hidden wide:flex w-[320px] max-w-full min-w-0 p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
+              class="flex w-[320px] max-w-full min-w-0 p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
               onClick={() => command.trigger("file.open")}
               aria-label={language.t("session.header.searchFiles")}
             >
@@ -174,7 +173,6 @@ export function SessionHeader() {
         {(mount) => (
           <Portal mount={mount()}>
             <div class="flex items-center gap-3">
-              <StatusPopover />
               <Show when={currentSession()}>
                 <div class="flex items-center shrink-0 gap-1">
                   <Tooltip
@@ -229,7 +227,7 @@ export function SessionHeader() {
                   </Tooltip>
                 </div>
               </Show>
-              <div class="hidden wide:flex items-center gap-3 ml-2 shrink-0">
+              <div class="flex items-center gap-3 ml-2 shrink-0">
                 <TooltipKeybind
                   title={language.t("command.terminal.toggle")}
                   keybind={command.keybind("terminal.toggle")}

@@ -272,7 +272,7 @@ export function Titlebar() {
           </Show>
           <div class="flex items-center gap-3 shrink-0">
             <Tooltip
-              class="hidden expanded:flex shrink-0 ml-2"
+              class="flex shrink-0 ml-2"
               placement="bottom"
               value={language.t("common.home")}
               openDelay={2000}
@@ -286,7 +286,7 @@ export function Titlebar() {
               />
             </Tooltip>
             <TooltipKeybind
-              class="hidden expanded:flex shrink-0"
+              class="flex shrink-0"
               placement="bottom"
               title={language.t("command.sidebar.toggle")}
               keybind={command.keybind("sidebar.toggle")}
@@ -317,7 +317,7 @@ export function Titlebar() {
                 </div>
               </Button>
             </TooltipKeybind>
-            <div class="hidden expanded:flex items-center gap-1 shrink-0">
+            <div class="flex items-center gap-1 shrink-0">
               <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={2000}>
                 <Button
                   variant="ghost"
@@ -349,7 +349,6 @@ export function Titlebar() {
               </Tooltip>
             </div>
           </div>
-          <div id="opencode-titlebar-left" class="flex items-center gap-3 min-w-0 px-2" />
         </div>
 
         <div class="min-w-0 flex items-center justify-center pointer-events-none lg:absolute lg:inset-0 lg:flex lg:items-center lg:justify-center">
@@ -363,6 +362,10 @@ export function Titlebar() {
           }}
           onMouseDown={drag}
         >
+          {/* Rendered here rather than portalled in by the session header, so
+              the server indicator shows on every route and not only inside a
+              session. */}
+          <StatusPopover />
           <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end" />
           <Show when={windows()}>
             <div class="w-6 shrink-0" />
