@@ -1416,6 +1416,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     setStore("historyIndex", -1)
     setStore("savedPrompt", null)
 
+    const clearInput = () => {
+      prompt.reset()
+      setStore("mode", "normal")
+      setStore("popover", null)
+    }
+
+    const restoreInput = () => {
+      prompt.set(currentPrompt, promptLength(currentPrompt))
+      setStore("mode", mode)
+      setStore("popover", null)
+      requestAnimationFrame(() => {
+        editorRef.focus()
+        setCursorPosition(editorRef, promptLength(currentPrompt))
+        queueScroll()
+      })
+    }
+
     const projectDirectory = sdk.directory
     const isNewSession = !params.id
     const worktreeSelection = props.newSessionWorktree ?? "main"
@@ -1424,6 +1441,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     let client = sdk.client
 
     if (isNewSession) {
+      // The create round-trip happens before any of the visible submit effects,
+      // so on a remote client the press otherwise changes nothing on screen for
+      // the whole RTT. Clear now; every failure path below restores the draft.
+      clearInput()
+
       if (worktreeSelection === "create") {
         const createdWorktree = await client.worktree
           .create({ directory: projectDirectory })
@@ -1441,6 +1463,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             title: language.t("prompt.toast.worktreeCreateFailed.title"),
             description: language.t("common.requestFailed"),
           })
+          restoreInput()
           return
         }
         WorktreeState.pending(createdWorktree.directory)
@@ -1508,7 +1531,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
       }
     }
-    if (!session) return
+    if (!session) {
+      if (isNewSession) restoreInput()
+      return
+    }
 
     const model = {
       modelID: currentModel.id,
@@ -1521,23 +1547,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const requestModel = local.model.picked()
     const agent = currentAgent.name
     const variant = local.model.variant.current()
-
-    const clearInput = () => {
-      prompt.reset()
-      setStore("mode", "normal")
-      setStore("popover", null)
-    }
-
-    const restoreInput = () => {
-      prompt.set(currentPrompt, promptLength(currentPrompt))
-      setStore("mode", mode)
-      setStore("popover", null)
-      requestAnimationFrame(() => {
-        editorRef.focus()
-        setCursorPosition(editorRef, promptLength(currentPrompt))
-        queueScroll()
-      })
-    }
 
     if (mode === "shell") {
       clearInput()

@@ -2,6 +2,7 @@ import { Show, createEffect, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { useLanguage } from "@/context/language"
+import { preserveFocus } from "@/utils/mobile"
 import type { createDictation } from "@/utils/dictation"
 import { DictationWaveform } from "./dictation-waveform"
 
@@ -152,6 +153,7 @@ export function DictationOverlay(props: {
                 class="size-8 any-pointer-coarse:size-11"
                 aria-label={language.t("dictation.discard")}
                 onClick={() => finish("discard")}
+                {...preserveFocus()}
               />
             </div>
             <div class="flex flex-col items-center gap-0.5">
@@ -164,6 +166,7 @@ export function DictationOverlay(props: {
                 class="size-8 any-pointer-coarse:size-11"
                 aria-label={language.t("dictation.accept")}
                 onClick={() => finish("accept")}
+                {...preserveFocus()}
               />
             </div>
           </div>

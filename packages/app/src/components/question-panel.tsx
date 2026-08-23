@@ -162,6 +162,7 @@ function Panel(props: {
   const sdk = useSDK()
   const local = useLocal()
   const language = useLanguage()
+  const questionState = useQuestion()
 
   // Focus-highlight accent = the current session agent's color (same color the
   // dock/agent indicator uses), so the panel's focus cue matches whoever's
@@ -305,17 +306,27 @@ function Panel(props: {
     setStore({ tab: 0, answers: [], custom: [], selected: 0, editing: false })
   }
 
+  // A reply crosses the network before the server drops the request, and on a
+  // remote client that round-trip makes the panel read as if the press did
+  // nothing. Hide the request locally on the press instead.
+  const deliver = (id: string, call: () => Promise<unknown>) => {
+    questionState.markAnswered(id)
+    setRequestIndex(0)
+    resetForRequest()
+    call().catch(() => questionState.unmarkAnswered(id))
+  }
+
   function submit() {
     const r = request()
     if (!r) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
-    if (isPending(r.id)) sdk.client.question.reply({ requestID: r.id, answers })
+    if (isPending(r.id)) deliver(r.id, () => sdk.client.question.reply({ requestID: r.id, answers }))
   }
 
   function reject() {
     const r = request()
     if (!r) return
-    if (isPending(r.id)) sdk.client.question.reject({ requestID: r.id })
+    if (isPending(r.id)) deliver(r.id, () => sdk.client.question.reject({ requestID: r.id }))
   }
 
   function pick(answer: string, isCustom = false) {
@@ -330,7 +341,7 @@ function Panel(props: {
     if (single()) {
       const r = request()
       if (!r) return
-      if (isPending(r.id)) sdk.client.question.reply({ requestID: r.id, answers: [[answer]] })
+      if (isPending(r.id)) deliver(r.id, () => sdk.client.question.reply({ requestID: r.id, answers: [[answer]] }))
       return
     }
     setStore("tab", store.tab + 1)

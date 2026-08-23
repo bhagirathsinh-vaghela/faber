@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js"
+import { createEffect, createMemo, createSignal } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useSync } from "./sync"
 import { useParams } from "@solidjs/router"
@@ -15,8 +15,28 @@ export const { use: useQuestion, provider: QuestionProvider } = createSimpleCont
     const sync = useSync()
     const params = useParams()
 
-    const pending = createMemo(() => (params.id ? (sync.data.question[params.id] ?? []) : []))
+    // Requests answered locally but not yet confirmed removed by the server.
+    // The panel dismisses on the press instead of holding for the reply
+    // round-trip plus the SSE removal — on a remote client that wait reads as
+    // the button not working. A failed reply unmarks, which re-shows the
+    // request.
+    const [answered, setAnswered] = createSignal<Set<string>>(new Set(), { equals: false })
+
+    const serverPending = createMemo(() => (params.id ? (sync.data.question[params.id] ?? []) : []))
+    const pending = createMemo(() => serverPending().filter((q) => !answered().has(q.id)))
     const [collapsed, setCollapsed] = createSignal(false)
+
+    // Confirmed removals need no local override, and a request the server no
+    // longer lists must not leak its id into a future request's lifetime.
+    createEffect(() => {
+      const live = new Set(serverPending().map((q) => q.id))
+      const current = answered()
+      if (![...current].some((id) => !live.has(id))) return
+      setAnswered((prev) => {
+        const next = new Set([...prev].filter((id) => live.has(id)))
+        return next
+      })
+    })
 
     const pendingIDs = createMemo(() => new Set(pending().map((q) => q.id)))
 
@@ -36,6 +56,16 @@ export const { use: useQuestion, provider: QuestionProvider } = createSimpleCont
       collapsed,
       collapse: () => setCollapsed(true),
       expand: () => setCollapsed(false),
+      markAnswered(id: string) {
+        setAnswered((prev) => new Set(prev).add(id))
+      },
+      unmarkAnswered(id: string) {
+        setAnswered((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+      },
     }
   },
 })

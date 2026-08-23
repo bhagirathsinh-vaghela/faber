@@ -126,12 +126,20 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       let alive = true
       let busy = false
 
+      // One timed-out poll on a slow link (cellular routinely blows the 3s
+      // budget) must not flip the dot red while the event stream is delivering:
+      // a live stream is stronger evidence of reachability than a slow HTTP
+      // round-trip is of failure. With the stream up, red needs two consecutive
+      // failed polls; with no stream backing it, the first failure still counts.
+      let misses = 0
       const run = () => {
         if (busy) return
         busy = true
         void check(url)
           .then((next) => {
             if (!alive) return
+            misses = next.healthy ? 0 : misses + 1
+            if (!next.healthy && state.stream === true && misses < 2) return
             // An unreachable server can't report its identity, so keep the last
             // known version/host rather than blanking the name on a blip.
             setState({

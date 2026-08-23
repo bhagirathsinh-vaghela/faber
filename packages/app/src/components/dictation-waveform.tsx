@@ -40,6 +40,10 @@ export function DictationWaveform(props: { analyser: () => AnalyserNode | undefi
     // which matters for mobile battery.
     const FRAME = 1000 / 30
 
+    // Resolved once per resize, not per frame: getComputedStyle forces a style
+    // recalc, which at 30fps is pure waste for a value that only moves with
+    // the theme.
+    let resolved = "#fff"
     const resize = () => {
       if (!canvas) return
       const rect = canvas.getBoundingClientRect()
@@ -52,12 +56,13 @@ export function DictationWaveform(props: { analyser: () => AnalyserNode | undefi
       width = rect.width
       height = rect.height
       fade = undefined
+      resolved = getComputedStyle(canvas).color || "#fff"
     }
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
     resize()
 
-    const color = () => props.color ?? getComputedStyle(canvas!).color ?? "#fff"
+    const color = () => props.color ?? resolved
 
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw)

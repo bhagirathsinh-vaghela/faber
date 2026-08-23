@@ -290,43 +290,51 @@ export default function Page() {
   const comments = useComments()
   const permission = usePermission()
 
+  // Permissions answered locally but not yet confirmed removed over SSE. On a
+  // remote client that confirmation is a full round-trip away, and a prompt
+  // that outlives the press by that long reads as a dead button.
+  const [decided, setDecided] = createSignal<Set<string>>(new Set(), { equals: false })
+
   const request = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return
-    const next = sync.data.permission[sessionID]?.[0]
+    const next = sync.data.permission[sessionID]?.find((p) => !decided().has(p.id))
     if (!next) return
     if (next.tool) return
     return next
   })
 
   const [ui, setUi] = createStore({
-    responding: false,
     pendingMessage: undefined as string | undefined,
     scrollGesture: 0,
     autoCreated: false,
   })
 
-  createEffect(
-    on(
-      () => request()?.id,
-      () => setUi("responding", false),
-      { defer: true },
-    ),
-  )
+  createEffect(() => {
+    const sessionID = params.id
+    if (!sessionID) return
+    const live = new Set((sync.data.permission[sessionID] ?? []).map((p) => p.id))
+    const current = decided()
+    if (![...current].some((id) => !live.has(id))) return
+    setDecided((prev) => new Set([...prev].filter((id) => live.has(id))))
+  })
 
   const decide = (response: "once" | "always" | "reject") => {
     const perm = request()
     if (!perm) return
-    if (ui.responding) return
 
-    setUi("responding", true)
+    setDecided((prev) => new Set(prev).add(perm.id))
     sdk.client.permission
       .respond({ sessionID: perm.sessionID, permissionID: perm.id, response })
       .catch((err: unknown) => {
+        setDecided((prev) => {
+          const next = new Set(prev)
+          next.delete(perm.id)
+          return next
+        })
         const message = err instanceof Error ? err.message : String(err)
         showToast({ title: language.t("common.requestFailed"), description: message })
       })
-      .finally(() => setUi("responding", false))
   }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey))
@@ -2889,18 +2897,13 @@ export default function Page() {
                     </BasicTool>
                     <div data-component="permission-prompt">
                       <div data-slot="permission-actions">
-                        <Button variant="ghost" size="small" onClick={() => decide("reject")} disabled={ui.responding}>
+                        <Button variant="ghost" size="small" onClick={() => decide("reject")}>
                           {language.t("ui.permission.deny")}
                         </Button>
-                        <Button
-                          variant="secondary"
-                          size="small"
-                          onClick={() => decide("always")}
-                          disabled={ui.responding}
-                        >
+                        <Button variant="secondary" size="small" onClick={() => decide("always")}>
                           {language.t("ui.permission.allowAlways")}
                         </Button>
-                        <Button variant="primary" size="small" onClick={() => decide("once")} disabled={ui.responding}>
+                        <Button variant="primary" size="small" onClick={() => decide("once")}>
                           {language.t("ui.permission.allowOnce")}
                         </Button>
                       </div>

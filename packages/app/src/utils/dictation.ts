@@ -32,6 +32,9 @@ class DictationCapture extends AudioWorkletProcessor {
 registerProcessor("dictation-capture", DictationCapture)
 `
 
+let workletUrl: string | undefined
+const workletModule = () => (workletUrl ??= URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })))
+
 function encode(samples: Float32Array) {
   const pcm = new Int16Array(samples.length)
   for (let i = 0; i < samples.length; i++) {
@@ -118,10 +121,15 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   // The live analyser drives the waveform canvas directly (its own rAF reads
   // frequency data), so per-frame audio levels never churn the Solid store.
   let analyser: AnalyserNode | undefined
+  // stop() during start()'s awaits used to leave a hot mic with nothing on
+  // screen: stop found no session yet, then start finished wiring one up. The
+  // epoch lets a resumed start detect the intervening stop and release instead.
+  let epoch = 0
 
   const supported = () => !!navigator.mediaDevices?.getUserMedia
 
   const teardown = () => {
+    epoch++
     if (!session) return
     const { socket, context, stream } = session
     session = undefined
@@ -139,29 +147,85 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     if (session) return
     active?.()
     active = stop
+    const generation = ++epoch
+
+    // Dial before touching the mic: the handshake crosses the network (a full
+    // RTT or two on cellular) while getUserMedia and the worklet compile run
+    // locally, so neither waits on the other. Audio produced before the socket
+    // opens queues in `pending`.
+    const url = new URL(opts.url() + "/dictation/connect")
+    if (window.__OPENCODE__?.serverPassword) {
+      url.username = "opencode"
+      url.password = window.__OPENCODE__.serverPassword
+    }
+    const socket = new WebSocket(url)
+    socket.binaryType = "arraybuffer"
+
+    const pending: ArrayBuffer[] = []
+    socket.onopen = () => {
+      for (const frame of pending) socket.send(frame)
+      pending.length = 0
+    }
+    socket.onmessage = (event) => {
+      const message = JSON.parse(String(event.data))
+      if (message.type === "transcript") {
+        if (message.final) {
+          setStore({
+            committed: store.committed ? store.committed + " " + message.text : message.text,
+            interim: "",
+          })
+          return
+        }
+        setStore("interim", message.text)
+        return
+      }
+      if (message.type === "error") {
+        opts.onError?.(message.message)
+        teardown()
+      }
+    }
+    socket.onclose = () => {
+      if (session?.socket !== socket) return
+      // A network drop otherwise leaves the overlay rendering a live-looking
+      // mic forever. Error before teardown: the host dismisses while the
+      // transcript is still in the store, so its unmount stash keeps the text.
+      opts.onError?.("Dictation connection closed")
+      teardown()
+    }
+
+    let stream: MediaStream | undefined
+    let context: AudioContext | undefined
+    const dispose = () => {
+      socket.onclose = null
+      socket.close()
+      if (stream) for (const track of stream.getTracks()) track.stop()
+      context?.close().catch(() => {})
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       })
-      const context = new AudioContext({ sampleRate: 16000 })
+      if (generation !== epoch) {
+        dispose()
+        return
+      }
+      context = new AudioContext({ sampleRate: 16000 })
       if (context.sampleRate !== 16000) {
-        for (const track of stream.getTracks()) track.stop()
-        context.close()
         throw new Error(`AudioContext sample rate is ${context.sampleRate}, expected 16000`)
       }
-      await context.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })))
-
-      const url = new URL(opts.url() + "/dictation/connect")
-      if (window.__OPENCODE__?.serverPassword) {
-        url.username = "opencode"
-        url.password = window.__OPENCODE__.serverPassword
+      await context.audioWorklet.addModule(workletModule())
+      if (generation !== epoch) {
+        dispose()
+        return
       }
-      const socket = new WebSocket(url)
-      socket.binaryType = "arraybuffer"
+      if (socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) {
+        throw new Error("Dictation connection closed")
+      }
+
       session = { socket, context, stream }
       setStore("active", true)
 
-      const pending: ArrayBuffer[] = []
       const worklet = new AudioWorkletNode(context, "dictation-capture")
       worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
         const frame = encode(event.data)
@@ -179,33 +243,12 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.8
       source.connect(analyser)
-
-      socket.onopen = () => {
-        for (const frame of pending) socket.send(frame)
-        pending.length = 0
-      }
-      socket.onmessage = (event) => {
-        const message = JSON.parse(String(event.data))
-        if (message.type === "transcript") {
-          if (message.final) {
-            setStore({
-              committed: store.committed ? store.committed + " " + message.text : message.text,
-              interim: "",
-            })
-            return
-          }
-          setStore("interim", message.text)
-          return
-        }
-        if (message.type === "error") {
-          opts.onError?.(message.message)
-          teardown()
-        }
-      }
-      socket.onclose = () => {
-        if (session?.socket === socket) teardown()
-      }
     } catch (error) {
+      if (session?.socket === socket) {
+        session = undefined
+        analyser = undefined
+      }
+      dispose()
       if (active === stop) active = undefined
       setStore("active", false)
       opts.onError?.(error instanceof Error ? error.message : String(error))
