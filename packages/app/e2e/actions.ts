@@ -128,14 +128,17 @@ export async function hoverSessionItem(page: Page, sessionID: string) {
 }
 
 export async function openSessionMoreMenu(page: Page, sessionID: string) {
-  const sessionEl = await hoverSessionItem(page, sessionID)
-
-  const menuTrigger = sessionEl.locator(dropdownMenuTriggerSelector).first()
-  await expect(menuTrigger).toBeVisible()
-  await menuTrigger.click()
-
   const menu = page.locator(dropdownMenuContentSelector).first()
-  await expect(menu).toBeVisible()
+  // The trigger only exists while the row is hovered, and under parallel-suite
+  // load the hover can be stolen between the hover and the click, leaving a
+  // menu that opened and instantly closed. Retry the dance as one unit.
+  await expect(async () => {
+    const sessionEl = await hoverSessionItem(page, sessionID)
+    const menuTrigger = sessionEl.locator(dropdownMenuTriggerSelector).first()
+    await expect(menuTrigger).toBeVisible({ timeout: 2_000 })
+    await menuTrigger.click({ timeout: 2_000 })
+    await expect(menu).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
   return menu
 }
 
