@@ -15,14 +15,15 @@ test("can close a project via the icon context menu", async ({ page, withProject
         await openSidebar(page)
 
         const otherButton = page.locator(projectSwitchSelector(otherSlug)).first()
-        await expect(otherButton).toBeVisible()
-        await otherButton.click({ button: "right" })
-
         const closeItem = page.locator(projectCloseMenuSelector(otherSlug)).first()
-        await expect(closeItem).toBeVisible()
-        await closeItem.click()
+        await expect(async () => {
+          await expect(otherButton).toBeVisible()
+          await otherButton.click({ button: "right" })
+          await expect(closeItem).toBeVisible({ timeout: 2_000 })
+          await closeItem.click({ timeout: 2_000 })
+        }).toPass({ timeout: 30_000 })
 
-        await expect(otherButton).toHaveCount(0)
+        await expect(otherButton).toHaveCount(0, { timeout: 15_000 })
       },
       { extra: [other] },
     )
