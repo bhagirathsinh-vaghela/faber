@@ -611,6 +611,95 @@ test.describe("chrome geometry", () => {
     }
   })
 
+  test("the search box keeps its place between the indicator and the layout control", async ({ page, gotoSession }) => {
+    await gotoSession()
+
+    for (const width of [700, 760, 900, 1280, 1600]) {
+      await page.setViewportSize({ width, height: 800 })
+      await settle(page)
+
+      const row = await page.evaluate(() => {
+        const bar = document.querySelector('[data-slot="titlebar"]')!
+        const seen = [...bar.querySelectorAll<HTMLElement>("button")]
+          .filter((button) => button.getBoundingClientRect().width > 0)
+          .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
+        const find = (match: (label: string) => boolean) =>
+          seen.findIndex((button) => match(button.getAttribute("aria-label") ?? ""))
+        return {
+          indicator: find((label) => label === "Status"),
+          search: find((label) => /search files/i.test(label)),
+          layout: find((label) => /layout/i.test(label)),
+        }
+      })
+
+      expect(row.search, `${width}px: the search box must be present`).toBeGreaterThanOrEqual(0)
+      expect(row.indicator, `${width}px: the indicator sits left of the search box`).toBe(row.search - 1)
+      expect(row.layout, `${width}px: the layout control sits right of the search box`).toBe(row.search + 1)
+    }
+  })
+
+  test("a search box in a column too narrow for it gives way instead of covering its neighbours", async ({
+    page,
+    gotoSession,
+  }) => {
+    await gotoSession()
+    // Narrow enough that the column is under the box's fixed width, while the
+    // box is still shown: wider and the column has room either way, narrower
+    // and the box is gated away, so neither width can tell the two apart.
+    await page.setViewportSize({ width: 700, height: 800 })
+    await settle(page)
+
+    // A fixed-width box in a shrinking column overflows in both directions, and
+    // it is opaque, so the controls it covers read as missing rather than
+    // overlapped.
+    for (let press = 0; press < 3 && (await sizeClass(page)) !== "expanded"; press++) {
+      await page.locator("[aria-label*='layout']").locator("visible=true").first().click()
+      await settle(page)
+    }
+    expect(await sizeClass(page)).toBe("expanded")
+
+    const measured = await page.evaluate(() => {
+      const bar = document.querySelector('[data-slot="titlebar"]')!
+      const boxes = [...bar.querySelectorAll<HTMLElement>("button")]
+        .filter((button) => button.getBoundingClientRect().width > 0)
+        .map((button) => ({
+          label: button.getAttribute("aria-label") ?? "unnamed",
+          rect: button.getBoundingClientRect(),
+        }))
+        .sort((a, b) => a.rect.left - b.rect.left)
+
+      const search = bar.querySelector<HTMLElement>("[aria-label*='Search files']")
+      const column = search?.parentElement?.parentElement
+      return {
+        overlaps: boxes
+          .slice(0, -1)
+          .filter((entry, index) => entry.rect.right > boxes[index + 1].rect.left + 1)
+          .map((entry, index) => `${entry.label} over ${boxes[index + 1].label}`),
+        spill: search && column ? Math.round(search.getBoundingClientRect().width - column.getBoundingClientRect().width) : 0,
+      }
+    })
+
+    expect(measured.overlaps, "no control may be painted over by the search box").toEqual([])
+    expect(measured.spill, "the search box must not exceed the column holding it").toBeLessThanOrEqual(0)
+  })
+
+  test("the titlebar offers no keep-warm control", async ({ page, gotoSession }) => {
+    await gotoSession()
+
+    for (const name of ["phone", "desktop"] as const) {
+      await page.setViewportSize(VIEWPORTS[name])
+      await settle(page)
+
+      const warm = await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>('[data-slot="titlebar"] button')]
+          .filter((button) => /warm|cache/i.test(button.getAttribute("aria-label") ?? ""))
+          .map((button) => button.getAttribute("aria-label")),
+      )
+
+      expect(warm, `${name}: keep-warm is not a titlebar control`).toEqual([])
+    }
+  })
+
   test("exactly one server indicator is visible in the titlebar", async ({ page, gotoSession }) => {
     await gotoSession()
 
