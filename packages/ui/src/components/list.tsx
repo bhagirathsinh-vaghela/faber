@@ -94,9 +94,14 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   // and the filter all address the full set while later rows are still
   // pending. content-visibility already spares offscreen rows their layout,
   // but not their construction, which is what this defers.
+  // The opening task only has to fill the viewport, so it carries a smaller
+  // first chunk than the idle passes that follow it: everything mounted in that
+  // task is laid out before the list can paint, and rows past the fold cost the
+  // same layout as the visible ones while showing nothing.
+  const FIRST = 16
   const CHUNK = 60
-  const [budget, setBudget] = createSignal(CHUNK)
-  createEffect(on(filter, () => setBudget(CHUNK), { defer: true }))
+  const [budget, setBudget] = createSignal(FIRST)
+  createEffect(on(filter, () => setBudget(FIRST), { defer: true }))
   createEffect(() => {
     const total = flat().length
     if (budget() >= total) return
@@ -107,16 +112,18 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     const handle = idle ? window.requestIdleCallback(grow, { timeout: 200 }) : setTimeout(grow, 0)
     onCleanup(() => (idle ? window.cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>)))
   })
-  // Navigation outruns the chunk timer when a key is held down, and the active
-  // row must exist to be scrolled to, so reaching past the budget mounts the
-  // rows up to it at once.
-  createEffect(() => {
-    const key = active()
-    if (!key) return
-    const index = flat().findIndex((item) => props.key(item) === key)
+  // A row has to exist before it can be scrolled to or navigated onto, so any
+  // row the list points at is mounted at once rather than waiting for the
+  // chunk timer to reach it. Navigation outruns that timer whenever a key is
+  // held down, and the selected row can sit anywhere in the list.
+  const reach = (item: T | undefined) => {
+    if (!item) return
+    const index = flat().findIndex((candidate) => props.key(candidate) === props.key(item))
     if (index < budget()) return
     setBudget(index + 1)
-  })
+  }
+  createEffect(() => reach(flat().find((item) => props.key(item) === active())))
+  createEffect(() => reach(props.current))
 
   // Where each group starts in the flattened order, so one budget spans the
   // groups instead of each filling independently.
