@@ -70,7 +70,10 @@ const serverEnv = {
   OPENCODE_E2E_PROJECT_DIR: repoDir,
   OPENCODE_E2E_SESSION_TITLE: "E2E Session",
   OPENCODE_E2E_MESSAGE: "Seeded for UI e2e",
-  OPENCODE_E2E_MODEL: "opencode/gpt-5-nano",
+  // The hosted free tier rate-limits anonymously and fails the prompt
+  // round-trip; default to Anthropic's small model, reached through
+  // ANTHROPIC_API_KEY in the inherited env (override with OPENCODE_E2E_MODEL).
+  OPENCODE_E2E_MODEL: process.env.OPENCODE_E2E_MODEL ?? "anthropic/claude-haiku-4-5",
   OPENCODE_CLIENT: "app",
 } satisfies Record<string, string>
 

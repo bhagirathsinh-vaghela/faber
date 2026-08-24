@@ -1,10 +1,10 @@
 const dir = process.env.OPENCODE_E2E_PROJECT_DIR ?? process.cwd()
 const title = process.env.OPENCODE_E2E_SESSION_TITLE ?? "E2E Session"
 const text = process.env.OPENCODE_E2E_MESSAGE ?? "Seeded for UI e2e"
-const model = process.env.OPENCODE_E2E_MODEL ?? "opencode/gpt-5-nano"
+const model = process.env.OPENCODE_E2E_MODEL ?? "anthropic/claude-haiku-4-5"
 const parts = model.split("/")
-const providerID = parts[0] ?? "opencode"
-const modelID = parts[1] ?? "gpt-5-nano"
+const providerID = parts[0] ?? "anthropic"
+const modelID = parts[1] ?? "claude-haiku-4-5"
 const now = Date.now()
 
 const seed = async () => {
