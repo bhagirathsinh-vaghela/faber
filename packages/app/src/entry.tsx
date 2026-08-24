@@ -137,7 +137,12 @@ if (root && viewport && softKeyboard) {
       appliedInset = inset
       document.documentElement.style.setProperty("--keyboard-inset", `${inset}px`)
     }
-    if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0)
+    // Keyboard-only: iOS pans the document to reveal the caret and the reset
+    // undoes that pan. The document also scrolls legitimately now (the
+    // min-h-lvh range that collapses the URL bar), and the bar collapse fires
+    // this same settle loop through visualViewport scroll, so an
+    // unconditional reset would re-expand the bar the moment it collapsed.
+    if (keyboard() && (window.scrollX !== 0 || window.scrollY !== 0)) window.scrollTo(0, 0)
   }
   const settle = () => {
     cancelAnimationFrame(raf)

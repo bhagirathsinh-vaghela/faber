@@ -21,9 +21,19 @@
     <meta property="twitter:image" content="/social-share.png" />
     <script id="oc-theme-preload-script" src="/oc-theme-preload.js"></script>
   </head>
-  <body class="antialiased overscroll-none text-12-regular overflow-hidden">
+  <!-- min-h-lvh gives the document a scroll range of exactly lvh - svh: the
+       browser's own measure of its collapsible chrome. A flick on any
+       non-scrollable surface (the titlebar) chains to this root scroller,
+       which is the one gesture Safari collapses its bar for. Desktop and the
+       installed PWA have no collapsible chrome, so the range is zero and
+       nothing changes. -->
+  <body class="antialiased overscroll-none text-12-regular min-h-lvh">
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root" class="flex flex-col h-dvh p-px"></div>
+    <!-- sticky: the shell stays pinned to the viewport while the document
+         scrolls beneath it, so collapsing the bar moves browser chrome only,
+         never the app. No overflow clip here: portaled popovers overhang the
+         root and a clip on it cuts them off. -->
+    <div id="root" class="flex flex-col h-dvh p-px sticky top-0"></div>
     <script src="/src/entry.tsx" type="module"></script>
   </body>
 </html>
