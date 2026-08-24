@@ -2638,6 +2638,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     </Button>
                   </Tooltip>
                 </Show>
+                <Show when={store.mode === "normal"}>
+                  <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class={`${actionButton()} ${actionIcon()}`}
+                      onClick={() => fileInputRef.click()}
+                      aria-label={language.t("prompt.action.attachFile")}
+                    >
+                      <Icon name="photo" />
+                    </Button>
+                  </Tooltip>
+                </Show>
                 <Show when={store.mode === "normal" && dictation.supported()}>
                   <Tooltip
                     placement="top"
@@ -2664,19 +2677,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
                         }
                       />
-                    </Button>
-                  </Tooltip>
-                </Show>
-                <Show when={store.mode === "normal"}>
-                  <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class={`${actionButton()} ${actionIcon()}`}
-                      onClick={() => fileInputRef.click()}
-                      aria-label={language.t("prompt.action.attachFile")}
-                    >
-                      <Icon name="photo" />
                     </Button>
                   </Tooltip>
                 </Show>
