@@ -70,15 +70,29 @@ export namespace Dock {
   // binary shares one layout (same rationale as Skill.favorites).
   const file = path.join(Global.Path.state, "dock.json")
 
+  // The config stores presence only, so in a bare two-array file an id
+  // introduced after the write is indistinguishable from one the user hid.
+  const File = Config.extend({ known: z.string().array().optional() })
+  const registry = [...new Set([...defaults.desktop, ...defaults.mobile])]
+
   export async function get() {
     const parsed = await Bun.file(file)
       .json()
       .catch(() => undefined)
-    return Config.safeParse(parsed).data ?? defaults
+    const stored = File.safeParse(parsed).data
+    if (!stored) return defaults
+    // A legacy file carries no `known`; treat everything current as seen so
+    // deliberate hides survive.
+    const known = new Set(stored.known ?? registry)
+    const grow = (surface: "desktop" | "mobile") => [
+      ...stored[surface],
+      ...defaults[surface].filter((id) => !known.has(id) && !stored[surface].includes(id)),
+    ]
+    return { desktop: grow("desktop"), mobile: grow("mobile") }
   }
 
   export async function set(config: Config) {
-    await Bun.write(file, JSON.stringify(config))
+    await Bun.write(file, JSON.stringify({ desktop: config.desktop, mobile: config.mobile, known: registry }))
     GlobalBus.emit("event", {
       directory: "global",
       payload: { type: Event.Updated.type, properties: config },
