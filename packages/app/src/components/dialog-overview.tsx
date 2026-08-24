@@ -180,7 +180,13 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
         </Chip>
       </ChipGroup>
       <Show when={props.row.pingAt}>
-        <IconButton icon="circle-ban-sign" title={language.t("home.attention.stopPing")} onClick={stopPing} />
+        <IconButton
+          icon="circle-ban-sign"
+          size="large"
+          title={language.t("home.attention.stopPing")}
+          onClick={stopPing}
+          class="size-8 -my-1.5 any-pointer-coarse:size-11 any-pointer-coarse:-my-2"
+        />
       </Show>
     </div>
   )
