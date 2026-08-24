@@ -308,15 +308,28 @@ function Panel(props: {
 
   // A reply crosses the network before the server drops the request, and on a
   // remote client that round-trip makes the panel read as if the press did
-  // nothing. Hide the request locally on the press instead.
+  // nothing. Hide the request locally on the press instead. The hide advances
+  // the panel to the NEXT queued request within a frame, so a press landing
+  // right behind a deliver would answer a question the user never read.
+  const DOUBLE_PRESS_MS = 350
+  let deliveredAt = 0
+  const isDoublePress = () => Date.now() - deliveredAt < DOUBLE_PRESS_MS
   const deliver = (id: string, call: () => Promise<unknown>) => {
+    deliveredAt = Date.now()
     questionState.markAnswered(id)
     setRequestIndex(0)
     resetForRequest()
-    call().catch(() => questionState.unmarkAnswered(id))
+    call().catch((err: unknown) => {
+      questionState.unmarkAnswered(id)
+      showToast({
+        title: language.t("common.requestFailed"),
+        description: err instanceof Error ? err.message : String(err),
+      })
+    })
   }
 
   function submit() {
+    if (isDoublePress()) return
     const r = request()
     if (!r) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
@@ -324,12 +337,14 @@ function Panel(props: {
   }
 
   function reject() {
+    if (isDoublePress()) return
     const r = request()
     if (!r) return
     if (isPending(r.id)) deliver(r.id, () => sdk.client.question.reject({ requestID: r.id }))
   }
 
   function pick(answer: string, isCustom = false) {
+    if (isDoublePress()) return
     const answers = [...store.answers]
     answers[store.tab] = [answer]
     setStore("answers", answers)
@@ -444,6 +459,9 @@ function Panel(props: {
   // it has focus.
   function handleKey(event: KeyboardEvent) {
     if (store.editing) return
+    // Held arrows may repeat (navigation); a repeating Enter/Space must not
+    // act, or a held key answers every queued request in order.
+    if (event.repeat && (event.key === "Enter" || event.key === " ")) return
 
     // Yield while the user is typing in an editable field (the prompt
     // contenteditable, a textarea, an input). The panel grabs focus on mount so

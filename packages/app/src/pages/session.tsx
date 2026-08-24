@@ -319,9 +319,17 @@ export default function Page() {
     setDecided((prev) => new Set([...prev].filter((id) => live.has(id))))
   })
 
+  // The optimistic hide swaps the next queued permission's buttons into the
+  // same screen position within a frame, so the second half of a double-click
+  // would grant a permission the user never read. Ignore presses until the
+  // replacement has been visible long enough to be seen.
+  let decidedAt = 0
   const decide = (response: "once" | "always" | "reject") => {
     const perm = request()
     if (!perm) return
+    const now = Date.now()
+    if (now - decidedAt < 350) return
+    decidedAt = now
 
     setDecided((prev) => new Set(prev).add(perm.id))
     sdk.client.permission

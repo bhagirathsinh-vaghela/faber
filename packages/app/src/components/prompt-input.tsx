@@ -1503,8 +1503,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
     if (!session && isNewSession) {
       // Drop a concurrent submit on a session-less view: the first one owns the
-      // create, a second would mint a duplicate root session.
-      if (creating) return
+      // create, a second would mint a duplicate root session. The dropped
+      // submit already cleared its draft above, so put it back.
+      if (creating) {
+        restoreInput()
+        return
+      }
       creating = true
       session = await client.session
         .create()

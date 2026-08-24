@@ -125,11 +125,17 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   // screen: stop found no session yet, then start finished wiring one up. The
   // epoch lets a resumed start detect the intervening stop and release instead.
   let epoch = 0
+  // Set while start() is between dialing the socket and committing a session.
+  // A stop in that window has no session to release, but the socket is already
+  // connected server-side; without this hook it stays open until getUserMedia
+  // settles — minutes, when the user ignores the mic-permission prompt.
+  let abortStart: (() => void) | undefined
 
   const supported = () => !!navigator.mediaDevices?.getUserMedia
 
   const teardown = () => {
     epoch++
+    abortStart?.()
     if (!session) return
     const { socket, context, stream } = session
     session = undefined
@@ -196,11 +202,13 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     let stream: MediaStream | undefined
     let context: AudioContext | undefined
     const dispose = () => {
+      abortStart = undefined
       socket.onclose = null
       socket.close()
       if (stream) for (const track of stream.getTracks()) track.stop()
       context?.close().catch(() => {})
     }
+    abortStart = dispose
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -224,6 +232,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       }
 
       session = { socket, context, stream }
+      abortStart = undefined
       setStore("active", true)
 
       const worklet = new AudioWorkletNode(context, "dictation-capture")
@@ -251,6 +260,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       dispose()
       if (active === stop) active = undefined
       setStore("active", false)
+      if (generation !== epoch) return
       opts.onError?.(error instanceof Error ? error.message : String(error))
     }
   }
