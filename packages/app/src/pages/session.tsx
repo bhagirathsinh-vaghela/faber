@@ -9,11 +9,12 @@ import {
   createEffect,
   createSignal,
   on,
+  type Accessor,
   type JSX,
 } from "solid-js"
 import { createCoarsePointer, useShell } from "@/utils/mobile"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
-import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
+import { Virtualizer, WindowVirtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
 import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
@@ -382,6 +383,11 @@ export default function Page() {
 
   const wide = useShell().wide
   const centered = createMemo(() => wide() && !layout.fileTree.opened())
+  // Mobile browsers collapse their address bar only for a gesture on the ROOT
+  // scroller, so the transcript hands scrolling to the document there. A wide
+  // layout can show the transcript beside the review pane, which needs two
+  // independent scrollers, so it keeps the transcript's own box.
+  const documentScroll = createMemo(() => !wide())
   const openContextPanel = useOpenContext()
 
   function normalizeTab(tab: string) {
@@ -621,12 +627,17 @@ export default function Page() {
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
   let promptInner: HTMLDivElement | undefined
-  let scroller: HTMLDivElement | undefined
   // A signal (not a plain ref) so the tail-follow ResizeObserver attaches
   // whenever the transcript (re)mounts; a bare `let` is invisible to it.
   const [content, setContent] = createSignal<HTMLDivElement>()
-  // Same signal-mirror for `scroller`, for the keyboard re-pin observer.
+  // The transcript's own box, which the keyboard re-pin observer measures.
   const [scrollerBox, setScrollerBox] = createSignal<HTMLDivElement>()
+  // The element the tail-follow logic reads and writes scrollTop on: the
+  // transcript's own box when wide, document.documentElement when compact.
+  // Derived, never latched at mount, because the size class crosses its
+  // threshold without remounting the transcript; a ref captured once would go
+  // on addressing a box that no longer scrolls.
+  const scroller = () => (documentScroll() ? document.documentElement : scrollerBox())
 
   const scrollGestureWindowMs = 250
 
@@ -642,7 +653,7 @@ export default function Page() {
   let touchGesture: number | undefined
 
   const markScrollGesture = (target?: EventTarget | null) => {
-    const root = scroller
+    const root = scroller()
     if (!root) return
 
     const el = target instanceof Element ? target : undefined
@@ -1701,7 +1712,7 @@ export default function Page() {
   let tailVisible = true
 
   const pinToBottom = () => {
-    const el = scroller
+    const el = scroller()
     if (!el) return
     el.scrollTop = el.scrollHeight - el.clientHeight
   }
@@ -1718,7 +1729,7 @@ export default function Page() {
   // scrollHeight that then kept increasing. Requiring height-stability makes the
   // FIRST press wait out that growth, so it behaves like the working second press.
   const settleToBottom = (tries = 0, lastHeight = -1, stable = 0) => {
-    const el = scroller
+    const el = scroller()
     if (!el || !following()) {
       settling = false
       return
@@ -1736,6 +1747,48 @@ export default function Page() {
       return
     }
     requestAnimationFrame(() => settleToBottom(tries + 1, el.scrollHeight, streak))
+  }
+
+  // Shared by both scrollers: the transcript's own box when wide, and the
+  // document (via a window listener) when compact.
+  const handleScroll = (el: HTMLElement) => {
+    // Keep the pre-toggle tail snapshot current on EVERY scroll (gesture or
+    // programmatic pin), so the zen re-pin knows we were at the bottom before
+    // the reflow.
+    tailVisible = atBottom(el)
+    // Only a user gesture (wheel/touch/scrollbar/keys — tracked by
+    // markScrollGesture) may change follow state: away from the bottom
+    // unfollows, back to it refollows. Programmatic scrolls (our pins, virtua's
+    // jump compensation, smooth jumps) never do — they set following explicitly
+    // at their call sites. `settling` overrides the gesture window: while our
+    // own rAF loop drives the scroller, every event here is ours no matter how
+    // recently the user scrolled. Without this, momentum kept the window alive
+    // into the settle, the loop's mid-flight (not-yet-bottom) frames read as
+    // "user scrolled away", following went false, and the loop aborted short of
+    // the tail.
+    if (settling) {
+      // Ours and still climbing — nothing to decide.
+    } else if (hasScrollGesture()) {
+      setFollowing(atBottom(el))
+      // Keep the gesture window alive across a long drag or momentum scroll
+      // (each event within the window extends it); programmatic scrolls
+      // arriving after it lapses stay inert.
+      markScrollGesture(el)
+    } else if (following() && !atBottom(el)) {
+      // A NON-gesture scroll knocked us off the bottom while following. This is
+      // virtua re-applying an eagerly captured offset on a size change
+      // (dock/title reflow on a zen toggle, async content) — overflow-anchor is
+      // off, so nothing else corrects it. Re-pin so following keeps meaning
+      // "glued to the tail".
+      pinToBottom()
+    }
+    // The scroll-spy (updates the active message from whatever prompt sits at
+    // the viewport top) must run ONLY for user gestures. A programmatic scroll
+    // from keyboard nav (alt+9/alt+0 -> scrollToMessage) already set the exact
+    // target; letting the spy re-derive it from the landing offset overwrites
+    // that anchor with a neighbor, so the next step counts from the wrong
+    // message. Same gesture guard the follow logic uses.
+    if (wide() && !settling && hasScrollGesture()) scheduleScrollSpy(el)
   }
 
   const clearMessageHash = () => {
@@ -1809,14 +1862,77 @@ export default function Page() {
   )
 
   let scrollSpyFrame: number | undefined
-  let scrollSpyTarget: HTMLDivElement | undefined
+  let scrollSpyTarget: HTMLElement | undefined
 
   const anchor = (id: string) => `message-${id}`
 
-  const setScrollRef = (el: HTMLDivElement | undefined) => {
-    scroller = el
-    setScrollerBox(el)
-  }
+  // Compact scrolls the DOCUMENT so mobile browsers collapse their chrome on
+  // scroll; only a root-scroller gesture does that, never an inner overflow box.
+  // Wide keeps its own box, since side-by-side panes cannot share one scroller.
+  const setScrollRef = (el: HTMLDivElement | undefined) => setScrollerBox(el)
+
+  // iOS shrinks the visual viewport for the keyboard without moving a fixed
+  // element, so the dock has to be lifted by the covered gap itself.
+  createEffect(() => {
+    const viewport = window.visualViewport
+    if (!documentScroll() || !viewport) return
+    const pin = () => {
+      if (!promptDock) return
+      promptDock.style.bottom = `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`
+    }
+    viewport.addEventListener("resize", pin)
+    viewport.addEventListener("scroll", pin)
+    pin()
+    onCleanup(() => {
+      viewport.removeEventListener("resize", pin)
+      viewport.removeEventListener("scroll", pin)
+      if (promptDock) promptDock.style.bottom = ""
+    })
+  })
+
+  createEffect(() => {
+    if (!documentScroll()) return
+    const onScroll = () => handleScroll(document.documentElement)
+    const onGesture = () => markScrollGesture(document.documentElement)
+    window.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("wheel", onGesture, { passive: true })
+    window.addEventListener("touchstart", onGesture, { passive: true })
+    onCleanup(() => {
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("wheel", onGesture)
+      window.removeEventListener("touchstart", onGesture)
+    })
+  })
+
+  // Shared by both virtualizers so the two branches cannot drift.
+  const renderTurn = (message: { id: string }, index: Accessor<number>) => (
+    <div
+      id={anchor(message.id)}
+      data-message-id={message.id}
+      classList={{
+        "min-w-0 w-full max-w-full pb-4": true,
+        // The last turn carries the floating-dock clearance so virtua's
+        // align:"end" lands the message above the dock, not under it.
+        "!pb-[calc(var(--prompt-height,8rem)+12px)] panel-wide:!pb-[calc(var(--prompt-height,10rem)+12px)]":
+          index() === lastIndex(),
+      }}
+    >
+      <SessionTurn
+        sessionID={params.id!}
+        messageID={message.id}
+        lastUserMessageID={lastUserMessage()?.id}
+        footer={(m) => <MessageFooter message={m} />}
+        stepsExpanded={stepsExpandedDefault(message.id)}
+        onStepsExpandedToggle={() => setStore("expanded", message.id, (open: boolean | undefined) => !open)}
+        onJump={() => scrollToMessage(message as Parameters<typeof scrollToMessage>[0])}
+        classes={{
+          root: "min-w-0 w-full relative",
+          content: "flex flex-col justify-between !overflow-visible",
+          container: "w-full px-4 panel-wide:px-0",
+        }}
+      />
+    </div>
+  )
 
   // virtua owns turn windowing: it keeps only the visible range (+overscan)
   // mounted and props the scroller to full estimated height, so scrollHeight
@@ -1882,7 +1998,7 @@ export default function Page() {
     on(
       () => layout.zen.opened(),
       () => {
-        const el = scroller
+        const el = scroller()
         if (!el) return
         // Use the pre-toggle snapshot, NOT a fresh atBottom() read: by the time
         // this effect runs the transcript has already reflowed, so a live read
@@ -1917,7 +2033,7 @@ export default function Page() {
   })
 
   const scrollToElement = (el: HTMLElement, behavior: ScrollBehavior) => {
-    const root = scroller
+    const root = scroller()
     if (!root) return false
 
     const a = el.getBoundingClientRect()
@@ -1925,7 +2041,11 @@ export default function Page() {
     // The scroller has a sticky session-title bar pinned at its top. Offset the
     // target by its height (plus a small gap) so a jumped-to message lands just
     // below the bar instead of clipped underneath it.
-    const titleHeight = parseFloat(getComputedStyle(root).getPropertyValue("--session-title-height")) || 0
+    // The variable is set on the transcript's box, which is not the scrolling
+    // element when the document scrolls, and custom properties do not reach an
+    // ancestor.
+    const box = scrollerBox() ?? root
+    const titleHeight = parseFloat(getComputedStyle(box).getPropertyValue("--session-title-height")) || 0
     const top = a.top - b.top + root.scrollTop - titleHeight - 8
     root.scrollTo({ top: Math.max(0, top), behavior })
     return true
@@ -2012,7 +2132,7 @@ export default function Page() {
     return null
   }
 
-  const getActiveMessageId = (container: HTMLDivElement) => {
+  const getActiveMessageId = (container: HTMLElement) => {
     const rect = container.getBoundingClientRect()
     if (!rect.width || !rect.height) return
 
@@ -2039,7 +2159,7 @@ export default function Page() {
     return last
   }
 
-  const scheduleScrollSpy = (container: HTMLDivElement) => {
+  const scheduleScrollSpy = (container: HTMLElement) => {
     scrollSpyTarget = container
     if (scrollSpyFrame !== undefined) return
 
@@ -2313,7 +2433,11 @@ export default function Page() {
 
   return (
     <div
-      class="relative bg-background-base size-full overflow-hidden flex flex-col"
+      classList={{
+        "bg-background-base w-full flex flex-col": true,
+        "relative h-full overflow-hidden": !documentScroll(),
+        "flex-1": documentScroll(),
+      }}
       // Inherited by both permission prompts (the dock's and the in-transcript
       // one), so they carry the same agent tint as the question panel's border.
       style={{ "--permission-accent": workingTint() ?? "var(--icon-interactive-base)" }}
@@ -2361,11 +2485,19 @@ export default function Page() {
           </span>
         </button>
       </Portal>
-      <div class="flex-1 min-h-0 flex flex-col wide:flex-row">
+      <div
+        classList={{
+          "flex-1 flex flex-col wide:flex-row": true,
+          "min-h-0": !documentScroll(),
+        }}
+      >
         {/* Session panel */}
         <div
           classList={{
-            "@container/panel relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
+            "@container/panel shrink-0 flex flex-col bg-background-stronger": true,
+            // A relative ancestor would anchor the fixed dock to this panel's
+            // full height rather than the viewport.
+            "relative min-h-0 h-full": !documentScroll(),
             "flex-1 pt-0 wide:pt-3": true,
             "wide:flex-none": layout.fileTree.opened(),
           }}
@@ -2384,7 +2516,8 @@ export default function Page() {
               The dock is absolutely bottom-anchored, so it stays put. */}
           <div
             classList={{
-              "flex-1 min-h-0 overflow-hidden": true,
+              "flex-1": true,
+              "min-h-0 overflow-hidden": !documentScroll(),
               hidden: layout.companion.opened(),
             }}
           >
@@ -2449,10 +2582,19 @@ export default function Page() {
                       </div>
                     }
                   >
-                    <div class="relative w-full h-full min-w-0">
+                    <div
+                      classList={{
+                        "w-full min-w-0": true,
+                        // A relative ancestor would anchor the fixed pill and
+                        // dock to this box instead of the viewport.
+                        "relative h-full": !documentScroll(),
+                      }}
+                    >
                       <div
-                        class="absolute left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+12px)] z-[60] pointer-events-none transition-all duration-200 ease-out"
+                        class="left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+12px)] z-[60] pointer-events-none transition-all duration-200 ease-out"
                         classList={{
+                          fixed: documentScroll(),
+                          absolute: !documentScroll(),
                           "opacity-100 translate-y-0 scale-100": !following(),
                           "opacity-0 translate-y-2 scale-95 pointer-events-none": !!following(),
                         }}
@@ -2552,52 +2694,17 @@ export default function Page() {
                           markScrollGesture(e.currentTarget)
                         }}
                         onScroll={(e) => {
-                          // Keep the pre-toggle tail snapshot current on EVERY
-                          // scroll (gesture or programmatic pin), so the zen
-                          // re-pin knows we were at the bottom before the reflow.
-                          tailVisible = atBottom(e.currentTarget)
-                          // Only a user gesture (wheel/touch/scrollbar/keys —
-                          // tracked by markScrollGesture) may change follow
-                          // state: away from the bottom unfollows, back to it
-                          // refollows. Programmatic scrolls (our pins, virtua's
-                          // jump compensation, smooth jumps) never do — they
-                          // set following explicitly at their call sites.
-                          // `settling` overrides the gesture window: while our
-                          // own rAF loop drives the scroller, every event here
-                          // is ours no matter how recently the user scrolled.
-                          // Without this, momentum kept the window alive into
-                          // the settle, the loop's mid-flight (not-yet-bottom)
-                          // frames read as "user scrolled away", following went
-                          // false, and the loop aborted short of the tail.
-                          if (settling) {
-                            // Ours and still climbing — nothing to decide.
-                          } else if (hasScrollGesture()) {
-                            setFollowing(atBottom(e.currentTarget))
-                            // Keep the gesture window alive across a long drag
-                            // or momentum scroll (each event within the window
-                            // extends it); programmatic scrolls arriving after
-                            // it lapses stay inert.
-                            markScrollGesture(e.currentTarget)
-                          } else if (following() && !atBottom(e.currentTarget)) {
-                            // A NON-gesture scroll knocked us off the bottom while
-                            // following. This is virtua re-applying an eagerly
-                            // captured offset on a size change (dock/title reflow
-                            // on a zen toggle, async content) — overflow-anchor is
-                            // off, so nothing else corrects it. Re-pin so following
-                            // keeps meaning "glued to the tail".
-                            pinToBottom()
-                          }
-                          // The scroll-spy (updates the active message from
-                          // whatever prompt sits at the viewport top) must run
-                          // ONLY for user gestures. A programmatic scroll from
-                          // keyboard nav (alt+9/alt+0 -> scrollToMessage) already
-                          // set the exact target; letting the spy re-derive it
-                          // from the landing offset overwrites that anchor with a
-                          // neighbor, so the next step counts from the wrong
-                          // message. Same gesture guard the follow logic uses.
-                          if (wide() && !settling && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
+                          if (documentScroll()) return
+                          handleScroll(e.currentTarget)
                         }}
-                        class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
+                        classList={{
+                          "relative min-w-0 w-full session-scroller": true,
+                          // overscroll containment only while this box owns the
+                          // scroll: reaching either end must not rubber-band the
+                          // window. Under document scroll the chain TO the
+                          // document is the mechanism, so contain would kill it.
+                          "h-full overflow-y-auto overscroll-contain": !documentScroll(),
+                        }}
                         style={{
                           "--session-title-height":
                             !layout.zen.opened() && (info()?.title || info()?.parentID)
@@ -2718,57 +2825,31 @@ export default function Page() {
                               </Button>
                             </div>
                           </Show>
-                          <Virtualizer
-                            ref={setTurnList}
-                            scrollRef={scroller}
-                            data={visibleUserMessages()}
-                            bufferSize={600}
-                            // Turns range from ~80px to ~6000px, and a session opens
-                            // at the tail, so estimating from whatever is measured
-                            // there extrapolates the long final turns across the
-                            // whole history. The scroll range then collapses as
-                            // earlier turns measure in, dragging the viewport with
-                            // it. A fixed hint near the median keeps the range
-                            // honest before anything is measured.
-                            itemSize={900}
-                            // shift only when turns PREPEND (history load-earlier):
-                            // it anchors the view by unshifting virtua's size
-                            // cache. Left on for appends it slides every cached
-                            // height one slot per new turn.
-                            shift={prepended().value}
-                          >
-                            {(message, index) => (
-                              <div
-                                id={anchor(message.id)}
-                                data-message-id={message.id}
-                                classList={{
-                                  "min-w-0 w-full max-w-full pb-4": true,
-                                  // The last turn carries the floating-dock
-                                  // clearance so virtua's align:"end" lands the
-                                  // message above the dock, not under it.
-                                  "!pb-[calc(var(--prompt-height,8rem)+12px)] panel-wide:!pb-[calc(var(--prompt-height,10rem)+12px)]":
-                                    index() === lastIndex(),
-                                }}
+                          <Show
+                            when={documentScroll()}
+                            fallback={
+                              <Virtualizer
+                                ref={setTurnList}
+                                scrollRef={scrollerBox()}
+                                data={visibleUserMessages()}
+                                bufferSize={600}
+                                itemSize={900}
+                                shift={prepended().value}
                               >
-                                <SessionTurn
-                                  sessionID={params.id!}
-                                  messageID={message.id}
-                                  lastUserMessageID={lastUserMessage()?.id}
-                                  footer={(m) => <MessageFooter message={m} />}
-                                  stepsExpanded={stepsExpandedDefault(message.id)}
-                                  onStepsExpandedToggle={() =>
-                                    setStore("expanded", message.id, (open: boolean | undefined) => !open)
-                                  }
-                                  onJump={() => scrollToMessage(message)}
-                                  classes={{
-                                    root: "min-w-0 w-full relative",
-                                    content: "flex flex-col justify-between !overflow-visible",
-                                    container: "w-full px-4 panel-wide:px-0",
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </Virtualizer>
+                                {renderTurn}
+                              </Virtualizer>
+                            }
+                          >
+                            <WindowVirtualizer
+                              ref={setTurnList}
+                              data={visibleUserMessages()}
+                              bufferSize={600}
+                              itemSize={900}
+                              shift={prepended().value}
+                            >
+                              {renderTurn}
+                            </WindowVirtualizer>
+                          </Show>
                         </div>
                       </div>
                     </div>
@@ -2809,7 +2890,11 @@ export default function Page() {
               // inside can know how much room it has, which is why the question
               // panel used to guess with a hardcoded max-height. With the chain
               // bounded, its inner scroller resolves a real height and engages.
-              "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
+              "inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
+              // Document scrolling moves the panel itself, so an absolute dock
+              // would scroll away with it; only a viewport-anchored one stays put.
+              fixed: documentScroll(),
+              absolute: !documentScroll(),
               // Zen keeps a slimmed dock (input + attach + submit + question/permission
               // prompts) rather than hiding it, so questions stay answerable in zen.
               // PromptInput drops its own chrome via useLayout().zen. Only the mobile

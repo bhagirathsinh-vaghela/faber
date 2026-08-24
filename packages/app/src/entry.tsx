@@ -47,7 +47,12 @@ const viewport = window.visualViewport
 // Safari this must not touch.
 const softKeyboard =
   navigator.maxTouchPoints > 0 && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Android/.test(navigator.userAgent)
-if (root && viewport && softKeyboard) {
+// A browser tab scrolls the document so its chrome collapses on scroll, and
+// pinning the root to the viewport (plus the scrollTo(0,0) below) is exactly
+// what removes the scroll range that collapse depends on. An installed PWA has
+// no chrome to collapse, so it keeps the fitted root.
+const installed = (navigator as unknown as { standalone?: boolean }).standalone === true
+if (root && viewport && softKeyboard && installed) {
   // vvH alone cannot classify keyboard state: after a blur-driven dismissal
   // (the dock's keyboard toggle) iOS keeps reporting the shrunken height with
   // no event and no update — the small vvH is the lie. Focus is the signal the
