@@ -140,6 +140,8 @@ const result = await (async () => {
   } finally {
     await inst.Instance.disposeAll()
     await server.stop()
+    // Remove the tmp sandbox so runs do not accumulate.
+    await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {})
   }
 })()
 

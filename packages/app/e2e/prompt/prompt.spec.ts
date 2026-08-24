@@ -60,10 +60,16 @@ test("can send a prompt and receive a reply", async ({ page, sdk, gotoSession })
 
     // Response text renders inline in the turn's steps; the summary section
     // is the changed-files list and only mounts when the turn produced diffs,
-    // which a text-only reply never does. Visible-only, because the token
-    // also appears in the auto-derived session title inside the closed
-    // sidebar, and an unfiltered first() matches that hidden span.
-    await expect(page.getByText(token).filter({ visible: true }).first()).toBeVisible({ timeout: 90_000 })
+    // which a text-only reply never does. Scoped to the assistant message box:
+    // the typed prompt also contains the token, so an unscoped getByText is
+    // satisfied by the user bubble even when the reply never renders.
+    await expect(
+      page
+        .locator('[data-component="message-box"][data-role="assistant"]')
+        .getByText(token)
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible({ timeout: 90_000 })
   } finally {
     page.off("pageerror", onPageError)
     await sdk.session.delete({ sessionID }).catch(() => undefined)
