@@ -44,33 +44,69 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     // projection, so every client renders identically without opening any
     // directory. The rows carry the raw ping deadline; the mm:ss string is ticked
     // per row via countdown() so the clock never churns the list arrays.
-    const rows = createMemo<OverviewRow[]>(() =>
-      globalSync.data.recent_hub.map((entry) => {
-        // recent_hub gives membership/recency/ping; the LIVE busy facts come
-        // from the one operative store so every surface animates off the same
-        // state. Both are stamped from the same server SessionBusy, so this only
-        // guards against the hub row lagging a beat behind session_busy.
-        const live = globalSync.busy(entry.directory, entry.sessionID)
-        return {
+    //
+    // Rebuilding row objects each frame is not an option: <For> keys on object
+    // identity, so fresh rows remount the entire list's DOM per hub frame.
+    const wrappers = new Map<string, OverviewRow>()
+    const rows = createMemo<OverviewRow[]>(() => {
+      const next = globalSync.data.recent_hub.map((entry) => {
+        const cached = wrappers.get(entry.sessionID)
+        if (cached) return cached
+        const row: OverviewRow = {
           sessionID: entry.sessionID,
           directory: entry.directory,
-          title: entry.title,
-          agent: entry.agent,
-          updated: entry.updated,
-          busy: live.busy,
-          busySelf: live.busySelf,
-          busyDescendant: live.busyDescendant,
-          unseen: entry.unseen,
+          get title() {
+            return entry.title
+          },
+          get agent() {
+            return entry.agent
+          },
+          get updated() {
+            return entry.updated
+          },
+          get busy() {
+            return globalSync.busy(entry.directory, entry.sessionID).busy
+          },
+          get busySelf() {
+            return globalSync.busy(entry.directory, entry.sessionID).busySelf
+          },
+          get busyDescendant() {
+            return globalSync.busy(entry.directory, entry.sessionID).busyDescendant
+          },
+          get unseen() {
+            return entry.unseen
+          },
           // A server that predates these flags omits them; absent reads as off.
-          question: entry.question ?? false,
-          permission: entry.permission ?? false,
-          error: entry.error ?? false,
-          pingAt: entry.pingAt,
-          pinged: entry.pinged,
-          interacted: Math.max(entry.updated, entry.pinged ?? 0),
+          get question() {
+            return entry.question ?? false
+          },
+          get permission() {
+            return entry.permission ?? false
+          },
+          get error() {
+            return entry.error ?? false
+          },
+          get pingAt() {
+            return entry.pingAt
+          },
+          get pinged() {
+            return entry.pinged
+          },
+          get interacted() {
+            return Math.max(entry.updated, entry.pinged ?? 0)
+          },
         }
-      }),
-    )
+        wrappers.set(entry.sessionID, row)
+        return row
+      })
+      // Reconcile detaches the store node a departed id's wrapper reads through,
+      // so a session re-entering the hub must get a new wrapper on a live node.
+      if (wrappers.size > next.length) {
+        const keep = new Set(next.map((row) => row.sessionID))
+        for (const id of wrappers.keys()) if (!keep.has(id)) wrappers.delete(id)
+      }
+      return next
+    })
 
     // A session is in exactly one bucket, newest-first within each. Membership
     // uses globalSync.isAlive — the same predicate transcript eviction protects

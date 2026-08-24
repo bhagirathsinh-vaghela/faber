@@ -1,6 +1,6 @@
 import fuzzysort from "fuzzysort"
 import { entries, flatMap, groupBy, map, pipe } from "remeda"
-import { createEffect, createMemo, createResource, on } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, on } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createList } from "solid-list"
 
@@ -24,31 +24,64 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
   type Group = { category: string; items: [T, ...T[]] }
   const empty: Group[] = []
 
+  // A category keeps ONE group object, its items behind a signal. Handing the
+  // caller's outer <For> a new object per pass would rekey it and tear down
+  // every row beneath, so a single changed row would rebuild the whole list.
+  // The signal is what lets the inner <For> still see the new items, since a
+  // keyed <For> never re-reads a plain property off the object it was given.
+  const cache = new Map<string, { group: Group; set: (items: T[]) => void }>()
+  const stabilize = (next: { category: string; items: T[] }[]) => {
+    const stable = next.map(({ category, items }) => {
+      const existing = cache.get(category)
+      if (existing) {
+        existing.set(items)
+        return existing.group
+      }
+      const [read, write] = createSignal(items)
+      const group = {
+        category,
+        get items() {
+          return read() as [T, ...T[]]
+        },
+      } as Group
+      cache.set(category, { group, set: (value) => write(() => value) })
+      return group
+    })
+    if (cache.size > stable.length) {
+      const keep = new Set(stable.map((group) => group.category))
+      for (const category of cache.keys()) if (!keep.has(category)) cache.delete(category)
+    }
+    return stable
+  }
+
+  const build = (filter: string, items: T[]) => {
+    const needle = (filter ?? "").toLowerCase()
+    return pipe(
+      items,
+      (x) => {
+        if (!needle) return x
+        if (!props.filterKeys && Array.isArray(x) && x.every((e) => typeof e === "string")) {
+          return fuzzysort.go(needle, x).map((x) => x.target) as T[]
+        }
+        return fuzzysort.go(needle, x, { keys: props.filterKeys! }).map((x) => x.obj)
+      },
+      groupBy((x) => (props.groupBy ? props.groupBy(x) : "")),
+      entries(),
+      map(([k, v]) => ({ category: k, items: props.sortBy ? v.sort(props.sortBy) : v })),
+      (result) => (props.sortGroupsBy ? result.sort(props.sortGroupsBy) : result),
+      stabilize,
+    )
+  }
+
   const [grouped, { refetch }] = createResource(
     () => ({
       filter: store.filter,
       items: typeof props.items === "function" ? props.items(store.filter) : props.items,
     }),
-    async ({ filter, items }) => {
-      const query = filter ?? ""
-      const needle = query.toLowerCase()
-      const all = (await Promise.resolve(items)) || []
-      const result = pipe(
-        all,
-        (x) => {
-          if (!needle) return x
-          if (!props.filterKeys && Array.isArray(x) && x.every((e) => typeof e === "string")) {
-            return fuzzysort.go(needle, x).map((x) => x.target) as T[]
-          }
-          return fuzzysort.go(needle, x, { keys: props.filterKeys! }).map((x) => x.obj)
-        },
-        groupBy((x) => (props.groupBy ? props.groupBy(x) : "")),
-        entries(),
-        map(([k, v]) => ({ category: k, items: props.sortBy ? v.sort(props.sortBy) : v })),
-        (groups) => (props.sortGroupsBy ? groups.sort(props.sortGroupsBy) : groups),
-      )
-      return result
-    },
+    // Awaiting a settled value still costs a frame, during which `.latest` keeps
+    // serving the previous list — so a synchronous source must not be awaited.
+    ({ filter, items }) =>
+      items instanceof Promise ? items.then((resolved) => build(filter, resolved || [])) : build(filter, items || []),
     { initialValue: empty },
   )
 

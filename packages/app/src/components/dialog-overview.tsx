@@ -42,10 +42,27 @@ type Entry = OverviewRow & { section: Section }
 function useFrozen() {
   const recent = useRecent()
 
+  // Preserve row identity across frames so <For> does not remount every row's
+  // DOM. Section is read off a map this memo has already refreshed, so it needs
+  // no reactivity of its own — every consumer re-reads it through live().
+  const sections = new Map<string, Section>()
+  const entries = new Map<string, Entry>()
+  const entry = (row: OverviewRow, section: Section) => {
+    sections.set(row.sessionID, section)
+    const cached = entries.get(row.sessionID)
+    if (cached) return cached
+    const created = Object.create(row, {
+      section: { get: () => sections.get(row.sessionID) ?? "recent", enumerable: true },
+    }) as Entry
+    entries.set(row.sessionID, created)
+    return created
+  }
+
   const live = createMemo(() => {
     const map = new Map<string, Entry>()
-    for (const row of recent.attention()) map.set(row.sessionID, { ...row, section: "attention" })
-    for (const row of recent.recent()) map.set(row.sessionID, { ...row, section: "recent" })
+    for (const row of recent.attention()) map.set(row.sessionID, entry(row, "attention"))
+    for (const row of recent.recent()) map.set(row.sessionID, entry(row, "recent"))
+    for (const id of entries.keys()) if (!map.has(id)) entries.delete(id)
     return map
   })
 

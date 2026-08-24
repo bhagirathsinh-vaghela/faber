@@ -328,16 +328,20 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
           <For each={grouped.latest}>
             {(group, groupIndex) => {
               const isLastGroup = () => groupIndex() === grouped.latest.length - 1
+              // Read through the group object on every access: useFilteredList
+              // keeps one object per category and swaps its items behind a
+              // signal, so a destructured copy would freeze at the first pass.
+              const items = () => group.items
               return (
                 <div data-slot="list-group">
                   <Show when={group.category}>
                     <GroupHeader category={group.category} />
                   </Show>
                   <div data-slot="list-items">
-                    <For each={group.items}>
+                    <For each={items()}>
                       {(item, i) => {
                         const showDivider = () =>
-                          props.divider && (i() !== group.items.length - 1 || (showAdd() && isLastGroup()))
+                          props.divider && (i() !== items().length - 1 || (showAdd() && isLastGroup()))
                         const button = (
                           <button
                             data-slot="list-item"
