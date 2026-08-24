@@ -197,7 +197,7 @@ export function Titlebar() {
     <header
       data-slot="titlebar"
       data-wco={overlay() ? "" : undefined}
-      class="@container/titlebar h-12 wide:h-10 any-pointer-coarse:wide:h-12 shrink-0 bg-background-base sticky top-0 z-40 wide:relative"
+      class="@container/titlebar h-12 wide:h-10 any-pointer-coarse:wide:h-12 shrink-0 bg-background-base relative"
       classList={{ hidden: layout.zen.opened() }}
       style={{
         "min-height": minHeight(),

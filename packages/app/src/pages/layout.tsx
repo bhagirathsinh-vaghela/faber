@@ -624,10 +624,6 @@ export default function Layout(props: ParentProps) {
   // the reward for a faster swipe is losing the session entirely. Small screens
   // fetch on open instead.
   const compact = useShell().compact
-  const shellWide = useShell().wide
-  // Mirrors the session page's split: compact hands scrolling to the document
-  // so mobile browsers collapse their chrome, wide keeps per-pane scrollers.
-  const documentScroll = () => !shellWide()
   const prefetchChunk = 200
   const prefetchConcurrency = 1
   const prefetchPendingLimit = 6
@@ -2433,9 +2429,9 @@ export default function Layout(props: ParentProps) {
   }
 
   return (
-    <div class="relative bg-background-base flex-1 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
+    <div class="relative bg-background-base flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
       <Titlebar />
-      <div class="flex-1 flex">
+      <div class="flex-1 min-h-0 flex">
         <nav
           aria-label={language.t("sidebar.nav.projectsAndSessions")}
           data-component="sidebar-nav-desktop"
@@ -2502,16 +2498,7 @@ export default function Layout(props: ParentProps) {
 
         <main
           classList={{
-            "w-full flex-1 flex flex-col items-start border-t border-border-weak-base": true,
-            // Layout containment makes this a containing block for fixed
-            // descendants, which would anchor the dock to the full document
-            // height instead of the viewport it must stay pinned to.
-            "contain-strict": !documentScroll(),
-            // overflow-x hidden (unlike clip) forces overflow-y to compute to
-            // auto, making this a second scroll container that would swallow
-            // gestures meant for the document.
-            "overflow-x-clip": documentScroll(),
-            "overflow-x-hidden": !documentScroll(),
+            "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base": true,
             "expanded:border-l expanded:rounded-tl-sm": !layout.sidebar.opened() && !layout.zen.opened(),
           }}
         >

@@ -36,6 +36,9 @@
     /* The virtualizer owns scroll anchoring; the browser's own anchoring fights
        it and desyncs the mounted window while streaming. */
     overflow-anchor: none;
+    /* Reaching either end stops here instead of chaining to the app shell,
+       which is what rubber-bands the whole window on iOS. */
+    overscroll-behavior: contain;
   }
 }
 
