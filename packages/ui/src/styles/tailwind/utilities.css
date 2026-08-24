@@ -36,9 +36,14 @@
     /* The virtualizer owns scroll anchoring; the browser's own anchoring fights
        it and desyncs the mounted window while streaming. */
     overflow-anchor: none;
-    /* Reaching either end stops here instead of chaining to the app shell,
-       which is what rubber-bands the whole window on iOS. */
-    overscroll-behavior: contain;
+    /* none, not contain: both stop an edge gesture from chaining to the app
+       shell (which rubber-banded the whole window on iOS), but contain keeps
+       the LOCAL elastic bounce, and iOS feeds those out-of-range positions
+       into the virtualizer while unmeasured turns are still resizing the
+       range, which reads as a huge overshoot past the tail followed by a
+       snap back. none drops the local bounce too, so the transcript stops
+       dead at its true edge. */
+    overscroll-behavior: none;
   }
 }
 
