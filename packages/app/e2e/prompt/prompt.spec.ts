@@ -17,7 +17,12 @@ test("can send a prompt and receive a reply", async ({ page, sdk, gotoSession })
 
   const prompt = page.locator(promptSelector)
   await prompt.click()
-  await page.keyboard.type(`Reply with exactly: ${token}`)
+  // Belt-and-braces phrasing: the sandbox project is the repo root, so the turn
+  // carries whatever instruction files sit there (e.g. a local AGENTS.md), and
+  // a small model greeting those instructions instead of obeying a bare
+  // one-liner is a real failure mode. The spec verifies the
+  // round-trip, not instruction-following subtlety.
+  await page.keyboard.type(`Reply with only this exact text and nothing else, no tools, no greeting: ${token}`)
   await page.keyboard.press("Enter")
 
   await expect(page).toHaveURL(/\/session\/[^/?#]+/, { timeout: 30_000 })
