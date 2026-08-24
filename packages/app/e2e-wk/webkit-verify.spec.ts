@@ -62,11 +62,12 @@ test.describe("iPad WebKit", () => {
       }
     })
     console.log("RANGE " + JSON.stringify(range))
-    // The document's scroll range must equal the browser's own collapsible-
-    // chrome measure (lvh - svh): zero wherever chrome cannot collapse
-    // (headless, desktop, PWA), and exactly the bar height where it can. The
-    // nonzero case needs a real device; headless proves the invariance half.
-    expect(range.docScrollRange).toBe(Math.max(0, range.lvhMinusSvh))
+    // The document's scroll range must be twice the browser's collapsible-
+    // chrome measure (lvh - svh): the bar height itself plus the runway that
+    // survives the viewport growing as the bar collapses. Zero wherever
+    // chrome cannot collapse (headless, desktop, PWA). The nonzero case
+    // needs a real device; headless proves the invariance half.
+    expect(range.docScrollRange).toBe(Math.max(0, 2 * range.lvhMinusSvh))
 
     // Scrolling whatever range exists must move browser chrome only: the
     // sticky root pins the shell to the viewport.

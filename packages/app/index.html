@@ -21,13 +21,16 @@
     <meta property="twitter:image" content="/social-share.png" />
     <script id="oc-theme-preload-script" src="/oc-theme-preload.js"></script>
   </head>
-  <!-- min-h-lvh gives the document a scroll range of exactly lvh - svh: the
-       browser's own measure of its collapsible chrome. A flick on any
+  <!-- The document is one collapsible-chrome height (lvh - svh, the
+       browser's own measure) taller than the large viewport. A flick on any
        non-scrollable surface (the titlebar) chains to this root scroller,
-       which is the one gesture Safari collapses its bar for. Desktop and the
-       installed PWA have no collapsible chrome, so the range is zero and
-       nothing changes. -->
-  <body class="antialiased overscroll-none text-12-regular min-h-lvh">
+       the one gesture Safari collapses its bar for. Exactly 100lvh is not
+       enough: the collapse grows the viewport, which shrinks the scroll
+       range to zero mid-gesture and stalls the bar half-way, so the range
+       must survive the collapse. Desktop and the installed PWA have no
+       collapsible chrome, so lvh = svh, the height degrades to 100lvh, and
+       the range is zero. -->
+  <body class="antialiased overscroll-none text-12-regular min-h-[calc(200lvh-100svh)]">
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <!-- sticky: the shell stays pinned to the viewport while the document
          scrolls beneath it, so collapsing the bar moves browser chrome only,
