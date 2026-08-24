@@ -1,5 +1,5 @@
 import { type FilteredListProps, useFilteredList } from "@opencode-ai/ui/hooks"
-import { createEffect, createSignal, For, onCleanup, type JSX, on, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useI18n } from "../context/i18n"
 import { Icon, type IconProps } from "./icon"
@@ -86,6 +86,48 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   }
 
   const { filter, grouped, flat, active, setActive, onKeyDown, onInput, refetch } = useFilteredList<T>(props)
+
+  // Rows arrive in chunks, because a list that runs to hundreds of rows (the
+  // session overview) otherwise builds every row in the opening click's own
+  // task and holds first paint for the whole thing. Only the RENDER is
+  // deferred: flat() is complete from the first frame, so arrow keys, Enter
+  // and the filter all address the full set while later rows are still
+  // pending. content-visibility already spares offscreen rows their layout,
+  // but not their construction, which is what this defers.
+  const CHUNK = 60
+  const [budget, setBudget] = createSignal(CHUNK)
+  createEffect(on(filter, () => setBudget(CHUNK), { defer: true }))
+  createEffect(() => {
+    const total = flat().length
+    if (budget() >= total) return
+    const grow = () => setBudget((current) => Math.min(total, current + CHUNK))
+    // requestIdleCallback yields the rest of the click's frame back to paint;
+    // Safari lacks it, where a macrotask still breaks up the work.
+    const idle = typeof window.requestIdleCallback === "function"
+    const handle = idle ? window.requestIdleCallback(grow, { timeout: 200 }) : setTimeout(grow, 0)
+    onCleanup(() => (idle ? window.cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>)))
+  })
+  // Navigation outruns the chunk timer when a key is held down, and the active
+  // row must exist to be scrolled to, so reaching past the budget mounts the
+  // rows up to it at once.
+  createEffect(() => {
+    const key = active()
+    if (!key) return
+    const index = flat().findIndex((item) => props.key(item) === key)
+    if (index < budget()) return
+    setBudget(index + 1)
+  })
+
+  // Where each group starts in the flattened order, so one budget spans the
+  // groups instead of each filling independently.
+  const offsets = createMemo(() => {
+    let start = 0
+    return grouped.latest.map((group) => {
+      const at = start
+      start += group.items.length
+      return at
+    })
+  })
 
   const searchProps = () => (typeof props.search === "object" ? props.search : {})
   const searchAction = () => searchProps().action
@@ -332,13 +374,18 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
               // keeps one object per category and swaps its items behind a
               // signal, so a destructured copy would freeze at the first pass.
               const items = () => group.items
+              const visible = () => {
+                const room = budget() - (offsets()[groupIndex()] ?? 0)
+                if (room >= items().length) return items()
+                return room <= 0 ? [] : items().slice(0, room)
+              }
               return (
                 <div data-slot="list-group">
                   <Show when={group.category}>
                     <GroupHeader category={group.category} />
                   </Show>
                   <div data-slot="list-items">
-                    <For each={items()}>
+                    <For each={visible()}>
                       {(item, i) => {
                         const showDivider = () =>
                           props.divider && (i() !== items().length - 1 || (showAdd() && isLastGroup()))
