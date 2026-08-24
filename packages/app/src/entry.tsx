@@ -32,15 +32,22 @@ if (root) {
   flag()
 }
 
-// iOS standalone PWA only (navigator.standalone exists nowhere else): the
-// layout viewport shrinks for the soft keyboard but does not reliably grow
-// back on dismissal, so 100dvh sticks at the shrunken height until a refocus.
-// visualViewport.height is the only truthful size; drive the root off it and
-// reset the keyboard pan (scrollTo), else a top-anchored root shrinks into a
-// strip above the fold. resize alone is not reliably fired across keyboard
-// transitions, so focus/pageshow also trigger, each settling over ~600ms.
+// WebKit shrinks the visual viewport for the soft keyboard and leaves the
+// layout viewport alone, so a 100dvh root outgrows the visible area by the
+// keyboard's height and the document becomes scrollable. iOS then scrolls it to
+// reveal the caret, which carries the titlebar off the top; the dock landing
+// above the keyboard is that same scroll, not the layout working. Sizing the
+// root to visualViewport.height leaves nothing to scroll, so the flex column
+// absorbs the loss in the transcript and the chrome at both ends stays put.
+//
+// resize alone is not reliably fired across keyboard transitions, so
+// focus/pageshow also trigger, each settling over ~600ms.
 const viewport = window.visualViewport
-if (root && viewport && (navigator as unknown as { standalone?: boolean }).standalone === true) {
+// iPadOS reports a Mac platform, so touch is what separates it from the desktop
+// Safari this must not touch.
+const softKeyboard =
+  navigator.maxTouchPoints > 0 && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Android/.test(navigator.userAgent)
+if (root && viewport && softKeyboard) {
   // vvH alone cannot classify keyboard state: after a blur-driven dismissal
   // (the dock's keyboard toggle) iOS keeps reporting the shrunken height with
   // no event and no update — the small vvH is the lie. Focus is the signal the

@@ -137,11 +137,10 @@
   padding-right: max(1px, env(safe-area-inset-right));
 }
 
-/* Keyboard up (data-keyboard set by the iOS-standalone viewport fit in
-   entry.tsx): the home indicator is behind the keyboard and iOS's floating
+/* Keyboard up: the home indicator is behind the keyboard and iOS's floating
    form-assistant pill already separates the dock from the keyboard, so any
    padding here is a dead band. Keep a hairline. */
-#root[data-standalone][data-keyboard] [data-slot="prompt-dock"] {
+#root[data-keyboard] [data-slot="prompt-dock"] {
   padding-bottom: 4px;
 }
 
