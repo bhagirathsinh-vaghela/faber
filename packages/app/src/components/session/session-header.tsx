@@ -6,7 +6,6 @@ import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSync } from "@/context/sync"
 import { isStopKey, useStopSession } from "@/hooks/use-stop-session"
-import { useArmSession } from "@/hooks/use-arm-session"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { getFilename } from "@opencode-ai/util/path"
 import { decode64 } from "@/utils/base64"
@@ -24,7 +23,6 @@ export function SessionHeader() {
   const sync = useSync()
   const language = useLanguage()
   const runStop = useStopSession()
-  const runArm = useArmSession()
   const dialog = useDialog()
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
@@ -56,16 +54,6 @@ export function SessionHeader() {
     runStop(id, projectDirectory())
   }
 
-  // The keep-warm button toggles the session's persisted arm intent in place:
-  // arm when cold, disarm when already warm. Reads keepWarm off the live session
-  // record so both clients reflect the same state.
-  function toggleWarm() {
-    const id = params.id
-    if (!id) return
-    if (currentSession()?.keepWarm) runArm.disarm(id, projectDirectory())
-    else runArm.arm(id, projectDirectory())
-  }
-
   // The stop keys stop the open session, matching the header stop button and
   // the overview's.
   const stop = (event: KeyboardEvent) => {
@@ -91,8 +79,12 @@ export function SessionHeader() {
   return (
     <>
       <Show when={centerMount()}>
+        {/* Solid's Portal always wraps its children in a div, which shrink-wraps
+            to the button's fixed width; max-w-full would then resolve against
+            that wrapper and the box could never give room back to the controls
+            beside it. display:contents takes the wrapper out of layout. */}
         {(mount) => (
-          <Portal mount={mount()}>
+          <Portal mount={mount()} ref={(el) => (el.style.display = "contents")}>
             <button
               type="button"
               class="hidden @2xl/titlebar:flex w-[320px] max-w-full min-w-0 shrink any-pointer-coarse:h-10 any-pointer-coarse:[&_[data-component=icon]]:!size-6 p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
@@ -173,29 +165,6 @@ export function SessionHeader() {
             <div class="flex items-center gap-3">
               <Show when={currentSession()}>
                 <div class="flex items-center shrink-0 gap-1">
-                  <Tooltip
-                    value={
-                      currentSession()?.keepWarm
-                        ? language.t("session.keepWarm.armed")
-                        : language.t("session.keepWarm.arm")
-                    }
-                    placement="top"
-                    gutter={8}
-                  >
-                    <button
-                      type="button"
-                      onClick={toggleWarm}
-                      aria-label={language.t("session.keepWarm.arm")}
-                      aria-pressed={currentSession()?.keepWarm === true}
-                      class="flex items-center justify-center size-6 any-pointer-coarse:size-10 rounded-md leading-none transition-opacity hover:bg-surface-raised-base-hover [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6 [&_[data-component=icon]]:!text-icon-strong-base"
-                      classList={{
-                        "opacity-100": currentSession()?.keepWarm === true,
-                        "opacity-40": !currentSession()?.keepWarm,
-                      }}
-                    >
-                      <Icon name="sparkles" size="medium" />
-                    </button>
-                  </Tooltip>
                   <Tooltip
                     value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
                     placement="top"

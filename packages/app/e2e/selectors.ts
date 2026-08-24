@@ -24,6 +24,8 @@ export const projectMenuTriggerSelector = (slug: string) =>
 
 export const projectCloseMenuSelector = (slug: string) => `[data-action="project-close-menu"][data-project="${slug}"]`
 
+export const titlebarSelector = '[data-slot="titlebar"]'
+
 export const titlebarRightSelector = "#opencode-titlebar-right"
 
 export const popoverBodySelector = '[data-slot="popover-body"]'

@@ -507,8 +507,6 @@ export const dict = {
   "session.tab.review": "Review",
   "session.tab.context": "Context",
   "session.stop": "Stop session (abort turn and ping)",
-  "session.keepWarm.arm": "Keep cache warm",
-  "session.keepWarm.armed": "Keeping cache warm — click to stop",
   "session.panel.reviewAndFiles": "Review and files",
   "session.review.filesChanged": "{{count}} Files Changed",
   "session.revert.count": "{{count}} message reverted",

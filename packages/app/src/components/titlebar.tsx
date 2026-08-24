@@ -206,9 +206,9 @@ export function Titlebar() {
       }}
     >
       {/* Mobile header: one flat flex row. Home + Menu here, session controls
-          (search, status, keep-warm, stop, review) portal into
-          #opencode-titlebar-mobile as direct siblings, so justify-between
-          spreads all of them evenly across the width. */}
+          (stop, review) portal into #opencode-titlebar-mobile as direct
+          siblings, so justify-between spreads all of them evenly across the
+          width. */}
       <div class="expanded:hidden flex items-center justify-between size-full px-1 min-w-0 overflow-hidden">
         <IconButton
           icon="house-mobile"
@@ -228,7 +228,8 @@ export function Titlebar() {
         />
         {/* Search + server indicator live here (not in SessionHeader) so they
             show on every route, including home. The session-only controls
-            (keep-warm, stop, review) still portal into the mount below. */}
+            (stop, review) still portal into the mount below. */}
+        <StatusPopover />
         <Tooltip value={language.t("session.header.searchFiles")} placement="bottom" gutter={8}>
           <IconButton
             icon="magnifying-glass"
@@ -239,7 +240,6 @@ export function Titlebar() {
             aria-label={language.t("session.header.searchFiles")}
           />
         </Tooltip>
-        <StatusPopover />
         <Tooltip value={surfaceLabel()} placement="bottom" gutter={8}>
           <IconButton
             icon={surfaceIcon()}
@@ -353,24 +353,25 @@ export function Titlebar() {
                 />
               </Tooltip>
             </div>
-            {/* A forced layout can only be undone from here, so this control
-                stays whatever else the bar sheds. */}
-            <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>
-              <Button
-                variant={shell.forced() ? "primary" : "ghost"}
-                icon={surfaceIcon()}
-                class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
-                onClick={shell.toggle}
-                aria-label={surfaceLabel()}
-              />
-            </Tooltip>
           </div>
         </div>
 
         {/* Centred by the grid's middle column, which yields space to its
             neighbours rather than floating above them and covering controls. */}
-        <div class="min-w-0 flex items-center justify-center">
-          <div id="opencode-titlebar-center" class="w-full min-w-0 flex justify-center" />
+        <div class="min-w-0 flex items-center justify-center gap-2 px-2">
+          <StatusPopover />
+          <div id="opencode-titlebar-center" class="min-w-0 flex flex-1 justify-center" />
+          {/* A forced layout is undoable only from here, so this sits outside
+              every group the bar is allowed to shed. */}
+          <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>
+            <Button
+              variant={shell.forced() ? "primary" : "ghost"}
+              icon={surfaceIcon()}
+              class="size-6 any-pointer-coarse:size-10 p-0 shrink-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+              onClick={shell.toggle}
+              aria-label={surfaceLabel()}
+            />
+          </Tooltip>
         </div>
 
         <div
@@ -380,9 +381,7 @@ export function Titlebar() {
           }}
           onMouseDown={drag}
         >
-          <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end">
-            <StatusPopover />
-          </div>
+          <div id="opencode-titlebar-right" class="flex items-center gap-3 shrink-0 justify-end" />
           <Show when={windows()}>
             <div class="w-6 shrink-0" />
             <div data-tauri-decorum-tb class="flex flex-row" />

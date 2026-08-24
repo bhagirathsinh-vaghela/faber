@@ -9,6 +9,7 @@ import {
   dropdownMenuTriggerSelector,
   dropdownMenuContentSelector,
   projectMenuTriggerSelector,
+  titlebarSelector,
   titlebarRightSelector,
   popoverBodySelector,
   listItemSelector,
@@ -227,7 +228,13 @@ export async function openStatusPopover(page: Page) {
   await defocus(page)
 
   const rightSection = page.locator(titlebarRightSelector)
-  const trigger = rightSection.getByRole("button", { name: /status/i }).first()
+  // Scoped to the bar rather than one mount: which section holds the indicator
+  // is a layout decision, and only one of the two branches is ever rendered.
+  const trigger = page
+    .locator(titlebarSelector)
+    .getByRole("button", { name: /status/i })
+    .locator("visible=true")
+    .first()
 
   const popoverBody = page.locator(popoverBodySelector).filter({ has: page.locator('[data-component="tabs"]') })
 
