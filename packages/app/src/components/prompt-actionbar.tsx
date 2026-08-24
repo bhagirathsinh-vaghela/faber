@@ -150,12 +150,13 @@ export function PromptActionBar() {
           </Chip>
         </Show>
 
-        {/* MCP tools, kept rightmost as session-level state (the others are
-            per-turn activity). Click opens the read-only corpus viewer for this
-            session's instance. Always present; MCP is always on. */}
-        <Chip onClick={viewMcp} tooltip={language.t("mcp.chip.view")}>
-          <span class="text-text-base">MCP</span>
-        </Chip>
+        {/* Rightmost because it is session-level state; the chips before it are
+            per-turn activity. */}
+        <Show when={local.dock.isVisible("mcp")}>
+          <Chip onClick={viewMcp} tooltip={language.t("mcp.chip.view")}>
+            <span class="text-text-base">MCP</span>
+          </Chip>
+        </Show>
       </ChipGroup>
     </div>
   )

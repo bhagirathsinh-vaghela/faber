@@ -2568,12 +2568,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Tooltip>
                 </span>
               </Show>
-              {/* Auto-accept only appears once the dock is wide enough. The
-                wrapper collapses to display:none rather than an empty box, so
-                it leaves no flex slot; a tooltip wrapper holding a slot would
-                break the narrow row's even spread. */}
-              <Show when={permission.permissionsEnabled() && params.id && !zen()}>
-                <span class="hidden dock-wide:contents">
+              <Show
+                when={
+                  local.dock.isVisible("auto-accept") && permission.permissionsEnabled() && params.id && !zen()
+                }
+              >
+                <span class="contents">
                   <TooltipKeybind
                     placement="top"
                     gutter={8}

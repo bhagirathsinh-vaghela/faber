@@ -12,6 +12,7 @@ import { useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
+import { useLocalOptional } from "@/context/local"
 import { StatusPopover } from "@/components/status-popover"
 import { createStandalone, useShell } from "@/utils/mobile"
 
@@ -22,6 +23,11 @@ export function Titlebar() {
   const language = useLanguage()
   const theme = useTheme()
   const dialog = useDialog()
+  // Optional: the titlebar also renders on the home route, above the per-project
+  // LocalProvider. No dock config there, so a field defaults to shown.
+  const local = useLocalOptional()
+  const fieldShown = (surface: "desktop" | "mobile", id: string) =>
+    local ? local.dock.isVisibleOn(surface, id) : true
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -331,28 +337,30 @@ export function Titlebar() {
             </TooltipKeybind>
             {/* First to go when the bar cannot hold every control, since a
                 browser and a trackpad both offer the same navigation. */}
-            <div class="hidden @2xl/titlebar:flex items-center gap-1 shrink-0">
-              <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={2000}>
-                <Button
-                  variant="ghost"
-                  icon="arrow-left"
-                  class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
-                  disabled={!canBack()}
-                  onClick={back}
-                  aria-label={language.t("common.goBack")}
-                />
-              </Tooltip>
-              <Tooltip placement="bottom" value={language.t("common.goForward")} openDelay={2000}>
-                <Button
-                  variant="ghost"
-                  icon="arrow-right"
-                  class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
-                  disabled={!canForward()}
-                  onClick={forward}
-                  aria-label={language.t("common.goForward")}
-                />
-              </Tooltip>
-            </div>
+            <Show when={fieldShown("desktop", "back-forward")}>
+              <div class="hidden @2xl/titlebar:flex items-center gap-1 shrink-0">
+                <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={2000}>
+                  <Button
+                    variant="ghost"
+                    icon="arrow-left"
+                    class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+                    disabled={!canBack()}
+                    onClick={back}
+                    aria-label={language.t("common.goBack")}
+                  />
+                </Tooltip>
+                <Tooltip placement="bottom" value={language.t("common.goForward")} openDelay={2000}>
+                  <Button
+                    variant="ghost"
+                    icon="arrow-right"
+                    class="size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+                    disabled={!canForward()}
+                    onClick={forward}
+                    aria-label={language.t("common.goForward")}
+                  />
+                </Tooltip>
+              </div>
+            </Show>
           </div>
         </div>
 

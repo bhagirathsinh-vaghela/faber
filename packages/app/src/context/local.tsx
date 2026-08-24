@@ -12,7 +12,11 @@ import { useModels } from "@/context/models"
 
 export type ModelKey = { providerID: string; modelID: string }
 
-export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
+export const {
+  use: useLocal,
+  useOptional: useLocalOptional,
+  provider: LocalProvider,
+} = createSimpleContext({
   name: "Local",
   init: () => {
     const sdk = useSDK()
@@ -381,6 +385,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         list: (s: "desktop" | "mobile") => store[s],
         isVisible(id: string) {
           return store[surface()].includes(id)
+        },
+        // The titlebar renders BOTH rows and lets CSS hide one, so a row knows
+        // which surface it is more precisely than `surface()` can: that memo
+        // reads `wide()`, which is true from 600px, while the rows split at the
+        // 840px `expanded` breakpoint. A tablet between the two would otherwise
+        // show the mobile row while obeying the desktop set.
+        isVisibleOn(s: "desktop" | "mobile", id: string) {
+          return store[s].includes(id)
         },
         toggle(s: "desktop" | "mobile", id: string) {
           const has = store[s].includes(id)

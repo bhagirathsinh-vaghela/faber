@@ -40,6 +40,20 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
       { id: "pending", label: "Pending (subtasks running)" },
       { id: "available", label: "Available (results to accept)" },
       { id: "auto-inject", label: "Auto-inject" },
+      { id: "mcp", label: "MCP tools" },
+    ],
+  },
+  {
+    title: "Controls",
+    fields: [{ id: "auto-accept", label: "Auto-accept edits" }],
+  },
+  {
+    title: "Titlebar",
+    fields: [
+      { id: "back-forward", label: "Back / forward (desktop only)" },
+      { id: "companion", label: "Companion mode" },
+      { id: "terminal", label: "Terminal (desktop only)" },
+      { id: "review", label: "Review panel" },
     ],
   },
 ]

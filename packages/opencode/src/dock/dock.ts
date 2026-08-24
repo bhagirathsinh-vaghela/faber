@@ -43,8 +43,27 @@ export namespace Dock {
       "pending",
       "available",
       "auto-inject",
+      "mcp",
+      "auto-accept",
+      "back-forward",
+      "companion",
+      "terminal",
+      "review",
     ],
-    mobile: ["agent", "model", "cwd", "branch", "context", "cost", "pending", "available", "auto-inject"],
+    mobile: [
+      "agent",
+      "model",
+      "cwd",
+      "branch",
+      "context",
+      "cost",
+      "pending",
+      "available",
+      "auto-inject",
+      "mcp",
+      "companion",
+      "review",
+    ],
   }
 
   // Lives beside skill.json in the global state dir, so every client on one

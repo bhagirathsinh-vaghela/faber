@@ -5,6 +5,7 @@ import { useLayout } from "@/context/layout"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSync } from "@/context/sync"
+import { useLocal } from "@/context/local"
 import { isStopKey, useStopSession } from "@/hooks/use-stop-session"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { getFilename } from "@opencode-ai/util/path"
@@ -24,6 +25,7 @@ export function SessionHeader() {
   const language = useLanguage()
   const runStop = useStopSession()
   const dialog = useDialog()
+  const local = useLocal()
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
@@ -118,21 +120,23 @@ export function SessionHeader() {
               {/* Companion toggle sits immediately left of Stop. It lives here
                   rather than in the shared Titlebar so it can be ordered among
                   the session-scoped controls, which all portal into this mount. */}
-              <Tooltip
-                value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
-                placement="top"
-                gutter={8}
-              >
-                <IconButton
-                  icon="text-cursor-input"
-                  iconSize="medium"
-                  variant={layout.companion.opened() ? "primary" : "ghost"}
-                  class="size-10 shrink-0 p-0"
-                  onClick={() => layout.companion.toggle()}
-                  aria-pressed={layout.companion.opened()}
-                  aria-label={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
-                />
-              </Tooltip>
+              <Show when={local.dock.isVisibleOn("mobile", "companion")}>
+                <Tooltip
+                  value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
+                  placement="top"
+                  gutter={8}
+                >
+                  <IconButton
+                    icon="text-cursor-input"
+                    iconSize="medium"
+                    variant={layout.companion.opened() ? "primary" : "ghost"}
+                    class="size-10 shrink-0 p-0"
+                    onClick={() => layout.companion.toggle()}
+                    aria-pressed={layout.companion.opened()}
+                    aria-label={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
+                  />
+                </Tooltip>
+              </Show>
               <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                 <IconButton
                   icon="stop-mobile"
@@ -144,18 +148,20 @@ export function SessionHeader() {
                 />
               </Tooltip>
             </Show>
-            <Tooltip value={language.t("command.review.toggle")} placement="bottom" gutter={8}>
-              <button
-                type="button"
-                class="group/file-tree-toggle-m flex items-center justify-center size-10 shrink-0 rounded-md leading-none [&_[data-slot=icon-svg]]:!text-icon-strong-base"
-                onClick={toggleReview}
-                aria-label={language.t("command.review.toggle")}
-                aria-expanded={reviewActive()}
-                aria-controls="review-panel"
-              >
-                <Icon name={reviewActive() ? "layout-right-full" : "layout-right"} size="medium" />
-              </button>
-            </Tooltip>
+            <Show when={local.dock.isVisibleOn("mobile", "review")}>
+              <Tooltip value={language.t("command.review.toggle")} placement="bottom" gutter={8}>
+                <button
+                  type="button"
+                  class="group/file-tree-toggle-m flex items-center justify-center size-10 shrink-0 rounded-md leading-none [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+                  onClick={toggleReview}
+                  aria-label={language.t("command.review.toggle")}
+                  aria-expanded={reviewActive()}
+                  aria-controls="review-panel"
+                >
+                  <Icon name={reviewActive() ? "layout-right-full" : "layout-right"} size="medium" />
+                </button>
+              </Tooltip>
+            </Show>
           </Portal>
         )}
       </Show>
@@ -165,23 +171,25 @@ export function SessionHeader() {
             <div class="flex items-center gap-3">
               <Show when={currentSession()}>
                 <div class="flex items-center shrink-0 gap-1">
-                  <Tooltip
-                    value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
-                    placement="top"
-                    gutter={8}
-                  >
-                    <IconButton
-                      icon="text-cursor-input"
-                      iconSize="medium"
-                      variant={layout.companion.opened() ? "primary" : "ghost"}
-                      class="size-6 any-pointer-coarse:size-10 [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
-                      onClick={() => layout.companion.toggle()}
-                      aria-pressed={layout.companion.opened()}
-                      aria-label={
-                        layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")
-                      }
-                    />
-                  </Tooltip>
+                  <Show when={local.dock.isVisibleOn("desktop", "companion")}>
+                    <Tooltip
+                      value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
+                      placement="top"
+                      gutter={8}
+                    >
+                      <IconButton
+                        icon="text-cursor-input"
+                        iconSize="medium"
+                        variant={layout.companion.opened() ? "primary" : "ghost"}
+                        class="size-6 any-pointer-coarse:size-10 [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
+                        onClick={() => layout.companion.toggle()}
+                        aria-pressed={layout.companion.opened()}
+                        aria-label={
+                          layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")
+                        }
+                      />
+                    </Tooltip>
+                  </Show>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton
                       icon="stop-mobile"
@@ -194,69 +202,76 @@ export function SessionHeader() {
                   </Tooltip>
                 </div>
               </Show>
-              <div class="flex items-center gap-3 ml-2 shrink-0">
-                <TooltipKeybind
-                  title={language.t("command.terminal.toggle")}
-                  keybind={command.keybind("terminal.toggle")}
-                >
-                  <Button
-                    variant="ghost"
-                    class="group/terminal-toggle size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
-                    onClick={() => view().terminal.toggle()}
-                    aria-label={language.t("command.terminal.toggle")}
-                    aria-expanded={view().terminal.opened()}
-                    aria-controls="terminal-panel"
+              <Show when={local.dock.isVisibleOn("desktop", "terminal")}>
+                <div class="flex items-center gap-3 ml-2 shrink-0">
+                  <TooltipKeybind
+                    title={language.t("command.terminal.toggle")}
+                    keybind={command.keybind("terminal.toggle")}
                   >
-                    <div class="relative flex items-center justify-center size-4 any-pointer-coarse:size-6 [&>*]:absolute [&>*]:inset-0">
-                      <Icon
-                        size="small"
-                        name={view().terminal.opened() ? "layout-bottom-full" : "layout-bottom"}
-                        class="group-hover/terminal-toggle:hidden"
-                      />
-                      <Icon
-                        size="small"
-                        name="layout-bottom-partial"
-                        class="hidden group-hover/terminal-toggle:inline-block"
-                      />
-                      <Icon
-                        size="small"
-                        name={view().terminal.opened() ? "layout-bottom" : "layout-bottom-full"}
-                        class="hidden group-active/terminal-toggle:inline-block"
-                      />
-                    </div>
-                  </Button>
-                </TooltipKeybind>
-              </div>
-              <div class="block shrink-0">
-                <TooltipKeybind title={language.t("command.review.toggle")} keybind={command.keybind("review.toggle")}>
-                  <Button
-                    variant="ghost"
-                    class="group/file-tree-toggle size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
-                    onClick={toggleReview}
-                    aria-label={language.t("command.review.toggle")}
-                    aria-expanded={reviewActive()}
-                    aria-controls="review-panel"
+                    <Button
+                      variant="ghost"
+                      class="group/terminal-toggle size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
+                      onClick={() => view().terminal.toggle()}
+                      aria-label={language.t("command.terminal.toggle")}
+                      aria-expanded={view().terminal.opened()}
+                      aria-controls="terminal-panel"
+                    >
+                      <div class="relative flex items-center justify-center size-4 any-pointer-coarse:size-6 [&>*]:absolute [&>*]:inset-0">
+                        <Icon
+                          size="small"
+                          name={view().terminal.opened() ? "layout-bottom-full" : "layout-bottom"}
+                          class="group-hover/terminal-toggle:hidden"
+                        />
+                        <Icon
+                          size="small"
+                          name="layout-bottom-partial"
+                          class="hidden group-hover/terminal-toggle:inline-block"
+                        />
+                        <Icon
+                          size="small"
+                          name={view().terminal.opened() ? "layout-bottom" : "layout-bottom-full"}
+                          class="hidden group-active/terminal-toggle:inline-block"
+                        />
+                      </div>
+                    </Button>
+                  </TooltipKeybind>
+                </div>
+              </Show>
+              <Show when={local.dock.isVisibleOn("desktop", "review")}>
+                <div class="block shrink-0">
+                  <TooltipKeybind
+                    title={language.t("command.review.toggle")}
+                    keybind={command.keybind("review.toggle")}
                   >
-                    <div class="relative flex items-center justify-center size-4 any-pointer-coarse:size-6 [&>*]:absolute [&>*]:inset-0">
-                      <Icon
-                        size="small"
-                        name={reviewActive() ? "layout-right-full" : "layout-right"}
-                        class="group-hover/file-tree-toggle:hidden"
-                      />
-                      <Icon
-                        size="small"
-                        name="layout-right-partial"
-                        class="hidden group-hover/file-tree-toggle:inline-block"
-                      />
-                      <Icon
-                        size="small"
-                        name={reviewActive() ? "layout-right" : "layout-right-full"}
-                        class="hidden group-active/file-tree-toggle:inline-block"
-                      />
-                    </div>
-                  </Button>
-                </TooltipKeybind>
-              </div>
+                    <Button
+                      variant="ghost"
+                      class="group/file-tree-toggle size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
+                      onClick={toggleReview}
+                      aria-label={language.t("command.review.toggle")}
+                      aria-expanded={reviewActive()}
+                      aria-controls="review-panel"
+                    >
+                      <div class="relative flex items-center justify-center size-4 any-pointer-coarse:size-6 [&>*]:absolute [&>*]:inset-0">
+                        <Icon
+                          size="small"
+                          name={reviewActive() ? "layout-right-full" : "layout-right"}
+                          class="group-hover/file-tree-toggle:hidden"
+                        />
+                        <Icon
+                          size="small"
+                          name="layout-right-partial"
+                          class="hidden group-hover/file-tree-toggle:inline-block"
+                        />
+                        <Icon
+                          size="small"
+                          name={reviewActive() ? "layout-right" : "layout-right-full"}
+                          class="hidden group-active/file-tree-toggle:inline-block"
+                        />
+                      </div>
+                    </Button>
+                  </TooltipKeybind>
+                </div>
+              </Show>
             </div>
           </Portal>
         )}
