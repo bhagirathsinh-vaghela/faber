@@ -63,7 +63,10 @@ if (root && viewport && softKeyboard) {
   // layout past the window bottom and the root's overflow:hidden would clip the
   // dock away. innerHeight is the window but the keyboard shrinks it and WebKit
   // can leave it stuck short, so hold the largest height this window has
-  // reported — growth is always real, nothing but a bigger window produces it.
+  // reported.
+  // Holding it is only safe where nothing but a bigger window can grow
+  // innerHeight, which an installed PWA satisfies by having no browser chrome.
+  const tab = !(navigator as unknown as { standalone?: boolean }).standalone
   let width = window.innerWidth
   let full = 0
   const measure = () => {
@@ -77,7 +80,15 @@ if (root && viewport && softKeyboard) {
     // the root at zero height, and every later reading is discarded by the same
     // max() that is meant to recover it.
     if (window.innerHeight <= 0) return
-    full = reset ? window.innerHeight : Math.max(full, window.innerHeight)
+    // A collapsing URL bar grows innerHeight past the visible area and pins the
+    // root there as long as the bar stays down. A keyboard cannot be up with
+    // nothing focused, so the live reading is the honest one when no editable
+    // holds focus.
+    if (reset || (tab && !editing())) {
+      full = window.innerHeight
+      return
+    }
+    full = Math.max(full, window.innerHeight)
   }
 
   // Keyboard up, vvH is honest but iOS may pan the layout viewport (offsetTop >
