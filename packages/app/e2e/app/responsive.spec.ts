@@ -760,10 +760,16 @@ test.describe("scroller ownership across a size-class transition", () => {
   // breakpoint — which is exactly the regression this guards.
   test("the transcript keeps a working scroll target through wide-to-compact and back", async ({
     page,
+    sdk,
     gotoSession,
   }) => {
+    // The transcript only mounts on a session route with an id; the bare
+    // /session page has no scroller to retarget.
+    const session = await sdk.session.create({ title: "e2e scroller transition" }).then((r) => r.data)
+    if (!session?.id) throw new Error("Session create did not return an id")
+
     await page.setViewportSize(VIEWPORTS.desktop)
-    await gotoSession()
+    await gotoSession(session.id)
     await settle(page)
 
     await page.evaluate(() => {
@@ -804,5 +810,6 @@ test.describe("scroller ownership across a size-class transition", () => {
     expect(await doc(), "and the document must not scroll on wide").toBe(0)
 
     await page.evaluate(() => document.getElementById("e2e-scroll-filler")?.remove())
+    await sdk.session.delete({ sessionID: session.id }).catch(() => undefined)
   })
 })

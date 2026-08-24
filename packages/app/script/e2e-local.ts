@@ -56,6 +56,14 @@ const [serverPort, webPort] = await Promise.all([freePort(), freePort()])
 
 const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-e2e-"))
 
+const model = process.env.OPENCODE_E2E_MODEL ?? "anthropic/claude-haiku-4-5"
+
+// A session created through the prompt box uses defaultModel(), which with no
+// config is whichever provider lists first. Pin it to the same model the seed
+// uses, so the round-trip is deterministic.
+await fs.mkdir(path.join(sandbox, "config", "opencode"), { recursive: true })
+await fs.writeFile(path.join(sandbox, "config", "opencode", "opencode.json"), JSON.stringify({ model }))
+
 const serverEnv = {
   ...process.env,
   OPENCODE_DISABLE_SHARE: process.env.OPENCODE_DISABLE_SHARE ?? "true",
@@ -73,7 +81,7 @@ const serverEnv = {
   // The hosted free tier rate-limits anonymously and fails the prompt
   // round-trip; default to Anthropic's small model, reached through
   // ANTHROPIC_API_KEY in the inherited env (override with OPENCODE_E2E_MODEL).
-  OPENCODE_E2E_MODEL: process.env.OPENCODE_E2E_MODEL ?? "anthropic/claude-haiku-4-5",
+  OPENCODE_E2E_MODEL: model,
   OPENCODE_CLIENT: "app",
 } satisfies Record<string, string>
 
