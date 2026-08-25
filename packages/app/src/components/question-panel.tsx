@@ -15,7 +15,7 @@ import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
 import { createDictation, dictationActive, dictationTarget, registerDictationTarget } from "@/utils/dictation"
-import { createCoarsePointer, gestureAction } from "@/utils/mobile"
+import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { clonePrompt, usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -192,27 +192,7 @@ function Panel(props: {
   })
 
   let input: HTMLTextAreaElement | undefined
-
-  // Soft-keyboard suppression on touch devices, mirroring the prompt input: the
-  // custom-answer textarea is dictation-first on mobile, so inputmode="none"
-  // keeps the OS keyboard down (it fights the dictation overlay) while the
-  // keyboard-toggle button opts in per edit session. Reset when editing ends.
   const coarse = createCoarsePointer()
-  const [keyboardWanted, setKeyboardWanted] = createSignal(false)
-  const suppressKeyboard = () => coarse() && !keyboardWanted()
-  // Synchronous, inside the triggering gesture: a deferred focus (rAF/timeout)
-  // lands in a later task with no user activation left, and the browser then
-  // declines to raise the keyboard.
-  const requestKeyboard = () => {
-    setKeyboardWanted(true)
-    if (!input) return
-    input.inputMode = "text"
-    input.focus()
-  }
-  // Leaving edit mode resets the opt-in so the next edit is suppressed again.
-  createEffect(() => {
-    if (!store.editing) setKeyboardWanted(false)
-  })
 
   const promptDraft = usePrompt()
   const promptEmpty = () => promptDraft.current().every((part) => part.type === "text" && part.content.trim() === "")
@@ -236,10 +216,7 @@ function Panel(props: {
       return
     }
     setDictating(true)
-    // Keep focus on the textarea so the panel's global key handler (which
-    // yields to editable elements) stays out of the way and accepted text
-    // lands here.
-    input?.focus()
+    if (!coarse()) input?.focus()
     dictation.start()
   }
 
@@ -272,10 +249,10 @@ function Panel(props: {
       return
     }
     input.value = (input.value ? input.value + " " : "") + text
-    input.focus()
-    // focus() alone can restore a prior selection, leaving the caret before the
-    // dictated text. Pin it past the end of what was just inserted.
-    input.setSelectionRange(input.value.length, input.value.length)
+    if (!coarse()) {
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    }
   }
 
   // Whether keyboard focus is currently within the panel. Drives the panel
@@ -815,7 +792,7 @@ function Panel(props: {
                       placeholder="Type your own answer"
                       value={customText()}
                       rows={1}
-                      inputmode={suppressKeyboard() ? "none" : "text"}
+                      inputmode="text"
                       onFocus={() => setInputFocused(true)}
                       onBlur={() => setInputFocused(false)}
                       onKeyDown={(e) => {
@@ -829,19 +806,6 @@ function Panel(props: {
                         }
                       }}
                     />
-                    <Show when={suppressKeyboard()}>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        class="size-6 any-pointer-coarse:size-11 px-1"
-                        // Raising the keyboard is gated on live user activation,
-                        // so it acts on press rather than click.
-                        {...gestureAction(requestKeyboard)}
-                        aria-label={language.t("prompt.action.showKeyboard")}
-                      >
-                        <Icon name="keyboard" class="size-4.5 any-pointer-coarse:size-6" />
-                      </Button>
-                    </Show>
                     <Show when={dictation.supported()}>
                       <Button
                         type="button"

@@ -30,11 +30,8 @@ export function DictationOverlay(props: {
   let done = false
   const finish = (outcome: "accept" | "stash" | "discard") => {
     done = true
-    // Capture the transcript before anything else: stop() clears the store.
     const text = props.dictation.text().trim()
-    // Dismiss and hand off the text before releasing the mic, so the frame that
-    // closes the overlay and inserts the text carries no audio-teardown work.
-    // stop() defers the expensive part past that paint on its own.
+    ;(document.activeElement as HTMLElement | null)?.blur()
     props.onClose()
     if (text && outcome === "accept") props.onAccept(text)
     if (text && outcome === "stash") props.onStash(text)

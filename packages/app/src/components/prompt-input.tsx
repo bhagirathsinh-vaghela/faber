@@ -57,7 +57,7 @@ import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
-import { createCoarsePointer, gestureAction, preserveFocus } from "@/utils/mobile"
+import { createCoarsePointer, preserveFocus } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
@@ -155,9 +155,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
-  // Hidden input used only to bounce focus when raising the soft keyboard on an
-  // already-focused editor — see requestKeyboard.
-  let kbdBounceRef!: HTMLInputElement
 
   const mirror = { input: false }
 
@@ -356,74 +353,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // crowded viewport without per-component logic.
   const [dockHidden, setDockHidden] = createSignal(false)
 
-  // Soft-keyboard suppression (touch devices only). On a phone/tablet, focusing
-  // the editor otherwise raises the OS keyboard — which fights dictation and
-  // shoves the layout around. inputmode="none" keeps the editor focusable (caret
-  // shows, dictation writes land) without the keyboard. A keyboard-toggle button
-  // opts in per focus session: keyboardWanted flips inputmode back to text and
-  // refocuses so the keyboard rises, then resets on blur/submit so the next
-  // focus is suppressed again.
   const coarse = createCoarsePointer()
-  const [keyboardWanted, setKeyboardWanted] = createSignal(false)
-  const suppressKeyboard = () => coarse() && !keyboardWanted()
+  onMount(() => {
+    if (!coarse()) return
+    let armed = false
+    document.addEventListener("pointerdown", (e) => {
+      armed = e.target instanceof Node && (e.target === editorRef || editorRef.contains(e.target))
+    }, true)
+    editorRef.addEventListener("focusin", () => {
+      if (armed) {
+        armed = false
+        return
+      }
+      editorRef.blur()
+    })
+  })
   // Mobile only: the dock's model/cwd/branch line collapses behind a chevron in
   // the button row so the footer stays compact; expanding it shows the line
   // above the buttons. Desktop always shows the line and has no chevron.
   const [dockInfoOpen, setDockInfoOpen] = createSignal(false)
-  // Set while a keyboard request is in flight so the transient blur below does
-  // not trip the blur-reset effect and clobber the opt-in we just set. A signal
-  // rather than a flag: the reset must re-evaluate when this clears, or a blur
-  // that arrived during the request is swallowed and never applied.
-  const [requesting, setRequesting] = createSignal(false)
-  let requestTimer: ReturnType<typeof setTimeout> | undefined
   const placeCaret = () => setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current()))
-  // Raise the soft keyboard. MUST run synchronously inside the triggering
-  // pointer gesture: both iOS and Android only honor a programmatic focus() as
-  // a keyboard-raising user action within the live user-activation window. A
-  // deferred focus (rAF/timeout) lands in a later task with no activation, so
-  // Android refuses the keyboard and iOS is unreliable — everything here stays
-  // in the same tick.
-  const requestKeyboard = () => {
-    setRequesting(true)
-    setKeyboardWanted(true)
-    // Raising the soft keyboard reliably on BOTH iOS and Android requires a
-    // focus that (a) is synchronous inside the user gesture — any async hop
-    // (setTimeout/Promise/rAF) drops the user activation — and (b) is a FRESH
-    // focus with inputmode already "text". iOS Safari reads inputmode only at
-    // focus time and never re-reads it while an element stays focused, so
-    // flipping our editor's inputmode "none"->"text" while it is already focused
-    // does nothing. So set inputmode first, bounce focus through a hidden text
-    // input, then synchronously refocus the editor — iOS re-reads
-    // inputmode="text" at this new focus and raises the text keyboard, all in
-    // one gesture tick.
-    //
-    // The bounce input carries the inputmode too. iOS decides which keyboard to
-    // raise from the element being focused, so bouncing through an input left at
-    // the default would ask for one keyboard and then another in the same tick,
-    // which is the flash-then-dismiss.
-    editorRef.inputMode = "text"
-    kbdBounceRef.focus()
-    // Parking focus on the bounce is not enough on its own, because the
-    // dismissals differ in what they leave behind: tapping away gives the
-    // editor up, while the keyboard's own hide key takes only the keyboard and
-    // leaves the editor holding the edit. Focusing it again from there repeats
-    // an edit already in effect, and a repeat is not an event. Withdrawing the
-    // editable makes the editor stop being somewhere text can go at all, so the
-    // focus below has to be granted afresh however the keyboard went away.
-    editorRef.contentEditable = "false"
-    editorRef.contentEditable = "true"
-    editorRef.focus()
-    placeCaret()
-    // Hold `requesting` past the current tick so the blur-reset effect, which
-    // flushes after this returns, can't observe the transient !isFocused from
-    // the bounce and clear keyboardWanted (which would revert inputmode and drop
-    // the keyboard). The window spans the OS keyboard animation, not just the
-    // next task: iOS emits a second blur when the keyboard finishes rising, and
-    // a same-tick release leaves that one to tear down what this just raised.
-    clearTimeout(requestTimer)
-    requestTimer = setTimeout(() => setRequesting(false), 600)
-  }
-  onCleanup(() => clearTimeout(requestTimer))
 
   const addImageAttachment = async (file: File) => {
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) return
@@ -543,11 +492,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!isFocused()) setComposing(false)
   })
 
-  // Blur resets the keyboard opt-in so the next focus is suppressed again
-  // (dictation-first default). Focusing to type still needs the toggle.
-  createEffect(() => {
-    if (!isFocused() && !requesting()) setKeyboardWanted(false)
-  })
 
   type AtOption =
     | { type: "agent"; name: string; display: string }
@@ -1076,9 +1020,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: text + " ", start: 0, end: 0 }]
     const end = promptLength(next)
     prompt.set(next, end)
-    // The sync effect restores the caret from the live selection, which on the
-    // Enter path still sits at the pre-dictation offset (0 on an empty draft).
-    // Place it after the inserted text once the re-render has run.
     if (editorRef?.isConnected) requestAnimationFrame(() => setCursorPosition(editorRef, end))
   }
   const dictation = createDictation({
@@ -1099,9 +1040,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
     setStore("dictating", true)
-    // Keep focus in the editor: the caret stays where the accepted text will
-    // land, and the question panel's global key handler yields to editable
-    // elements.
     editorRef.focus()
     dictation.start()
   }
@@ -2284,20 +2222,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </For>
             </div>
           </Show>
-          {/* Focus bounce target for requestKeyboard. It has to be a real, rendered,
-            on-screen input that mirrors the editor's inputmode, because only a
-            genuinely focusable element produces the fresh focus the bounce is
-            for; every cheaper way to hide it (display:none, visibility:hidden,
-            a negative offset) stops that focus counting and silently costs the
-            keyboard. Opacity and 1px are what hide it without disqualifying it. */}
-          <input
-            ref={(el) => (kbdBounceRef = el)}
-            type="text"
-            inputmode="text"
-            tabindex="-1"
-            aria-hidden="true"
-            class="absolute bottom-0 left-0 w-px h-px opacity-0 pointer-events-none"
-          />
           {/* Companion hands the freed transcript space to the writing surface.
             The dock is bottom-anchored, so a taller cap grows it upward into
             the reachable lower half rather than pushing controls off-thumb.
@@ -2339,7 +2263,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         : language.t("prompt.placeholder.normal")
                 }
                 contenteditable="true"
-                inputmode={suppressKeyboard() ? "none" : "text"}
+                inputmode="text"
                 onInput={handleInput}
                 onPaste={handlePaste}
                 onCompositionStart={() => setComposing(true)}
@@ -2678,25 +2602,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 chevron/customize/send in one justify-between row. Desktop keeps
                 them grouped. */}
                 <div class="contents dock-wide:flex dock-wide:items-center dock-wide:gap-1 dock-wide:mr-1">
-                  {/* Always shown on a coarse pointer (mobile), never gated on
-                  keyboardWanted — so tapping it can't unmount it mid-gesture and
-                  blur the editor on release. Stable element = stable focus. */}
-                  <Show when={coarse()}>
-                    <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        class={`${actionButton()} ${actionIcon()}`}
-                        // The app's one sanctioned press-time action: raising the
-                        // soft keyboard needs a focus() inside the live user
-                        // activation, which a click handler no longer holds.
-                        {...gestureAction(requestKeyboard)}
-                        aria-label={language.t("prompt.action.showKeyboard")}
-                      >
-                        <Icon name="keyboard" />
-                      </Button>
-                    </Tooltip>
-                  </Show>
                   <Show when={store.mode === "normal"}>
                     <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
                       <Button
