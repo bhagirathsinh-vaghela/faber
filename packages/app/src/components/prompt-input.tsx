@@ -653,6 +653,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     items: slashCommands,
     key: (x) => x?.id,
     filterKeys: ["trigger", "title", "description"],
+    // The typed text is a command name, so the trigger decides the ranking;
+    // title and description only surface commands the name alone would miss.
+    filterWeights: [1, 0.6, 0.5],
     onSelect: handleSlashSelect,
   })
 

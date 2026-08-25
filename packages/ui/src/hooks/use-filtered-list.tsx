@@ -8,6 +8,11 @@ export interface FilteredListProps<T> {
   items: T[] | ((filter: string) => T[] | Promise<T[]>)
   key: (item: T) => string
   filterKeys?: string[]
+  // Per-key multipliers positionally matching filterKeys. Without them every key
+  // scores equally and fuzzysort's multiple-keys bonus can lift a weaker match
+  // above a stronger one, so an identifier ranks below a near-miss that happens
+  // to repeat itself across two keys.
+  filterWeights?: number[]
   current?: T
   initial?: T
   groupBy?: (x: T) => string
@@ -63,7 +68,17 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
         if (!props.filterKeys && Array.isArray(x) && x.every((e) => typeof e === "string")) {
           return fuzzysort.go(needle, x).map((x) => x.target) as T[]
         }
-        return fuzzysort.go(needle, x, { keys: props.filterKeys! }).map((x) => x.obj)
+        const weights = props.filterWeights
+        if (!weights) return fuzzysort.go(needle, x, { keys: props.filterKeys! }).map((x) => x.obj)
+        return fuzzysort
+          .go(needle, x, {
+            keys: props.filterKeys!,
+            // Best single weighted key, so a match is ranked by its strongest
+            // field rather than by how many fields it happens to appear in.
+            scoreFn: (keyScores) =>
+              Math.max(...weights.map((weight, i) => (keyScores[i] ? keyScores[i]!.score * weight : -Infinity))),
+          })
+          .map((x) => x.obj)
       },
       groupBy((x) => (props.groupBy ? props.groupBy(x) : "")),
       entries(),
