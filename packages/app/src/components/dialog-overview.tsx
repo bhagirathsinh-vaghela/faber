@@ -182,10 +182,9 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
       <Show when={props.row.pingAt}>
         <IconButton
           icon="circle-ban-sign"
-          size="large"
           title={language.t("home.attention.stopPing")}
           onClick={stopPing}
-          class="size-8 -my-1.5 any-pointer-coarse:size-11 any-pointer-coarse:-my-2"
+          class="size-6 any-pointer-coarse:size-10 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
         />
       </Show>
     </div>
@@ -358,7 +357,7 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
         // strand arrow-key navigation. Every row stays mounted here.
         // The `auto` in contain-intrinsic-size makes a row remember its measured
         // height, so scroll-into-view math doesn't drift off the estimate.
-        class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_36px]"
+        class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:min-h-9 any-pointer-coarse:[&_[data-slot=list-item]]:min-h-14 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_36px] any-pointer-coarse:[&_[data-slot=list-item]]:[contain-intrinsic-size:auto_56px]"
       >
         {(row) => <Row row={row} showTime={row.section === "recent"} />}
       </List>

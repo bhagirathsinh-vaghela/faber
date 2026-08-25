@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test"
 import { test, expect } from "../fixtures"
+import { withSession } from "../actions"
 
 // The layout has exactly three inputs, and each answers a different question:
 // the shell size class (how many panes fit), a container query (how much room
@@ -23,6 +24,9 @@ const VIEWPORTS = {
 } as const
 
 const sizeClass = (page: Page) => page.evaluate(() => document.documentElement.dataset.sizeClass)
+
+// The size every chrome control grows to on a coarse pointer (`size-10`).
+const COARSE_TARGET = 40
 
 const settle = (page: Page) => page.waitForTimeout(350)
 
@@ -431,6 +435,79 @@ test.describe("pointer capability", () => {
     expect(wrong, "a glyph should fill between a third and five sixths of its control").toEqual([])
   })
 
+  // A control is measured against the nearest ancestor that actually draws an
+  // edge, not its immediate parent: a shrink-wrapped flex wrapper is the same
+  // height as the control by construction and would report every control as
+  // flush. An ancestor whose edge is softened by a gradient ::after is not an
+  // edge to hug either, so it is skipped rather than reported.
+  const flushControls = () => {
+    const coarse: string[] = []
+    const walk = (list: CSSRuleList) => {
+      for (const rule of list) {
+        if ((rule as CSSMediaRule).conditionText === "(any-pointer: coarse)") {
+          for (const inner of (rule as CSSMediaRule).cssRules) coarse.push(inner.cssText)
+          continue
+        }
+        const nested = (rule as CSSGroupingRule).cssRules
+        if (nested) walk(nested)
+      }
+    }
+    for (const sheet of document.styleSheets) {
+      try {
+        walk(sheet.cssRules)
+      } catch {}
+    }
+    const patch = document.createElement("style")
+    patch.textContent = coarse.join("\n")
+    document.head.appendChild(patch)
+
+    const paints = (style: CSSStyleDeclaration) =>
+      style.backgroundColor !== "rgba(0, 0, 0, 0)" ||
+      parseFloat(style.borderTopWidth) > 0 ||
+      parseFloat(style.borderBottomWidth) > 0 ||
+      style.boxShadow !== "none"
+    const faded = (el: Element) => {
+      const after = getComputedStyle(el, "::after")
+      return after.height !== "0px" && (after.backgroundImage || "").includes("gradient")
+    }
+    const edge = (el: Element) => {
+      for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+        if (p.getBoundingClientRect().height < 8) continue
+        if (paints(getComputedStyle(p))) return faded(p) ? null : p
+      }
+      return null
+    }
+    const onscreen = (el: Element) => {
+      const box = el.getBoundingClientRect()
+      return box.bottom > 0 && box.top < innerHeight && box.width > 8 && box.height > 8
+    }
+    const name = (el: Element) =>
+      el.getAttribute("aria-label") ||
+      el.getAttribute("title") ||
+      el.getAttribute("data-component") ||
+      el.getAttribute("data-slot") ||
+      (el.textContent || "").trim().slice(0, 20) ||
+      "unnamed"
+
+    const flush: string[] = []
+    for (const el of document.querySelectorAll(
+      'button, [data-component="icon-button"], [data-component="chip-group"], input, textarea',
+    )) {
+      if (!onscreen(el)) continue
+      if (!paints(getComputedStyle(el))) continue
+      const bound = edge(el)
+      if (!bound || !onscreen(bound)) continue
+      const box = el.getBoundingClientRect()
+      const bounds = bound.getBoundingClientRect()
+      if (bounds.height - box.height < 2) continue
+      if (box.top - bounds.top < 1.5 || bounds.bottom - box.bottom < 1.5) {
+        flush.push(`${name(el)} in ${name(bound)}`)
+      }
+    }
+    patch.remove()
+    return [...new Set(flush)]
+  }
+
   test("a filled control has room inside the row it sits in", async ({ page, gotoSession }) => {
     await gotoSession()
     await page.setViewportSize(VIEWPORTS.tabletPortrait)
@@ -438,25 +515,61 @@ test.describe("pointer capability", () => {
 
     // A row that takes its height from its tallest child leaves a painted
     // button touching the row edge, which reads as clipped however well the
-    // glyph is centred inside it.
-    const flush = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>('[data-component="prompt-input"] button')]
-        .filter((button) => {
-          const box = button.getBoundingClientRect()
-          if (box.width < 8) return false
-          return getComputedStyle(button).backgroundColor !== "rgba(0, 0, 0, 0)"
-        })
-        .filter((button) => {
-          const row = button.parentElement
-          if (!row) return false
-          const box = button.getBoundingClientRect()
-          const bounds = row.getBoundingClientRect()
-          return box.top - bounds.top < 1 || bounds.bottom - box.bottom < 1
-        })
-        .map((button) => button.getAttribute("aria-label") ?? "unnamed"),
-    )
+    // glyph is centred inside it. Measured with the coarse rules applied,
+    // because a target grown for touch is the one that runs out of room.
+    const flush = await page.evaluate(flushControls)
 
     expect(flush, "a painted control needs space between it and its row").toEqual([])
+  })
+
+  test("an overview row reserves room for a touch target rather than being filled by one", async ({ page, sdk }) => {
+    // A row exists only where a session does, and the row's stop button needs a
+    // live cache ping on top of that, which takes a real turn. So the row is
+    // measured directly: a row that reserves no more than the target it must
+    // hold leaves that target flush against both its edges, and the only way to
+    // seat a bigger control in an unchanged row is to cancel the row's padding.
+    await withSession(sdk, "row spacing probe", async () => {
+      await page.goto("/")
+      await page.setViewportSize(VIEWPORTS.tabletPortrait)
+      await settle(page)
+
+      const rows = await page.evaluate(() => {
+        const coarse: string[] = []
+        const walk = (list: CSSRuleList) => {
+          for (const rule of list) {
+            if ((rule as CSSMediaRule).conditionText === "(any-pointer: coarse)") {
+              for (const inner of (rule as CSSMediaRule).cssRules) coarse.push(inner.cssText)
+              continue
+            }
+            const nested = (rule as CSSGroupingRule).cssRules
+            if (nested) walk(nested)
+          }
+        }
+        for (const sheet of document.styleSheets) {
+          try {
+            walk(sheet.cssRules)
+          } catch {}
+        }
+        const patch = document.createElement("style")
+        patch.textContent = coarse.join("\n")
+        document.head.appendChild(patch)
+
+        const measured = [...document.querySelectorAll('[data-slot="list-item"]')].slice(0, 5).map((row) => {
+          const style = getComputedStyle(row)
+          return {
+            height: Math.round(row.getBoundingClientRect().height),
+            padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom),
+          }
+        })
+        patch.remove()
+        return measured
+      })
+
+      expect(rows.length, "the overview must render rows to measure").toBeGreaterThan(0)
+
+      const cramped = rows.filter((row) => row.height < COARSE_TARGET + row.padding)
+      expect(cramped, "a row must reserve its padding around a touch-sized control").toEqual([])
+    })
   })
 
   test("growing a control for touch does not overflow the row holding it", async ({ page, gotoSession }) => {
