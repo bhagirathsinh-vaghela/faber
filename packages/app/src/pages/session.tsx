@@ -55,6 +55,7 @@ import { findLast } from "@opencode-ai/util/array"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectFile } from "@/components/dialog-select-file"
 import FileTree from "@/components/file-tree"
+import { ZenPill } from "@/components/zen-pill"
 import { DialogSelectModel } from "@/components/dialog-select-model"
 import { DialogSettings } from "@/components/dialog-settings"
 import { DialogFork } from "@/components/dialog-fork"
@@ -2235,22 +2236,6 @@ export default function Page() {
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
   })
 
-  // Zen toggle-pill. Always visible (this is the only zen control — the dock
-  // has no enter button). Rendered through a Portal to <body> so it escapes the
-  // app shell's `contain: strict` <main> (which clips fixed descendants).
-  // Default anchor sits just above the prompt dock on the right, tracking the
-  // dock height. Because the dock collapses to 0 in zen, we hold the last
-  // non-zero dock height so the pill stays put across the toggle. Desktop
-  // presses toggle (no drag); mobile can drag past a small threshold to switch
-  // to explicit viewport left/top coords (in-memory only, resets on reload); a
-  // press that never crosses the threshold toggles zen.
-  const [dockHeight, setDockHeight] = createSignal(0)
-  createEffect(() => {
-    if (layout.zen.opened()) return
-    const h = store.promptHeight
-    if (h > 0) setDockHeight(h)
-  })
-
   // Desktop pill hugs the top-right corner of the visible input box, so it
   // never floats over the input or lands in the centered layout's side gutter.
   // Track that box's viewport rect; the corner anchor is derived from it. In
@@ -2308,95 +2293,6 @@ export default function Page() {
     }
   })
 
-  // Sized for a fingertip on every device: the pill floats over content, so it
-  // gets the enhanced touch target even under a mouse, and a touch pointer a
-  // little more.
-  const coarse = createCoarsePointer()
-  const pillSize = () => (coarse() ? 56 : 52)
-  const PILL_MARGIN = 16
-  // Matches the platform touch slop (Android ~8dp, iOS ~10pt). Below it a thumb's
-  // normal wander during a tap reads as a drag, and the tap is silently dropped.
-  const DRAG_THRESHOLD = 10
-  // Read a safe-area inset (exposed as a CSS var in index.css) as a number, so
-  // a dragged pill can't be parked under the status bar / home indicator. 0 in
-  // a normal browser.
-  const inset = (name: "--sat" | "--sar" | "--sab" | "--sal") =>
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0
-  const clampPill = (x: number, y: number) => ({
-    x: Math.max(
-      PILL_MARGIN + inset("--sal"),
-      Math.min(x, window.innerWidth - pillSize() - PILL_MARGIN - inset("--sar")),
-    ),
-    y: Math.max(
-      PILL_MARGIN + inset("--sat"),
-      Math.min(y, window.innerHeight - pillSize() - PILL_MARGIN - inset("--sab")),
-    ),
-  })
-  const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
-  const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
-  // Gap between the pill and the input box's top edge. Kept large enough that
-  // the pill clears the submit/stop button's tap zone at the box's right edge,
-  // so a tap on the pill never lands on the stop button (and vice versa).
-  const PILL_GAP = 24
-  // Nudge the pill's right edge past the box's right edge into the gutter, so it
-  // sits at the true screen corner rather than leaving a gap. Clamped to the
-  // viewport so it can't run off-screen.
-  const PILL_NUDGE = 12
-  // Anchor priority: a mobile drag override wins; otherwise both platforms pin
-  // to the input box's top-right corner, hovering just above the top edge.
-  // Null only until the first measurement lands.
-  const pillCoords = createMemo(() => {
-    const dragged = drag() ?? pos()
-    if (dragged) return dragged
-    const rect = dockRect()
-    if (!rect) return null
-    const maxX = window.innerWidth - pillSize() - PILL_MARGIN
-    return {
-      x: Math.min(rect.right - pillSize() + PILL_NUDGE, maxX),
-      y: rect.top - pillSize() - PILL_GAP,
-    }
-  })
-
-  // Pointer events TRACK the drag; they never toggle. The toggle is the click
-  // below, so the pill activates like every other control (and stays reachable
-  // by keyboard and screen reader). A drag past the threshold suppresses that
-  // click, which is what separates "moved the pill" from "tapped the pill".
-  let dragged = false
-  function startPillDrag(e: PointerEvent) {
-    if (wide()) return
-    const pill = e.currentTarget as HTMLElement
-    const startX = e.clientX
-    const startY = e.clientY
-    dragged = false
-
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== e.pointerId) return
-      if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return
-      dragged = true
-      setDrag(clampPill(ev.clientX - pillSize() / 2, ev.clientY - pillSize() / 2))
-    }
-    const end = (ev: PointerEvent) => {
-      if (ev.pointerId !== e.pointerId) return
-      document.removeEventListener("pointermove", move)
-      document.removeEventListener("pointerup", end)
-      document.removeEventListener("pointercancel", end)
-      const final = drag()
-      setDrag(null)
-      if (final) setPos(final)
-      // A canceled pointer delivers no click, so the suppression flag would
-      // outlive the gesture and swallow the next genuine tap.
-      if (ev.type === "pointercancel") dragged = false
-    }
-    document.addEventListener("pointermove", move)
-    document.addEventListener("pointerup", end)
-    // The browser cancels the stream when it claims the gesture for a scroll;
-    // without this the move listener keeps steering the pill off any later touch.
-    document.addEventListener("pointercancel", end)
-
-    // Throws on an inactive pointer, which must not strand the drag.
-    if (e.isTrusted) pill.setPointerCapture(e.pointerId)
-  }
-
   return (
     <div
       class="relative bg-background-base size-full overflow-hidden flex flex-col"
@@ -2405,48 +2301,9 @@ export default function Page() {
       style={{ "--permission-accent": workingTint() ?? "var(--icon-interactive-base)" }}
     >
       <SessionHeader />
-      {/* Zen toggle: always-visible pill, the only zen control.
-          Portaled to <body> so the shell's contain:strict <main> can't clip it.
-          Anchored just above the prompt dock on the right by default; the held
-          dock height keeps it put across the zen toggle. Mobile can drag it. */}
-      <Portal>
-        <button
-          type="button"
-          onPointerDown={startPillDrag}
-          onClick={() => {
-            // A drag that ended elsewhere still emits a click here; only a tap
-            // that stayed put should toggle.
-            if (dragged) {
-              dragged = false
-              return
-            }
-            layout.zen.toggle()
-          }}
-          aria-label={layout.zen.opened() ? language.t("zen.exit") : language.t("zen.enter")}
-          // wide:, not panel-wide:: the pill portals to <body>, where no
-          // ancestor declares a container, so a container variant never
-          // matches and the class silently does nothing.
-          class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing wide:cursor-pointer wide:active:cursor-pointer hover:bg-surface-raised-base-hover"
-          classList={{ "transition-none": drag() !== null }}
-          style={{
-            // Measured top-right corner anchor (both platforms + mobile drag).
-            // The right/bottom fallback only applies before the first measure;
-            // its safe-area insets keep it clear of the status bar in a PWA.
-            ...(pillCoords()
-              ? { left: `${pillCoords()!.x}px`, top: `${pillCoords()!.y}px` }
-              : {
-                  right: `calc(${PILL_MARGIN}px + env(safe-area-inset-right))`,
-                  bottom: `calc(${dockHeight() + PILL_MARGIN}px + env(safe-area-inset-bottom))`,
-                }),
-            width: `${pillSize()}px`,
-            height: `${pillSize()}px`,
-          }}
-        >
-          <span class="text-xl leading-none select-none" aria-hidden="true">
-            {layout.zen.opened() ? "🌐" : "🧘"}
-          </span>
-        </button>
-      </Portal>
+      {/* Anchored just above the prompt dock; the held dock height keeps it put
+          across the zen toggle. */}
+      <ZenPill anchor={dockRect} />
       <div class="flex-1 min-h-0 flex flex-col wide:flex-row">
         {/* Session panel */}
         <div
@@ -2686,14 +2543,10 @@ export default function Page() {
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
                         style={{
                           "--session-title-height":
-                            !layout.zen.opened() && (info()?.title || info()?.parentID)
-                              ? wide()
-                                ? "28px"
-                                : "24px"
-                              : "0px",
+                            info()?.title || info()?.parentID ? (wide() ? "28px" : "24px") : "0px",
                         }}
                       >
-                        <Show when={!layout.zen.opened() && (info()?.title || info()?.parentID)}>
+                        <Show when={info()?.title || info()?.parentID}>
                           <div
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,
