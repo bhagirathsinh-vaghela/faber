@@ -22,6 +22,17 @@ export async function defocus(page: Page) {
   await page.mouse.click(5, 5)
 }
 
+// locator.hover() jumps the pointer straight to the target, which arrives with
+// no movement delta and so reads as a list scrolling under a still pointer. Two
+// moves land the second one carrying a delta, as a real pointer does.
+export async function hoverRow(page: Page, target: Locator) {
+  const box = await target.boundingBox()
+  if (!box) throw new Error("row has no box to hover")
+  const y = box.y + box.height / 2
+  await page.mouse.move(box.x + 6, y)
+  await page.mouse.move(box.x + Math.min(40, box.width - 6), y)
+}
+
 export async function openPalette(page: Page) {
   await defocus(page)
   await page.keyboard.press(`${modKey}+P`)

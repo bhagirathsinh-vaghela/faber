@@ -1,6 +1,5 @@
 import { type FilteredListProps, useFilteredList } from "@opencode-ai/ui/hooks"
 import { createEffect, createMemo, createSignal, For, onCleanup, type JSX, on, Show } from "solid-js"
-import { createStore } from "solid-js/store"
 import { useI18n } from "../context/i18n"
 import { Icon, type IconProps } from "./icon"
 import { IconButton } from "./icon-button"
@@ -62,9 +61,6 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement | undefined>(undefined)
   const [internalFilter, setInternalFilter] = createSignal("")
   let inputRef: HTMLInputElement | HTMLTextAreaElement | undefined
-  const [store, setStore] = createStore({
-    mouseActive: false,
-  })
 
   const scrollIntoView = (container: HTMLDivElement, node: HTMLElement, block: "center" | "nearest") => {
     const containerRect = container.getBoundingClientRect()
@@ -85,7 +81,8 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     container.scrollTop = Math.max(0, Math.min(target, max))
   }
 
-  const { filter, grouped, flat, active, setActive, onKeyDown, onInput, refetch } = useFilteredList<T>(props)
+  const { filter, grouped, flat, active, setActive, hovered, hover, unhover, onKeyDown, onInput, refetch } =
+    useFilteredList<T>(props)
 
   // Rows arrive in chunks, because a list that runs to hundreds of rows (the
   // session overview) otherwise builds every row in the opening click's own
@@ -141,8 +138,6 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const addProps = () => props.add
   const showAdd = () => !!addProps()
 
-  const moved = (event: MouseEvent) => event.movementX !== 0 || event.movementY !== 0
-
   const applyFilter = (value: string, options?: { ref?: boolean }) => {
     const prev = filter()
     setInternalFilter(value)
@@ -191,7 +186,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
 
   createEffect(() => {
     const all = flat()
-    if (store.mouseActive || all.length === 0) return
+    if (all.length === 0) return
     const scroll = scrollRef()
     if (!scroll) return
     if (active() === props.key(all[0])) {
@@ -217,7 +212,6 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   }
 
   const handleKey = (e: KeyboardEvent) => {
-    setStore("mouseActive", false)
     if (e.key === "Escape") return
 
     const all = flat()
@@ -401,19 +395,13 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                             data-slot="list-item"
                             data-key={props.key(item)}
                             data-active={props.key(item) === active()}
+                            data-hovered={props.key(item) === hovered()}
                             data-selected={item === props.current}
                             onClick={() => handleSelect(item, i())}
                             onKeyDown={handleKey}
                             type="button"
-                            onMouseMove={(event) => {
-                              if (!moved(event)) return
-                              setStore("mouseActive", true)
-                              setActive(props.key(item))
-                            }}
-                            onMouseLeave={() => {
-                              if (!store.mouseActive) return
-                              setActive(null)
-                            }}
+                            onMouseMove={(event) => hover(event, props.key(item))}
+                            onMouseLeave={unhover}
                           >
                             {props.children(item)}
                             <Show when={item === props.current}>
@@ -440,11 +428,9 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                           <div
                             data-slot="list-item-row"
                             data-active={props.key(item) === active()}
-                            onMouseMove={(event) => {
-                              if (!moved(event)) return
-                              setStore("mouseActive", true)
-                              setActive(props.key(item))
-                            }}
+                            data-hovered={props.key(item) === hovered()}
+                            onMouseMove={(event) => hover(event, props.key(item))}
+                            onMouseLeave={unhover}
                           >
                             {button}
                             <div data-slot="list-item-actions">{props.actions(item)}</div>

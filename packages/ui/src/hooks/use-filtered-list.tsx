@@ -108,6 +108,19 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
     loop: true,
   })
 
+  // The row under the pointer, kept apart from the keyboard cursor so hovering
+  // marks a row without changing what Enter submits.
+  const [hovered, setHovered] = createSignal<string | null>(null)
+
+  // A list scrolling under a still pointer fires mouseenter on whatever lands
+  // beneath it, so only real movement counts as hovering.
+  const hover = (event: MouseEvent, key: string) => {
+    if (event.movementX === 0 && event.movementY === 0) return
+    setHovered(key)
+  }
+
+  const unhover = () => setHovered(null)
+
   const reset = () => {
     if (props.preserveActive) {
       const current = list.active()
@@ -147,6 +160,9 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
   createEffect(
     on(grouped, () => {
       reset()
+      // Refiltering rebuilds the rows under a pointer that has not moved, so
+      // the remembered key would mark a row the cursor is no longer on.
+      unhover()
     }),
   )
 
@@ -165,5 +181,8 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
     onInput,
     active: list.active,
     setActive: list.setActive,
+    hovered,
+    hover,
+    unhover,
   }
 }

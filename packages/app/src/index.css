@@ -433,3 +433,17 @@
     opacity: 0.5;
   }
 }
+
+/* Prompt popover rows carry two independent marks. The keyboard cursor is what
+   Enter submits, so it reads stronger and adds the same inset accent bar the
+   shared list uses for its active row; hover is only a pointer affordance and
+   stays a faint wash. Both can sit on different rows at once, and a row that is
+   both keeps the cursor's stronger fill. */
+[data-popover-item][data-hovered="true"] {
+  background: var(--surface-raised-base-hover);
+}
+
+[data-popover-item][data-cursor="true"] {
+  background: var(--surface-interactive-base);
+  box-shadow: inset 2px 0 0 0 var(--border-interactive-selected);
+}

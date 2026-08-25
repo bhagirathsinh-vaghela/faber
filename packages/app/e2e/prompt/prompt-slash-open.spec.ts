@@ -9,9 +9,7 @@ test("smoke /open opens file picker dialog", async ({ page, gotoSession }) => {
 
   const command = page.locator('[data-slash-id="file.open"]')
   await expect(command).toBeVisible()
-  await command.hover()
-
-  await page.keyboard.press("Enter")
+  await command.click()
 
   const dialog = page.getByRole("dialog")
   await expect(dialog).toBeVisible()

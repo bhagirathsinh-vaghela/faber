@@ -555,7 +555,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const {
     flat: atFlat,
     active: atActive,
-    setActive: setAtActive,
+    hovered: atHovered,
+    hover: atHover,
+    unhover: atUnhover,
     onInput: atOnInput,
     onKeyDown: atOnKeyDown,
   } = useFilteredList<AtOption>({
@@ -641,7 +643,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const {
     flat: slashFlat,
     active: slashActive,
-    setActive: setSlashActive,
+    hovered: slashHovered,
+    hover: slashHover,
+    unhover: slashUnhover,
     onInput: slashOnInput,
     onKeyDown: slashOnKeyDown,
     refetch: slashRefetch,
@@ -707,7 +711,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     ),
   )
 
-  // Auto-scroll active command into view when navigating with keyboard
+  // Opening or closing a popover leaves the pointer over whatever the other one
+  // renders in its place, so a key remembered across that swap marks a row the
+  // cursor is not on. Refiltering within one popover is cleared by the hook.
+  createEffect(
+    on(
+      () => store.popover,
+      () => {
+        slashUnhover()
+        atUnhover()
+      },
+      { defer: true },
+    ),
+  )
+
   createEffect(() => {
     const activeId = slashActive()
     if (!activeId || !slashPopoverRef) return
@@ -2012,12 +2029,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <For each={atFlat().slice(0, 10)}>
                   {(item) => (
                     <button
+                      data-popover-item=""
+                      data-cursor={atActive() === atKey(item)}
+                      data-hovered={atHovered() === atKey(item)}
                       classList={{
                         "w-full flex items-center gap-x-2 rounded-md px-2 py-0.5": true,
-                        "bg-surface-raised-base-hover": atActive() === atKey(item),
                       }}
                       onClick={() => handleAtSelect(item)}
-                      onMouseEnter={() => setAtActive(atKey(item))}
+                      onMouseMove={(event) => atHover(event, atKey(item))}
+                      onMouseLeave={atUnhover}
                     >
                       <Show
                         when={item.type === "agent"}
@@ -2062,12 +2082,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   {(cmd) => (
                     <button
                       data-slash-id={cmd.id}
+                      data-popover-item=""
+                      data-cursor={slashActive() === cmd.id}
+                      data-hovered={slashHovered() === cmd.id}
                       classList={{
                         "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1": true,
-                        "bg-surface-raised-base-hover": slashActive() === cmd.id,
                       }}
                       onClick={() => handleSlashSelect(cmd)}
-                      onMouseEnter={() => setSlashActive(cmd.id)}
+                      onMouseMove={(event) => slashHover(event, cmd.id)}
+                      onMouseLeave={slashUnhover}
                     >
                       <div class="flex items-center gap-2 min-w-0">
                         <span class="text-14-regular text-text-strong whitespace-nowrap">/{cmd.trigger}</span>

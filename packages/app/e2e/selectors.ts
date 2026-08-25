@@ -45,3 +45,9 @@ export const listItemKeyStartsWithSelector = (prefix: string) => `${listItemSele
 export const listItemKeySelector = (key: string) => `${listItemSelector}[data-key="${key}"]`
 
 export const keybindButtonSelector = (id: string) => `[data-keybind-id="${id}"]`
+
+export const popoverItemSelector = "[data-popover-item]"
+
+export const popoverCursorSelector = `${popoverItemSelector}[data-cursor="true"]`
+
+export const popoverHoveredSelector = `${popoverItemSelector}[data-hovered="true"]`
