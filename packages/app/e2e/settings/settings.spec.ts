@@ -110,9 +110,7 @@ test("changing the body font updates the mono font variable", async ({ page, got
   await items.nth(2).click()
 
   await expect
-    .poll(() =>
-      page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono")),
-    )
+    .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono")))
     .not.toBe(initialFontFamily)
 })
 

@@ -540,5 +540,4 @@ export namespace SessionPing {
     misses.set(sessionID, (misses.get(sessionID) ?? 0) + 1)
     log.info("ping miss", { sessionID, consecutive: misses.get(sessionID) })
   }
-
 }

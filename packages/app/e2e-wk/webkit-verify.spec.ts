@@ -4,7 +4,6 @@ const live =
   "http://127.0.0.1:4097/L3BhdGgvdG8vcHJvamVjdA/session/ses_example"
 
 test.describe("iPad WebKit", () => {
-
   test("transcript owns its scroll and the shell fits the viewport", async ({ page }) => {
     await page.goto(live, { waitUntil: "domcontentloaded" })
     await page.waitForTimeout(6000)

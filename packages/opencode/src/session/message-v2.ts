@@ -770,8 +770,7 @@ export namespace MessageV2 {
       const record = { info: info.value, parts: stored.parts }
       // Only a finished assistant turn is safe to keep: a streaming one is
       // rewritten part by part, and a user message can still gain summary diffs.
-      if (record.info.role === "assistant" && record.info.time.completed)
-        remember(record, info.size + stored.size)
+      if (record.info.role === "assistant" && record.info.time.completed) remember(record, info.size + stored.size)
       return record
     },
   )

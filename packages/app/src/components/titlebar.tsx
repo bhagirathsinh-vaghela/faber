@@ -26,8 +26,7 @@ export function Titlebar() {
   // Optional: the titlebar also renders on the home route, above the per-project
   // LocalProvider. No dock config there, so a field defaults to shown.
   const local = useLocalOptional()
-  const fieldShown = (surface: "desktop" | "mobile", id: string) =>
-    local ? local.dock.isVisibleOn(surface, id) : true
+  const fieldShown = (surface: "desktop" | "mobile", id: string) => (local ? local.dock.isVisibleOn(surface, id) : true)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -289,12 +288,7 @@ export function Titlebar() {
             <div class="h-full shrink-0" style={{ width: `${72 / zoom()}px` }} />
           </Show>
           <div class="flex items-center gap-3 shrink-0">
-            <Tooltip
-              class="flex shrink-0 ml-2"
-              placement="bottom"
-              value={language.t("common.home")}
-              openDelay={2000}
-            >
+            <Tooltip class="flex shrink-0 ml-2" placement="bottom" value={language.t("common.home")} openDelay={2000}>
               <Button
                 variant="ghost"
                 icon="house"

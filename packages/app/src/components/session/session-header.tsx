@@ -133,7 +133,9 @@ export function SessionHeader() {
                     class="size-10 shrink-0 p-0"
                     onClick={() => layout.companion.toggle()}
                     aria-pressed={layout.companion.opened()}
-                    aria-label={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
+                    aria-label={
+                      layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")
+                    }
                   />
                 </Tooltip>
               </Show>

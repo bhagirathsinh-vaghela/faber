@@ -156,7 +156,11 @@ export const {
       // this tab last fetched still takes effect.
       const picked = createMemo<ModelKey | undefined>(() => {
         const id = activeSessionID()
-        if (id) return getFirstValidModel(() => ephemeral.bySession[id], () => lastMessageModel(id))
+        if (id)
+          return getFirstValidModel(
+            () => ephemeral.bySession[id],
+            () => lastMessageModel(id),
+          )
         return getFirstValidModel(() => ephemeral.model)
       })
 

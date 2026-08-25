@@ -788,7 +788,10 @@ test.describe("chrome geometry", () => {
           .slice(0, -1)
           .filter((entry, index) => entry.rect.right > boxes[index + 1].rect.left + 1)
           .map((entry, index) => `${entry.label} over ${boxes[index + 1].label}`),
-        spill: search && column ? Math.round(search.getBoundingClientRect().width - column.getBoundingClientRect().width) : 0,
+        spill:
+          search && column
+            ? Math.round(search.getBoundingClientRect().width - column.getBoundingClientRect().width)
+            : 0,
       }
     })
 

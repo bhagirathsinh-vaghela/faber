@@ -20,11 +20,11 @@ Every regression in this area came from one input answering another's question,
 so each is allowed exactly one. Before adding a responsive rule, decide which
 question is being asked:
 
-| Question | Mechanism | Looks like |
-|---|---|---|
-| How many panes fit in the window? | shell size class | `compact:` `wide:` `expanded:` |
-| How much room does THIS component have? | container query | `dock-wide:` `panel-wide:` |
-| Mouse or finger? | pointer capability | `any-pointer-coarse:` `any-pointer-fine:` |
+| Question                                | Mechanism          | Looks like                                |
+| --------------------------------------- | ------------------ | ----------------------------------------- |
+| How many panes fit in the window?       | shell size class   | `compact:` `wide:` `expanded:`            |
+| How much room does THIS component have? | container query    | `dock-wide:` `panel-wide:`                |
+| Mouse or finger?                        | pointer capability | `any-pointer-coarse:` `any-pointer-fine:` |
 
 **Never add a raw width media query or `matchMedia`.** The size class is
 published once, on `<html>` as `data-size-class`, by `ui/util/shell.ts`, and the

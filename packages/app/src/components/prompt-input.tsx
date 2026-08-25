@@ -2034,447 +2034,472 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
        classes sit one level inside the declaration. */
     <div class="@container/dock size-full">
       <div class="relative size-full _max-h-[320px] flex flex-col gap-1 dock-wide:gap-3 [--dock-font-size:var(--font-size-x-small)] dock-wide:[--dock-font-size:var(--font-size-small)]">
-      <Show when={store.popover}>
-        <div
-          ref={(el) => {
-            if (store.popover === "slash") slashPopoverRef = el
-          }}
-          class="absolute inset-x-0 -top-3 -translate-y-full origin-bottom-left max-h-80 min-h-10
+        <Show when={store.popover}>
+          <div
+            ref={(el) => {
+              if (store.popover === "slash") slashPopoverRef = el
+            }}
+            class="absolute inset-x-0 -top-3 -translate-y-full origin-bottom-left max-h-80 min-h-10
                  overflow-auto no-scrollbar flex flex-col p-2 rounded-md
                  border border-border-base bg-surface-raised-stronger-non-alpha shadow-md"
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          <Switch>
-            <Match when={store.popover === "at"}>
-              <Show
-                when={atFlat().length > 0}
-                fallback={<div class="text-text-weak px-2 py-1">{language.t("prompt.popover.emptyResults")}</div>}
-              >
-                <For each={atFlat().slice(0, 10)}>
-                  {(item) => (
-                    <button
-                      data-popover-item=""
-                      data-cursor={atActive() === atKey(item)}
-                      data-hovered={atHovered() === atKey(item)}
-                      classList={{
-                        "w-full flex items-center gap-x-2 rounded-md px-2 py-0.5": true,
-                      }}
-                      onClick={() => handleAtSelect(item)}
-                      onMouseMove={(event) => atHover(event, atKey(item))}
-                      onMouseLeave={atUnhover}
-                    >
-                      <Show
-                        when={item.type === "agent"}
-                        fallback={
-                          <>
-                            <FileIcon
-                              node={{ path: (item as { type: "file"; path: string }).path, type: "file" }}
-                              class="shrink-0 size-4"
-                            />
-                            <div class="flex items-center text-14-regular min-w-0">
-                              <span class="text-text-weak whitespace-nowrap truncate min-w-0">
-                                {(() => {
-                                  const path = (item as { type: "file"; path: string }).path
-                                  return path.endsWith("/") ? path : getDirectory(path)
-                                })()}
-                              </span>
-                              <Show when={!(item as { type: "file"; path: string }).path.endsWith("/")}>
-                                <span class="text-text-strong whitespace-nowrap">
-                                  {getFilename((item as { type: "file"; path: string }).path)}
-                                </span>
-                              </Show>
-                            </div>
-                          </>
-                        }
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <Switch>
+              <Match when={store.popover === "at"}>
+                <Show
+                  when={atFlat().length > 0}
+                  fallback={<div class="text-text-weak px-2 py-1">{language.t("prompt.popover.emptyResults")}</div>}
+                >
+                  <For each={atFlat().slice(0, 10)}>
+                    {(item) => (
+                      <button
+                        data-popover-item=""
+                        data-cursor={atActive() === atKey(item)}
+                        data-hovered={atHovered() === atKey(item)}
+                        classList={{
+                          "w-full flex items-center gap-x-2 rounded-md px-2 py-0.5": true,
+                        }}
+                        onClick={() => handleAtSelect(item)}
+                        onMouseMove={(event) => atHover(event, atKey(item))}
+                        onMouseLeave={atUnhover}
                       >
-                        <Icon name="brain" size="small" class="text-icon-info-active shrink-0" />
-                        <span class="text-14-regular text-text-strong whitespace-nowrap">
-                          @{(item as { type: "agent"; name: string }).name}
-                        </span>
-                      </Show>
-                    </button>
-                  )}
-                </For>
-              </Show>
-            </Match>
-            <Match when={store.popover === "slash"}>
-              <Show
-                when={slashFlat().length > 0}
-                fallback={<div class="text-text-weak px-2 py-1">{language.t("prompt.popover.emptyCommands")}</div>}
-              >
-                <For each={slashFlat()}>
-                  {(cmd) => (
-                    <button
-                      data-slash-id={cmd.id}
-                      data-popover-item=""
-                      data-cursor={slashActive() === cmd.id}
-                      data-hovered={slashHovered() === cmd.id}
-                      classList={{
-                        "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1": true,
-                      }}
-                      onClick={() => handleSlashSelect(cmd)}
-                      onMouseMove={(event) => slashHover(event, cmd.id)}
-                      onMouseLeave={slashUnhover}
-                    >
-                      <div class="flex items-center gap-2 min-w-0">
-                        <span class="text-14-regular text-text-strong whitespace-nowrap">/{cmd.trigger}</span>
-                        <Show when={cmd.description}>
-                          <span class="text-14-regular text-text-weak truncate">{cmd.description}</span>
-                        </Show>
-                      </div>
-                      <div class="flex items-center gap-2 shrink-0">
-                        <Show when={cmd.type === "custom" && cmd.source !== "command"}>
-                          <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
-                            {cmd.source === "skill"
-                              ? language.t("prompt.slash.badge.skill")
-                              : cmd.source === "mcp"
-                                ? language.t("prompt.slash.badge.mcp")
-                                : language.t("prompt.slash.badge.custom")}
+                        <Show
+                          when={item.type === "agent"}
+                          fallback={
+                            <>
+                              <FileIcon
+                                node={{ path: (item as { type: "file"; path: string }).path, type: "file" }}
+                                class="shrink-0 size-4"
+                              />
+                              <div class="flex items-center text-14-regular min-w-0">
+                                <span class="text-text-weak whitespace-nowrap truncate min-w-0">
+                                  {(() => {
+                                    const path = (item as { type: "file"; path: string }).path
+                                    return path.endsWith("/") ? path : getDirectory(path)
+                                  })()}
+                                </span>
+                                <Show when={!(item as { type: "file"; path: string }).path.endsWith("/")}>
+                                  <span class="text-text-strong whitespace-nowrap">
+                                    {getFilename((item as { type: "file"; path: string }).path)}
+                                  </span>
+                                </Show>
+                              </div>
+                            </>
+                          }
+                        >
+                          <Icon name="brain" size="small" class="text-icon-info-active shrink-0" />
+                          <span class="text-14-regular text-text-strong whitespace-nowrap">
+                            @{(item as { type: "agent"; name: string }).name}
                           </span>
                         </Show>
-                        <Show when={command.keybind(cmd.id)}>
-                          <span class="text-12-regular text-text-subtle">{command.keybind(cmd.id)}</span>
-                        </Show>
-                      </div>
-                    </button>
-                  )}
-                </For>
-              </Show>
-            </Match>
-          </Switch>
-        </div>
-      </Show>
-      <form
-        onSubmit={handleSubmit}
-        classList={{
-          "group/prompt-input": true,
-          "bg-surface-raised-stronger-non-alpha shadow-xs-border relative": true,
-          "rounded-[14px] overflow-clip focus-within:shadow-xs-border": true,
-          "border-icon-info-active border-dashed": store.dragging,
-          [props.class ?? ""]: !!props.class,
-        }}
-      >
-        <Show when={store.dictating}>
-          <DictationOverlay
-            dictation={dictation}
-            accent={workingTint()}
-            onAccept={insertDictation}
-            onStash={stashDictation}
-            onClose={() => setStore("dictating", false)}
-          />
-        </Show>
-        <Show when={store.dragging}>
-          <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
-            <div class="flex flex-col items-center gap-2 text-text-weak">
-              <Icon name="photo" class="size-8" />
-              <span class="text-14-regular">{language.t("prompt.dropzone.label")}</span>
-            </div>
-          </div>
-        </Show>
-        <Show when={prompt.context.items().length > 0}>
-          <div class="flex flex-nowrap items-start gap-2 p-2 overflow-x-auto no-scrollbar">
-            <For each={prompt.context.items()}>
-              {(item) => {
-                const active = () => {
-                  const a = comments.active()
-                  return !!item.commentID && item.commentID === a?.id && item.path === a?.file
-                }
-                return (
-                  <Tooltip
-                    value={
-                      <span class="flex max-w-[300px]">
-                        <span class="text-text-invert-base truncate-start [unicode-bidi:plaintext] min-w-0">
-                          {getDirectory(item.path)}
-                        </span>
-                        <span class="shrink-0">{getFilename(item.path)}</span>
-                      </span>
-                    }
-                    placement="top"
-                    openDelay={2000}
-                  >
-                    <div
-                      classList={{
-                        "group shrink-0 flex flex-col rounded-[6px] pl-2 pr-1 py-1 max-w-[200px] h-12 transition-all transition-transform shadow-xs-border hover:shadow-xs-border-hover": true,
-                        "cursor-pointer hover:bg-surface-interactive-weak": !!item.commentID && !active(),
-                        "cursor-pointer bg-surface-interactive-hover hover:bg-surface-interactive-hover shadow-xs-border-hover":
-                          active(),
-                        "bg-background-stronger": !active(),
-                      }}
-                      onClick={() => {
-                        openComment(item)
-                      }}
-                    >
-                      <div class="flex items-center gap-1.5">
-                        <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-3.5" />
-                        <div class="flex items-center text-11-regular min-w-0 font-medium">
-                          <span class="text-text-strong whitespace-nowrap">{getFilenameTruncated(item.path, 14)}</span>
-                          <Show when={item.selection}>
-                            {(sel) => (
-                              <span class="text-text-weak whitespace-nowrap shrink-0">
-                                {sel().side === "before" ? "\u2212" : ""}
-                                {sel().startLine === sel().endLine
-                                  ? `:${sel().startLine}`
-                                  : `:${sel().startLine}-${sel().endLine}`}
-                              </span>
-                            )}
+                      </button>
+                    )}
+                  </For>
+                </Show>
+              </Match>
+              <Match when={store.popover === "slash"}>
+                <Show
+                  when={slashFlat().length > 0}
+                  fallback={<div class="text-text-weak px-2 py-1">{language.t("prompt.popover.emptyCommands")}</div>}
+                >
+                  <For each={slashFlat()}>
+                    {(cmd) => (
+                      <button
+                        data-slash-id={cmd.id}
+                        data-popover-item=""
+                        data-cursor={slashActive() === cmd.id}
+                        data-hovered={slashHovered() === cmd.id}
+                        classList={{
+                          "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1": true,
+                        }}
+                        onClick={() => handleSlashSelect(cmd)}
+                        onMouseMove={(event) => slashHover(event, cmd.id)}
+                        onMouseLeave={slashUnhover}
+                      >
+                        <div class="flex items-center gap-2 min-w-0">
+                          <span class="text-14-regular text-text-strong whitespace-nowrap">/{cmd.trigger}</span>
+                          <Show when={cmd.description}>
+                            <span class="text-14-regular text-text-weak truncate">{cmd.description}</span>
                           </Show>
                         </div>
-                        <IconButton
-                          type="button"
-                          icon="close-small"
-                          variant="ghost"
-                          class="ml-auto size-3.5 opacity-0 group-hover:opacity-100 transition-all"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (item.commentID) comments.remove(item.path, item.commentID)
-                            prompt.context.remove(item.key)
-                          }}
-                          aria-label={language.t("prompt.context.removeFile")}
-                        />
-                      </div>
-                      <Show when={item.comment}>
-                        {(comment) => (
-                          <div class="text-12-regular text-text-strong ml-5 pr-1 truncate">{comment()}</div>
-                        )}
-                      </Show>
-                    </div>
-                  </Tooltip>
-                )
-              }}
-            </For>
+                        <div class="flex items-center gap-2 shrink-0">
+                          <Show when={cmd.type === "custom" && cmd.source !== "command"}>
+                            <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
+                              {cmd.source === "skill"
+                                ? language.t("prompt.slash.badge.skill")
+                                : cmd.source === "mcp"
+                                  ? language.t("prompt.slash.badge.mcp")
+                                  : language.t("prompt.slash.badge.custom")}
+                            </span>
+                          </Show>
+                          <Show when={command.keybind(cmd.id)}>
+                            <span class="text-12-regular text-text-subtle">{command.keybind(cmd.id)}</span>
+                          </Show>
+                        </div>
+                      </button>
+                    )}
+                  </For>
+                </Show>
+              </Match>
+            </Switch>
           </div>
         </Show>
-        <Show when={imageAttachments().length > 0}>
-          <div class="flex flex-wrap gap-2 px-3 pt-3">
-            <For each={imageAttachments()}>
-              {(attachment) => (
-                <div class="relative group">
-                  <Show
-                    when={attachment.mime.startsWith("image/")}
-                    fallback={
-                      <div class="size-16 rounded-md bg-surface-base flex items-center justify-center border border-border-base">
-                        <Icon name="folder" class="size-6 text-text-weak" />
-                      </div>
-                    }
-                  >
-                    <img
-                      src={attachment.dataUrl}
-                      alt={attachment.filename}
-                      class="size-16 rounded-md object-cover border border-border-base hover:border-border-strong-base transition-colors"
-                      onClick={() =>
-                        dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />)
+        <form
+          onSubmit={handleSubmit}
+          classList={{
+            "group/prompt-input": true,
+            "bg-surface-raised-stronger-non-alpha shadow-xs-border relative": true,
+            "rounded-[14px] overflow-clip focus-within:shadow-xs-border": true,
+            "border-icon-info-active border-dashed": store.dragging,
+            [props.class ?? ""]: !!props.class,
+          }}
+        >
+          <Show when={store.dictating}>
+            <DictationOverlay
+              dictation={dictation}
+              accent={workingTint()}
+              onAccept={insertDictation}
+              onStash={stashDictation}
+              onClose={() => setStore("dictating", false)}
+            />
+          </Show>
+          <Show when={store.dragging}>
+            <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
+              <div class="flex flex-col items-center gap-2 text-text-weak">
+                <Icon name="photo" class="size-8" />
+                <span class="text-14-regular">{language.t("prompt.dropzone.label")}</span>
+              </div>
+            </div>
+          </Show>
+          <Show when={prompt.context.items().length > 0}>
+            <div class="flex flex-nowrap items-start gap-2 p-2 overflow-x-auto no-scrollbar">
+              <For each={prompt.context.items()}>
+                {(item) => {
+                  const active = () => {
+                    const a = comments.active()
+                    return !!item.commentID && item.commentID === a?.id && item.path === a?.file
+                  }
+                  return (
+                    <Tooltip
+                      value={
+                        <span class="flex max-w-[300px]">
+                          <span class="text-text-invert-base truncate-start [unicode-bidi:plaintext] min-w-0">
+                            {getDirectory(item.path)}
+                          </span>
+                          <span class="shrink-0">{getFilename(item.path)}</span>
+                        </span>
                       }
-                    />
-                  </Show>
-                  <button
-                    type="button"
-                    onClick={() => removeImageAttachment(attachment.id)}
-                    class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
-                    aria-label={language.t("prompt.attachment.remove")}
-                  >
-                    <Icon name="close" class="size-3 text-text-weak" />
-                  </button>
-                  <div class="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/50 rounded-b-md">
-                    <span class="text-10-regular text-white truncate block">{attachment.filename}</span>
+                      placement="top"
+                      openDelay={2000}
+                    >
+                      <div
+                        classList={{
+                          "group shrink-0 flex flex-col rounded-[6px] pl-2 pr-1 py-1 max-w-[200px] h-12 transition-all transition-transform shadow-xs-border hover:shadow-xs-border-hover": true,
+                          "cursor-pointer hover:bg-surface-interactive-weak": !!item.commentID && !active(),
+                          "cursor-pointer bg-surface-interactive-hover hover:bg-surface-interactive-hover shadow-xs-border-hover":
+                            active(),
+                          "bg-background-stronger": !active(),
+                        }}
+                        onClick={() => {
+                          openComment(item)
+                        }}
+                      >
+                        <div class="flex items-center gap-1.5">
+                          <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-3.5" />
+                          <div class="flex items-center text-11-regular min-w-0 font-medium">
+                            <span class="text-text-strong whitespace-nowrap">
+                              {getFilenameTruncated(item.path, 14)}
+                            </span>
+                            <Show when={item.selection}>
+                              {(sel) => (
+                                <span class="text-text-weak whitespace-nowrap shrink-0">
+                                  {sel().side === "before" ? "\u2212" : ""}
+                                  {sel().startLine === sel().endLine
+                                    ? `:${sel().startLine}`
+                                    : `:${sel().startLine}-${sel().endLine}`}
+                                </span>
+                              )}
+                            </Show>
+                          </div>
+                          <IconButton
+                            type="button"
+                            icon="close-small"
+                            variant="ghost"
+                            class="ml-auto size-3.5 opacity-0 group-hover:opacity-100 transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (item.commentID) comments.remove(item.path, item.commentID)
+                              prompt.context.remove(item.key)
+                            }}
+                            aria-label={language.t("prompt.context.removeFile")}
+                          />
+                        </div>
+                        <Show when={item.comment}>
+                          {(comment) => (
+                            <div class="text-12-regular text-text-strong ml-5 pr-1 truncate">{comment()}</div>
+                          )}
+                        </Show>
+                      </div>
+                    </Tooltip>
+                  )
+                }}
+              </For>
+            </div>
+          </Show>
+          <Show when={imageAttachments().length > 0}>
+            <div class="flex flex-wrap gap-2 px-3 pt-3">
+              <For each={imageAttachments()}>
+                {(attachment) => (
+                  <div class="relative group">
+                    <Show
+                      when={attachment.mime.startsWith("image/")}
+                      fallback={
+                        <div class="size-16 rounded-md bg-surface-base flex items-center justify-center border border-border-base">
+                          <Icon name="folder" class="size-6 text-text-weak" />
+                        </div>
+                      }
+                    >
+                      <img
+                        src={attachment.dataUrl}
+                        alt={attachment.filename}
+                        class="size-16 rounded-md object-cover border border-border-base hover:border-border-strong-base transition-colors"
+                        onClick={() =>
+                          dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />)
+                        }
+                      />
+                    </Show>
+                    <button
+                      type="button"
+                      onClick={() => removeImageAttachment(attachment.id)}
+                      class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+                      aria-label={language.t("prompt.attachment.remove")}
+                    >
+                      <Icon name="close" class="size-3 text-text-weak" />
+                    </button>
+                    <div class="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/50 rounded-b-md">
+                      <span class="text-10-regular text-white truncate block">{attachment.filename}</span>
+                    </div>
                   </div>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
-        {/* Focus bounce target for requestKeyboard. It has to be a real, rendered,
+                )}
+              </For>
+            </div>
+          </Show>
+          {/* Focus bounce target for requestKeyboard. It has to be a real, rendered,
             on-screen input that mirrors the editor's inputmode, because only a
             genuinely focusable element produces the fresh focus the bounce is
             for; every cheaper way to hide it (display:none, visibility:hidden,
             a negative offset) stops that focus counting and silently costs the
             keyboard. Opacity and 1px are what hide it without disqualifying it. */}
-        <input
-          ref={(el) => (kbdBounceRef = el)}
-          type="text"
-          inputmode="text"
-          tabindex="-1"
-          aria-hidden="true"
-          class="absolute bottom-0 left-0 w-px h-px opacity-0 pointer-events-none"
-        />
-        {/* Companion hands the freed transcript space to the writing surface.
+          <input
+            ref={(el) => (kbdBounceRef = el)}
+            type="text"
+            inputmode="text"
+            tabindex="-1"
+            aria-hidden="true"
+            class="absolute bottom-0 left-0 w-px h-px opacity-0 pointer-events-none"
+          />
+          {/* Companion hands the freed transcript space to the writing surface.
             The dock is bottom-anchored, so a taller cap grows it upward into
             the reachable lower half rather than pushing controls off-thumb.
             Applied at every width — the dock keeps its normal full width. */}
-        {/* Desktop zen puts the editor and the button row on one line. They must
+          {/* Desktop zen puts the editor and the button row on one line. They must
             share it as flex siblings so the buttons claim real width and wrapped
             text can never reach under them. Everywhere else this wrapper is
             display:contents, leaving the two as direct children of the form. */}
-        <div
-          classList={{
-            contents: true,
-            "dock-wide:flex dock-wide:flex-row dock-wide:items-center": zen(),
-          }}
-        >
           <div
             classList={{
-              "relative overflow-y-auto min-w-0": true,
-              "dock-wide:flex-1": zen(),
-              "max-h-[240px]": !companionTall(),
-              "max-h-[45vh]": companionTall(),
+              contents: true,
+              "dock-wide:flex dock-wide:flex-row dock-wide:items-center": zen(),
             }}
-            ref={(el) => (scrollRef = el)}
           >
             <div
-              data-component="prompt-input"
-              ref={(el) => {
-                editorRef = el
-                props.ref?.(el)
-              }}
-              role="textbox"
-              aria-multiline="true"
-              aria-label={
-                store.mode === "shell"
-                  ? language.t("prompt.placeholder.shell")
-                  : commentCount() > 1
-                    ? language.t("prompt.placeholder.summarizeComments")
-                    : commentCount() === 1
-                      ? language.t("prompt.placeholder.summarizeComment")
-                      : language.t("prompt.placeholder.normal")
-              }
-              contenteditable="true"
-              inputmode={suppressKeyboard() ? "none" : "text"}
-              onInput={handleInput}
-              onPaste={handlePaste}
-              onCompositionStart={() => setComposing(true)}
-              onCompositionEnd={() => setComposing(false)}
-              onKeyDown={handleKeyDown}
               classList={{
-                "select-text": true,
-                "w-full px-2 text-13-semibold dock-wide:px-3 dock-wide:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
-                "pt-2 pb-0 dock-wide:py-3": !zen(),
-                "pt-2 pb-0 dock-wide:py-2.5": zen(),
-                // Hold the tall surface open on an empty draft, so entering
-                // companion doesn't collapse the dock back to one line.
-                "min-h-[28vh]": companionTall(),
-                "[&_[data-type=file]]:text-syntax-property": true,
-                "[&_[data-type=agent]]:text-syntax-type": true,
-                "font-mono!": store.mode === "shell",
+                "relative overflow-y-auto min-w-0": true,
+                "dock-wide:flex-1": zen(),
+                "max-h-[240px]": !companionTall(),
+                "max-h-[45vh]": companionTall(),
               }}
-            />
-            <Show when={!prompt.dirty()}>
+              ref={(el) => (scrollRef = el)}
+            >
               <div
+                data-component="prompt-input"
+                ref={(el) => {
+                  editorRef = el
+                  props.ref?.(el)
+                }}
+                role="textbox"
+                aria-multiline="true"
+                aria-label={
+                  store.mode === "shell"
+                    ? language.t("prompt.placeholder.shell")
+                    : commentCount() > 1
+                      ? language.t("prompt.placeholder.summarizeComments")
+                      : commentCount() === 1
+                        ? language.t("prompt.placeholder.summarizeComment")
+                        : language.t("prompt.placeholder.normal")
+                }
+                contenteditable="true"
+                inputmode={suppressKeyboard() ? "none" : "text"}
+                onInput={handleInput}
+                onPaste={handlePaste}
+                onCompositionStart={() => setComposing(true)}
+                onCompositionEnd={() => setComposing(false)}
+                onKeyDown={handleKeyDown}
                 classList={{
-                  "absolute top-0 inset-x-0 px-2 text-13-regular dock-wide:px-3 dock-wide:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
-                  // Mirror the editor's vertical padding so the placeholder sits
-                  // exactly where typed text will appear.
+                  "select-text": true,
+                  "w-full px-2 text-13-semibold dock-wide:px-3 dock-wide:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
                   "pt-2 pb-0 dock-wide:py-3": !zen(),
                   "pt-2 pb-0 dock-wide:py-2.5": zen(),
+                  // Hold the tall surface open on an empty draft, so entering
+                  // companion doesn't collapse the dock back to one line.
+                  "min-h-[28vh]": companionTall(),
+                  "[&_[data-type=file]]:text-syntax-property": true,
+                  "[&_[data-type=agent]]:text-syntax-type": true,
+                  "font-mono!": store.mode === "shell",
                 }}
-              >
-                {store.mode === "shell"
-                  ? language.t("prompt.placeholder.shell")
-                  : commentCount() > 1
-                    ? language.t("prompt.placeholder.summarizeComments")
-                    : commentCount() === 1
-                      ? language.t("prompt.placeholder.summarizeComment")
-                      : language.t("prompt.placeholder.normal")}
-              </div>
-            </Show>
-          </div>
-          <div
-            classList={{
-              // Mobile stacks so the dock info line (when expanded) sits above the
-              // flat button row; desktop keeps them side by side.
-              "flex flex-col dock-wide:flex-row dock-wide:items-center dock-wide:justify-between gap-2": true,
-              // Default: the button row sits below the input. The mobile pt-2
-              // mirrors the editor's own pt-2 (symmetric space above/below the
-              // text), and pb-1.5 keeps the buttons off the bottom border. On
-              // mobile this holds in zen too, giving the same two-row layout as
-              // the collapsed dock.
-              "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:py-1.5": !zen(),
-              "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:pb-0": zen(),
-              // Desktop zen keeps the original single row: buttons sit at the
-              // input's right edge (the mobile stack still applies below md).
-              "dock-wide:shrink-0 dock-wide:px-2 dock-wide:pt-0 dock-wide:pb-0": zen(),
-            }}
-          >
+              />
+              <Show when={!prompt.dirty()}>
+                <div
+                  classList={{
+                    "absolute top-0 inset-x-0 px-2 text-13-regular dock-wide:px-3 dock-wide:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
+                    // Mirror the editor's vertical padding so the placeholder sits
+                    // exactly where typed text will appear.
+                    "pt-2 pb-0 dock-wide:py-3": !zen(),
+                    "pt-2 pb-0 dock-wide:py-2.5": zen(),
+                  }}
+                >
+                  {store.mode === "shell"
+                    ? language.t("prompt.placeholder.shell")
+                    : commentCount() > 1
+                      ? language.t("prompt.placeholder.summarizeComments")
+                      : commentCount() === 1
+                        ? language.t("prompt.placeholder.summarizeComment")
+                        : language.t("prompt.placeholder.normal")}
+                </div>
+              </Show>
+            </div>
             <div
               classList={{
-                "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!": true,
-                // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
-                hidden: zen(),
-                // Mobile: hidden unless the chevron expands it. Desktop always shows.
-                "hidden dock-wide:flex": !zen() && !dockInfoOpen(),
+                // Mobile stacks so the dock info line (when expanded) sits above the
+                // flat button row; desktop keeps them side by side.
+                "flex flex-col dock-wide:flex-row dock-wide:items-center dock-wide:justify-between gap-2": true,
+                // Default: the button row sits below the input. The mobile pt-2
+                // mirrors the editor's own pt-2 (symmetric space above/below the
+                // text), and pb-1.5 keeps the buttons off the bottom border. On
+                // mobile this holds in zen too, giving the same two-row layout as
+                // the collapsed dock.
+                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:py-1.5": !zen(),
+                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:pb-0": zen(),
+                // Desktop zen keeps the original single row: buttons sit at the
+                // input's right edge (the mobile stack still applies below md).
+                "dock-wide:shrink-0 dock-wide:px-2 dock-wide:pt-0 dock-wide:pb-0": zen(),
               }}
             >
-              {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
+              <div
+                classList={{
+                  "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!": true,
+                  // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
+                  hidden: zen(),
+                  // Mobile: hidden unless the chevron expands it. Desktop always shows.
+                  "hidden dock-wide:flex": !zen() && !dockInfoOpen(),
+                }}
+              >
+                {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
                 which is now the single busy cue in both modes. Kept (gated false,
                 not deleted) so it can be restored by dropping the `false &&`. */}
-              <Show when={false && working()}>
-                {/* Busy indicator: the spinner sits ON TOP of a soft, diffuse
+                <Show when={false && working()}>
+                  {/* Busy indicator: the spinner sits ON TOP of a soft, diffuse
                   glow that pulses behind it. Base tint follows the three-state
                   table (agent when own turn, task accent when child-only); when
                   BOTH run, a task-accent copy of both layers cross-fades over the
                   agent base so the tint oscillates between the two colors. */}
-                <span class="dock-working-indicator mr-2" style={{ "--dock-glow-tint": baseTint() }}>
-                  <span data-slot="dock-working-glow" class="dock-working-glow" />
-                  <Show when={mixing()}>
-                    <span data-slot="dock-working-glow" class="dock-working-glow dock-working-glow-task" />
-                  </Show>
-                  <Spinner class="dock-working-spinner" style={{ color: baseTint() }} />
-                  <Show when={mixing()}>
-                    <Spinner class="dock-working-spinner dock-working-spinner-task" />
-                  </Show>
-                </span>
-              </Show>
-              <Switch>
-                <Match when={store.mode === "shell"}>
-                  <div class="flex items-center gap-2 px-2 h-6" data-blocked={busy().busySelf ? "true" : undefined}>
-                    <Icon
-                      name="console"
-                      size="small"
-                      class={busy().busySelf ? "text-icon-weak" : "text-icon-primary"}
-                    />
-                    <span class={`text-12-regular ${busy().busySelf ? "text-text-weak" : "text-text-primary"}`}>
-                      {language.t("prompt.mode.shell")}
-                    </span>
-                    <Show when={busy().busySelf}>
-                      <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.blocked")}</span>
+                  <span class="dock-working-indicator mr-2" style={{ "--dock-glow-tint": baseTint() }}>
+                    <span data-slot="dock-working-glow" class="dock-working-glow" />
+                    <Show when={mixing()}>
+                      <span data-slot="dock-working-glow" class="dock-working-glow dock-working-glow-task" />
                     </Show>
-                    <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.exit")}</span>
-                  </div>
-                </Match>
-                <Match when={store.mode === "normal"}>
-                  <Show when={local.dock.isVisible("agent")}>
-                    <TooltipKeybind
-                      placement="top"
-                      gutter={8}
-                      title={language.t("command.agent.cycle")}
-                      keybind={command.keybind("agent.cycle")}
-                    >
-                      <Select
-                        options={local.agent.list().map((agent) => agent.name)}
-                        current={local.agent.current()?.name ?? ""}
-                        onSelect={local.agent.set}
-                        class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
-                        valueClass="truncate text-syntax-type"
-                        variant="ghost"
+                    <Spinner class="dock-working-spinner" style={{ color: baseTint() }} />
+                    <Show when={mixing()}>
+                      <Spinner class="dock-working-spinner dock-working-spinner-task" />
+                    </Show>
+                  </span>
+                </Show>
+                <Switch>
+                  <Match when={store.mode === "shell"}>
+                    <div class="flex items-center gap-2 px-2 h-6" data-blocked={busy().busySelf ? "true" : undefined}>
+                      <Icon
+                        name="console"
+                        size="small"
+                        class={busy().busySelf ? "text-icon-weak" : "text-icon-primary"}
                       />
-                    </TooltipKeybind>
-                  </Show>
-                  <Show when={local.dock.isVisible("model")}>
+                      <span class={`text-12-regular ${busy().busySelf ? "text-text-weak" : "text-text-primary"}`}>
+                        {language.t("prompt.mode.shell")}
+                      </span>
+                      <Show when={busy().busySelf}>
+                        <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.blocked")}</span>
+                      </Show>
+                      <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.exit")}</span>
+                    </div>
+                  </Match>
+                  <Match when={store.mode === "normal"}>
                     <Show when={local.dock.isVisible("agent")}>
-                      <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                      <TooltipKeybind
+                        placement="top"
+                        gutter={8}
+                        title={language.t("command.agent.cycle")}
+                        keybind={command.keybind("agent.cycle")}
+                      >
+                        <Select
+                          options={local.agent.list().map((agent) => agent.name)}
+                          current={local.agent.current()?.name ?? ""}
+                          onSelect={local.agent.set}
+                          class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
+                          valueClass="truncate text-syntax-type"
+                          variant="ghost"
+                        />
+                      </TooltipKeybind>
                     </Show>
-                    <Show
-                      when={providers.paid().length > 0}
-                      fallback={
+                    <Show when={local.dock.isVisible("model")}>
+                      <Show when={local.dock.isVisible("agent")}>
+                        <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                      </Show>
+                      <Show
+                        when={providers.paid().length > 0}
+                        fallback={
+                          <TooltipKeybind
+                            placement="top"
+                            gutter={8}
+                            title={language.t("command.model.choose")}
+                            keybind={command.keybind("model.choose")}
+                          >
+                            <Button
+                              as="div"
+                              variant="ghost"
+                              class="min-w-0 max-w-[240px]"
+                              onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                            >
+                              <Show when={local.model.current()?.provider?.id}>
+                                <ProviderIcon
+                                  id={local.model.current()!.provider.id as IconName}
+                                  class="size-4 shrink-0 mr-1 text-text-weak"
+                                />
+                              </Show>
+                              <span class="truncate" style={{ color: "var(--model)" }}>
+                                {local.model.current()?.name ?? language.t("dialog.model.select.title")}
+                              </span>
+                            </Button>
+                          </TooltipKeybind>
+                        }
+                      >
                         <TooltipKeybind
                           placement="top"
                           gutter={8}
                           title={language.t("command.model.choose")}
                           keybind={command.keybind("model.choose")}
                         >
-                          <Button
-                            as="div"
-                            variant="ghost"
-                            class="min-w-0 max-w-[240px]"
-                            onClick={() => dialog.show(() => <DialogSelectModelUnpaid />)}
+                          <ModelSelectorPopover
+                            triggerAs={Button}
+                            triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
                           >
                             <Show when={local.model.current()?.provider?.id}>
                               <ProviderIcon
@@ -2485,353 +2510,343 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                             <span class="truncate" style={{ color: "var(--model)" }}>
                               {local.model.current()?.name ?? language.t("dialog.model.select.title")}
                             </span>
-                          </Button>
+                            <Show when={local.model.pendingModel()}>
+                              <span
+                                class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
+                                title={language.t("model.pending")}
+                              />
+                            </Show>
+                          </ModelSelectorPopover>
                         </TooltipKeybind>
-                      }
-                    >
+                      </Show>
+                    </Show>
+                    <Show when={local.dock.isVisible("variant") && local.model.variant.list().length > 0}>
+                      <Show when={local.dock.isVisible("agent") || local.dock.isVisible("model")}>
+                        <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
+                      </Show>
                       <TooltipKeybind
                         placement="top"
                         gutter={8}
-                        title={language.t("command.model.choose")}
-                        keybind={command.keybind("model.choose")}
+                        title={language.t("command.model.variant.cycle")}
+                        keybind={command.keybind("model.variant.cycle")}
                       >
-                        <ModelSelectorPopover
-                          triggerAs={Button}
-                          triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
-                        >
-                          <Show when={local.model.current()?.provider?.id}>
-                            <ProviderIcon
-                              id={local.model.current()!.provider.id as IconName}
-                              class="size-4 shrink-0 mr-1 text-text-weak"
-                            />
-                          </Show>
-                          <span class="truncate" style={{ color: "var(--model)" }}>
-                            {local.model.current()?.name ?? language.t("dialog.model.select.title")}
-                          </span>
-                          <Show when={local.model.pendingModel()}>
+                        <span class="inline-flex items-center">
+                          <Select
+                            options={["default", ...local.model.variant.list()]}
+                            current={local.model.variant.current() ?? "default"}
+                            label={(v) => (v === "default" ? language.t("common.default") : v)}
+                            onSelect={(v) => local.model.variant.set(v === "default" ? undefined : v)}
+                            class="capitalize max-w-[120px]"
+                            valueClass="truncate text-syntax-constant"
+                            variant="ghost"
+                          />
+                          <Show when={local.model.pendingVariant()}>
                             <span
                               class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
                               title={language.t("model.pending")}
                             />
                           </Show>
-                        </ModelSelectorPopover>
+                        </span>
                       </TooltipKeybind>
                     </Show>
-                  </Show>
-                  <Show when={local.dock.isVisible("variant") && local.model.variant.list().length > 0}>
-                    <Show when={local.dock.isVisible("agent") || local.dock.isVisible("model")}>
-                      <span class="mx-1.5 inline-block size-[4px] rounded-full border border-text-weaker align-middle" />
-                    </Show>
-                    <TooltipKeybind
-                      placement="top"
-                      gutter={8}
-                      title={language.t("command.model.variant.cycle")}
-                      keybind={command.keybind("model.variant.cycle")}
+                  </Match>
+                </Switch>
+                <Show when={store.mode === "normal" && local.dock.isVisible("cwd")}>
+                  <span class="inline-flex min-w-0 items-center text-12-regular leading-tight">
+                    <Show
+                      when={
+                        local.dock.isVisible("agent") ||
+                        local.dock.isVisible("model") ||
+                        (local.dock.isVisible("variant") && local.model.variant.list().length > 0)
+                      }
                     >
-                      <span class="inline-flex items-center">
-                        <Select
-                          options={["default", ...local.model.variant.list()]}
-                          current={local.model.variant.current() ?? "default"}
-                          label={(v) => (v === "default" ? language.t("common.default") : v)}
-                          onSelect={(v) => local.model.variant.set(v === "default" ? undefined : v)}
-                          class="capitalize max-w-[120px]"
-                          valueClass="truncate text-syntax-constant"
-                          variant="ghost"
-                        />
-                        <Show when={local.model.pendingVariant()}>
-                          <span
-                            class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
-                            title={language.t("model.pending")}
-                          />
-                        </Show>
-                      </span>
-                    </TooltipKeybind>
-                  </Show>
-                </Match>
-              </Switch>
-              <Show when={store.mode === "normal" && local.dock.isVisible("cwd")}>
-                <span class="inline-flex min-w-0 items-center text-12-regular leading-tight">
-                  <Show
-                    when={
-                      local.dock.isVisible("agent") ||
-                      local.dock.isVisible("model") ||
-                      (local.dock.isVisible("variant") && local.model.variant.list().length > 0)
-                    }
-                  >
-                    <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
-                  </Show>
-                  <span
-                    class="truncate-start [unicode-bidi:plaintext] min-w-0"
-                    style={{ color: "var(--syntax-string)" }}
-                  >
-                    {dir()}
+                      <span class="mx-1.5 inline-block size-[4px] shrink-0 rounded-full border border-text-weaker align-middle" />
+                    </Show>
+                    <span
+                      class="truncate-start [unicode-bidi:plaintext] min-w-0"
+                      style={{ color: "var(--syntax-string)" }}
+                    >
+                      {dir()}
+                    </span>
+                    <Show when={local.dock.isVisible("branch") && sync.data.vcs?.branch}>
+                      {(branch) => (
+                        <span
+                          class="ml-1.5 inline-flex shrink-0 items-center gap-1 [&_[data-component=icon]]:!text-current"
+                          style={{ color: "var(--branch)" }}
+                        >
+                          <Icon name="branch" class="size-3.5" />
+                          <span class="truncate">{branch()}</span>
+                        </span>
+                      )}
+                    </Show>
                   </span>
-                  <Show when={local.dock.isVisible("branch") && sync.data.vcs?.branch}>
-                    {(branch) => (
-                      <span
-                        class="ml-1.5 inline-flex shrink-0 items-center gap-1 [&_[data-component=icon]]:!text-current"
-                        style={{ color: "var(--branch)" }}
-                      >
-                        <Icon name="branch" class="size-3.5" />
-                        <span class="truncate">{branch()}</span>
-                      </span>
-                    )}
-                  </Show>
-                </span>
-              </Show>
-            </div>
-            <div class="flex items-center justify-between flex-1 py-1 dock-wide:flex-none dock-wide:justify-end dock-wide:gap-1 shrink-0">
-              {/* Mobile only: grabber toggles the dock info line + chip row
+                </Show>
+              </div>
+              <div class="flex items-center justify-between flex-1 py-1 dock-wide:flex-none dock-wide:justify-end dock-wide:gap-1 shrink-0">
+                {/* Mobile only: grabber toggles the dock info line + chip row
                 together (both collapsed by default). Outward arrows = expand;
                 inward arrows = collapse. */}
-              <Show when={store.mode === "normal" && !zen()}>
-                <Tooltip placement="top" value={dockInfoOpen() ? "Hide session info" : "Show session info"}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class={`dock-wide:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
-                    onClick={() => setDockInfoOpen((v) => !v)}
-                    aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
-                    aria-expanded={dockInfoOpen()}
-                  >
-                    <Icon name={dockInfoOpen() ? "chevron-grabber-inward" : "chevron-grabber-vertical"} size="medium" />
-                  </Button>
-                </Tooltip>
-              </Show>
-              {/* Customize configures the dock info line + chip row, so it's only
+                <Show when={store.mode === "normal" && !zen()}>
+                  <Tooltip placement="top" value={dockInfoOpen() ? "Hide session info" : "Show session info"}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class={`dock-wide:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
+                      onClick={() => setDockInfoOpen((v) => !v)}
+                      aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
+                      aria-expanded={dockInfoOpen()}
+                    >
+                      <Icon
+                        name={dockInfoOpen() ? "chevron-grabber-inward" : "chevron-grabber-vertical"}
+                        size="medium"
+                      />
+                    </Button>
+                  </Tooltip>
+                </Show>
+                {/* Customize configures the dock info line + chip row, so it's only
                 useful when those are visible. On mobile it hides while collapsed
                 (a display:none span leaves no flex slot, so the row still spreads
                 evenly); it's always present on desktop. */}
-              <Show when={store.mode === "normal" && !zen()}>
-                <span
-                  classList={{
-                    contents: dockInfoOpen(),
-                    "hidden dock-wide:contents": !dockInfoOpen(),
-                  }}
-                >
-                  <Tooltip placement="top" value="Customize fields">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"} items-center justify-center`}
-                      onClick={() => dialog.show(() => <DialogDock />)}
-                      aria-label="Customize fields"
-                    >
-                      <Icon name="sliders" size="medium" />
-                    </Button>
-                  </Tooltip>
-                </span>
-              </Show>
-              <Show
-                when={
-                  local.dock.isVisible("auto-accept") && permission.permissionsEnabled() && params.id && !zen()
-                }
-              >
-                <span class="contents">
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={8}
-                    title={language.t("command.permissions.autoaccept.enable")}
-                    keybind={command.keybind("permissions.autoaccept")}
+                <Show when={store.mode === "normal" && !zen()}>
+                  <span
+                    classList={{
+                      contents: dockInfoOpen(),
+                      "hidden dock-wide:contents": !dockInfoOpen(),
+                    }}
                   >
-                    <Button
-                      variant="ghost"
-                      onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                      classList={{
-                        "flex size-6 any-pointer-coarse:size-11 any-pointer-coarse:[&_[data-component=icon]]:!size-6 items-center justify-center": true,
-                        "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
-                        "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
-                      }}
-                      aria-label={
-                        permission.isAutoAccepting(params.id!, sdk.directory)
-                          ? language.t("command.permissions.autoaccept.disable")
-                          : language.t("command.permissions.autoaccept.enable")
-                      }
-                      aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
+                    <Tooltip placement="top" value="Customize fields">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"} items-center justify-center`}
+                        onClick={() => dialog.show(() => <DialogDock />)}
+                        aria-label="Customize fields"
+                      >
+                        <Icon name="sliders" size="medium" />
+                      </Button>
+                    </Tooltip>
+                  </span>
+                </Show>
+                <Show
+                  when={local.dock.isVisible("auto-accept") && permission.permissionsEnabled() && params.id && !zen()}
+                >
+                  <span class="contents">
+                    <TooltipKeybind
+                      placement="top"
+                      gutter={8}
+                      title={language.t("command.permissions.autoaccept.enable")}
+                      keybind={command.keybind("permissions.autoaccept")}
                     >
-                      <Icon
-                        name="chevron-double-right"
-                        size="small"
-                        classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
-                      />
-                    </Button>
-                  </TooltipKeybind>
-                </span>
-              </Show>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPTED_FILE_TYPES.join(",")}
-                multiple
-                class="hidden"
-                onChange={(e) => {
-                  for (const file of Array.from(e.currentTarget.files ?? [])) addImageAttachment(file)
-                  e.currentTarget.value = ""
-                }}
-              />
-              {/* Mobile: contents so keyboard/mic/photo are flat siblings of the
+                      <Button
+                        variant="ghost"
+                        onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
+                        classList={{
+                          "flex size-6 any-pointer-coarse:size-11 any-pointer-coarse:[&_[data-component=icon]]:!size-6 items-center justify-center": true,
+                          "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
+                          "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                        }}
+                        aria-label={
+                          permission.isAutoAccepting(params.id!, sdk.directory)
+                            ? language.t("command.permissions.autoaccept.disable")
+                            : language.t("command.permissions.autoaccept.enable")
+                        }
+                        aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
+                      >
+                        <Icon
+                          name="chevron-double-right"
+                          size="small"
+                          classList={{
+                            "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                          }}
+                        />
+                      </Button>
+                    </TooltipKeybind>
+                  </span>
+                </Show>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_FILE_TYPES.join(",")}
+                  multiple
+                  class="hidden"
+                  onChange={(e) => {
+                    for (const file of Array.from(e.currentTarget.files ?? [])) addImageAttachment(file)
+                    e.currentTarget.value = ""
+                  }}
+                />
+                {/* Mobile: contents so keyboard/mic/photo are flat siblings of the
                 chevron/customize/send in one justify-between row. Desktop keeps
                 them grouped. */}
-              <div class="contents dock-wide:flex dock-wide:items-center dock-wide:gap-1 dock-wide:mr-1">
-                {/* Always shown on a coarse pointer (mobile), never gated on
+                <div class="contents dock-wide:flex dock-wide:items-center dock-wide:gap-1 dock-wide:mr-1">
+                  {/* Always shown on a coarse pointer (mobile), never gated on
                   keyboardWanted — so tapping it can't unmount it mid-gesture and
                   blur the editor on release. Stable element = stable focus. */}
-                <Show when={coarse()}>
-                  <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class={`${actionButton()} ${actionIcon()}`}
-                      // The app's one sanctioned press-time action: raising the
-                      // soft keyboard needs a focus() inside the live user
-                      // activation, which a click handler no longer holds.
-                      {...gestureAction(requestKeyboard)}
-                      aria-label={language.t("prompt.action.showKeyboard")}
-                    >
-                      <Icon name="keyboard" />
-                    </Button>
-                  </Tooltip>
-                </Show>
-                <Show when={store.mode === "normal"}>
-                  <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class={`${actionButton()} ${actionIcon()}`}
-                      onClick={() => fileInputRef.click()}
-                      aria-label={language.t("prompt.action.attachFile")}
-                    >
-                      <Icon name="photo" />
-                    </Button>
-                  </Tooltip>
-                </Show>
-                <Show when={store.mode === "normal" && dictation.supported()}>
-                  <Tooltip
-                    placement="top"
-                    value={
-                      store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
-                    }
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class={`${actionButton()} ${actionIcon()}`}
-                      data-dictation-toggle
-                      data-dictation-focused={dictationTargeted() ? "" : undefined}
-                      onClick={toggleDictation}
-                      aria-label={
+                  <Show when={coarse()}>
+                    <Tooltip placement="top" value={language.t("prompt.action.showKeyboard")}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class={`${actionButton()} ${actionIcon()}`}
+                        // The app's one sanctioned press-time action: raising the
+                        // soft keyboard needs a focus() inside the live user
+                        // activation, which a click handler no longer holds.
+                        {...gestureAction(requestKeyboard)}
+                        aria-label={language.t("prompt.action.showKeyboard")}
+                      >
+                        <Icon name="keyboard" />
+                      </Button>
+                    </Tooltip>
+                  </Show>
+                  <Show when={store.mode === "normal"}>
+                    <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class={`${actionButton()} ${actionIcon()}`}
+                        onClick={() => fileInputRef.click()}
+                        aria-label={language.t("prompt.action.attachFile")}
+                      >
+                        <Icon name="photo" />
+                      </Button>
+                    </Tooltip>
+                  </Show>
+                  <Show when={store.mode === "normal" && dictation.supported()}>
+                    <Tooltip
+                      placement="top"
+                      value={
                         store.dictating ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
                       }
-                      aria-pressed={store.dictating}
                     >
-                      <Icon
-                        name="mic"
-                        classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
-                        style={
-                          dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class={`${actionButton()} ${actionIcon()}`}
+                        data-dictation-toggle
+                        data-dictation-focused={dictationTargeted() ? "" : undefined}
+                        onClick={toggleDictation}
+                        aria-label={
+                          store.dictating
+                            ? language.t("prompt.action.dictateStop")
+                            : language.t("prompt.action.dictate")
                         }
-                      />
-                    </Button>
-                  </Tooltip>
-                </Show>
-              </div>
-              {/* Stop and Send are separate controls so both can show at once
+                        aria-pressed={store.dictating}
+                      >
+                        <Icon
+                          name="mic"
+                          classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
+                          style={
+                            dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
+                          }
+                        />
+                      </Button>
+                    </Tooltip>
+                  </Show>
+                </div>
+                {/* Stop and Send are separate controls so both can show at once
                 (busy WITH a draft): Stop for the running turn, Send to inject
                 the draft into it. Send is always rightmost; Stop sits left of
                 it when both are present. */}
-              <Show when={working()}>
-                <Tooltip
-                  placement="top"
-                  value={
-                    <div class="flex items-center gap-2">
-                      <span>{language.t("prompt.action.stop")}</span>
-                      <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
-                    </div>
-                  }
-                >
-                  <IconButton
-                    type="button"
-                    icon="stop"
-                    variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"}
-                    aria-label={language.t("prompt.action.stop")}
-                    onClick={abort}
-                  />
-                </Tooltip>
-              </Show>
-              <Show when={!working() || submittable()}>
-                <Tooltip
-                  placement="top"
-                  inactive={!submittable()}
-                  value={
-                    <div class="flex items-center gap-2">
-                      <span>{language.t("prompt.action.send")}</span>
-                      <Icon name="enter" size="small" class="text-icon-base" />
-                    </div>
-                  }
-                >
-                  <IconButton
-                    // The native form submit fires this on both a mouse click and
-                    // Enter, so handleSubmit needs no click handler of its own.
-                    // preserveFocus is what makes that viable on touch: without it
-                    // the press blurs the editor to dismiss the soft keyboard, and
-                    // on iOS that transition eats the tap before it becomes a click
-                    // (the two-tap send). Cancelling the focus shift leaves the
-                    // keyboard up and the click intact.
-                    type="submit"
-                    disabled={!submittable()}
-                    icon="arrow-up"
-                    variant="primary"
-                    class={companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"}
-                    aria-label={language.t("prompt.action.send")}
-                    {...preserveFocus()}
-                  />
-                </Tooltip>
-              </Show>
+                <Show when={working()}>
+                  <Tooltip
+                    placement="top"
+                    value={
+                      <div class="flex items-center gap-2">
+                        <span>{language.t("prompt.action.stop")}</span>
+                        <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
+                      </div>
+                    }
+                  >
+                    <IconButton
+                      type="button"
+                      icon="stop"
+                      variant="primary"
+                      class={
+                        companion()
+                          ? "size-[72px]! [&>[data-component=icon]]:!size-9"
+                          : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+                      }
+                      aria-label={language.t("prompt.action.stop")}
+                      onClick={abort}
+                    />
+                  </Tooltip>
+                </Show>
+                <Show when={!working() || submittable()}>
+                  <Tooltip
+                    placement="top"
+                    inactive={!submittable()}
+                    value={
+                      <div class="flex items-center gap-2">
+                        <span>{language.t("prompt.action.send")}</span>
+                        <Icon name="enter" size="small" class="text-icon-base" />
+                      </div>
+                    }
+                  >
+                    <IconButton
+                      // The native form submit fires this on both a mouse click and
+                      // Enter, so handleSubmit needs no click handler of its own.
+                      // preserveFocus is what makes that viable on touch: without it
+                      // the press blurs the editor to dismiss the soft keyboard, and
+                      // on iOS that transition eats the tap before it becomes a click
+                      // (the two-tap send). Cancelling the focus shift leaves the
+                      // keyboard up and the click intact.
+                      type="submit"
+                      disabled={!submittable()}
+                      icon="arrow-up"
+                      variant="primary"
+                      class={
+                        companion()
+                          ? "size-[72px]! [&>[data-component=icon]]:!size-9"
+                          : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+                      }
+                      aria-label={language.t("prompt.action.send")}
+                      {...preserveFocus()}
+                    />
+                  </Tooltip>
+                </Show>
+              </div>
             </div>
           </div>
-        </div>
-        <Show when={!zen()}>
-          <Show
-            when={!dockHidden()}
-            fallback={
-              <div class="border-t border-border-weak-base px-3 py-0.5 flex flex-row items-center justify-end">
-                <Tooltip value={language.t("dock.show")} placement="top" gutter={8}>
-                  <IconButton
-                    icon="arrow-up"
-                    variant="ghost"
-                    class="size-5 p-0"
-                    onClick={() => setDockHidden(false)}
-                    aria-label={language.t("dock.show")}
-                  />
-                </Tooltip>
-              </div>
-            }
-          >
-            {/* Chip row: on mobile the grabber collapses it with the info line
+          <Show when={!zen()}>
+            <Show
+              when={!dockHidden()}
+              fallback={
+                <div class="border-t border-border-weak-base px-3 py-0.5 flex flex-row items-center justify-end">
+                  <Tooltip value={language.t("dock.show")} placement="top" gutter={8}>
+                    <IconButton
+                      icon="arrow-up"
+                      variant="ghost"
+                      class="size-5 p-0"
+                      onClick={() => setDockHidden(false)}
+                      aria-label={language.t("dock.show")}
+                    />
+                  </Tooltip>
+                </div>
+              }
+            >
+              {/* Chip row: on mobile the grabber collapses it with the info line
                 (hidden unless dockInfoOpen); desktop always shows it. The pt-2
                 keeps the chips off the divider. Statusline + PromptActionBar are
                 direct children (their inner wrappers are display:contents on
                 mobile) so every chip group spreads evenly across the width with
                 no left/right split. */}
-            <div
-              classList={{
-                "border-t border-border-weak-base px-3 flex flex-row flex-wrap items-center justify-between gap-1.5": true,
-                "hidden dock-wide:flex": !dockInfoOpen(),
-                "pt-2 pb-0 dock-wide:py-1": true,
-              }}
-            >
-              {/* Statusline is runtime telemetry with nothing to show pre-turn;
+              <div
+                classList={{
+                  "border-t border-border-weak-base px-3 flex flex-row flex-wrap items-center justify-between gap-1.5": true,
+                  "hidden dock-wide:flex": !dockInfoOpen(),
+                  "pt-2 pb-0 dock-wide:py-1": true,
+                }}
+              >
+                {/* Statusline is runtime telemetry with nothing to show pre-turn;
                   the action-bar chips (MCP latch especially) matter on a
                   brand-new session, so only the left side gates on a session id. */}
-              <Show when={params.id}>
-                <Statusline />
-              </Show>
-              <PromptActionBar />
-            </div>
+                <Show when={params.id}>
+                  <Statusline />
+                </Show>
+                <PromptActionBar />
+              </div>
+            </Show>
           </Show>
-        </Show>
-      </form>
+        </form>
       </div>
     </div>
   )

@@ -294,4 +294,3 @@ export async function openProjectMenu(page: Page, projectSlug: string) {
   await page.mouse.move(x, y)
   return menu
 }
-

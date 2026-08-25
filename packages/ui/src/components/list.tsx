@@ -107,7 +107,9 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     // Safari lacks it, where a macrotask still breaks up the work.
     const idle = typeof window.requestIdleCallback === "function"
     const handle = idle ? window.requestIdleCallback(grow, { timeout: 200 }) : setTimeout(grow, 0)
-    onCleanup(() => (idle ? window.cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>)))
+    onCleanup(() =>
+      idle ? window.cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>),
+    )
   })
   // A row has to exist before it can be scrolled to or navigated onto, so any
   // row the list points at is mounted at once rather than waiting for the
