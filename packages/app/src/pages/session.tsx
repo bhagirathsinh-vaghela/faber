@@ -2305,7 +2305,11 @@ export default function Page() {
     // uncompensated, the pill flies way up. Add the offset so top/right land in
     // the layout-viewport coordinate space the fixed pill actually uses.
     const vv = window.visualViewport
-    setDockRect({ right: r.right + (vv?.offsetLeft ?? 0), top: r.top + (vv?.offsetTop ?? 0) })
+    const right = r.right + (vv?.offsetLeft ?? 0)
+    const top = r.top + (vv?.offsetTop ?? 0)
+    // Holding the pre-zen top keeps the pill under the pointer that pressed it;
+    // the slim zen dock would otherwise drop it ~80px mid-interaction.
+    setDockRect((prev) => ({ right, top: prev && layout.zen.opened() ? prev.top : top }))
   }
   createEffect(() => {
     // Depend on the triggers that move the box, then measure post-layout.
@@ -2339,7 +2343,9 @@ export default function Page() {
   const coarse = createCoarsePointer()
   const pillSize = () => (coarse() ? 56 : 52)
   const PILL_MARGIN = 16
-  const DRAG_THRESHOLD = 6
+  // Matches the platform touch slop (Android ~8dp, iOS ~10pt). Below it a thumb's
+  // normal wander during a tap reads as a drag, and the tap is silently dropped.
+  const DRAG_THRESHOLD = 10
   // Read a safe-area inset (exposed as a CSS var in index.css) as a number, so
   // a dragged pill can't be parked under the status bar / home indicator. 0 in
   // a normal browser.
@@ -2387,24 +2393,37 @@ export default function Page() {
   let dragged = false
   function startPillDrag(e: PointerEvent) {
     if (wide()) return
+    const pill = e.currentTarget as HTMLElement
     const startX = e.clientX
     const startY = e.clientY
     dragged = false
 
     const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return
       if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return
       dragged = true
       setDrag(clampPill(ev.clientX - pillSize() / 2, ev.clientY - pillSize() / 2))
     }
-    const up = () => {
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return
       document.removeEventListener("pointermove", move)
-      document.removeEventListener("pointerup", up)
+      document.removeEventListener("pointerup", end)
+      document.removeEventListener("pointercancel", end)
       const final = drag()
       setDrag(null)
       if (final) setPos(final)
+      // A canceled pointer delivers no click, so the suppression flag would
+      // outlive the gesture and swallow the next genuine tap.
+      if (ev.type === "pointercancel") dragged = false
     }
     document.addEventListener("pointermove", move)
-    document.addEventListener("pointerup", up)
+    document.addEventListener("pointerup", end)
+    // The browser cancels the stream when it claims the gesture for a scroll;
+    // without this the move listener keeps steering the pill off any later touch.
+    document.addEventListener("pointercancel", end)
+
+    // Throws on an inactive pointer, which must not strand the drag.
+    if (e.isTrusted) pill.setPointerCapture(e.pointerId)
   }
 
   return (
