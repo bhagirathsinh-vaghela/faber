@@ -86,6 +86,8 @@ import {
 } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
+import { probe } from "@/utils/transcript-probe"
+import { Visibility } from "@/utils/visibility"
 
 type DiffStyle = "unified" | "split"
 
@@ -1835,6 +1837,67 @@ export default function Page() {
   const [turnList, setTurnList] = createSignal<VirtualizerHandle | undefined>()
   const turnIndex = (messageID: string) => visibleUserMessages().findIndex((m) => m.id === messageID)
 
+  // The transcript's one invariant: turns in the store must reach the screen.
+  //
+  // The scroll range is estimated (itemSize above), and a real turn runs several
+  // times that, so the bottom the tail-follow loop pins to can sit far past where
+  // the measured content ends. The list still admits a row to its range and lays
+  // it out honestly — at an offset now outside the visible box, with the loop
+  // re-pinning every frame so no scroll gesture escapes. Measured on iPadOS
+  // against a ten-turn session: one row mounted, none of it overlapping the
+  // 1131px box, and a scrollTop write to 0 read back at 7183 a half-second on.
+  //
+  // The store is untouched throughout, which is why the dock keeps reporting
+  // token counts for a session that shows nothing. Checking the OUTCOME rather
+  // than any single cause covers the other paths that stale a measurement the
+  // same way — a display:none ancestor, or a backgrounded tab, either of which
+  // makes the list's own ResizeObserver drop the entries it needs.
+  const showing = () => {
+    const el = scroller
+    if (!el) return 0
+    const box = el.getBoundingClientRect()
+    if (box.height <= 0) return 0
+    let count = 0
+    for (const node of Array.from(document.querySelectorAll("[data-message-id]"))) {
+      const rect = node.getBoundingClientRect()
+      if (rect.bottom > box.top && rect.top < box.bottom) count += 1
+    }
+    return count
+  }
+
+  const reviveTranscript = () => {
+    const handle = turnList()
+    const el = scroller
+    if (!handle || !el) return
+
+    const turns = visibleUserMessages().length
+    if (turns === 0) return
+    if (el.clientHeight <= 0) return
+    if (showing() > 0) return
+
+    probe("revive", {
+      viewport: handle.viewportSize,
+      mounted: document.querySelectorAll("[data-message-id]").length,
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      turns,
+    })
+
+    // scrollToIndex re-derives the range from measured sizes, where a raw
+    // scrollTop write would land against the same estimate that put the row out
+    // of sight, and the tail-follow loop would drag it back regardless.
+    const target = activeMessage()?.id ?? visibleUserMessages().at(-1)?.id
+    if (!target) return
+    const index = turnIndex(target)
+    if (index < 0) return
+    handle.scrollToIndex(index, { align: following() ? "end" : "start" })
+
+    requestAnimationFrame(() =>
+      probe("revive.done", { showing: showing(), scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }),
+    )
+  }
+
   // True exactly when the turn list changed by gaining items at its head
   // (history load-earlier) within the same session: the previous head is still
   // present but an older message now precedes it. Message IDs sort by age.
@@ -1847,6 +1910,31 @@ export default function Page() {
     },
     { head: undefined, session: undefined, value: false },
   )
+
+  // Two frames, because one is not enough to tell a blank transcript from a
+  // pending one: virtua admits a row to its range in the frame after the box
+  // that sized it, and mounts it in the frame after that. Checking sooner reads
+  // a list that is merely mid-mount and repairs something that was never broken.
+  const checkTranscript = () => requestAnimationFrame(() => requestAnimationFrame(reviveTranscript))
+
+  // Everything that can leave the measurement stale converges on these: hiding
+  // or showing any ancestor resizes the scroller, the tab returning to the
+  // foreground restores the offsetParent whose absence dropped the entries, and
+  // a session switch rebuilds the list under a box it may never have measured.
+  createEffect(
+    on(
+      () => [params.id, visibleUserMessages().length, Visibility.hidden()],
+      () => {
+        if (Visibility.hidden()) return
+        checkTranscript()
+      },
+    ),
+  )
+
+  createResizeObserver(scrollerBox, (_, el) => {
+    if (el !== scrollerBox()) return
+    checkTranscript()
+  })
 
   createResizeObserver(
     () => promptDock,
