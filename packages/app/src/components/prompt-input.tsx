@@ -368,6 +368,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       editorRef.blur()
     })
   })
+  onMount(() => {
+    editorRef.addEventListener("click", (e) => {
+      const last = editorRef.lastChild
+      if (!last) return
+      const range = document.createRange()
+      range.selectNodeContents(last)
+      const textBottom = range.getBoundingClientRect().bottom
+      if (e.clientY > textBottom) placeCaret()
+    })
+  })
   // Mobile only: the dock's model/cwd/branch line collapses behind a chevron in
   // the button row so the footer stays compact; expanding it shows the line
   // above the buttons. Desktop always shows the line and has no chevron.
@@ -2084,6 +2094,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </Show>
         <form
           onSubmit={handleSubmit}
+          // Override user-select:none from ancestors so WebKit will paint the caret
+          style={{ "-webkit-user-select": "text", "user-select": "text" }}
           classList={{
             "group/prompt-input": true,
             "bg-surface-raised-stronger-non-alpha shadow-xs-border relative": true,
@@ -2264,6 +2276,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 }
                 contenteditable="true"
                 inputmode="text"
+                style={{ "-webkit-transform": "translateZ(0)", "-webkit-user-select": "text", "user-select": "text" }}
                 onInput={handleInput}
                 onPaste={handlePaste}
                 onCompositionStart={() => setComposing(true)}
