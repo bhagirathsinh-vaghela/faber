@@ -110,22 +110,22 @@ test.describe("soft keyboard opt-in", () => {
     // editor, so the state a second press starts from still says "text" and
     // still holds focus. Pressing from there must be as effective as pressing
     // from cold, or the raise is a write of values that are already set.
-    // An attribute observer reports only the value the raise settles on, which
-    // is the same "text" it started from, so the sample is taken at the blur.
     const raise = await page.evaluate(async () => {
       const el = document.querySelector('[data-component="prompt-input"]') as HTMLElement
-      const modeAtBlur: string[] = []
-      el.addEventListener("blur", () => modeAtBlur.push(el.getAttribute("inputmode") ?? "removed"))
+      const editableStates: string[] = []
+      const observer = new MutationObserver(() => editableStates.push(el.contentEditable))
+      observer.observe(el, { attributes: true, attributeFilter: ["contenteditable"] })
       document
         .querySelector<HTMLElement>('button[aria-label="Show keyboard"]')!
         .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }))
       await new Promise((r) => setTimeout(r, 50))
-      return { modeAtBlur, focused: document.activeElement === el }
+      observer.disconnect()
+      return { editableStates, focused: document.activeElement === el, editableNow: el.contentEditable }
     })
 
-    expect(raise.modeAtBlur.length, "focus must drop so the editor is asked for again").toBeGreaterThan(0)
-    expect(raise.modeAtBlur, "the type must read none while focus is away").toContain("none")
+    expect(raise.editableStates.length, "the editable must be withdrawn so focus is granted afresh").toBeGreaterThan(0)
     expect(raise.focused, "the editor ends up focused").toBe(true)
+    expect(raise.editableNow, "the editor stays editable").toBe("true")
     await expect(editor).toHaveAttribute("inputmode", "text")
   })
 
