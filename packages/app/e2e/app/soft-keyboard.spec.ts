@@ -74,6 +74,61 @@ test.describe("soft keyboard opt-in", () => {
     )
   })
 
+  test("a second tap on the button cannot take the keyboard back down", async ({ page, gotoSession }) => {
+    await gotoSession()
+
+    const editor = page.locator(promptSelector)
+    const button = page.locator(KEYBOARD_BUTTON)
+
+    await button.tap()
+    await expect(editor).toHaveAttribute("inputmode", "text")
+
+    // The editor must hold focus across every press of this button, including
+    // one whose action is declined as a duplicate.
+    await page.waitForTimeout(100)
+    await button.tap()
+    await page.waitForTimeout(300)
+
+    const stolen = await page.evaluate(
+      () => document.activeElement !== document.querySelector('[data-component="prompt-input"]'),
+    )
+    expect(stolen, "the editor must keep focus across a repeated press").toBe(false)
+    await expect(editor, "the keyboard must survive a repeated press").toHaveAttribute("inputmode", "text")
+  })
+
+  test("the button raises the keyboard again after a dismissal that kept focus", async ({ page, gotoSession }) => {
+    await gotoSession()
+
+    const editor = page.locator(promptSelector)
+    const button = page.locator(KEYBOARD_BUTTON)
+
+    await button.tap()
+    await expect(editor).toHaveAttribute("inputmode", "text")
+    await page.waitForTimeout(700)
+
+    // The keyboard's own hide key takes the keyboard without blurring the
+    // editor, so the state a second press starts from still says "text" and
+    // still holds focus. Pressing from there must be as effective as pressing
+    // from cold, or the raise is a write of values that are already set.
+    // An attribute observer reports only the value the raise settles on, which
+    // is the same "text" it started from, so the sample is taken at the blur.
+    const raise = await page.evaluate(async () => {
+      const el = document.querySelector('[data-component="prompt-input"]') as HTMLElement
+      const modeAtBlur: string[] = []
+      el.addEventListener("blur", () => modeAtBlur.push(el.getAttribute("inputmode") ?? "removed"))
+      document
+        .querySelector<HTMLElement>('button[aria-label="Show keyboard"]')!
+        .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }))
+      await new Promise((r) => setTimeout(r, 50))
+      return { modeAtBlur, focused: document.activeElement === el }
+    })
+
+    expect(raise.modeAtBlur.length, "focus must drop so the editor is asked for again").toBeGreaterThan(0)
+    expect(raise.modeAtBlur, "the type must read none while focus is away").toContain("none")
+    expect(raise.focused, "the editor ends up focused").toBe(true)
+    await expect(editor).toHaveAttribute("inputmode", "text")
+  })
+
   test("leaving the editor restores the dictation-first default", async ({ page, gotoSession }) => {
     await gotoSession()
 

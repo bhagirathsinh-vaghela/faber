@@ -45,10 +45,13 @@ export function gestureAction(action: (e: Event) => void) {
   let last = 0
   return {
     onPointerDown: (e: PointerEvent) => {
+      // Ordered ahead of the latch because a dropped press still has a release
+      // to suppress: the synthesized mousedown it would otherwise reach carries
+      // a focus shift, undoing whatever the earlier press focused.
+      e.preventDefault()
       const now = e.timeStamp || performance.now()
       if (now - last < 350) return
       last = now
-      e.preventDefault()
       action(e)
     },
     onPointerUp: (e: PointerEvent) => e.preventDefault(),

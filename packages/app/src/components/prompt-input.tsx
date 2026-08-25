@@ -401,6 +401,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // raise from the element being focused, so bouncing through an input left at
     // the default would ask for one keyboard and then another in the same tick,
     // which is the flash-then-dismiss.
+    //
+    // Every raise stands the editor down before building it back up, because
+    // the dismissals differ in what they leave behind. Tapping away blurs the
+    // editor, but the keyboard's own hide key does not: it takes the keyboard
+    // and leaves the editor focused, still asking for one. Re-applying the same
+    // focus and the same type from that state writes nothing that was not
+    // already true, so nothing is read and no keyboard returns. Going through
+    // "none" and through a blur makes both a genuine change from wherever the
+    // last dismissal left things.
+    editorRef.inputMode = "none"
+    editorRef.blur()
+
     editorRef.inputMode = "text"
     kbdBounceRef.focus()
     editorRef.focus()
