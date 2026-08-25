@@ -2263,9 +2263,7 @@ export default function Page() {
     const vv = window.visualViewport
     const right = r.right + (vv?.offsetLeft ?? 0)
     const top = r.top + (vv?.offsetTop ?? 0)
-    // Holding the pre-zen top keeps the pill under the pointer that pressed it;
-    // the slim zen dock would otherwise drop it ~80px mid-interaction.
-    setDockRect((prev) => ({ right, top: prev && layout.zen.opened() ? prev.top : top }))
+    setDockRect({ right, top })
   }
   createEffect(() => {
     // Depend on the triggers that move the box, then measure post-layout.

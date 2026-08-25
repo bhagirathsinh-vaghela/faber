@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useLayout } from "@/context/layout"
 import { useLanguage } from "@/context/language"
@@ -41,12 +41,11 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
 
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
+  // A press that toggles zen reshapes the dock under the pointer, which would
+  // otherwise slide the pill away mid-press and land the release elsewhere.
+  const [held, setHeld] = createSignal<{ x: number; y: number } | null>(null)
 
-  // Anchor priority: a mobile drag override wins; otherwise pin to the anchor's
-  // top-right corner. Null until the first measurement lands, or with no anchor.
-  const coords = createMemo(() => {
-    const dragged = drag() ?? pos()
-    if (dragged) return dragged
+  const anchored = createMemo(() => {
     const rect = props.anchor?.()
     if (!rect) return null
     return {
@@ -55,12 +54,36 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
     }
   })
 
+  // Only a coarse-pointer layout can drag, so a position carried into any other
+  // mode would strand the pill away from the corner with no way to put it back.
+  createEffect(
+    on(wide, () => {
+      setDrag(null)
+      setPos(null)
+    }),
+  )
+
+  // Anchor priority: a mobile drag override wins, then a held press, then the
+  // live anchor. Null until the first measurement, or with no anchor at all.
+  const coords = createMemo(() => (wide() ? held() ?? anchored() : drag() ?? pos() ?? held() ?? anchored()))
+
   // Pointer events TRACK the drag; they never toggle. The toggle is the click,
   // so the pill activates like every other control (and stays reachable by
   // keyboard and screen reader). A drag past the threshold suppresses that
   // click, which is what separates "moved the pill" from "tapped the pill".
   let dragged = false
   function start(e: PointerEvent) {
+    // A desktop press reshapes the dock too, so the hold is taken for every
+    // pointer, not just the ones that can drag.
+    setHeld(anchored())
+    const release = () => {
+      setHeld(null)
+      document.removeEventListener("pointerup", release)
+      document.removeEventListener("pointercancel", release)
+    }
+    document.addEventListener("pointerup", release)
+    document.addEventListener("pointercancel", release)
+
     if (wide()) return
     const pill = e.currentTarget as HTMLElement
     const startX = e.clientX
