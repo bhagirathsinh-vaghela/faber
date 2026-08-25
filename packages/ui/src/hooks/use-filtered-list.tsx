@@ -18,6 +18,12 @@ export interface FilteredListProps<T> {
   groupBy?: (x: T) => string
   sortBy?: (a: T, b: T) => number
   sortGroupsBy?: (a: { category: string; items: T[] }, b: { category: string; items: T[] }) => number
+  // Categories in the order they must always render, whatever the filter
+  // matches. Groups are otherwise ordered by first appearance, so a match
+  // scoring higher in a later section would reorder the sections under the
+  // user. A listed category holds its slot while empty; anything unlisted
+  // follows in encounter order.
+  groups?: string[]
   onSelect?: (value: T | undefined, index: number) => void
   noInitialSelection?: boolean
   preserveActive?: boolean
@@ -26,7 +32,7 @@ export interface FilteredListProps<T> {
 export function useFilteredList<T>(props: FilteredListProps<T>) {
   const [store, setStore] = createStore<{ filter: string }>({ filter: "" })
 
-  type Group = { category: string; items: [T, ...T[]] }
+  type Group = { category: string; items: T[] }
   const empty: Group[] = []
 
   // A category keeps ONE group object, its items behind a signal. Handing the
@@ -46,7 +52,7 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
       const group = {
         category,
         get items() {
-          return read() as [T, ...T[]]
+          return read()
         },
       } as Group
       cache.set(category, { group, set: (value) => write(() => value) })
@@ -83,6 +89,18 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
       groupBy((x) => (props.groupBy ? props.groupBy(x) : "")),
       entries(),
       map(([k, v]) => ({ category: k, items: props.sortBy ? v.sort(props.sortBy) : v })),
+      (found) => {
+        const pinned = props.groups
+        if (!pinned) return found
+        const rest = found.filter((group) => !pinned.includes(group.category))
+        // An empty pinned category still renders, so a filter that matches
+        // nothing in a section reads as that section having no match rather
+        // than as the section having disappeared.
+        return [
+          ...pinned.map((category) => found.find((group) => group.category === category) ?? { category, items: [] }),
+          ...rest,
+        ]
+      },
       (result) => (props.sortGroupsBy ? result.sort(props.sortGroupsBy) : result),
       stabilize,
     )

@@ -361,7 +361,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
       </Show>
       <div ref={setScrollRef} data-slot="list-scroll">
         <Show
-          when={flat().length > 0 || showAdd()}
+          when={flat().length > 0 || showAdd() || props.groups?.length}
           fallback={
             <div data-slot="list-empty-state">
               <div data-slot="list-message">{emptyMessage()}</div>
@@ -386,6 +386,9 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                     <GroupHeader category={group.category} />
                   </Show>
                   <div data-slot="list-items">
+                    <Show when={items().length === 0}>
+                      <div data-slot="list-group-empty">{i18n.t("ui.list.empty")}</div>
+                    </Show>
                     <For each={visible()}>
                       {(item, i) => {
                         const showDivider = () =>

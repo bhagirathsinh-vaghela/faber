@@ -248,6 +248,19 @@
         align-items: flex-start;
         align-self: stretch;
 
+        [data-slot="list-group-empty"] {
+          padding: 6px 8px;
+          color: var(--text-weak);
+
+          /* text-14-regular */
+          font-family: var(--font-family-sans);
+          font-size: 14px;
+          font-style: normal;
+          font-weight: var(--font-weight-regular);
+          line-height: var(--line-height-large);
+          letter-spacing: var(--letter-spacing-normal);
+        }
+
         /* Row wrapper used when the list has per-item actions: the selectable
            button and the action controls sit side by side as siblings. The
            active highlight and divider live on the row so they span both. */

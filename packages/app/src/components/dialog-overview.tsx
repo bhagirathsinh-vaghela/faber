@@ -275,6 +275,9 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   let ref: ListRef | undefined
   const [highlight, setHighlight] = createSignal(initial)
 
+  const attentionGroup = () => language.t("home.attention")
+  const recentGroup = () => language.t("home.recentSessions")
+
   // A stop key fires the highlighted row's stop button: a full stop, matching
   // the session header's stopSession (abort the running turn AND drop the cache
   // ping). Scoped to the overview: the listener lives only while this component
@@ -343,9 +346,8 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
         items={items}
         key={(row) => row.sessionID}
         filterKeys={["title", "directory"]}
-        groupBy={(row) =>
-          row.section === "attention" ? language.t("home.attention") : language.t("home.recentSessions")
-        }
+        groupBy={(row) => (row.section === "attention" ? attentionGroup() : recentGroup())}
+        groups={[attentionGroup(), recentGroup()]}
         onSelect={(row) => {
           if (row) open(row)
         }}
