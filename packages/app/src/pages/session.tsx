@@ -54,7 +54,6 @@ import { checksum, base64Encode } from "@opencode-ai/util/encode"
 import { findLast } from "@opencode-ai/util/array"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectFile } from "@/components/dialog-select-file"
-import { DialogOverview } from "@/components/dialog-overview"
 import FileTree from "@/components/file-tree"
 import { DialogSelectModel } from "@/components/dialog-select-model"
 import { DialogSettings } from "@/components/dialog-settings"
@@ -931,34 +930,6 @@ export default function Page() {
       keybind: "mod+p",
       slash: "open",
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
-    },
-    {
-      id: "home.open",
-      title: language.t("command.home.open"),
-      category: language.t("command.category.session"),
-      keybind: "alt+h",
-      onSelect: () => navigate("/"),
-    },
-    {
-      id: "overview.open",
-      title: language.t("command.overview.open"),
-      category: language.t("command.category.session"),
-      keybind: "mod+k",
-      onSelect: () => dialog.show(() => <DialogOverview />),
-    },
-    {
-      id: "overview.attention",
-      title: language.t("command.overview.attention"),
-      category: language.t("command.category.session"),
-      keybind: "ctrl+tab",
-      onSelect: () => dialog.show(() => <DialogOverview advance switcher />),
-    },
-    {
-      id: "overview.attention.reverse",
-      title: language.t("command.overview.attention.reverse"),
-      category: language.t("command.category.session"),
-      keybind: "ctrl+shift+tab",
-      onSelect: () => dialog.show(() => <DialogOverview switcher />),
     },
     {
       id: "tab.close",

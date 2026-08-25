@@ -67,6 +67,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
 import { DialogSelectProvider } from "@/components/dialog-select-provider"
 import { DialogSelectServer } from "@/components/dialog-select-server"
+import { DialogOverview } from "@/components/dialog-overview"
 import { DialogSettings } from "@/components/dialog-settings"
 import { useCommand, type CommandOption } from "@/context/command"
 import { ConstrainDragXAxis } from "@/utils/solid-dnd"
@@ -1115,6 +1116,39 @@ export default function Layout(props: ParentProps) {
         },
       })
     }
+
+    // Registered here rather than in the session page so they reach every
+    // route: a page that is not a session still needs a way back out of it.
+    commands.push(
+      {
+        id: "home.open",
+        title: language.t("command.home.open"),
+        category: language.t("command.category.session"),
+        keybind: "alt+h",
+        onSelect: () => navigate("/"),
+      },
+      {
+        id: "overview.open",
+        title: language.t("command.overview.open"),
+        category: language.t("command.category.session"),
+        keybind: "mod+k",
+        onSelect: () => dialog.show(() => <DialogOverview />),
+      },
+      {
+        id: "overview.attention",
+        title: language.t("command.overview.attention"),
+        category: language.t("command.category.session"),
+        keybind: "ctrl+tab",
+        onSelect: () => dialog.show(() => <DialogOverview advance switcher />),
+      },
+      {
+        id: "overview.attention.reverse",
+        title: language.t("command.overview.attention.reverse"),
+        category: language.t("command.category.session"),
+        keybind: "ctrl+shift+tab",
+        onSelect: () => dialog.show(() => <DialogOverview switcher />),
+      },
+    )
 
     commands.push({
       id: "theme.scheme.cycle",
