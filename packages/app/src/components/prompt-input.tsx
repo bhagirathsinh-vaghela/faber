@@ -371,8 +371,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // above the buttons. Desktop always shows the line and has no chevron.
   const [dockInfoOpen, setDockInfoOpen] = createSignal(false)
   // Set while a keyboard request is in flight so the transient blur below does
-  // not trip the blur-reset effect and clobber the opt-in we just set.
-  let requesting = false
+  // not trip the blur-reset effect and clobber the opt-in we just set. A signal
+  // rather than a flag: the reset must re-evaluate when this clears, or a blur
+  // that arrived during the request is swallowed and never applied.
+  const [requesting, setRequesting] = createSignal(false)
+  let requestTimer: ReturnType<typeof setTimeout> | undefined
   const placeCaret = () => setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current()))
   // Raise the soft keyboard. MUST run synchronously inside the triggering
   // pointer gesture: both iOS and Android only honor a programmatic focus() as
@@ -381,7 +384,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // Android refuses the keyboard and iOS is unreliable — everything here stays
   // in the same tick.
   const requestKeyboard = () => {
-    requesting = true
+    setRequesting(true)
     setKeyboardWanted(true)
     // Raising the soft keyboard reliably on BOTH iOS and Android requires a
     // focus that (a) is synchronous inside the user gesture — any async hop
@@ -389,10 +392,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // focus with inputmode already "text". iOS Safari reads inputmode only at
     // focus time and never re-reads it while an element stays focused, so
     // flipping our editor's inputmode "none"->"text" while it is already focused
-    // does nothing (the hit-or-miss failure). The fix (Ben Nadel / Nike
-    // technique): set inputmode first, bounce focus through a hidden text input,
-    // then synchronously refocus the editor — iOS now re-reads inputmode="text"
-    // at this new focus and raises the text keyboard. All in one gesture tick.
+    // does nothing. So set inputmode first, bounce focus through a hidden text
+    // input, then synchronously refocus the editor — iOS re-reads
+    // inputmode="text" at this new focus and raises the text keyboard, all in
+    // one gesture tick.
+    //
+    // The bounce input carries the inputmode too. iOS decides which keyboard to
+    // raise from the element being focused, so bouncing through an input left at
+    // the default would ask for one keyboard and then another in the same tick,
+    // which is the flash-then-dismiss.
     editorRef.inputMode = "text"
     kbdBounceRef.focus()
     editorRef.focus()
@@ -400,9 +408,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // Hold `requesting` past the current tick so the blur-reset effect, which
     // flushes after this returns, can't observe the transient !isFocused from
     // the bounce and clear keyboardWanted (which would revert inputmode and drop
-    // the keyboard). Clear on the next task, after focus has settled.
-    setTimeout(() => (requesting = false))
+    // the keyboard). The window spans the OS keyboard animation, not just the
+    // next task: iOS emits a second blur when the keyboard finishes rising, and
+    // a same-tick release leaves that one to tear down what this just raised.
+    clearTimeout(requestTimer)
+    requestTimer = setTimeout(() => setRequesting(false), 600)
   }
+  onCleanup(() => clearTimeout(requestTimer))
 
   const addImageAttachment = async (file: File) => {
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) return
@@ -525,7 +537,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // Blur resets the keyboard opt-in so the next focus is suppressed again
   // (dictation-first default). Focusing to type still needs the toggle.
   createEffect(() => {
-    if (!isFocused() && !requesting) setKeyboardWanted(false)
+    if (!isFocused() && !requesting()) setKeyboardWanted(false)
   })
 
   type AtOption =
@@ -2261,16 +2273,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </For>
           </div>
         </Show>
-        {/* Focus bounce target for requestKeyboard. Must stay focusable, so it
-            can't be display:none/visibility:hidden — park it off-screen. tabindex
-            -1 and aria-hidden keep it out of tab order and the a11y tree. */}
+        {/* Focus bounce target for requestKeyboard. It has to be a real, rendered,
+            on-screen input that mirrors the editor's inputmode, because only a
+            genuinely focusable element produces the fresh focus the bounce is
+            for; every cheaper way to hide it (display:none, visibility:hidden,
+            a negative offset) stops that focus counting and silently costs the
+            keyboard. Opacity and 1px are what hide it without disqualifying it. */}
         <input
           ref={(el) => (kbdBounceRef = el)}
           type="text"
+          inputmode="text"
           tabindex="-1"
           aria-hidden="true"
-          class="absolute w-px h-px opacity-0 pointer-events-none"
-          style={{ left: "-9999px", top: "0" }}
+          class="absolute bottom-0 left-0 w-px h-px opacity-0 pointer-events-none"
         />
         {/* Companion hands the freed transcript space to the writing surface.
             The dock is bottom-anchored, so a taller cap grows it upward into
@@ -2313,7 +2328,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       : language.t("prompt.placeholder.normal")
               }
               contenteditable="true"
-              inputmode={suppressKeyboard() ? "none" : undefined}
+              inputmode={suppressKeyboard() ? "none" : "text"}
               onInput={handleInput}
               onPaste={handlePaste}
               onCompositionStart={() => setComposing(true)}

@@ -815,7 +815,7 @@ function Panel(props: {
                       placeholder="Type your own answer"
                       value={customText()}
                       rows={1}
-                      inputmode={suppressKeyboard() ? "none" : undefined}
+                      inputmode={suppressKeyboard() ? "none" : "text"}
                       onFocus={() => setInputFocused(true)}
                       onBlur={() => setInputFocused(false)}
                       onKeyDown={(e) => {
