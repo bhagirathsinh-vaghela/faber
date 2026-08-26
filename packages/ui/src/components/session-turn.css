@@ -68,15 +68,29 @@
       z-index: -1;
     }
 
+    /* Softens the cut where content scrolls under the pinned block. The stack
+       reaches the next box after one 8px gutter, so the ramp has to spend most
+       of its alpha inside that gutter or it washes out that box's top border. */
     &::after {
       content: "";
       position: absolute;
       top: 100%;
       left: 0;
       right: 0;
-      height: 32px;
-      background: linear-gradient(to bottom, var(--background-stronger), transparent);
+      height: 12px;
+      background: linear-gradient(
+        to bottom,
+        var(--background-stronger) 0%,
+        color-mix(in srgb, var(--background-stronger) 45%, transparent) 40%,
+        transparent 100%
+      );
       pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    &[data-stuck="true"]::after {
+      opacity: 1;
     }
   }
 
