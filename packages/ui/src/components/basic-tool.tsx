@@ -92,10 +92,10 @@ export function BasicTool(props: BasicToolProps) {
       <div data-component="tool-trigger">
         <Collapsible.Trigger>
           <div data-slot="basic-tool-tool-trigger-content">
-            <Icon name={props.icon} size="small" />
             <Show when={props.blockNumber !== undefined}>
               <span data-slot="basic-tool-block-number">{"#" + props.blockNumber}</span>
             </Show>
+            <Icon name={props.icon} size="small" />
             <div data-slot="basic-tool-tool-info">
               <Switch>
                 <Match when={isTriggerTitle(props.trigger) && props.trigger}>
