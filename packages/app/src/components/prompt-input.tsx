@@ -355,34 +355,40 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const coarse = createCoarsePointer()
   onMount(() => {
-    if (!coarse()) return
-    let armed = false
-    document.addEventListener("pointerdown", (e) => {
-      armed = e.target instanceof Node && (e.target === editorRef || editorRef.contains(e.target))
-    }, true)
-    editorRef.addEventListener("focusin", () => {
-      if (armed) {
-        armed = false
+    let armedByTap = false
+    const arm = (e: PointerEvent) => {
+      armedByTap = e.target instanceof Node && editorRef.contains(e.target)
+    }
+    const denyUntappedFocus = () => {
+      if (!coarse()) return
+      if (armedByTap) {
+        armedByTap = false
         return
       }
       editorRef.blur()
+    }
+    document.addEventListener("pointerdown", arm, true)
+    editorRef.addEventListener("focusin", denyUntappedFocus)
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", arm, true)
+      editorRef.removeEventListener("focusin", denyUntappedFocus)
     })
   })
   onMount(() => {
-    editorRef.addEventListener("click", (e) => {
-      const last = editorRef.lastChild
-      if (!last) return
-      const range = document.createRange()
-      range.selectNodeContents(last)
-      const textBottom = range.getBoundingClientRect().bottom
-      if (e.clientY > textBottom) placeCaret()
-    })
+    const caretToEndWhenTappedBelow = (e: MouseEvent) => {
+      const contents = document.createRange()
+      contents.selectNodeContents(editorRef)
+      if (e.clientY <= contents.getBoundingClientRect().bottom) return
+      caretToEnd()
+    }
+    editorRef.addEventListener("click", caretToEndWhenTappedBelow)
+    onCleanup(() => editorRef.removeEventListener("click", caretToEndWhenTappedBelow))
   })
   // Mobile only: the dock's model/cwd/branch line collapses behind a chevron in
   // the button row so the footer stays compact; expanding it shows the line
   // above the buttons. Desktop always shows the line and has no chevron.
   const [dockInfoOpen, setDockInfoOpen] = createSignal(false)
-  const placeCaret = () => setCursorPosition(editorRef, prompt.cursor() ?? promptLength(prompt.current()))
+  const caretToEnd = () => setCursorPosition(editorRef, promptLength(prompt.current()))
 
   const addImageAttachment = async (file: File) => {
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) return
@@ -2094,8 +2100,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </Show>
         <form
           onSubmit={handleSubmit}
-          // Override user-select:none from ancestors so WebKit will paint the caret
-          style={{ "-webkit-user-select": "text", "user-select": "text" }}
           classList={{
             "group/prompt-input": true,
             "bg-surface-raised-stronger-non-alpha shadow-xs-border relative": true,
@@ -2276,7 +2280,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 }
                 contenteditable="true"
                 inputmode="text"
-                style={{ "-webkit-transform": "translateZ(0)", "-webkit-user-select": "text", "user-select": "text" }}
+                style={{ "-webkit-transform": "translateZ(0)" }}
                 onInput={handleInput}
                 onPaste={handlePaste}
                 onCompositionStart={() => setComposing(true)}
