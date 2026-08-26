@@ -722,15 +722,16 @@ export const dict = {
   "settings.general.notifications.agent.title": "Agent",
   "settings.general.notifications.agent.description":
     "Show system notification when the agent is complete or needs attention",
-  "settings.general.notifications.permissions.title": "Permissions",
-  "settings.general.notifications.permissions.description": "Show system notification when a permission is required",
+  "settings.general.notifications.blocking.title": "Blocking prompts",
+  "settings.general.notifications.blocking.description":
+    "Show system notification when a permission or question is blocking the agent",
   "settings.general.notifications.errors.title": "Errors",
   "settings.general.notifications.errors.description": "Show system notification when an error occurs",
 
   "settings.general.sounds.agent.title": "Agent",
   "settings.general.sounds.agent.description": "Play sound when the agent is complete or needs attention",
-  "settings.general.sounds.permissions.title": "Permissions",
-  "settings.general.sounds.permissions.description": "Play sound when a permission is required",
+  "settings.general.sounds.blocking.title": "Blocking prompts",
+  "settings.general.sounds.blocking.description": "Play sound when a permission or question is blocking the agent",
   "settings.general.sounds.errors.title": "Errors",
   "settings.general.sounds.errors.description": "Play sound when an error occurs",
 

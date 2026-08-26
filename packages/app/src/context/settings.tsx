@@ -6,15 +6,17 @@ import { persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { FONT_WEIGHTS, type FontWeights } from "@opencode-ai/ui/font"
 
+// `blocking` covers every prompt that halts the turn until answered: a
+// permission request and a question both qualify.
 export interface NotificationSettings {
   agent: boolean
-  permissions: boolean
+  blocking: boolean
   errors: boolean
 }
 
 export interface SoundSettings {
   agent: string
-  permissions: string
+  blocking: string
   errors: string
 }
 
@@ -64,12 +66,12 @@ const defaultSettings: Settings = {
   },
   notifications: {
     agent: true,
-    permissions: true,
+    blocking: true,
     errors: false,
   },
   sounds: {
     agent: "staplebops-01",
-    permissions: "staplebops-02",
+    blocking: "staplebops-02",
     errors: "nope-03",
   },
 }
@@ -179,10 +181,27 @@ function migrate(a: Partial<Appearance> & { codeFont?: string }): Appearance {
   }
 }
 
+// Records saved before permissions and questions were unified carry the alert
+// choice under `permissions`; move it to `blocking` so the selection survives.
+function migrateSettings(value: unknown) {
+  if (!value || typeof value !== "object") return value
+  const settings = value as Record<string, Record<string, unknown> | undefined>
+  for (const group of ["notifications", "sounds"]) {
+    const section = settings[group]
+    if (!section || !("permissions" in section)) continue
+    settings[group] = { ...section, blocking: section.blocking ?? section.permissions }
+    delete settings[group]!.permissions
+  }
+  return settings
+}
+
 export const { use: useSettings, provider: SettingsProvider } = createSimpleContext({
   name: "Settings",
   init: () => {
-    const [store, setStore, _, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
+    const [store, setStore, _, ready] = persisted(
+      { key: "settings.v3", migrate: migrateSettings },
+      createStore<Settings>(defaultSettings),
+    )
     const theme = useTheme()
     const globalSDK = useGlobalSDK()
 
@@ -586,9 +605,9 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setAgent(value: boolean) {
           setStore("notifications", "agent", value)
         },
-        permissions: createMemo(() => store.notifications?.permissions ?? defaultSettings.notifications.permissions),
-        setPermissions(value: boolean) {
-          setStore("notifications", "permissions", value)
+        blocking: createMemo(() => store.notifications?.blocking ?? defaultSettings.notifications.blocking),
+        setBlocking(value: boolean) {
+          setStore("notifications", "blocking", value)
         },
         errors: createMemo(() => store.notifications?.errors ?? defaultSettings.notifications.errors),
         setErrors(value: boolean) {
@@ -600,9 +619,9 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setAgent(value: string) {
           setStore("sounds", "agent", value)
         },
-        permissions: createMemo(() => store.sounds?.permissions ?? defaultSettings.sounds.permissions),
-        setPermissions(value: string) {
-          setStore("sounds", "permissions", value)
+        blocking: createMemo(() => store.sounds?.blocking ?? defaultSettings.sounds.blocking),
+        setBlocking(value: string) {
+          setStore("sounds", "blocking", value)
         },
         errors: createMemo(() => store.sounds?.errors ?? defaultSettings.sounds.errors),
         setErrors(value: string) {

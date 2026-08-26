@@ -481,18 +481,8 @@ export default function Layout(props: ParentProps) {
       if (now - lastAlerted < cooldownMs) return
       alertedAtBySession.set(sessionKey, now)
 
-      if (e.details.type === "permission.asked") {
-        playSound(soundSrc(settings.sounds.permissions()))
-        if (settings.notifications.permissions()) {
-          void platform.notify(title, description, href)
-        }
-      }
-
-      if (e.details.type === "question.asked") {
-        if (settings.notifications.agent()) {
-          void platform.notify(title, description, href)
-        }
-      }
+      playSound(soundSrc(settings.sounds.blocking()))
+      if (settings.notifications.blocking()) void platform.notify(title, description, href)
 
       const currentDir = decode64(params.dir)
       const currentSession = params.id

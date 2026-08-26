@@ -5,7 +5,7 @@ import {
   settingsLanguageSelectSelector,
   settingsNotificationsAgentSelector,
   settingsNotificationsErrorsSelector,
-  settingsNotificationsPermissionsSelector,
+  settingsNotificationsBlockingSelector,
   settingsReleaseNotesSelector,
   settingsSoundsAgentSelector,
   settingsThemeSelector,
@@ -139,11 +139,11 @@ test("toggling notification agent switch updates localStorage", async ({ page, g
   expect(stored?.notifications?.agent).toBe(false)
 })
 
-test("toggling notification permissions switch updates localStorage", async ({ page, gotoSession }) => {
+test("toggling notification blocking switch updates localStorage", async ({ page, gotoSession }) => {
   await gotoSession()
 
   const dialog = await openSettings(page)
-  const switchContainer = dialog.locator(settingsNotificationsPermissionsSelector)
+  const switchContainer = dialog.locator(settingsNotificationsBlockingSelector)
   await expect(switchContainer).toBeVisible()
 
   const toggleInput = switchContainer.locator('[data-slot="switch-input"]')
@@ -161,7 +161,7 @@ test("toggling notification permissions switch updates localStorage", async ({ p
     return raw ? JSON.parse(raw) : null
   }, settingsKey)
 
-  expect(stored?.notifications?.permissions).toBe(false)
+  expect(stored?.notifications?.blocking).toBe(false)
 })
 
 test("toggling notification errors switch updates localStorage", async ({ page, gotoSession }) => {

@@ -208,13 +208,13 @@ export const SettingsGeneral: Component = () => {
             </SettingsRow>
 
             <SettingsRow
-              title={language.t("settings.general.notifications.permissions.title")}
-              description={language.t("settings.general.notifications.permissions.description")}
+              title={language.t("settings.general.notifications.blocking.title")}
+              description={language.t("settings.general.notifications.blocking.description")}
             >
-              <div data-action="settings-notifications-permissions">
+              <div data-action="settings-notifications-blocking">
                 <Switch
-                  checked={settings.notifications.permissions()}
-                  onChange={(checked) => settings.notifications.setPermissions(checked)}
+                  checked={settings.notifications.blocking()}
+                  onChange={(checked) => settings.notifications.setBlocking(checked)}
                 />
               </div>
             </SettingsRow>
@@ -264,13 +264,13 @@ export const SettingsGeneral: Component = () => {
             </SettingsRow>
 
             <SettingsRow
-              title={language.t("settings.general.sounds.permissions.title")}
-              description={language.t("settings.general.sounds.permissions.description")}
+              title={language.t("settings.general.sounds.blocking.title")}
+              description={language.t("settings.general.sounds.blocking.description")}
             >
               <Select
-                data-action="settings-sounds-permissions"
+                data-action="settings-sounds-blocking"
                 options={soundOptions}
-                current={soundOptions.find((o) => o.id === settings.sounds.permissions())}
+                current={soundOptions.find((o) => o.id === settings.sounds.blocking())}
                 value={(o) => o.id}
                 label={(o) => language.t(o.label)}
                 onHighlight={(option) => {
@@ -279,7 +279,7 @@ export const SettingsGeneral: Component = () => {
                 }}
                 onSelect={(option) => {
                   if (!option) return
-                  settings.sounds.setPermissions(option.id)
+                  settings.sounds.setBlocking(option.id)
                   playDemoSound(option.src)
                 }}
                 variant="secondary"
