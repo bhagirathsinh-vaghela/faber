@@ -1,8 +1,8 @@
-import { children, createEffect, createMemo, createSignal, For, Match, on, Show, Switch, type JSX } from "solid-js"
+import { children, createMemo, For, Match, Show, Switch, type JSX } from "solid-js"
 import { Collapsible } from "./collapsible"
 import { Icon, IconProps } from "./icon"
 import { CopyButton } from "./copy-button"
-import { useBoxDefaults } from "../context/box-defaults"
+import { createBoxOpen, useBoxDefaults } from "../context/box-defaults"
 
 export type TriggerTitle = {
   title: string
@@ -28,10 +28,14 @@ export interface BasicToolProps {
   defaultOpen?: boolean
   // Box-type key (the tool name) used to look up the client-configured per-mode
   // collapse default. Auto-threaded from ToolProps via `{...props}`. When set
-  // and a BoxDefaults provider is present, the configured default drives initial
-  // open state and re-applies on mode switch; otherwise falls back to
-  // `defaultOpen`.
+  // and a BoxDefaults provider is present, the configured default drives open
+  // state until the user overrides it; otherwise falls back to `defaultOpen`.
   tool?: string
+  // Identity of this box's manual expand/collapse in the app-held store. Both
+  // are needed for the override to survive; a box with neither falls back to
+  // component-local state.
+  sessionID?: string
+  boxID?: string
   forceOpen?: boolean
   locked?: boolean
   // Sequential box index, rendered inline at the start of the header row (the
@@ -58,16 +62,15 @@ export function BasicTool(props: BasicToolProps) {
     return props.defaultOpen ?? false
   })
 
-  // `manual` = the user's expand/collapse since the last mode switch; undefined
-  // means untouched (follow the configured default). It resets on every mode
-  // change so re-entering a mode re-applies that mode's default and discards
-  // any manual override, per the design.
-  const [manual, setManual] = createSignal<boolean | undefined>(undefined)
-  if (defaults) createEffect(on(defaults.mode, () => setManual(undefined), { defer: true }))
+  const [resolved, setOpen] = createBoxOpen({
+    sessionID: () => props.sessionID,
+    boxID: () => props.boxID,
+    fallback: configured,
+  })
 
   const open = createMemo(() => {
     if (props.forceOpen) return true
-    return manual() ?? configured()
+    return resolved()
   })
 
   // Resolve children once into a stable accessor. Gating Collapsible.Content on
@@ -79,7 +82,7 @@ export function BasicTool(props: BasicToolProps) {
 
   const handleOpenChange = (value: boolean) => {
     if (props.locked && !value) return
-    setManual(value)
+    setOpen(value)
   }
 
   const hasActions = () => (isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action) || props.copy

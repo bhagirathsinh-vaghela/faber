@@ -350,6 +350,10 @@ export default function Page() {
   const tabs = createMemo(() => layout.tabs(sessionKey))
   const view = createMemo(() => layout.view(sessionKey))
 
+  createEffect(() => {
+    if (params.id) layout.boxes.touch(params.id)
+  })
+
   if (import.meta.env.DEV) {
     createEffect(
       on(
@@ -544,7 +548,6 @@ export default function Page() {
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,
     activeTerminalDraggable: undefined as string | undefined,
-    expanded: {} as Record<string, boolean>,
     messageId: undefined as string | undefined,
     newSessionWorktree: "main",
     promptHeight: 0,
@@ -552,13 +555,19 @@ export default function Page() {
 
   // The most recent turns render with their steps expanded by default; older
   // turns collapse to keep the transcript's DOM bounded on long sessions. An
-  // explicit per-turn toggle (store.expanded) always overrides this default.
+  // explicit per-turn toggle always overrides this default.
   const recentTurns = 3
   const recentTurnIds = createMemo(() => {
     const msgs = visibleUserMessages()
     return new Set(msgs.slice(-recentTurns).map((m) => m.id))
   })
-  const stepsExpandedDefault = (messageID: string) => store.expanded[messageID] ?? recentTurnIds().has(messageID)
+  const stepsBoxID = (messageID: string) => `${messageID}:steps`
+  const stepsExpandedDefault = (messageID: string) =>
+    (params.id ? layout.boxes.open(params.id, stepsBoxID(messageID)) : undefined) ?? recentTurnIds().has(messageID)
+  const toggleSteps = (messageID: string) => {
+    if (!params.id) return
+    layout.boxes.setOpen(params.id, stepsBoxID(messageID), !stepsExpandedDefault(messageID))
+  }
 
   const newSessionWorktree = createMemo(() => {
     if (store.newSessionWorktree === "create") return "create"
@@ -815,7 +824,6 @@ export default function Page() {
       () => params.id,
       () => {
         setStore("messageId", undefined)
-        setStore("expanded", {})
       },
       { defer: true },
     ),
@@ -860,7 +868,7 @@ export default function Page() {
   createEffect(() => {
     const id = lastUserMessage()?.id
     if (!id) return
-    if (busy().busy) setStore("expanded", id, true)
+    if (busy().busy && params.id) layout.boxes.setOpen(params.id, stepsBoxID(id), true)
   })
 
   const selectionPreview = (path: string, selection: FileSelection) => {
@@ -1023,7 +1031,7 @@ export default function Page() {
       onSelect: () => {
         const msg = activeMessage()
         if (!msg) return
-        setStore("expanded", msg.id, (open: boolean | undefined) => !open)
+        toggleSteps(msg.id)
       },
     },
     {
@@ -2695,9 +2703,7 @@ export default function Page() {
                                   lastUserMessageID={lastUserMessage()?.id}
                                   footer={(m) => <MessageFooter message={m} />}
                                   stepsExpanded={stepsExpandedDefault(message.id)}
-                                  onStepsExpandedToggle={() =>
-                                    setStore("expanded", message.id, (open: boolean | undefined) => !open)
-                                  }
+                                  onStepsExpandedToggle={() => toggleSteps(message.id)}
                                   onJump={() => scrollToMessage(message)}
                                   classes={{
                                     root: "min-w-0 w-full relative",

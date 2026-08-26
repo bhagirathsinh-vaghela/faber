@@ -10,7 +10,7 @@ import {
 } from "@opencode-ai/sdk/v2/client"
 import { type FileDiff } from "@opencode-ai/sdk/v2"
 import { useData } from "../context"
-import { useBoxDefaults } from "../context/box-defaults"
+import { createBoxOpen, useBoxDefaults } from "../context/box-defaults"
 import { useDiffComponent } from "../context/diff"
 import { type UiI18nKey, type UiI18nParams, useI18n } from "../context/i18n"
 import { findLast } from "@opencode-ai/util/array"
@@ -468,14 +468,10 @@ export function SessionTurn(
   // and off as the box resized, which fed back into its own resize and flickered
   // every frame. A constant cannot flicker.
   // User prompt box open state is driven entirely by the client's per-mode
-  // collapse checkbox (box type "user"): ticked = collapsed. `manual` is the
-  // chevron override since the last mode switch (undefined = follow the
-  // setting); it resets on mode change so re-entering a mode re-applies the
-  // configured default.
+  // collapse checkbox (box type "user"): ticked = collapsed, until the chevron
+  // overrides it.
   const boxDefaults = useBoxDefaults()
   const collapsed = () => true
-  const [stuckManual, setStuckManual] = createSignal<boolean | undefined>(undefined)
-  if (boxDefaults) createEffect(on(boxDefaults.mode, () => setStuckManual(undefined), { defer: true }))
   // An injected TASK RESULT message is user-role but its own box type, so it
   // collapses independently of typed user prompts.
   const boxKey = () =>
@@ -483,9 +479,13 @@ export function SessionTurn(
       ? "task_result"
       : "user"
   const configuredOpen = () => (boxDefaults ? !boxDefaults.collapsed(boxKey(), boxDefaults.mode()) : true)
-  const stuckOpen = () => stuckManual() ?? configuredOpen()
+  const [stuckOpen, setStuckOpen] = createBoxOpen({
+    sessionID: () => props.sessionID,
+    boxID: () => `${props.messageID}:sticky`,
+    fallback: configuredOpen,
+  })
   const setStuckExpanded = (next: boolean | ((v: boolean) => boolean)) =>
-    setStuckManual((prev) => (typeof next === "function" ? next(prev ?? configuredOpen()) : next))
+    setStuckOpen(typeof next === "function" ? next(stuckOpen()) : next)
 
   const updateStickyHeight = (height: number) => {
     const root = rootRef()
@@ -533,12 +533,46 @@ export function SessionTurn(
   const diffInit = 20
   const diffBatch = 20
 
+  // The changed-files section is collapsed to a single header line by default;
+  // the chevron expands it to reveal the file list.
+  const [diffsSectionOpen, setDiffsSectionOpen] = createBoxOpen({
+    sessionID: () => props.sessionID,
+    boxID: () => `${props.messageID}:diffs`,
+    fallback: () => false,
+  })
+
+  // Each file is toggled independently, so the array the accordion wants is
+  // projected from per-file entries rather than held as one value.
+  const diffFileID = (file: string) => `${props.messageID}:diff:${file}`
+  const [localDiffsOpen, setLocalDiffsOpen] = createSignal<string[]>([])
+  // Diffs stream in mid-turn; without the content check the accordion remounts
+  // on each arrival and drops what the user had open.
+  const emptyOpen: string[] = []
+  const diffsOpen = createMemo(
+    () => {
+      if (!boxDefaults) return localDiffsOpen()
+      return messageDiffs().flatMap((diff) =>
+        boxDefaults.open(props.sessionID, diffFileID(diff.file)) ? [diff.file] : [],
+      )
+    },
+    emptyOpen,
+    { equals: same },
+  )
+  const setDiffsOpen = (next: string[]) => {
+    if (!boxDefaults) {
+      setLocalDiffsOpen(next)
+      return
+    }
+    const before = diffsOpen()
+    for (const file of [...next, ...before]) {
+      const open = next.includes(file)
+      if (open === before.includes(file)) continue
+      boxDefaults.setOpen(props.sessionID, diffFileID(file), open)
+    }
+  }
+
   const [store, setStore] = createStore({
     retrySeconds: 0,
-    // The changed-files section is collapsed to a single header line by default;
-    // the chevron expands it to reveal the file list.
-    diffsSectionOpen: false,
-    diffsOpen: [] as string[],
     diffLimit: diffInit,
     status: rawStatus(),
     duration: duration(),
@@ -548,8 +582,6 @@ export function SessionTurn(
     on(
       () => message()?.id,
       () => {
-        setStore("diffsSectionOpen", false)
-        setStore("diffsOpen", [])
         setStore("diffLimit", diffInit)
         setFetchedDiffs(undefined)
         diffFetchFor = undefined
@@ -841,11 +873,11 @@ export function SessionTurn(
                         <button
                           type="button"
                           data-slot="session-turn-summary-header"
-                          data-open={store.diffsSectionOpen}
-                          aria-expanded={store.diffsSectionOpen}
+                          data-open={diffsSectionOpen()}
+                          aria-expanded={diffsSectionOpen()}
                           onClick={() => {
                             loadDiffBodies()
-                            setStore("diffsSectionOpen", (open) => !open)
+                            setDiffsSectionOpen(!diffsSectionOpen())
                           }}
                         >
                           <Icon name="chevron-down" size="small" data-slot="session-turn-summary-chevron" />
@@ -854,14 +886,14 @@ export function SessionTurn(
                           </h2>
                           <span data-slot="session-turn-summary-count">{messageDiffs().length}</span>
                         </button>
-                        <Show when={store.diffsSectionOpen}>
+                        <Show when={diffsSectionOpen()}>
                           <Accordion
                             data-slot="session-turn-accordion"
                             multiple
-                            value={store.diffsOpen}
+                            value={diffsOpen()}
                             onChange={(value) => {
                               if (!Array.isArray(value)) return
-                              setStore("diffsOpen", value)
+                              setDiffsOpen(value)
                             }}
                           >
                             <For each={messageDiffs().slice(0, store.diffLimit)}>
@@ -894,7 +926,7 @@ export function SessionTurn(
                                   <Accordion.Content data-slot="session-turn-accordion-content">
                                     <Show
                                       when={
-                                        store.diffsOpen.includes(diff.file!) &&
+                                        diffsOpen().includes(diff.file!) &&
                                         (typeof diff.before === "string" || typeof diff.after === "string")
                                       }
                                     >

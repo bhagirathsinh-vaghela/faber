@@ -1,4 +1,4 @@
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, unwrap } from "solid-js/store"
 import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js"
 import { useLocation } from "@solidjs/router"
 import { createSimpleContext } from "@opencode-ai/ui/context"
@@ -133,6 +133,35 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // still land outside zen, since that is the only way out of a session whose
     // chrome is hidden.
     const zenMemory = new Map<string, boolean>()
+
+    // Manual expand/collapse of transcript boxes, session id -> box id -> open.
+    // Ephemeral for zen's reason, and lifted here for zen's reason too: the
+    // session page unmounts on the way to the overview, and virtua unmounts a
+    // turn scrolled far enough out of view, so state owned by a box cannot
+    // outlive either trip.
+    const [boxOpen, setBoxOpen] = createStore<Record<string, Record<string, boolean>>>({})
+
+    // Recency is last VISIT, not last toggle, so returning to a session keeps
+    // its overrides alive through a long browsing run.
+    const MAX_BOX_SESSIONS = 10
+    const boxUsed = new Map<string, number>()
+
+    // Enumerating the store's keys inside a tracking scope would subscribe that
+    // scope to every session's first write, so the count reads through unwrap.
+    function pruneBoxes(keep: string) {
+      const sessions = Object.keys(unwrap(boxOpen))
+      if (sessions.length <= MAX_BOX_SESSIONS) return
+
+      const score = (session: string) => (session === keep ? Number.MAX_SAFE_INTEGER : (boxUsed.get(session) ?? 0))
+      const drop = sessions.sort((a, b) => score(b) - score(a)).slice(MAX_BOX_SESSIONS)
+
+      setBoxOpen(
+        produce((draft) => {
+          for (const session of drop) delete draft[session]
+        }),
+      )
+      for (const session of drop) boxUsed.delete(session)
+    }
 
     // Toggling zen re-lays-out the chrome around the prompt (the slim zen dock
     // drops the model/agent cluster and action row), which blurs a focused
@@ -596,6 +625,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         enter: enterZen,
         exit: exitZen,
         toggle() {
+          // enterZen/exitZen cannot own this: the restore effect calls them on
+          // arrival, where a wipe would hit the session being left.
+          const session = zenRoute()?.[1]
+          if (session) setBoxOpen(produce((draft) => delete draft[session]))
           if (zenOpened()) exitZen()
           else enterZen()
         },
@@ -611,6 +644,25 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         toggle() {
           if (companionOpened()) exitCompanion()
           else enterCompanion()
+        },
+      },
+      // Keyed by session id, not the dir/session composite the persisted stores
+      // use, because the boxes reading it live in the ui package and only ever
+      // see a session id.
+      boxes: {
+        open(sessionID: string, boxID: string) {
+          return boxOpen[sessionID]?.[boxID]
+        },
+        setOpen(sessionID: string, boxID: string, open: boolean) {
+          boxUsed.set(sessionID, Date.now())
+          // Unwrapped: a caller inside an effect (the busy-turn auto-expand)
+          // would otherwise subscribe itself to the value it just wrote.
+          if (!unwrap(boxOpen)[sessionID]) setBoxOpen(sessionID, { [boxID]: open })
+          else setBoxOpen(sessionID, boxID, open)
+          pruneBoxes(sessionID)
+        },
+        touch(sessionID: string) {
+          boxUsed.set(sessionID, Date.now())
         },
       },
       view(sessionKey: string | Accessor<string>) {

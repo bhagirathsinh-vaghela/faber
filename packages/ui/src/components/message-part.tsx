@@ -825,6 +825,9 @@ export interface ToolProps {
   // The box's sequential index, shown inline in the header row. Threaded to
   // BasicTool via {...props} so every tool renderer carries it without change.
   blockNumber?: number
+  // Identity of this box's manual expand/collapse, threaded the same way.
+  sessionID?: string
+  boxID?: string
 }
 
 export type ToolComponent = Component<ToolProps>
@@ -995,6 +998,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             forceOpen={forceOpen()}
             locked={showPermission()}
             blockNumber={data.blockNumber(props.message.sessionID, part.id)}
+            sessionID={props.message.sessionID}
+            boxID={part.id}
           />
         </Match>
       </Switch>
