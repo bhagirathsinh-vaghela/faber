@@ -657,6 +657,7 @@ export namespace SessionPrompt {
         messages: msgs,
         agent,
         session,
+        model,
       })
 
       const processor = SessionProcessor.create({
@@ -1517,6 +1518,8 @@ export namespace SessionPrompt {
   const PLAN_REMINDER_MARKER = "<!-- plan-mode-reminder -->"
   const PLAN_EXIT_MARKER = "<!-- plan-mode-exit -->"
   const SUBTASK_MARKER = "<!-- subtask-no-delegation -->"
+  const CONCISE_MARKER = "<!-- concise-reminder -->"
+  const CONCISE = "Keep replies concise: lead with the answer, no preamble, no recap."
   const TURNS_BETWEEN_REMINDERS = 5
   const FULL_REMINDER_EVERY_N = 5
 
@@ -1530,6 +1533,18 @@ export namespace SessionPrompt {
 
   function hasSubtaskReminder(msg: MessageV2.WithParts) {
     return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(SUBTASK_MARKER))
+  }
+
+  function hasConciseReminder(msg: MessageV2.WithParts) {
+    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(CONCISE_MARKER))
+  }
+
+  // The messages of the turn in flight: everything from the user's typed prompt
+  // onward, so the synthetic user messages a turn mints along the way are in
+  // scope while earlier turns are not.
+  function sinceLastPrompt(messages: MessageV2.WithParts[]) {
+    const start = messages.findLastIndex((msg) => msg.info.role === "user" && !msg.info.synthetic)
+    return start === -1 ? messages : messages.slice(start)
   }
 
   function planFileInfo(planPath: string, exists: boolean) {
@@ -1656,12 +1671,32 @@ export namespace SessionPrompt {
     userMessage.parts.push(part)
   }
 
-  async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
+  async function insertReminders(input: {
+    messages: MessageV2.WithParts[]
+    agent: Agent.Info
+    session: Session.Info
+    model: Provider.Model
+  }) {
     await insertMcpCatalog(input)
     await insertAgentCatalog(input)
 
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
+
+    // The concision rules live in the cached system prompt, which a long turn
+    // drifts from; re-stating the shape each turn is what holds it. Appending
+    // to the newest message keeps the prefix behind it byte-identical. A
+    // subtask's output is read by its parent model, not the user, so terseness
+    // tuned for a human reader would cost the parent detail.
+    //
+    // Presence is checked from the typed prompt onward, not on the message
+    // being appended to: a task summary or a compaction mints a fresh user
+    // message mid-turn, and a per-message check would inject once more for
+    // each one, rewriting the tail every time.
+    if (!input.session.parentID && !sinceLastPrompt(input.messages).some(hasConciseReminder)) {
+      const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
+      if (concise) await persistReminder(userMessage, CONCISE, CONCISE_MARKER)
+    }
 
     // A subtask reaches for the task tool, gets a denial back, and only then
     // does the work itself, having spent a turn learning it. The tool stays in

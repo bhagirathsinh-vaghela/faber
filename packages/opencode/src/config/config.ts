@@ -1301,6 +1301,12 @@ export namespace Config {
         .describe(
           "Per-million-token prices keyed by model ID, e.g. 'anthropic/claude-opus-5'. Takes precedence over models.dev, which is used for any model absent here. Lives in config so prices can be corrected without shipping a new binary.",
         ),
+      concise: z
+        .record(z.string(), z.boolean())
+        .optional()
+        .describe(
+          "Opt a model into the per-turn concise reminder, keyed by model ID, e.g. 'anthropic/claude-opus-5': true. Absent or false means no reminder.",
+        ),
       anthropic: z
         .object({
           beta: z

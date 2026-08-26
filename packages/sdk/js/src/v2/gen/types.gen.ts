@@ -2333,6 +2333,12 @@ export type Config = {
       cacheWrite1h: number
     }
   }
+  /**
+   * Opt a model into the per-turn concise reminder, keyed by model ID, e.g. 'anthropic/claude-opus-5': true. Absent or false means no reminder.
+   */
+  concise?: {
+    [key: string]: boolean
+  }
   anthropic?: {
     /**
      * Beta headers to send for all Anthropic models (e.g., ['interleaved-thinking-2025-05-14'])
