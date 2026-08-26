@@ -5,6 +5,7 @@ import { batch, createEffect, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { Visibility } from "@/utils/visibility"
+import { revalidate } from "@/utils/revalidate"
 import { HEARTBEAT_MS, IDLE_MS, RESUME_MS } from "@opencode-ai/util/stream"
 
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
@@ -187,20 +188,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     createEffect(() => {
       if (Visibility.hidden()) attempt?.abort()
     })
-    // Reconnect the instant the network state flips (wifi returns after a flap).
-    // Aborting the current attempt breaks the for-await into the fast backoff
-    // path — a clean reattach if the stream was healthy, recovery if it was dead.
-    // First run only reads the signal to subscribe; there is nothing to recover.
-    let netSeen = false
-    createEffect(() => {
-      Visibility.network()
-      if (!netSeen) {
-        netSeen = true
-        return
-      }
-      attempt?.abort()
-      nudge()
-    })
     // Passing a per-attempt signal to the SSE call overrides the client-level
     // lifetime signal, so cascade teardown to whatever stream is live.
     abort.signal.addEventListener("abort", () => attempt?.abort())
@@ -217,6 +204,17 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (watchdog) clearTimeout(watchdog)
       watchdog = setTimeout(() => attempt?.abort(), IDLE_MS)
     }
+    // A suspicious signal (resume, network flap) revalidates the stream: reconnect
+    // only when none is live, otherwise shorten the liveness deadline so a dead
+    // stream is caught sooner while a healthy one keeps re-arming it and survives.
+    const react = () => {
+      if (revalidate(!!watchdog) === "reconnect") {
+        nudge()
+        return
+      }
+      clearTimeout(watchdog)
+      watchdog = setTimeout(() => attempt?.abort(), RESUME_MS)
+    }
     // Re-verify the stream every time the page returns to the foreground rather
     // than waiting out the idle budget.
     let resumeSeen = false
@@ -227,14 +225,20 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         return
       }
       if (Visibility.hidden()) return
-      // Reconnect immediately when no stream is live, rather than serving out a
-      // backoff that was scheduled against a link the device has since left.
-      if (!watchdog) {
-        nudge()
+      react()
+    })
+    // A network online/offline flap flips this signal. navigator.onLine flaps
+    // spuriously on VPN/multi-interface machines, so it revalidates rather than
+    // aborts — a healthy stream on a solid link must survive the flap. First run
+    // only reads the signal to subscribe; there is nothing to recover.
+    let netSeen = false
+    createEffect(() => {
+      Visibility.network()
+      if (!netSeen) {
+        netSeen = true
         return
       }
-      clearTimeout(watchdog)
-      watchdog = setTimeout(() => attempt?.abort(), RESUME_MS)
+      react()
     })
     const rest = () => {
       if (!watchdog) return
