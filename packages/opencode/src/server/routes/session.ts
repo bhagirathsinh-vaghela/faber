@@ -909,7 +909,12 @@ export const SessionRoutes = lazy(() =>
         return stream(c, async () => {
           const sessionID = c.req.valid("param").sessionID
           const body = c.req.valid("json")
-          SessionPrompt.prompt({ ...body, sessionID })
+          // Ack only once the user message is durable, so a client that reads it
+          // back after a dropped connection gets a truthful answer. The turn runs
+          // detached past the ack; results stream over SSE.
+          await new Promise<void>((resolve) => {
+            void SessionPrompt.promptAsync({ ...body, sessionID }, resolve).catch(() => resolve())
+          })
         })
       },
     )

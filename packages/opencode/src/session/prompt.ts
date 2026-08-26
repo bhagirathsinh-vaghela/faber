@@ -166,7 +166,16 @@ export namespace SessionPrompt {
   })
   export type PromptInput = z.infer<typeof PromptInput>
 
-  export const prompt = fn(PromptInput, async (input) => {
+  export const prompt = fn(PromptInput, (input) => run(input))
+
+  // The async route acks the moment the user message is durable, then lets the
+  // turn run detached. onPersisted fires right after the message is written, so a
+  // 204 means "message exists" and a client can trust a follow-up read of it.
+  export function promptAsync(input: PromptInput, onPersisted: () => void | Promise<void>) {
+    return run(input, onPersisted)
+  }
+
+  async function run(input: PromptInput, onPersisted?: () => void | Promise<void>) {
     // The cache-ping daemon stays ARMED across the turn — we do NOT stop it here.
     // A turn that keeps dispatching model requests inside CACHE_TTL re-anchors the
     // cache faster than the daemon's scheduled ping, so evaluate() naturally keeps
@@ -202,6 +211,7 @@ export namespace SessionPrompt {
 
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)
+    await onPersisted?.()
 
     // this is backwards compatibility for allowing `tools` to be specified when
     // prompting
@@ -225,7 +235,7 @@ export namespace SessionPrompt {
     }
 
     return loop(input.sessionID)
-  })
+  }
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
     const parts: PromptInput["parts"] = [

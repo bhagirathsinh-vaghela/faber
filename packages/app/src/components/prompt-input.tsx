@@ -56,6 +56,7 @@ import { useSettings } from "@/context/settings"
 import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
+import { confirmAbsent } from "@/utils/confirm-absent"
 import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { createCoarsePointer, preserveFocus } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
@@ -1948,11 +1949,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // created nothing and strands the session busy with the draft lost. The
       // pre-allocated messageID lets us disambiguate: confirm receipt, and only
       // restore when the server confirms the message is absent.
+      //
+      // The confirmation is a read across the same window that dropped the send,
+      // so it must be trusted only when it lands over a healthy connection. A
+      // NotFound is believed only if it holds across retries; a single one can be
+      // the write settling behind a just-recovered server. A read that itself
+      // fails is unknown, not absent, so it never restores.
       if (err instanceof Error) {
-        const absent = await client.session
-          .message({ sessionID: session.id, messageID, directory: sessionDirectory })
-          .then(() => false)
-          .catch((confirm) => (confirm as { name?: string })?.name === "NotFoundError")
+        const absent = await confirmAbsent(() =>
+          client.session.message({ sessionID: session.id, messageID, directory: sessionDirectory }),
+        )
         if (!absent) return
       }
       if (sessionDirectory === projectDirectory) {
