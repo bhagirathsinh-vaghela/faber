@@ -2307,7 +2307,10 @@ export default function Page() {
         <div
           classList={{
             "@container/panel relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
-            "flex-1 pt-0 wide:pt-3": true,
+            // No padding at any size: the titlebar already leaves slack under
+            // its icon row, so anything here reads as a gap the title is
+            // floating in rather than as breathing room.
+            "flex-1 pt-0": true,
             "wide:flex-none": layout.fileTree.opened(),
           }}
           style={{
