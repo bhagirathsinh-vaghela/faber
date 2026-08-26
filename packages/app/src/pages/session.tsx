@@ -2315,11 +2315,10 @@ export default function Page() {
           }}
           style={{
             width: wide() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
-            // In zen the titlebar stops drawing, so on mobile this panel clears
-            // the device's top safe-area inset (status bar) plus a 1rem gap that
-            // mirrors the bottom margin. --sat is 0 on desktop, where the WCO
-            // strip is already reserved by the titlebar, so it degrades to the gap.
-            "padding-top": layout.zen.opened() ? "calc(var(--sat) + 1rem)" : undefined,
+            // Zen hides the titlebar, so on mobile the panel must clear the top
+            // safe-area inset the titlebar was covering; --sat is 0 elsewhere, so
+            // this reserves exactly the status bar and nothing more.
+            "padding-top": layout.zen.opened() ? "var(--sat)" : undefined,
           }}
         >
           {/* Companion mode hides the transcript with CSS rather than
