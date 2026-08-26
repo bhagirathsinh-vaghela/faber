@@ -1547,17 +1547,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const agent = currentAgent.name
     const variant = local.model.variant.current()
 
+    // Pre-allocate the id every send path uses, so a send that fails in transit
+    // can confirm receipt (read the message back) before restoring the draft,
+    // rather than restoring blindly on a drop that landed server-side.
+    const messageID = Identifier.ascending("message")
+    const wasReceived = async () =>
+      !(await confirmAbsent(() =>
+        client.session.message({ sessionID: session.id, messageID, directory: sessionDirectory }),
+      ))
+
     if (mode === "shell") {
       clearInput()
       props.onSubmit?.()
       client.session
         .shell({
           sessionID: session.id,
+          messageID,
           agent,
           model,
           command: text,
         })
-        .catch((err) => {
+        .catch(async (err) => {
+          if (err instanceof Error && (await wasReceived())) return
           showToast({
             title: language.t("prompt.toast.shellSendFailed.title"),
             description: errorMessage(err),
@@ -1578,6 +1589,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         client.session
           .command({
             sessionID: session.id,
+            messageID,
             command: commandName,
             arguments: args.join(" "),
             agent,
@@ -1591,7 +1603,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               filename: attachment.filename,
             })),
           })
-          .catch((err) => {
+          .catch(async (err) => {
+            if (err instanceof Error && (await wasReceived())) return
             showToast({
               title: language.t("prompt.toast.commandSendFailed.title"),
               description: errorMessage(err),
@@ -1742,7 +1755,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       filename: attachment.filename,
     }))
 
-    const messageID = Identifier.ascending("message")
     const textPart = {
       id: Identifier.ascending("part"),
       type: "text" as const,
@@ -1955,12 +1967,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // NotFound is believed only if it holds across retries; a single one can be
       // the write settling behind a just-recovered server. A read that itself
       // fails is unknown, not absent, so it never restores.
-      if (err instanceof Error) {
-        const absent = await confirmAbsent(() =>
-          client.session.message({ sessionID: session.id, messageID, directory: sessionDirectory }),
-        )
-        if (!absent) return
-      }
+      if (err instanceof Error && (await wasReceived())) return
       if (sessionDirectory === projectDirectory) {
         // Send failed before a turn began — undo the optimistic busy. No subtask
         // can exist yet, so clearing both facts is correct; the reconcile tick

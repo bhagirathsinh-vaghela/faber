@@ -1882,6 +1882,7 @@ export namespace SessionPrompt {
   }
 
   export const ShellInput = z.object({
+    messageID: Identifier.schema("message").optional(),
     sessionID: Identifier.schema("session"),
     agent: z.string(),
     model: z
@@ -1907,7 +1908,7 @@ export namespace SessionPrompt {
     const agent = (await SessionPin.get(input.sessionID)).agents[input.agent] ?? (await Agent.get(input.agent))
     const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
     const userMsg: MessageV2.User = {
-      id: Identifier.ascending("message"),
+      id: input.messageID ?? Identifier.ascending("message"),
       sessionID: input.sessionID,
       time: {
         created: Date.now(),
