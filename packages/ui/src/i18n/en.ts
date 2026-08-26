@@ -54,7 +54,6 @@ export const dict = {
   "ui.textField.copyToClipboard": "Copy to clipboard",
   "ui.textField.copyLink": "Copy link",
   "ui.textField.copied": "Copied",
-  "ui.textField.showKeyboard": "Show keyboard",
 
   "ui.imagePreview.alt": "Image preview",
 

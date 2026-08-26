@@ -84,14 +84,6 @@
         width: 100%;
       }
 
-      /* The keyboard toggle must sit inline at the right edge of the 20px search
-         row, not wrap to a new line; keep it compact so it clears the max-height. */
-      [data-slot="input-keyboard-button"] {
-        width: 20px;
-        height: 20px;
-        flex-shrink: 0;
-      }
-
       [data-slot="list-search-input"] {
         width: 100%;
 

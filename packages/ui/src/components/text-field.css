@@ -33,11 +33,6 @@
       flex: 1;
       min-width: 0;
     }
-
-    [data-slot="input-keyboard-button"] {
-      flex-shrink: 0;
-      margin-left: auto;
-    }
   }
 
   &[data-variant="normal"] {
@@ -135,22 +130,6 @@
       &:hover {
         color: var(--icon-strong-base);
       }
-    }
-
-    [data-slot="input-keyboard-button"] {
-      flex-shrink: 0;
-      /* Pin to the right edge of the field regardless of how much the input
-         grows, matching the copy button's placement. */
-      margin-left: auto;
-      color: var(--icon-base);
-
-      &:hover {
-        color: var(--icon-strong-base);
-      }
-    }
-
-    &:has([data-slot="input-keyboard-button"]) [data-slot="input-wrapper"] {
-      padding-right: 4px;
     }
 
     [data-slot="input-error"] {
