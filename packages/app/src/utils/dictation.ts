@@ -58,12 +58,31 @@ function afterPaint(fn: () => void) {
   setTimeout(once, 500)
 }
 
+async function acquire() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  })
+  const context = new AudioContext({ sampleRate: 16000 })
+  if (context.sampleRate !== 16000) {
+    for (const track of stream.getTracks()) track.stop()
+    context.close().catch(() => {})
+    throw new Error(`AudioContext sample rate is ${context.sampleRate}, expected 16000`)
+  }
+  // WebKit starts a context suspended when it is constructed outside the
+  // gesture that began the press, and audio silently never flows.
+  if (context.state !== "running") await context.resume().catch(() => {})
+  await context.audioWorklet.addModule(workletModule())
+  return { stream, context }
+}
+
 // Releasing the capture graph is slow: track.stop() and AudioContext.close()
 // tear down the OS audio path, and over a Bluetooth headset that also forces the
 // HFP->A2DP profile switch, which blocks the main thread for hundreds of ms.
 // Deferring it past the paint keeps that cost off the frame that dismisses the
 // overlay and inserts the transcript. The socket closes first so the server-side
-// transcription stream ends immediately rather than outliving the audio.
+// transcription stream ends immediately rather than outliving the audio. The mic
+// is never held past the dictation: an idle capture keeps the OS recording
+// indicator lit, telling the user they are being listened to when they are not.
 function release(socket: WebSocket, context: AudioContext, stream: MediaStream) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }))
   socket.close()
@@ -113,6 +132,10 @@ export function registerDictationTarget(target: Target, active: () => boolean, r
 export function createDictation(opts: { url: () => string; onError?: (message: string) => void }) {
   const [store, setStore] = createStore({
     active: false,
+    // Audio only reaches the socket once the OS route opens, which trails the
+    // press by up to a second on a cold start. Words spoken before that are
+    // gone, so the overlay has to distinguish arming from listening.
+    listening: false,
     committed: "",
     interim: "",
   })
@@ -141,7 +164,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     session = undefined
     analyser = undefined
     if (active === stop) active = undefined
-    setStore({ active: false, committed: "", interim: "" })
+    setStore({ active: false, listening: false, committed: "", interim: "" })
     release(socket, context, stream)
   }
 
@@ -211,18 +234,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     abortStart = dispose
 
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-      })
-      if (generation !== epoch) {
-        dispose()
-        return
-      }
-      context = new AudioContext({ sampleRate: 16000 })
-      if (context.sampleRate !== 16000) {
-        throw new Error(`AudioContext sample rate is ${context.sampleRate}, expected 16000`)
-      }
-      await context.audioWorklet.addModule(workletModule())
+      const graph = await acquire()
+      stream = graph.stream
+      context = graph.context
       if (generation !== epoch) {
         dispose()
         return
@@ -231,12 +245,13 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
         throw new Error("Dictation connection closed")
       }
 
-      session = { socket, context, stream }
-      abortStart = undefined
-      setStore("active", true)
-
       const worklet = new AudioWorkletNode(context, "dictation-capture")
+      let first = true
       worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
+        if (first) {
+          first = false
+          setStore("listening", true)
+        }
         const frame = encode(event.data)
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(frame)
@@ -252,6 +267,10 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.8
       source.connect(analyser)
+
+      session = { socket, context, stream }
+      abortStart = undefined
+      setStore("active", true)
     } catch (error) {
       if (session?.socket === socket) {
         session = undefined
@@ -259,7 +278,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       }
       dispose()
       if (active === stop) active = undefined
-      setStore("active", false)
+      setStore({ active: false, listening: false })
       if (generation !== epoch) return
       opts.onError?.(error instanceof Error ? error.message : String(error))
     }
@@ -270,6 +289,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   return {
     supported,
     active: () => store.active,
+    listening: () => store.listening,
     committed: () => store.committed,
     interim: () => store.interim,
     analyser: () => analyser,

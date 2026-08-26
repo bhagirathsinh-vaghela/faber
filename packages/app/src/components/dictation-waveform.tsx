@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from "solid-js"
+import { createEffect, onCleanup, onMount } from "solid-js"
 
 // Canvas audio-level meter for the dictation HUD, in the style of the
 // ElevenLabs live-waveform: symmetric bars mirrored around a vertical center,
@@ -16,7 +16,13 @@ const FADE = 28
 const BAND_START = 0.05
 const BAND_END = 0.42
 
-export function DictationWaveform(props: { analyser: () => AnalyserNode | undefined; color?: string }) {
+export function DictationWaveform(props: {
+  analyser: () => AnalyserNode | undefined
+  // Bars that move before audio flows read as a live mic, and the rAF driving
+  // them is spent on a device that is still waiting for the capture route.
+  live?: () => boolean
+  color?: string
+}) {
   let canvas: HTMLCanvasElement | undefined
 
   onMount(() => {
@@ -64,7 +70,31 @@ export function DictationWaveform(props: { analyser: () => AnalyserNode | undefi
 
     const color = () => props.color ?? resolved
 
+    const flat = () => {
+      if (!width || !height) return
+      ctx.clearRect(0, 0, width, height)
+      const step = BAR_WIDTH + BAR_GAP
+      const count = Math.max(1, Math.floor(width / step))
+      const bar = Math.max(BAR_WIDTH, MIN_SCALE * height)
+      ctx.fillStyle = color()
+      ctx.globalAlpha = 0.35
+      for (let i = 0; i < count; i++) {
+        const x = i * step + (width - count * step) / 2
+        ctx.beginPath()
+        ctx.roundRect(x, height / 2 - bar / 2, BAR_WIDTH, bar, BAR_RADIUS)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    }
+
     const draw = (now: number) => {
+      // An idle mic has nothing to animate, so the loop stops rather than
+      // burning a wake-up per frame until audio arrives.
+      if (props.live && !props.live()) {
+        raf = 0
+        flat()
+        return
+      }
       raf = requestAnimationFrame(draw)
       if (now - last < FRAME || !width || !height) return
       last = now
@@ -109,6 +139,12 @@ export function DictationWaveform(props: { analyser: () => AnalyserNode | undefi
       ctx.globalCompositeOperation = "source-over"
     }
     raf = requestAnimationFrame(draw)
+
+    createEffect(() => {
+      if (props.live && !props.live()) return
+      if (raf) return
+      raf = requestAnimationFrame(draw)
+    })
 
     onCleanup(() => {
       cancelAnimationFrame(raf)

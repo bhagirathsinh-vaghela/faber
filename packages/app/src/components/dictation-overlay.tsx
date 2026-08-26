@@ -117,13 +117,18 @@ export function DictationOverlay(props: {
         >
           <div class="shrink-0 relative flex items-center justify-center px-2 pt-1">
             <span class="absolute left-3 flex size-2.5 shrink-0">
-              <span class="absolute inline-flex size-full rounded-full bg-icon-critical-base opacity-60 animate-ping" />
-              <span class="relative inline-flex size-2.5 rounded-full bg-icon-critical-base animate-pulse" />
+              <Show
+                when={props.dictation.listening()}
+                fallback={<span class="relative inline-flex size-2.5 rounded-full bg-icon-base opacity-40" />}
+              >
+                <span class="absolute inline-flex size-full rounded-full bg-icon-critical-base opacity-60 animate-ping" />
+                <span class="relative inline-flex size-2.5 rounded-full bg-icon-critical-base animate-pulse" />
+              </Show>
             </span>
             {/* Chrome on Android composites a promoted canvas layer opaque, so
                 the bars arrive on a black rectangle. */}
             <div class="h-6 w-[180px]">
-              <DictationWaveform analyser={props.dictation.analyser} />
+              <DictationWaveform analyser={props.dictation.analyser} live={props.dictation.listening} />
             </div>
           </div>
           <div
@@ -136,7 +141,9 @@ export function DictationOverlay(props: {
               <span class="text-text-weak">{(props.dictation.committed() ? " " : "") + props.dictation.interim()}</span>
             </Show>
             <Show when={!props.dictation.text()}>
-              <span class="text-text-weak">{language.t("dictation.listening")}…</span>
+              <span class="text-text-weak">
+                {props.dictation.listening() ? language.t("dictation.listening") : language.t("dictation.starting")}…
+              </span>
             </Show>
           </div>
           <div class="shrink-0 flex flex-row items-end justify-end gap-2 px-2 pb-1">
