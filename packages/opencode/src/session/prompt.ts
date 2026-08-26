@@ -1535,14 +1535,14 @@ export namespace SessionPrompt {
     return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(SUBTASK_MARKER))
   }
 
-  function hasConciseReminder(msg: MessageV2.WithParts) {
+  export function hasConciseReminder(msg: MessageV2.WithParts) {
     return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(CONCISE_MARKER))
   }
 
   // The messages of the turn in flight: everything from the user's typed prompt
   // onward, so the synthetic user messages a turn mints along the way are in
   // scope while earlier turns are not.
-  function sinceLastPrompt(messages: MessageV2.WithParts[]) {
+  export function sinceLastPrompt(messages: MessageV2.WithParts[]) {
     const start = messages.findLastIndex((msg) => msg.info.role === "user" && !msg.info.synthetic)
     return start === -1 ? messages : messages.slice(start)
   }
