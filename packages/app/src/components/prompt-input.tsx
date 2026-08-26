@@ -508,7 +508,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!isFocused()) setComposing(false)
   })
 
-
   type AtOption =
     | { type: "agent"; name: string; display: string }
     | { type: "file"; path: string; display: string; recent?: boolean }

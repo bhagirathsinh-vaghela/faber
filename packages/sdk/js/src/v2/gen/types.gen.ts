@@ -87,7 +87,8 @@ export type EventServerInstanceDisposed = {
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
-    [key: string]: unknown
+    resumed?: boolean
+    cursor?: string
   }
 }
 
@@ -1309,6 +1310,7 @@ export type Event =
 
 export type GlobalEvent = {
   directory: string
+  id?: number
   payload: Event
 }
 

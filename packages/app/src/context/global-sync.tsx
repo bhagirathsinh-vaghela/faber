@@ -908,20 +908,24 @@ function createGlobalSync() {
     if (directory === "global") {
       switch (event?.type) {
         case "server.connected": {
-          // Every (re)attach of the event stream: re-bootstrap the world so a
-          // reconnected client redraws current state instead of showing the
-          // stale snapshot it had when the stream dropped (tmux reattach).
+          // Runs even after a clean resume: this connection's interest filter
+          // can drop frames from the replay, and state that changes without
+          // emitting an event is never carried by the stream at all.
+          //
+          // Re-bootstrap the world so a reconnected client redraws current
+          // state instead of showing the stale snapshot it had when the stream
+          // dropped (tmux reattach).
           refresh()
           // Wake open sessions so they re-fetch messages/parts the server
-          // published while the stream was down (no replay). Harmless on the
-          // first connect: the force path no-ops until the session is hydrated.
+          // published during the unreplayable gap. Harmless on the first
+          // connect: the force path no-ops until the session is hydrated.
           setReconnect((n) => n + 1)
-          // Same reconnect gap for the blocking overlays: a permission or
-          // question asked while the stream was down never arrives (no replay)
-          // and neither refresh() nor the message/part heal above re-fetches it.
-          // Re-run the instance-wide list for every bootstrapped directory so
-          // the overlay heals without a page reload. A directory that only ever
-          // held a recent-list row renders no overlay to heal.
+          // Same gap for the blocking overlays: a permission or question asked
+          // while the stream was down never arrives, and neither refresh() nor
+          // the message/part heal above re-fetches it. Re-run the instance-wide
+          // list for every bootstrapped directory so the overlay heals without a
+          // page reload. A directory that only ever held a recent-list row
+          // renders no overlay to heal.
           for (const directory of bootstrapped) {
             void syncPermissions(directory).catch(() => {})
             void syncQuestions(directory).catch(() => {})

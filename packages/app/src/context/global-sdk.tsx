@@ -5,6 +5,7 @@ import { batch, createEffect, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { Visibility } from "@/utils/visibility"
+import { HEARTBEAT_MS, IDLE_MS, RESUME_MS } from "@opencode-ai/util/stream"
 
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
   name: "GlobalSDK",
@@ -145,6 +146,44 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     // re-attaches, the server emits server.connected, and global-sync heals the
     // gap via the since-id delta. A no-op when the document API is absent.
     let attempt: AbortController | undefined
+
+    // A device leaving a tunnel should reconnect on the signal that it left,
+    // not on a timer that knows nothing about it — and that timer is longest
+    // exactly when the outage was longest.
+    //
+    // A signal arriving while the loop is NOT sleeping is remembered rather than
+    // dropped, since the common ordering is an abort immediately followed by a
+    // nudge, which lands before the loop has reached its sleep. The sleeper is
+    // held with the generation that created it so a superseded timer firing late
+    // cannot release, or silently discard, a later sleep.
+    let wake: { generation: number; resolve: () => void } | undefined
+    let generation = 0
+    let pendingWake = false
+    const nudge = () => {
+      if (!wake) {
+        pendingWake = true
+        return
+      }
+      wake.resolve()
+      wake = undefined
+    }
+    const backoffSleep = (ms: number) => {
+      if (pendingWake) {
+        pendingWake = false
+        return Promise.resolve()
+      }
+      generation++
+      const mine = generation
+      return new Promise<void>((resolve) => {
+        wake = { generation: mine, resolve }
+        setTimeout(() => {
+          if (wake?.generation !== mine) return
+          wake = undefined
+          resolve()
+        }, ms)
+      })
+    }
+
     createEffect(() => {
       if (Visibility.hidden()) attempt?.abort()
     })
@@ -160,6 +199,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         return
       }
       attempt?.abort()
+      nudge()
     })
     // Passing a per-attempt signal to the SSE call overrides the client-level
     // lifetime signal, so cascade teardown to whatever stream is live.
@@ -168,21 +208,53 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     // Read-liveness watchdog. On flaky wifi a connection can go half-open — the
     // socket is silently dead, so reader.read() never rejects and the for-await
     // below blocks forever with no reconnect. The server guarantees traffic on a
-    // live link (server.heartbeat every 30s), so treat 60s of total silence (two
-    // missed beats) as dead: abort the attempt to break the for-await into the
-    // backoff+reconnect path. pet() resets it on every received event; the loop
-    // clears it whenever the stream ends.
+    // live link (server.heartbeat), so treat prolonged silence as dead: abort
+    // the attempt to break the for-await into the backoff+reconnect path. pet()
+    // resets it on every received event; the loop clears it whenever the stream
+    // ends.
     let watchdog: ReturnType<typeof setTimeout> | undefined
-    const IDLE_MS = 60000
     const pet = () => {
       if (watchdog) clearTimeout(watchdog)
       watchdog = setTimeout(() => attempt?.abort(), IDLE_MS)
     }
+    // Re-verify the stream every time the page returns to the foreground rather
+    // than waiting out the idle budget.
+    let resumeSeen = false
+    createEffect(() => {
+      Visibility.resumed()
+      if (!resumeSeen) {
+        resumeSeen = true
+        return
+      }
+      if (Visibility.hidden()) return
+      // Reconnect immediately when no stream is live, rather than serving out a
+      // backoff that was scheduled against a link the device has since left.
+      if (!watchdog) {
+        nudge()
+        return
+      }
+      clearTimeout(watchdog)
+      watchdog = setTimeout(() => attempt?.abort(), RESUME_MS)
+    })
     const rest = () => {
       if (!watchdog) return
       clearTimeout(watchdog)
       watchdog = undefined
     }
+
+    // The newest frame this client has processed, replayed back to the server
+    // on reconnect so it can hand over what was published during the gap. Held
+    // as the server's own opaque string, which carries the process identity the
+    // server needs to reject a cursor from a previous one. Survives across
+    // attempts on purpose: a dropped stream is exactly when it matters, and only
+    // the app's own loop spans those attempts.
+    let cursor: string | undefined
+    let epoch: string | undefined
+
+    // Ceiling on the reconnect wait, so a long outage cannot climb to a delay
+    // that outlasts the outage itself and leave the app idle after the link
+    // returns.
+    const RECONNECT_CAP_MS = 30000
 
     // Thin-client streaming model (like tmux reattach): the stream must run
     // forever. When it drops (server restart, sleep, network blip) reconnect
@@ -204,7 +276,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           // of the stream so THIS loop owns reconnection on its own fast clock.
           const events = await eventSdk.global.event(
             { connectionID },
-            { signal: attempt.signal, sseMaxRetryAttempts: 1 },
+            {
+              signal: attempt.signal,
+              sseMaxRetryAttempts: 1,
+              // Resume from the last frame this client processed, so the server
+              // hands back what was published while the stream was down.
+              ...(cursor === undefined ? {} : { headers: { "Last-Event-ID": String(cursor) } }),
+            },
           )
           backoff = 250
           attached = true
@@ -218,6 +296,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           let yielded = Date.now()
           for await (const event of events.stream) {
             pet()
+            // The connect frame carries the server's process identity with its
+            // id; every later frame carries only the number, so the identity is
+            // held from the former and reapplied to the latter.
+            if (event.payload?.type === "server.connected") epoch = event.payload.properties.cursor?.split(":")[0]
+            if (event.id !== undefined && epoch) cursor = `${epoch}:${event.id}`
             const directory = event.directory ?? "global"
             const payload = event.payload
             const k = key(directory, payload)
@@ -251,8 +334,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         // (restart, network flap), and a hidden tab is detached on purpose —
         // both report unknown and let the next attach settle it.
         server.setStream(attached || Visibility.hidden() ? undefined : false)
-        await new Promise<void>((resolve) => setTimeout(resolve, backoff))
-        backoff = Math.min(backoff * 2, 2000)
+        // Full Jitter (AWS): a restart drops every device at once, so an
+        // unrandomised schedule would march them all back in step.
+        await backoffSleep(Math.random() * backoff)
+        backoff = Math.min(backoff * 2, RECONNECT_CAP_MS)
       }
     })()
 

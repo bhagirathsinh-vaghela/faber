@@ -15,6 +15,11 @@ const TRANSIENT_MESSAGES = [
   "econnrefused",
   "etimedout",
   "socket hang up",
+  // Raised by the client-side request deadline. A socket the OS killed under a
+  // backgrounded tab produces one of these, and the next attempt runs on a
+  // fresh connection, so it is the most retriable failure there is.
+  "request timed out",
+  "response stalled",
 ]
 
 function isTransientError(error: unknown): boolean {

@@ -65,7 +65,7 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
 
   // Anchor priority: a mobile drag override wins, then a held press, then the
   // live anchor. Null until the first measurement, or with no anchor at all.
-  const coords = createMemo(() => (wide() ? held() ?? anchored() : drag() ?? pos() ?? held() ?? anchored()))
+  const coords = createMemo(() => (wide() ? (held() ?? anchored()) : (drag() ?? pos() ?? held() ?? anchored())))
 
   // Pointer events TRACK the drag; they never toggle. The toggle is the click,
   // so the pill activates like every other control (and stays reachable by

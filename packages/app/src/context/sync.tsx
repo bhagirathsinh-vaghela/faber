@@ -36,6 +36,9 @@ export const {
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
+    // Sessions whose reconnect heal landed while a load was already running, so
+    // it has to be re-run once that load settles.
+    const pendingHeal = new Set<string>()
     const [meta, setMeta] = createStore({
       limit: {} as Record<string, number>,
       complete: {} as Record<string, boolean>,
@@ -109,7 +112,29 @@ export const {
         })
         .finally(() => {
           setMeta("loading", key, false)
+          drainHeal(input)
         })
+    }
+
+    // Re-run a heal that had to stand aside for an in-flight load. Deferred to a
+    // task so the loading flag it tests has actually been released.
+    const drainHeal = (input: {
+      directory: string
+      client: typeof sdk.client
+      setStore: Setter
+      sessionID: string
+      limit: number
+    }) => {
+      const key = keyFor(input.directory, input.sessionID)
+      if (!pendingHeal.delete(key)) return
+      setTimeout(() => {
+        // The session can be evicted between queueing and firing, and healing a
+        // transcript the store no longer holds would refetch it behind the
+        // user's back.
+        const [store] = globalSync.child(input.directory, { bootstrap: false })
+        if (store.message[input.sessionID] === undefined) return
+        void deltaMessages({ ...input, limit: meta.limit[key] ?? input.limit })
+      }, 0)
     }
 
     // Reconnect delta: heal the open session's transcript after a
@@ -128,7 +153,14 @@ export const {
       limit: number
     }) => {
       const key = keyFor(input.directory, input.sessionID)
-      if (meta.loading[key]) return
+      // A heal that arrives mid-load must not be dropped. The in-flight request
+      // was issued before the gap existed, so its answer cannot contain what the
+      // gap added, and nothing else would come back for it: this is the one
+      // caller whose skip leaves the transcript permanently short.
+      if (meta.loading[key]) {
+        pendingHeal.add(key)
+        return
+      }
       const known = current()[0].message[input.sessionID]
       if (!known || known.length < 2) return loadMessages(input)
       const cursor = known[known.length - 2].id
@@ -164,6 +196,7 @@ export const {
         })
         .finally(() => {
           setMeta("loading", key, false)
+          drainHeal(input)
         })
     }
 
@@ -525,6 +558,9 @@ export const {
           // reopen re-hydrates tail-first instead of short-circuiting as loaded.
           if (store.message[sessionID] === undefined) {
             const key = keyFor(sdk.directory, sessionID)
+            // A queued heal targets a transcript that no longer exists, and
+            // running it would refetch a session the user has left.
+            pendingHeal.delete(key)
             setMeta(
               produce((draft) => {
                 delete draft.limit[key]

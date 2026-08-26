@@ -1,6 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { AsyncStorage, SyncStorage } from "@solid-primitives/storage"
 import type { Accessor } from "solid-js"
+import { guard } from "@/utils/fetch"
 
 export type Platform = {
   /** Platform discriminator */
@@ -64,6 +65,13 @@ export type Platform = {
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({
   name: "Platform",
   init: (props: { value: Platform }) => {
-    return props.value
+    // Every SDK client in the app is constructed with `fetch: platform.fetch`,
+    // so wrapping it here is what puts a deadline on every request the app can
+    // make — including the ones a platform supplies its own transport for.
+    const fetch = guard(props.value.fetch ?? globalThis.fetch)
+    return {
+      ...props.value,
+      fetch,
+    }
   },
 })

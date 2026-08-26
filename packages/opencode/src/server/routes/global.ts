@@ -5,6 +5,7 @@ import z from "zod"
 import os from "os"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus, GlobalInterest } from "@/bus/global"
+import { EventReplay, blankStreamedText } from "@/bus/replay"
 import { Instance } from "../../project/instance"
 import { Project } from "../../project/project"
 import { OpenProjects } from "../../project/open"
@@ -17,44 +18,14 @@ import { SessionPing } from "../../session/ping"
 import { SessionRecent } from "../../session/recent"
 import { SessionBusy } from "../../session/busy"
 import { Event as ServerEvent } from "../event"
+import { HEARTBEAT_MS } from "@opencode-ai/util/stream"
 import { errors } from "../error"
 import { Web } from "../web"
 
 const log = Log.create({ service: "server" })
 
-// Web-SSE-only optimization: a streaming text part resends its whole growing
-// text every chunk (O(n^2) on the wire). The event carries a `delta` the web
-// client appends, so blank the text on the way out to this stream. Clone first
-// — the same event object is fanned out to every connection and other in-process
-// consumers, which need the full text.
-function blankStreamedText(event: any) {
-  const p = event?.payload
-  if (p?.type !== "message.part.updated") return event
-  const part = p.properties?.part
-  if (p.properties?.delta === undefined || !part) return event
-  // Text/reasoning: blank the accumulated text; the client appends the delta.
-  if (typeof part.text === "string") {
-    return { ...event, payload: { ...p, properties: { ...p.properties, part: { ...part, text: "" } } } }
-  }
-  // Tool: the growing field is state.metadata.output (bash streams it per chunk).
-  // Blank it the same way so an n-chunk command is O(n) on the wire, not O(n^2);
-  // the client appends the delta chunk. Full output still ships at completion.
-  if (part.type === "tool" && typeof part.state?.metadata?.output === "string") {
-    return {
-      ...event,
-      payload: {
-        ...p,
-        properties: {
-          ...p.properties,
-          part: { ...part, state: { ...part.state, metadata: { ...part.state.metadata, output: "" } } },
-        },
-      },
-    }
-  }
-  return event
-}
-
 const host = os.hostname()
+
 
 export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
 
@@ -218,6 +189,9 @@ export const GlobalRoutes = lazy(() =>
                   z
                     .object({
                       directory: z.string(),
+                      // Monotonic frame id. A client stores the newest one it
+                      // processed and sends it back as Last-Event-ID to resume.
+                      id: z.number().optional(),
                       payload: BusEvent.payloads(),
                     })
                     .meta({
@@ -235,7 +209,17 @@ export const GlobalRoutes = lazy(() =>
         // stream to the sessions its screen needs (POST /global/subscribe).
         // Absent/unregistered = fail-open (receives everything).
         const connectionID = c.req.valid("query").connectionID
-        log.info("global event connected", { connectionID })
+        // SSE resume. A reconnecting client sends back the id of the last frame
+        // it processed; anything published since is handed over before live
+        // traffic resumes, so a disconnect stops being a hole in the transcript.
+        // Parsed strictly: a blank or malformed header must be a miss, not a
+        // cursor of zero, which would replay the whole buffer to anyone who
+        // sends one.
+        const cursorHeader = c.req.header("last-event-id") ?? c.req.query("lastEventID") ?? ""
+        const [epoch, offset] = cursorHeader.split(":")
+        const parsed = Number(offset)
+        const resumeFrom = offset !== undefined && offset !== "" && Number.isSafeInteger(parsed) ? parsed : undefined
+        log.info("global event connected", { connectionID, resumeFrom })
         return streamSSE(c, async (stream) => {
           let heartbeat: ReturnType<typeof setInterval> | undefined
           let busyTick: ReturnType<typeof setInterval> | undefined
@@ -258,13 +242,21 @@ export const GlobalRoutes = lazy(() =>
           // Race every write against a 30s stall budget: on timeout or rejection,
           // tear down so the buffered events are released. onAbort covers the
           // clean-disconnect case; this covers the half-dead-socket case.
-          const send = async (payload: unknown) => {
+          // Last-Event-ID tracking does not survive the reconnect loop this app
+          // drives itself, so the id must ride in the JSON envelope as well.
+          const send = async (frame: { directory?: string; payload: unknown }, id?: number) => {
             let timer: ReturnType<typeof setTimeout> | undefined
             const stall = new Promise<never>((_, reject) => {
               timer = setTimeout(() => reject(new Error("sse write stalled")), 30000)
             })
             try {
-              await Promise.race([stream.writeSSE({ data: JSON.stringify(payload) }), stall])
+              await Promise.race([
+                stream.writeSSE({
+                  data: JSON.stringify(id === undefined ? frame : { ...frame, id }),
+                  ...(id === undefined ? {} : { id: `${EventReplay.EPOCH}:${id}` }),
+                }),
+                stall,
+              ])
             } catch {
               teardown()
             } finally {
@@ -272,18 +264,30 @@ export const GlobalRoutes = lazy(() =>
             }
           }
 
+          // Live events are queued while the resume replay is still writing, so
+          // the client sees one ordered sequence. Deltas are additive, so a live
+          // frame overtaking an older replayed one appends to text that has not
+          // arrived yet.
+          let replaying = true
+          const backlog: Array<() => Promise<void>> = []
+
           async function handler(event: any) {
+            const id = EventReplay.idOf(event)
             // Drop events this connection has scoped itself away from. No
             // connectionID, or one that never subscribed, passes everything.
             if (connectionID && !GlobalInterest.wants(connectionID, event.payload)) return
-            await send(blankStreamedText(event))
+            const write = () => send(blankStreamedText(event), id)
+            if (replaying) {
+              backlog.push(write)
+              return
+            }
+            await write()
           }
           GlobalBus.on("event", handler)
 
-          // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
           heartbeat = setInterval(() => {
             void send({ payload: { type: "server.heartbeat", properties: {} } })
-          }, 30000)
+          }, HEARTBEAT_MS)
 
           // Busy reconcile tick (independent of the 30s keepalive above). Level-
           // triggered safety net for the open session's subtree: recent.updated
@@ -319,7 +323,29 @@ export const GlobalRoutes = lazy(() =>
             })
           }, 5000)
 
-          await send({ payload: { type: "server.connected", properties: {} } })
+          // Replayed frames are already stored in delta form, so they ship as
+          // recorded. Live events arriving during this loop are held by the
+          // queue in `handler` rather than interleaved: a delta applied out of
+          // order appends to the wrong text and corrupts the transcript.
+          const missed = resumeFrom === undefined ? undefined : EventReplay.since(resumeFrom, epoch)
+          if (missed) {
+            for (const frame of missed) {
+              if (connectionID && !GlobalInterest.wants(connectionID, frame.event.payload)) continue
+              await send(frame.event, frame.id)
+            }
+          }
+          replaying = false
+          for (const pending of backlog.splice(0)) await pending()
+
+          // `resumed` reports whether the gap was fully covered. False obliges
+          // the client to re-bootstrap, since anything it missed is unrecoverable
+          // from the stream alone.
+          await send({
+            payload: {
+              type: "server.connected",
+              properties: { resumed: !!missed, cursor: `${EventReplay.EPOCH}:${EventReplay.latest()}` },
+            },
+          })
 
           await new Promise<void>((resolve) => {
             finish = resolve

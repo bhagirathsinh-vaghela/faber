@@ -1,13 +1,16 @@
 import { EventEmitter } from "events"
+import { EventReplay } from "./replay"
 
-export const GlobalBus = new EventEmitter<{
-  event: [
-    {
-      directory?: string
-      payload: any
-    },
-  ]
-}>()
+type GlobalEvent = { directory?: string; payload: any }
+
+class Bus extends EventEmitter<{ event: [GlobalEvent] }> {
+  override emit(name: "event", event: GlobalEvent) {
+    EventReplay.record(event)
+    return super.emit(name, event)
+  }
+}
+
+export const GlobalBus = new Bus()
 
 // One listener per connected SSE client. Many devices/tabs on one server is
 // normal here, so the default cap of 10 would fire a spurious leak warning.

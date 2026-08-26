@@ -4,6 +4,7 @@ import { batch, createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
+import { health } from "@/utils/health"
 
 export function normalizeServerUrl(input: string) {
   const trimmed = input.trim()
@@ -48,13 +49,17 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       host: undefined as string | undefined,
     })
 
-    // Down beats up, so a drop never waits on the slower signal. Undefined is
-    // "not yet known" — startup, a server switch, or a stream detached while
-    // the tab is hidden — and must not render as a failure.
+    // Three states, because "reachable" and "receiving events" are different
+    // claims and only the second one means the screen is current.
+    const status = () => health({ polled: state.polled, stream: state.stream })
+
+    // Reachability alone, for the callers that only need to know whether the
+    // server is answering (suppressing subsystem faults it cannot verify, say).
+    // Anything communicating currency to the user must read status() instead.
     const healthy = () => {
-      if (state.polled === false || state.stream === false) return false
-      if (state.polled === true || state.stream === true) return true
-      return undefined
+      const next = status()
+      if (next === undefined) return undefined
+      return next !== "down"
     }
 
     function setActive(input: string) {
@@ -104,8 +109,13 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     const isReady = createMemo(() => ready() && !!state.active)
 
+    // Long enough that a cold cellular radio has time to wake, connect, and
+    // answer. This poll only reports reachability, so a late answer is still a
+    // useful one; the cost of impatience here is a red dot on a working server.
+    const CHECK_MS = 15_000
+
     const check = (url: string) => {
-      const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(3000)
+      const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(CHECK_MS)
       const sdk = createOpencodeClient({
         baseUrl: url,
         fetch: platform.fetch,
@@ -126,11 +136,11 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       let alive = true
       let busy = false
 
-      // One timed-out poll on a slow link (cellular routinely blows the 3s
-      // budget) must not flip the dot red while the event stream is delivering:
-      // a live stream is stronger evidence of reachability than a slow HTTP
-      // round-trip is of failure. With the stream up, red needs two consecutive
-      // failed polls; with no stream backing it, the first failure still counts.
+      // One timed-out poll on a slow link must not flip the dot red while the
+      // event stream is delivering: a live stream is stronger evidence of
+      // reachability than a slow HTTP round-trip is of failure. With the stream
+      // up, red needs two consecutive failed polls; with no stream backing it,
+      // the first failure still counts.
       let misses = 0
       const run = () => {
         if (busy) return
@@ -170,6 +180,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     return {
       ready: isReady,
       healthy,
+      status,
       isLocal,
       setStream,
       get url() {

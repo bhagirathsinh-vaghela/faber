@@ -84,11 +84,14 @@ export function StatusPopover() {
             }}
           >
             <div
+              data-slot="server-health"
+              data-health={server.status() ?? "unknown"}
               classList={{
                 "size-1.5 rounded-full shrink-0": true,
-                "bg-icon-success-base": server.healthy() === true,
-                "bg-icon-critical-base": server.healthy() === false,
-                "bg-border-weak-base": server.healthy() === undefined,
+                "bg-icon-success-base": server.status() === "live",
+                "bg-icon-warning-base": server.status() === "stale",
+                "bg-icon-critical-base": server.status() === "down",
+                "bg-border-weak-base": server.status() === undefined,
               }}
             />
           </div>
@@ -111,7 +114,7 @@ export function StatusPopover() {
         >
           <Tabs.List data-slot="tablist" class="bg-transparent border-b-0 px-4 pt-2 pb-0 gap-4 h-10">
             <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular">
-              <Show when={server.healthy() === false}>
+              <Show when={server.status() === "down"}>
                 <span class="size-1.5 rounded-full shrink-0 bg-icon-critical-base inline-block mr-1.5" />
               </Show>
               {language.t("status.popover.tab.servers")}
@@ -149,9 +152,10 @@ export function StatusPopover() {
                   <div
                     classList={{
                       "size-1.5 rounded-full shrink-0": true,
-                      "bg-icon-success-base": server.healthy() === true,
-                      "bg-icon-critical-base": server.healthy() === false,
-                      "bg-border-weak-base": server.healthy() === undefined,
+                      "bg-icon-success-base": server.status() === "live",
+                      "bg-icon-warning-base": server.status() === "stale",
+                      "bg-icon-critical-base": server.status() === "down",
+                      "bg-border-weak-base": server.status() === undefined,
                     }}
                   />
                   <span class="text-14-regular text-text-base truncate">{machineName()}</span>

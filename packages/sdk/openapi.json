@@ -9044,7 +9044,14 @@
           },
           "properties": {
             "type": "object",
-            "properties": {}
+            "properties": {
+              "resumed": {
+                "type": "boolean"
+              },
+              "cursor": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": [
@@ -13253,6 +13260,9 @@
         "properties": {
           "directory": {
             "type": "string"
+          },
+          "id": {
+            "type": "number"
           },
           "payload": {
             "$ref": "#/components/schemas/Event"

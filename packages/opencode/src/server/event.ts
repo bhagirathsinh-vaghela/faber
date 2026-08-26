@@ -2,7 +2,13 @@ import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
 
 export const Event = {
-  Connected: BusEvent.define("server.connected", z.object({})),
+  // `resumed` says the server replayed every frame published during the gap.
+  // `cursor` identifies the newest frame across server restarts so a
+  // reconnecting client cannot resume into an unrelated id space.
+  Connected: BusEvent.define(
+    "server.connected",
+    z.object({ resumed: z.boolean().optional(), cursor: z.string().optional() }),
+  ),
   Disposed: BusEvent.define("global.disposed", z.object({})),
   // Level-triggered busy reconcile, pushed on the per-connection 5s tick in
   // /global/event (quiescence-gated: emitted only while the connection's scoped

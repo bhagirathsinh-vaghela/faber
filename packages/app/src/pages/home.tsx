@@ -21,9 +21,10 @@ export default function Home() {
           <div
             classList={{
               "size-2 rounded-full": true,
-              "bg-icon-success-base": server.healthy() === true,
-              "bg-icon-critical-base": server.healthy() === false,
-              "bg-border-weak-base": server.healthy() === undefined,
+              "bg-icon-success-base": server.status() === "live",
+              "bg-icon-warning-base": server.status() === "stale",
+              "bg-icon-critical-base": server.status() === "down",
+              "bg-border-weak-base": server.status() === undefined,
             }}
           />
           {server.machine}
