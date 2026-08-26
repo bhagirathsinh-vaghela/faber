@@ -34,6 +34,10 @@ export interface BasicToolProps {
   tool?: string
   forceOpen?: boolean
   locked?: boolean
+  // Sequential box index, rendered inline at the start of the header row (the
+  // shadcn/message-box convention: index is header metadata, not a stacked
+  // line above the card).
+  blockNumber?: number
   // Optional title-bar copy button. Prefer a body-level copy (next to the
   // visible content) instead: fenced-output tools get one free from CodeBlock,
   // and non-fenced tools render their own via the tool-body slot. This prop is
@@ -89,6 +93,9 @@ export function BasicTool(props: BasicToolProps) {
         <Collapsible.Trigger>
           <div data-slot="basic-tool-tool-trigger-content">
             <Icon name={props.icon} size="small" />
+            <Show when={props.blockNumber !== undefined}>
+              <span data-slot="basic-tool-block-number">{"#" + props.blockNumber}</span>
+            </Show>
             <div data-slot="basic-tool-tool-info">
               <Switch>
                 <Match when={isTriggerTitle(props.trigger) && props.trigger}>

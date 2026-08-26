@@ -634,31 +634,6 @@ export function MessageBox(props: {
   )
 }
 
-function BlockNumber(props: { sessionID: string; id: string }) {
-  const data = useData()
-  const number = createMemo(() => data.blockNumber(props.sessionID, props.id))
-  return (
-    <Show when={number() !== undefined}>
-      <span
-        data-slot="block-number"
-        // The inherited 1.5 line-height wraps this label in ~8px of dead space
-        // that reads as excess gap above every box; collapse it to the glyph,
-        // then add back a hair beneath so the label is not jammed onto its box.
-        style={{
-          display: "block",
-          "line-height": "1",
-          "margin-bottom": "3px",
-          color: "var(--color-text-weak)",
-          "font-size": "11px",
-          "font-weight": "600",
-        }}
-      >
-        {"#" + number()}
-      </span>
-    </Show>
-  )
-}
-
 export function AssistantMessageDisplay(props: {
   message: AssistantMessage
   parts: PartType[]
@@ -847,6 +822,9 @@ export interface ToolProps {
   defaultOpen?: boolean
   forceOpen?: boolean
   locked?: boolean
+  // The box's sequential index, shown inline in the header row. Threaded to
+  // BasicTool via {...props} so every tool renderer carries it without change.
+  blockNumber?: number
 }
 
 export type ToolComponent = Component<ToolProps>
@@ -976,7 +954,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
   return (
     <div data-component="tool-part-wrapper" data-permission={showPermission()}>
-      <BlockNumber sessionID={props.message.sessionID} id={part.id} />
       <Switch>
         <Match when={part.state.status === "error" && part.state.error}>
           {(error) => {
@@ -1017,6 +994,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             hideDetails={props.hideDetails}
             forceOpen={forceOpen()}
             locked={showPermission()}
+            blockNumber={data.blockNumber(props.message.sessionID, part.id)}
           />
         </Match>
       </Switch>

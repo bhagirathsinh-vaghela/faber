@@ -35,6 +35,19 @@
     flex-shrink: 0;
   }
 
+  /* Sequential index, inline before the title like the message box's #N. The
+     row's 20px gap is tuned for icon-to-content, too airy around a metadata
+     prefix, so negative margins on both sides close it to an even 8px so the
+     number sits tight between the icon and the title rather than floating. */
+  [data-slot="basic-tool-block-number"] {
+    flex-shrink: 0;
+    margin-left: -12px;
+    margin-right: -12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-weak);
+  }
+
   [data-slot="basic-tool-tool-info"] {
     flex-grow: 1;
     min-width: 0;
