@@ -641,7 +641,17 @@ function BlockNumber(props: { sessionID: string; id: string }) {
     <Show when={number() !== undefined}>
       <span
         data-slot="block-number"
-        style={{ color: "var(--color-text-weak)", "font-size": "11px", "font-weight": "600" }}
+        // The inherited 1.5 line-height wraps this label in ~8px of dead space
+        // that reads as excess gap above every box; collapse it to the glyph,
+        // then add back a hair beneath so the label is not jammed onto its box.
+        style={{
+          display: "block",
+          "line-height": "1",
+          "margin-bottom": "3px",
+          color: "var(--color-text-weak)",
+          "font-size": "11px",
+          "font-weight": "600",
+        }}
       >
         {"#" + number()}
       </span>
