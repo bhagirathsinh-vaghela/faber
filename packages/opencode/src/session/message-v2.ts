@@ -514,12 +514,20 @@ export namespace MessageV2 {
           parts: [],
         }
         result.push(userMessage)
+        // The typed text is emitted last so the turn's cache anchor lands on it:
+        // the Anthropic SDK lowers a message-level marker onto the message's
+        // LAST block, and a reminder minted mid-turn would otherwise take that
+        // slot and move the anchor on every append.
+        const typed: TextPart[] = []
         for (const part of msg.parts) {
-          if (part.type === "text" && !part.ignored)
-            userMessage.parts.push({
-              type: "text",
-              text: part.text,
-            })
+          if (part.type === "text" && !part.ignored) {
+            if (part.synthetic)
+              userMessage.parts.push({
+                type: "text",
+                text: part.text,
+              })
+            else typed.push(part)
+          }
           // text/plain and directory files are converted into text parts, ignore them
           if (part.type === "file" && part.mime !== "text/plain" && part.mime !== "application/x-directory")
             userMessage.parts.push({
@@ -542,6 +550,7 @@ export namespace MessageV2 {
             })
           }
         }
+        for (const part of typed) userMessage.parts.push({ type: "text", text: part.text })
       }
 
       if (msg.info.role === "assistant") {

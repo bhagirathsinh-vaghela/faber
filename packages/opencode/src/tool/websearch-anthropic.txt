@@ -20,5 +20,5 @@ Usage notes:
   - Domain filtering is supported to include or block specific websites
 
 IMPORTANT - Use the correct year in search queries:
-  - You MUST use the current year when searching for recent information, documentation, or current events.
+  - You MUST use the current year when searching for recent information, documentation, or current events. The current date is given in the session_context block; use that year, never the one your training data suggests.
   - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year

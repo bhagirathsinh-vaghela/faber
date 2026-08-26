@@ -225,6 +225,14 @@ export namespace Session {
       // so the post-summary turn re-injects (the block is dropped at the summary
       // boundary). Set via Session.update with { touch: false }.
       mcpCatalogText: z.string().optional(),
+      // The date and branch the session has told the model about. The frozen
+      // session-context block states them once and precedes the whole
+      // conversation, so it can never be rewritten to correct them; a later
+      // value is announced by a fresh block at the tail instead, and these
+      // record what was last announced. Absent on pre-feature sessions ->
+      // seeded from the frozen block on the next turn, announcing nothing.
+      contextDate: z.string().optional(),
+      contextBranch: z.string().optional(),
     })
     .meta({
       ref: "Session",

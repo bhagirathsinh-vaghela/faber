@@ -47,7 +47,11 @@ export namespace Vcs {
       log.info("initialized", { branch: current })
 
       const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, async (evt) => {
-        if (evt.properties.file.endsWith("HEAD")) return
+        // The watcher ignores every entry in the git dir except HEAD, so HEAD is
+        // the only git-internal path that ever arrives, and a checkout rewrites
+        // it. React to that and nothing else. path.sep guards a file named e.g.
+        // AHEAD elsewhere in the tree.
+        if (!evt.properties.file.endsWith(path.sep + "HEAD")) return
         const next = await currentBranch()
         if (next !== current) {
           log.info("branch changed", { from: current, to: next })

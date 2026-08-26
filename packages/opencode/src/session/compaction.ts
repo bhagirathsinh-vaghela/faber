@@ -158,9 +158,13 @@ export namespace SessionCompaction {
     })
     const instructions = snapshot.instructions
     const system = {
-      env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
+      env: SystemPrompt.environment(),
       globalInstructions: instructions.global,
       projectInstructions: instructions.project,
+      sessionContext: SystemPrompt.sessionContext({
+        created: session.time.created,
+        branch: session.branch,
+      }),
     }
 
     // Allow plugins to inject context or replace compaction prompt

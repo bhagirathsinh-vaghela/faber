@@ -7,6 +7,7 @@ import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { iife } from "@/util/iife"
+import { SESSION_CONTEXT_MARKER } from "@/session/system"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -209,10 +210,11 @@ export namespace ProviderTransform {
     const markers: ModelMessage[] = []
     const indices: number[] = []
 
-    // Only mark the last 2 system blocks (up to 4 markers total).
-    // Earlier system blocks are within the 20-block lookback window
-    // of subsequent markers and get cached for free.
-    const systemToMark = systemMsgs.slice(-2)
+    // System blocks before these last 2 sit within the 20-block lookback and
+    // cache for free. The session-context block carries the current date and
+    // branch, which turn over on their own, making any 1h cache entry ending
+    // there unreusable.
+    const systemToMark = systemMsgs.filter((msg) => !isSessionContext(msg)).slice(-2)
     for (const msg of systemToMark) {
       markers.push(msg)
       indices.push(msgs.indexOf(msg))
@@ -342,6 +344,13 @@ export namespace ProviderTransform {
    */
   export function cacheMarkerIndices(msgs: ModelMessage[], probeIndex?: number): number[] {
     return selectCacheMarkers(msgs, probeIndex).indices
+  }
+
+  // A miss here hands the block a 1h marker, keying an entry to a value that
+  // turns over daily, so the tag is matched anywhere in the block rather than
+  // only at its start.
+  function isSessionContext(msg: ModelMessage) {
+    return msg.role === "system" && msg.content.includes(SESSION_CONTEXT_MARKER)
   }
 
   function isMetaMessage(msg: ModelMessage) {

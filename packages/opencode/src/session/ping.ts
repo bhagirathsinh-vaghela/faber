@@ -453,10 +453,17 @@ export namespace SessionPing {
         abort: pingAbort.signal,
         sessionID,
         system: {
-          env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
+          env: SystemPrompt.environment(),
           globalInstructions: instructions.global,
           projectInstructions: instructions.project,
+          sessionContext: SystemPrompt.sessionContext({
+            created: session.time.created,
+            branch: session.branch,
+          }),
         },
+        // Warming a prefix the turn never reads is worse than not warming: the
+        // ping must match the turn's question decision, not fall back to the default.
+        canAsk: SessionPrompt.canAsk(session),
         messages: allMessages,
         sessionMessages,
         messageIdToIndex: idToIndex,

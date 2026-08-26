@@ -309,7 +309,6 @@ describe("session.message-v2.toModelMessage", () => {
       {
         role: "user",
         content: [
-          { type: "text", text: "hello" },
           {
             type: "file",
             mediaType: "image/png",
@@ -318,6 +317,7 @@ describe("session.message-v2.toModelMessage", () => {
           },
           { type: "text", text: "What did we do so far?" },
           { type: "text", text: "The following tool was executed by the user" },
+          { type: "text", text: "hello" },
         ],
       },
     ])

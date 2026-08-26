@@ -6,18 +6,14 @@ import { Log } from "../util/log"
 
 const log = Log.create({ service: "tool.websearch" })
 
-function currentMonthYear(): string {
-  const now = new Date()
-  const month = now.toLocaleString("en-US", { month: "long" })
-  return `${month} ${now.getFullYear()}`
-}
-
 export const WebSearchAnthropicTool = Tool.define("websearch", async () => {
   return {
-    description: DESCRIPTION.replace(
-      "You MUST use the current year",
-      `The current date is ${currentMonthYear()}. You MUST use the current year`,
-    ),
+    // The description is a tool definition, and tools[] is hashed ahead of the
+    // system prompt and every marker, so a date spliced in here invalidates the
+    // whole prefix for every session on the machine when it turns over. The
+    // current date reaches the model through the session-context block instead,
+    // which sits past the last 1h marker.
+    description: DESCRIPTION,
     parameters: z
       .object({
         query: z.string().min(2).describe("The search query to use"),

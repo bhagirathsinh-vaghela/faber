@@ -38,6 +38,7 @@ export namespace LLM {
       env: string[]
       globalInstructions: string[]
       projectInstructions: string[]
+      sessionContext?: string
     }
     abort: AbortSignal
     messages: ModelMessage[]
@@ -88,9 +89,15 @@ export namespace LLM {
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"
 
-    // Two system blocks, both get 1h cache markers.
+    // Three system blocks; the first two get 1h cache markers.
     //   [0] S1: provider prompt + global instructions
     //   [1] S2: environment + project instructions + user.system
+    //   [2] S3: session context (current date, branch) + question — NO marker
+    //
+    // S3 stays unmarked and last because everything in it is per-session or
+    // turns over on its own. It is the first block past the cached frontier, so
+    // a new date, a new branch, or a session that denies the question tool
+    // leaves both 1h entries intact.
     //
     // See selectCacheMarkers() in provider/transform.ts for marker strategy.
     const system: string[] = []
@@ -110,12 +117,18 @@ export namespace LLM {
     const projectBlock = [...input.system.projectInstructions, ...(input.user.system ? [input.user.system] : [])]
       .filter(Boolean)
       .join("\n")
-    // S2, because a subtask allowlist can flip this per turn and S1 is the
-    // cross-session stable prefix. Nothing ahead of S1 carries a marker, so a
-    // byte moving there cascades a full miss.
-    const question = input.tools["question"] && input.canAsk !== false ? SystemPrompt.question() : ""
-    const s2 = [envBlock, projectBlock, question].filter(Boolean).join("\n")
+    const s2 = [envBlock, projectBlock].filter(Boolean).join("\n")
     if (s2) system.push(s2)
+
+    // S3 rather than S2: a session allowlist (subtask, compaction) can deny the
+    // question tool, and a fragment that ships for one session but not the next
+    // forks S2 into variants that two sessions in the same directory cannot
+    // share. Everything here is per-session by nature and carries no marker.
+    const s3 = SystemPrompt.sessionBlock({
+      context: input.system.sessionContext,
+      question: input.tools["question"] && input.canAsk !== false ? SystemPrompt.question() : undefined,
+    })
+    if (s3) system.push(s3)
 
     const original = clone(system)
     await Plugin.trigger(

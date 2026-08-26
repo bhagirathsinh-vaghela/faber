@@ -12,6 +12,7 @@ import { Provider } from "../provider/provider"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, asSchema } from "ai"
 import { SessionCompaction } from "./compaction"
 import { Instance } from "../project/instance"
+import { Vcs } from "../project/vcs"
 import { OpenProjects } from "../project/open"
 import { Global } from "../global"
 import { Bus } from "../bus"
@@ -601,6 +602,10 @@ export namespace SessionPrompt {
             id: Identifier.ascending("message"),
             sessionID,
             role: "user",
+            // Flagged on the message, not just its part: the reminder helpers
+            // separate a turn the user opened from one the loop minted by
+            // reading this field off the message.
+            synthetic: true,
             time: {
               created: Date.now(),
             },
@@ -760,9 +765,13 @@ export namespace SessionPrompt {
         abort,
         sessionID,
         system: {
-          env: SystemPrompt.environment({ created: session.time.created, branch: session.branch }),
+          env: SystemPrompt.environment(),
           globalInstructions: instructions.global,
           projectInstructions: instructions.project,
+          sessionContext: SystemPrompt.sessionContext({
+            created: session.time.created,
+            branch: session.branch,
+          }),
         },
         ...(() => {
           const { messages, idToIndex } = MessageV2.toModelMessages(sessionMessages, model)
@@ -1671,6 +1680,57 @@ export namespace SessionPrompt {
     userMessage.parts.push(part)
   }
 
+  // Announce a date or branch that has moved since the model was last told. The
+  // frozen session-context block sits ahead of the whole conversation, so
+  // correcting it in place would re-hash every block behind it; a block at the
+  // tail states the new value and leaves the cached prefix untouched. Both facts
+  // ride one block, so a turn that crosses midnight on a new branch appends once.
+  async function insertSessionContext(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
+    const date = SystemPrompt.date()
+    // session.branch is fixed at creation, so a switch is only visible by asking
+    // Vcs, which serves a value it keeps current from a watcher rather than
+    // shelling out per turn. A read failure returns undefined, which carries no
+    // information: hold the last known branch rather than announcing a move to
+    // nothing, which would emit an empty block and forget the real branch.
+    const live = Instance.project.vcs === "git" ? await Vcs.branch() : undefined
+    const branch = live ?? input.session.contextBranch ?? input.session.branch
+    // Seed both dimensions from what the frozen block already stated (the
+    // creation-time values), so a value that never moved announces nothing.
+    const known = {
+      date: input.session.contextDate ?? SystemPrompt.date(input.session.time.created),
+      branch: input.session.contextBranch ?? input.session.branch,
+    }
+    if (known.date === date && known.branch === branch) return
+
+    const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
+    if (!userMessage) return
+    const text = SystemPrompt.sessionContextUpdate({
+      date: known.date === date ? undefined : date,
+      branch: known.branch === branch ? undefined : branch,
+    })
+    const userInfo = userMessage.info as MessageV2.User
+    const part: MessageV2.TextPart = {
+      id: Identifier.ascending("part"),
+      messageID: userInfo.id,
+      sessionID: userInfo.sessionID,
+      type: "text",
+      text,
+      synthetic: true,
+    }
+    await Session.updatePart(part)
+    userMessage.parts.push(part)
+    await Session.update(
+      input.session.id,
+      (draft) => {
+        draft.contextDate = date
+        draft.contextBranch = branch
+      },
+      { touch: false },
+    )
+    input.session.contextDate = date
+    input.session.contextBranch = branch
+  }
+
   async function insertReminders(input: {
     messages: MessageV2.WithParts[]
     agent: Agent.Info
@@ -1679,6 +1739,7 @@ export namespace SessionPrompt {
   }) {
     await insertMcpCatalog(input)
     await insertAgentCatalog(input)
+    await insertSessionContext(input)
 
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
@@ -1693,7 +1754,12 @@ export namespace SessionPrompt {
     // being appended to: a task summary or a compaction mints a fresh user
     // message mid-turn, and a per-message check would inject once more for
     // each one, rewriting the tail every time.
-    if (!input.session.parentID && !sinceLastPrompt(input.messages).some(hasConciseReminder)) {
+    //
+    // The append target itself is also checked directly, so the guard holds
+    // even if the window ever stops covering it — a second append onto a
+    // message already sent would rewrite the prefix behind the rolling marker.
+    const carried = hasConciseReminder(userMessage) || sinceLastPrompt(input.messages).some(hasConciseReminder)
+    if (!input.session.parentID && !carried) {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
       if (concise) await persistReminder(userMessage, CONCISE, CONCISE_MARKER)
     }

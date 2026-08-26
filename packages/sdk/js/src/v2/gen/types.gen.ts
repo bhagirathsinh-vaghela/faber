@@ -1037,6 +1037,8 @@ export type Session = {
       }
   >
   mcpCatalogText?: string
+  contextDate?: string
+  contextBranch?: string
 }
 
 export type EventSessionCreated = {
