@@ -252,10 +252,9 @@ export const dict = {
   "prompt.toast.dictationFailed.title": "Dictation failed",
   "dictation.starting": "Starting",
   "dictation.listening": "Listening",
+  "dictation.transcribing": "Transcribing",
   "dictation.accept": "Accept",
   "dictation.discard": "Discard",
-  "dictation.stashed.title": "Dictation saved",
-  "dictation.stashed.description": "The transcript was added to the end of your prompt draft.",
 
   "companion.enter": "Enter companion mode",
   "companion.exit": "Exit companion mode",

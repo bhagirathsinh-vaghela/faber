@@ -1,23 +1,20 @@
-import { Show, createEffect, onCleanup, onMount } from "solid-js"
+import { Show, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { useLanguage } from "@/context/language"
-import { preserveFocus } from "@/utils/mobile"
 import type { createDictation } from "@/utils/dictation"
 import { DictationWaveform } from "./dictation-waveform"
 
 // Live transcription HUD: a compact floating pill with a canvas waveform, in
 // the style of modern dictation apps. Text settles here, not in the host
-// input: Enter or the check button accepts, Escape or the close button
-// discards. All close the mic. If the host unmounts mid-dictation the
-// transcript is stashed, never dropped. Portaled to body with a top z-index so
-// no ancestor (overflow-clip forms, panels) can hide it.
+// input: Enter, the check button, or a tap outside accepts, while Escape and
+// the close button discard. All close the mic. If the host unmounts
+// mid-dictation there is nowhere to insert, so the transcript is stashed rather
+// than dropped. Portaled to body with a top z-index so no ancestor
+// (overflow-clip forms, panels) can hide it.
 export function DictationOverlay(props: {
   dictation: ReturnType<typeof createDictation>
   onAccept: (text: string) => void
-  // Keeps the transcript without inserting at the target (outside click,
-  // host unmount): the host stows it in the prompt draft.
-  onStash: (text: string) => void
   onClose: () => void
   // Agent tint for the border, matching the question panel; defaults to the
   // interactive accent when the host has no agent color.
@@ -26,16 +23,22 @@ export function DictationOverlay(props: {
   const language = useLanguage()
 
   let panelRef: HTMLDivElement | undefined
-  let transcriptRef: HTMLDivElement | undefined
   let done = false
-  const finish = (outcome: "accept" | "stash" | "discard") => {
+  const finish = async (outcome: "accept" | "discard") => {
+    // The panel stays mounted across settle()'s await, so a stray click or
+    // keypress in that window would otherwise deliver the transcript twice.
+    if (done) return
     done = true
-    const text = props.dictation.text().trim()
+    if (outcome === "discard") {
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      props.onClose()
+      props.dictation.stop()
+      return
+    }
+    const text = (await props.dictation.settle()).trim()
     ;(document.activeElement as HTMLElement | null)?.blur()
     props.onClose()
-    if (text && outcome === "accept") props.onAccept(text)
-    if (text && outcome === "stash") props.onStash(text)
-    props.dictation.stop()
+    if (text) props.onAccept(text)
   }
 
   const handleKey = (event: KeyboardEvent) => {
@@ -51,14 +54,15 @@ export function DictationOverlay(props: {
     }
   }
 
-  // The mic toggle handles its own stop; everything else outside the panel
-  // stashes so a stray click never drops the transcript.
+  // The mic toggle handles its own stop. Anywhere else outside the panel reads
+  // as "I am done speaking", so the transcript lands where the dictation
+  // started rather than waiting in a draft the user has to go find.
   const handlePointer = (event: PointerEvent) => {
     const target = event.target as HTMLElement | null
     if (!target) return
     if (panelRef?.contains(target)) return
     if (target.closest("[data-dictation-toggle]")) return
-    finish("stash")
+    finish("accept")
   }
 
   // The scrim eats clicks (so an outside click only dismisses) but must let
@@ -78,15 +82,12 @@ export function DictationOverlay(props: {
     document.removeEventListener("keydown", handleKey, true)
     document.removeEventListener("pointerdown", handlePointer, true)
     if (done) return
-    const text = props.dictation.text().trim()
-    props.dictation.stop()
-    if (text) props.onStash(text)
-  })
-
-  // Keep the newest words visible as the transcript outgrows the box.
-  createEffect(() => {
-    props.dictation.text()
-    transcriptRef?.scrollTo({ top: transcriptRef.scrollHeight })
+    // Read off props before the await: this component is unmounting, so props
+    // may no longer be reachable by the time the transcript resolves.
+    const accept = props.onAccept
+    props.dictation.settle().then((text) => {
+      if (text.trim()) accept(text.trim())
+    })
   })
 
   const accent = () => props.accent ?? "var(--icon-interactive-base)"
@@ -102,11 +103,11 @@ export function DictationOverlay(props: {
         style={{ background: "rgba(0, 0, 0, 0.7)" }}
         onWheel={forwardWheel}
       />
-      {/* Anchored just above the prompt dock, so the transcript lands beside
-          the input it will be inserted into rather than across the screen from
-          it. --prompt-height is published on the root by the dock's resize
-          observer; the fallback only covers the frames before it lands. */}
-      <div class="fixed inset-x-0 bottom-[calc(var(--prompt-height,8rem)+var(--keyboard-inset,0px)+64px)] z-[9999] flex justify-center pointer-events-none px-4">
+      {/* --composer-top is the gap from the viewport bottom to the top of the
+          composer, published by PromptInput. The dock's own height is not
+          usable here: it also contains the question panel, so it swings with
+          UI that has nothing to do with where the transcript lands. */}
+      <div class="fixed inset-x-0 bottom-[calc(var(--composer-top,8rem)+16px)] z-[9999] flex justify-center pointer-events-none px-4">
         <div
           ref={panelRef}
           class="pointer-events-auto w-full max-w-md flex flex-col gap-2 rounded-[1.75rem] border-[4.5px] bg-surface-raised-stronger-non-alpha p-2 transform-gpu isolate"
@@ -131,20 +132,18 @@ export function DictationOverlay(props: {
               <DictationWaveform analyser={props.dictation.analyser} live={props.dictation.listening} />
             </div>
           </div>
-          <div
-            ref={transcriptRef}
-            class="max-h-32 text-13-regular text-text-strong overflow-y-auto whitespace-pre-wrap leading-relaxed px-3 pb-1 pt-0.5"
-            aria-live="polite"
-          >
-            <span class="text-13-medium">{props.dictation.committed()}</span>
-            <Show when={props.dictation.interim()}>
-              <span class="text-text-weak">{(props.dictation.committed() ? " " : "") + props.dictation.interim()}</span>
-            </Show>
-            <Show when={!props.dictation.text()}>
-              <span class="text-text-weak">
-                {props.dictation.listening() ? language.t("dictation.listening") : language.t("dictation.starting")}…
-              </span>
-            </Show>
+          <div class="text-13-regular px-3 pb-1 pt-0.5" aria-live="polite">
+            {/* Status only, never the transcript: it is delivered to the host
+                on accept, so showing it here would flash it for the frames
+                between arrival and hand-off. */}
+            <span class="text-text-weak">
+              {props.dictation.transcribing()
+                ? language.t("dictation.transcribing")
+                : props.dictation.listening()
+                  ? language.t("dictation.listening")
+                  : language.t("dictation.starting")}
+              …
+            </span>
           </div>
           <div class="shrink-0 flex flex-row items-end justify-end gap-2 px-2 pb-1">
             <div class="flex flex-col items-center gap-0.5">
@@ -157,7 +156,6 @@ export function DictationOverlay(props: {
                 class="size-8 any-pointer-coarse:size-11"
                 aria-label={language.t("dictation.discard")}
                 onClick={() => finish("discard")}
-                {...preserveFocus()}
               />
             </div>
             <div class="flex flex-col items-center gap-0.5">
@@ -170,7 +168,6 @@ export function DictationOverlay(props: {
                 class="size-8 any-pointer-coarse:size-11"
                 aria-label={language.t("dictation.accept")}
                 onClick={() => finish("accept")}
-                {...preserveFocus()}
               />
             </div>
           </div>

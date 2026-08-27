@@ -32,6 +32,23 @@ class DictationCapture extends AudioWorkletProcessor {
 registerProcessor("dictation-capture", DictationCapture)
 `
 
+// Ceiling on how long a batch engine may take to return its transcript after
+// the mic stops.
+const DRAIN_MS = 30_000
+
+// Upper bound on holding the capture graph open after the mic stops. The OS
+// recording indicator is already dark by then, so this only bounds the wait
+// for a transcript that may never arrive.
+const AUDIO_RELEASE_MS = 2_000
+
+function parse(data: unknown) {
+  try {
+    return JSON.parse(String(data)) as { type?: string; text?: string; final?: boolean; message?: string }
+  } catch {
+    return undefined
+  }
+}
+
 let workletUrl: string | undefined
 const workletModule = () => (workletUrl ??= URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })))
 
@@ -59,10 +76,25 @@ function afterPaint(fn: () => void) {
 }
 
 async function acquire() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-  })
+  // Nothing here depends on the microphone, so building the graph in parallel
+  // takes its cost off the press instead of adding to it.
+  // WebKit opens the route faster for an explicit 16kHz context than for a
+  // native-rate one whose output has to be decimated afterwards.
   const context = new AudioContext({ sampleRate: 16000 })
+  const ready = context.audioWorklet.addModule(workletModule())
+  const stream = await navigator.mediaDevices
+    // Echo cancellation and noise suppression put iOS on its voice-processing
+    // audio unit, which costs most of a second to instantiate, and dictation
+    // plays nothing back so there is no echo to cancel. Gain control is left on:
+    // measured against this same script, disabling it both slowed acquisition
+    // and cost a proper noun.
+    .getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false } })
+    .catch((error) => {
+      context.close().catch(() => {})
+      throw error
+    })
+  // Nothing downstream resamples, so a context that ignored the requested rate
+  // would send audio the server silently misreads as the wrong speed.
   if (context.sampleRate !== 16000) {
     for (const track of stream.getTracks()) track.stop()
     context.close().catch(() => {})
@@ -71,25 +103,32 @@ async function acquire() {
   // WebKit starts a context suspended when it is constructed outside the
   // gesture that began the press, and audio silently never flows.
   if (context.state !== "running") await context.resume().catch(() => {})
-  await context.audioWorklet.addModule(workletModule())
+  await ready
   return { stream, context }
 }
 
-// Releasing the capture graph is slow: track.stop() and AudioContext.close()
-// tear down the OS audio path, and over a Bluetooth headset that also forces the
-// HFP->A2DP profile switch, which blocks the main thread for hundreds of ms.
-// Deferring it past the paint keeps that cost off the frame that dismisses the
-// overlay and inserts the transcript. The socket closes first so the server-side
-// transcription stream ends immediately rather than outliving the audio. The mic
-// is never held past the dictation: an idle capture keeps the OS recording
-// indicator lit, telling the user they are being listened to when they are not.
+// The mic is never held past the dictation: an idle capture keeps the OS
+// recording indicator lit, telling the user they are being listened to when
+// they are not.
 function release(socket: WebSocket, context: AudioContext, stream: MediaStream) {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "stop" }))
-  socket.close()
-  afterPaint(() => {
-    for (const track of stream.getTracks()) track.stop()
-    context.close().catch(() => {})
-  })
+  // The server closes once it has flushed the last transcript. A batch engine
+  // only starts transcribing at "stop", so closing here would drop the result;
+  // the timer covers a server that never closes.
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "stop" }))
+    setTimeout(() => socket.close(), DRAIN_MS)
+  } else socket.close()
+  for (const track of stream.getTracks()) track.stop()
+  // Closing competes for the same thread that dispatches the transcript, so the
+  // caller runs this once the text has landed and the timer bounds the wait.
+  let released = false
+  const close = () => {
+    if (released) return
+    released = true
+    afterPaint(() => context.close().catch(() => {}))
+  }
+  setTimeout(close, AUDIO_RELEASE_MS)
+  return close
 }
 
 let active: (() => void) | undefined
@@ -136,6 +175,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     // press by up to a second on a cold start. Words spoken before that are
     // gone, so the overlay has to distinguish arming from listening.
     listening: false,
+    // A batch engine transcribes only after the mic stops, so the overlay has
+    // to keep rendering while the result is still in flight.
+    transcribing: false,
     committed: "",
     interim: "",
   })
@@ -153,19 +195,67 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   // connected server-side; without this hook it stays open until getUserMedia
   // settles — minutes, when the user ignores the mic-permission prompt.
   let abortStart: (() => void) | undefined
+  // Shared by concurrent settle() callers so the transcript is delivered once.
+  let settling: Promise<string> | undefined
 
   const supported = () => !!navigator.mediaDevices?.getUserMedia
 
   const teardown = () => {
     epoch++
     abortStart?.()
+    settling = undefined
     if (!session) return
     const { socket, context, stream } = session
     session = undefined
     analyser = undefined
     if (active === stop) active = undefined
-    setStore({ active: false, listening: false, committed: "", interim: "" })
-    release(socket, context, stream)
+    setStore({ active: false, listening: false, transcribing: false, committed: "", interim: "" })
+    release(socket, context, stream)()
+  }
+
+  // Releases the microphone but leaves the socket open, since a batch engine
+  // sends nothing until the audio ends. Resolves when the server closes.
+  // Resolving transfers ownership of the transcript to the caller, so the
+  // store is left empty for the next dictation. Concurrent callers (the
+  // overlay's unmount and the host's own accept) share one promise, so the
+  // transcript is delivered exactly once.
+  const settle = () => {
+    if (settling) return settling
+    if (!session) {
+      const transcript = text()
+      setStore({ transcribing: false, committed: "", interim: "" })
+      return Promise.resolve(transcript)
+    }
+    const { socket, context, stream } = session
+    session = undefined
+    analyser = undefined
+    if (active === stop) active = undefined
+    setStore({ active: false, listening: false, transcribing: true })
+    const asked = performance.now()
+    const closeAudio = release(socket, context, stream)
+    settling = new Promise<string>((resolve) => {
+      let done = false
+      const settled = () => {
+        if (done) return
+        done = true
+        const transcript = text()
+        setStore({ transcribing: false, committed: "", interim: "" })
+        settling = undefined
+        resolve(transcript)
+        closeAudio()
+      }
+      if (socket.readyState === WebSocket.CLOSED) return settled()
+      // Whichever arrives first wins: a final transcript, the socket closing
+      // without one, or the drain ceiling for a server that does neither.
+      socket.addEventListener("close", settled, { once: true })
+      socket.addEventListener("message", (event) => {
+        const message = parse(event.data)
+        if (message?.type !== "transcript" || message.final !== true) return
+        queueMicrotask(settled)
+      })
+      setTimeout(settled, DRAIN_MS)
+    })
+    return settling
   }
 
   const stop = () => teardown()
@@ -246,10 +336,12 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       }
 
       const worklet = new AudioWorkletNode(context, "dictation-capture")
-      let first = true
+      // Frames arrive before the audio route opens, so signal is what proves the
+      // microphone is live and the user can safely start speaking.
+      let silent = true
       worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        if (first) {
-          first = false
+        if (silent && event.data.some((sample) => sample !== 0)) {
+          silent = false
           setStore("listening", true)
         }
         const frame = encode(event.data)
@@ -262,11 +354,18 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       const source = context.createMediaStreamSource(stream)
       source.connect(worklet)
 
-      // Waveform reads this analyser's frequency data on its own rAF.
+      // Waveform reads this analyser's frequency data on its own rAF. The gain
+      // sits in front of it only: capture asks the OS for no auto-gain, so the
+      // bars would otherwise read far quieter than the speech sounds. Nothing
+      // downstream of the worklet sees this, so the model still gets the
+      // untouched signal.
       analyser = context.createAnalyser()
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.8
-      source.connect(analyser)
+      const visual = context.createGain()
+      visual.gain.value = 4
+      source.connect(visual)
+      visual.connect(analyser)
 
       session = { socket, context, stream }
       abortStart = undefined
@@ -290,10 +389,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     supported,
     active: () => store.active,
     listening: () => store.listening,
-    committed: () => store.committed,
-    interim: () => store.interim,
+    transcribing: () => store.transcribing,
+    settle,
     analyser: () => analyser,
-    text,
     start,
     stop,
   }
