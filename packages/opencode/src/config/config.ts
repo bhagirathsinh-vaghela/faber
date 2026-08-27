@@ -696,6 +696,15 @@ export namespace Config {
   })
   export type Skills = z.infer<typeof Skills>
 
+  export const Dictation = z.object({
+    engine: z
+      .enum(["deepgram", "local"])
+      .optional()
+      .describe("Transcription backend: 'deepgram' streams to the cloud, 'local' posts to a sidecar"),
+    url: z.string().optional().describe("Base URL of the local transcription sidecar"),
+  })
+  export type Dictation = z.infer<typeof Dictation>
+
   export const Agent = z
     .object({
       model: z.string().optional(),
@@ -1099,6 +1108,7 @@ export namespace Config {
         .optional()
         .describe("Command configuration, see https://opencode.ai/docs/commands"),
       skills: Skills.optional().describe("Additional skill folder paths"),
+      dictation: Dictation.optional().describe("Speech-to-text engine for the prompt microphone"),
       watcher: z
         .object({
           ignore: z.array(z.string()).optional(),
