@@ -1259,7 +1259,7 @@ export default function Page() {
       title: language.t("command.zen.toggle"),
       description: language.t("command.zen.toggle.description"),
       category: language.t("command.category.session"),
-      keybind: "alt+x",
+      keybind: "alt+z",
       onSelect: () => layout.zen.toggle(),
     },
     {
