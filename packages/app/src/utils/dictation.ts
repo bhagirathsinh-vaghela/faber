@@ -215,9 +215,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   // The live analyser drives the waveform canvas directly (its own rAF reads
   // frequency data), so per-frame audio levels never churn the Solid store.
   let analyser: AnalyserNode | undefined
-  // stop() during start()'s awaits used to leave a hot mic with nothing on
-  // screen: stop found no session yet, then start finished wiring one up. The
-  // epoch lets a resumed start detect the intervening stop and release instead.
+  // A stop() during start()'s awaits finds no session to release, so a start
+  // that resumes afterward would strand a hot mic with nothing on screen. The
+  // epoch lets the resumed start detect the intervening stop and release instead.
   let epoch = 0
   // Set while start() is between dialing the socket and committing a session.
   // A stop in that window has no session to release, but the socket is already
