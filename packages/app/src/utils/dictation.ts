@@ -4,17 +4,34 @@ import { createStore } from "solid-js/store"
 // Worklet source is inlined via a Blob URL so no separate asset has to flow
 // through the embedded web bundle pipeline.
 const WORKLET = `
+const TARGET = 16000
 class DictationCapture extends AudioWorkletProcessor {
   constructor() {
     super()
     this.buffer = []
     this.length = 0
+    this.phase = 0
   }
   process(inputs) {
     const channel = inputs[0]?.[0]
     if (!channel) return true
-    this.buffer.push(channel.slice())
-    this.length += channel.length
+    // WebKit may hand back a rate it chose rather than the one asked for, so
+    // the wire rate is met here instead of being assumed. Averaging the samples
+    // that collapse into one output low-passes them; taking a single sample
+    // aliases voice back into the speech band.
+    const step = sampleRate / TARGET
+    const out = new Float32Array(Math.ceil((channel.length - this.phase) / step))
+    let taken = 0
+    for (let at = this.phase; at < channel.length; at += step) {
+      const from = Math.floor(at)
+      const to = Math.min(channel.length, Math.floor(at + step))
+      let sum = 0
+      for (let scan = from; scan < to; scan++) sum += channel[scan]
+      out[taken++] = to > from ? sum / (to - from) : channel[from]
+    }
+    this.phase = this.phase + taken * step - channel.length
+    this.buffer.push(out.subarray(0, taken))
+    this.length += taken
     if (this.length >= 1024) {
       const merged = new Float32Array(this.length)
       let offset = 0
@@ -93,12 +110,13 @@ async function acquire() {
       context.close().catch(() => {})
       throw error
     })
-  // Nothing downstream resamples, so a context that ignored the requested rate
-  // would send audio the server silently misreads as the wrong speed.
-  if (context.sampleRate !== 16000) {
+  // The worklet decimates whatever arrives down to the wire rate, so a WebKit
+  // that ignored the request is fine. Only a context slower than the target is
+  // unusable: decimation can discard samples, never invent them.
+  if (context.sampleRate < 16000) {
     for (const track of stream.getTracks()) track.stop()
     context.close().catch(() => {})
-    throw new Error(`AudioContext sample rate is ${context.sampleRate}, expected 16000`)
+    throw new Error(`AudioContext sample rate is ${context.sampleRate}, below the 16000 dictation needs`)
   }
   // WebKit starts a context suspended when it is constructed outside the
   // gesture that began the press, and audio silently never flows.
