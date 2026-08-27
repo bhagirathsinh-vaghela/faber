@@ -15,8 +15,9 @@ export namespace Dictation {
     let engine: Engine | undefined
     let closed = false
     // Selecting the engine is async, and the browser starts sending as soon as
-    // the socket opens, so early frames wait here rather than being dropped.
-    const buffered: ArrayBuffer[] = []
+    // the socket opens, so early frames wait here rather than being dropped. A
+    // commit or stop arriving in that window is replayed after the frames.
+    const buffered: (ArrayBuffer | "commit")[] = []
     let pendingStop: number | undefined
 
     const host: Host = {
@@ -54,7 +55,7 @@ export namespace Dictation {
         client.send(JSON.stringify({ type: "rate", rate }))
         engine = chosen === "local" ? local(host, url) : deepgram(host)
         if (closed) engine.close()
-        for (const frame of buffered) engine.frame(frame)
+        for (const frame of buffered) frame === "commit" ? engine.commit() : engine.frame(frame)
         buffered.length = 0
         if (pendingStop !== undefined) engine.stop(pendingStop)
       })
@@ -67,6 +68,14 @@ export namespace Dictation {
       onMessage(data: string | ArrayBuffer) {
         if (typeof data === "string") {
           const message = JSON.parse(data)
+          if (message.type === "commit") {
+            if (!engine) {
+              buffered.push("commit")
+              return
+            }
+            engine.commit()
+            return
+          }
           if (message.type !== "stop") return
           if (!engine) {
             pendingStop = message.rate

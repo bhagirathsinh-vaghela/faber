@@ -37,7 +37,15 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // Dictation tests need getUserMedia to resolve; the fake device feeds a
+        // synthetic mic so a session establishes without a real one or a prompt.
+        launchOptions: {
+          args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+        },
+        permissions: ["microphone"],
+      },
     },
   ],
 })

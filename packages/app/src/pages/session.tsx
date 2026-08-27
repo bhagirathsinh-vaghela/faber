@@ -1250,7 +1250,7 @@ export default function Page() {
       title: language.t("command.task.pending"),
       description: language.t("command.task.pending.description"),
       category: language.t("command.category.session"),
-      keybind: "alt+x",
+      keybind: "alt+d",
       disabled: !params.id,
       onSelect: () => dialog.show(() => <DialogPending />),
     },
@@ -1259,7 +1259,7 @@ export default function Page() {
       title: language.t("command.zen.toggle"),
       description: language.t("command.zen.toggle.description"),
       category: language.t("command.category.session"),
-      keybind: "alt+z",
+      keybind: "alt+x",
       onSelect: () => layout.zen.toggle(),
     },
     {

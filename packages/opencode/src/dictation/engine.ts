@@ -6,6 +6,11 @@ export type Transcript = { text: string; final: boolean }
 // the same way.
 export interface Engine {
   frame(data: ArrayBuffer): void
+  // Finalize the audio captured since the last commit as its own transcript and
+  // keep capturing. A pause is an utterance boundary, so each committed chunk
+  // must decode from fresh state; a streaming engine already emits finals and
+  // treats this as a no-op.
+  commit(): void
   // `rate` is the sample rate the client actually captured at, so the server
   // can reject audio a model-rate change has made stale rather than transcribe
   // it garbled.

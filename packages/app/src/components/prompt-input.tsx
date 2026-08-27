@@ -1086,6 +1086,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       title: language.t("command.prompt.dictate"),
       description: language.t("command.prompt.dictate.description"),
       category: language.t("command.category.session"),
+      keybind: "alt+z",
       disabled: !dictation.supported(),
       onSelect: () => dictationTarget()?.toggle(),
     },

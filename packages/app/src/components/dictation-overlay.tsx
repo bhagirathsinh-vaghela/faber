@@ -1,6 +1,7 @@
-import { Show, onCleanup, onMount } from "solid-js"
+import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
 import type { createDictation } from "@/utils/dictation"
 import { DictationWaveform } from "./dictation-waveform"
@@ -23,6 +24,16 @@ export function DictationOverlay(props: {
   const language = useLanguage()
 
   let panelRef: HTMLDivElement | undefined
+  let transcriptScroll: HTMLDivElement | undefined
+  const setTranscriptScroll = (el: HTMLDivElement) => (transcriptScroll = el)
+  // Keep the newest words in view as they arrive: reading committed/interim here
+  // ties the scroll to their growth without the transcript element measuring
+  // itself.
+  createEffect(() => {
+    props.dictation.committed()
+    props.dictation.interim()
+    if (transcriptScroll) transcriptScroll.scrollTop = transcriptScroll.scrollHeight
+  })
   let done = false
   const finish = async (outcome: "accept" | "discard") => {
     // The panel stays mounted across settle()'s await, so a stray click or
@@ -52,6 +63,16 @@ export function DictationOverlay(props: {
       event.stopPropagation()
       finish("discard")
     }
+    if (event.key === " ") {
+      event.preventDefault()
+      event.stopPropagation()
+      togglePause()
+    }
+  }
+
+  const togglePause = () => {
+    if (props.dictation.paused()) props.dictation.resume()
+    else props.dictation.pause()
   }
 
   // The mic toggle handles its own stop. Anywhere else outside the panel reads
@@ -92,8 +113,29 @@ export function DictationOverlay(props: {
 
   const accent = () => props.accent ?? "var(--icon-interactive-base)"
 
+  // The label is a deep shade of the accent itself rather than flat black or
+  // white, so the button stays one hue. The probe resolves the accent (which may
+  // be a CSS variable) to measure luminance: a light accent takes a very dark
+  // shade of itself, a dark accent a very light one.
+  let probe: HTMLSpanElement | undefined
+  const [accentText, setAccentText] = createSignal(`color-mix(in srgb, ${accent()} 30%, white)`)
+  createEffect(() => {
+    if (!probe) return
+    const resolved = getComputedStyle(probe).backgroundColor
+    const match = resolved.match(/\d+(\.\d+)?/g)
+    if (!match) return
+    const [r, g, b] = match.map(Number)
+    const luminance = (0.299 * r! + 0.587 * g! + 0.114 * b!) / 255
+    setAccentText(
+      luminance > 0.5
+        ? `color-mix(in srgb, ${accent()} 25%, black)`
+        : `color-mix(in srgb, ${accent()} 25%, white)`,
+    )
+  })
+
   return (
     <Portal>
+      <span ref={probe} aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, "background-color": accent() }} />
       {/* Dim scrim. Captures clicks so an outside click means only "dismiss"
           (handlePointer stashes) and never leaks to the app behind, but
           re-dispatches wheel to the element under the cursor so the app still
@@ -116,59 +158,101 @@ export function DictationOverlay(props: {
             "box-shadow": `0 0 0 1px color-mix(in srgb, ${accent()} 35%, transparent), 0 0 24px 4px color-mix(in srgb, ${accent()} 30%, transparent), 0 8px 24px rgba(0,0,0,0.4)`,
           }}
         >
-          <div class="shrink-0 relative flex items-center justify-center px-2 pt-1">
-            <span class="absolute left-3 flex size-2.5 shrink-0">
+          <div class="shrink-0 flex items-center gap-2 px-3 pt-2">
+            <span class="flex size-2.5 shrink-0">
               <Show
                 when={props.dictation.listening()}
                 fallback={<span class="relative inline-flex size-2.5 rounded-full bg-icon-base opacity-40" />}
               >
-                <span class="absolute inline-flex size-full rounded-full bg-icon-critical-base opacity-60 animate-ping" />
+                <span class="absolute inline-flex size-2.5 rounded-full bg-icon-critical-base opacity-60 animate-ping" />
                 <span class="relative inline-flex size-2.5 rounded-full bg-icon-critical-base animate-pulse" />
               </Show>
             </span>
-            {/* Chrome on Android composites a promoted canvas layer opaque, so
-                the bars arrive on a black rectangle. */}
-            <div class="h-6 w-[180px]">
-              <DictationWaveform analyser={props.dictation.analyser} live={props.dictation.listening} />
-            </div>
-          </div>
-          <div class="text-13-regular px-3 pb-1 pt-0.5" aria-live="polite">
-            {/* Status only, never the transcript: it is delivered to the host
-                on accept, so showing it here would flash it for the frames
-                between arrival and hand-off. */}
-            <span class="text-text-weak">
+            <span class="text-11-medium uppercase tracking-wide text-text-weak" aria-live="polite">
               {props.dictation.transcribing()
                 ? language.t("dictation.transcribing")
-                : props.dictation.listening()
-                  ? language.t("dictation.listening")
-                  : language.t("dictation.starting")}
+                : props.dictation.paused()
+                  ? language.t("dictation.paused")
+                  : props.dictation.listening()
+                    ? language.t("dictation.listening")
+                    : language.t("dictation.starting")}
               …
             </span>
           </div>
-          <div class="shrink-0 flex flex-row items-end justify-end gap-2 px-2 pb-1">
-            <div class="flex flex-col items-center gap-0.5">
-              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weak">esc</kbd>
-              <IconButton
-                type="button"
-                variant="secondary"
-                size="large"
-                icon="close"
-                class="size-8 any-pointer-coarse:size-11"
-                aria-label={language.t("dictation.discard")}
-                onClick={() => finish("discard")}
-              />
+          {/* Chrome on Android composites a promoted canvas layer opaque, so
+              the bars arrive on a black rectangle. */}
+          <div class="shrink-0 h-16 any-pointer-coarse:h-20 px-3">
+            <DictationWaveform
+              analyser={props.dictation.analyser}
+              live={props.dictation.listening}
+              paused={props.dictation.paused}
+            />
+          </div>
+          <Show when={props.dictation.committed() || props.dictation.interim()}>
+            <div
+              ref={setTranscriptScroll}
+              class="mx-2 max-h-32 overflow-y-auto rounded-2xl bg-surface-inset-base px-3.5 py-2.5 text-14-regular text-text-base leading-relaxed"
+            >
+              {props.dictation.committed()}
+              <Show when={props.dictation.interim()}>
+                <span class="text-text-weak">
+                  {props.dictation.committed() ? " " : ""}
+                  {props.dictation.interim()}
+                </span>
+              </Show>
+            </div>
+          </Show>
+          <div class="shrink-0 flex flex-col items-end gap-2 px-2 pt-1 pb-1">
+            <div class="flex items-center gap-2">
+              <div class="flex flex-col items-center gap-0.5">
+                <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">esc</kbd>
+                <IconButton
+                  type="button"
+                  variant="secondary"
+                  size="normal"
+                  icon="close"
+                  class="size-9 any-pointer-coarse:size-11 rounded-full"
+                  aria-label={language.t("dictation.discard")}
+                  onClick={() => finish("discard")}
+                />
+              </div>
+              <div class="flex flex-col items-center gap-0.5">
+                <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">↵</kbd>
+                <IconButton
+                  type="button"
+                  variant="secondary"
+                  size="normal"
+                  icon="check"
+                  class="size-9 any-pointer-coarse:size-11 rounded-full text-icon-interactive-base"
+                  aria-label={language.t("dictation.accept")}
+                  onClick={() => finish("accept")}
+                />
+              </div>
             </div>
             <div class="flex flex-col items-center gap-0.5">
-              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weak">↵</kbd>
-              <IconButton
+              <button
                 type="button"
-                variant="primary"
-                size="large"
-                icon="check"
-                class="size-8 any-pointer-coarse:size-11"
-                aria-label={language.t("dictation.accept")}
-                onClick={() => finish("accept")}
-              />
+                data-dictation-pause
+                aria-pressed={props.dictation.paused()}
+                aria-label={props.dictation.paused() ? language.t("dictation.resume") : language.t("dictation.pause")}
+                onClick={togglePause}
+                class="flex items-center justify-center gap-2 rounded-xl border pl-4 pr-5 h-12 any-pointer-coarse:h-14 any-pointer-coarse:pl-5 any-pointer-coarse:pr-6 text-15-medium font-bold hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-transform duration-150"
+                style={{
+                  color: accentText(),
+                  "border-color": accentText(),
+                  "background-image": `linear-gradient(180deg, ${accent()} 0%, color-mix(in srgb, ${accent()} 85%, black) 100%)`,
+                  "box-shadow": `inset 0 1px 0 color-mix(in srgb, ${accent()} 80%, white)`,
+                }}
+              >
+                <span
+                  class="flex size-5 items-center justify-center rounded-md border"
+                  style={{ "border-color": accentText() }}
+                >
+                  <Icon name={props.dictation.paused() ? "play" : "pause"} size="small" style={{ color: accentText() }} />
+                </span>
+                {props.dictation.paused() ? language.t("dictation.resume") : language.t("dictation.pause")}
+              </button>
+              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">space</kbd>
             </div>
           </div>
         </div>

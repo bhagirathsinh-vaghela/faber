@@ -200,11 +200,18 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     // A batch engine transcribes only after the mic stops, so the overlay has
     // to keep rendering while the result is still in flight.
     transcribing: false,
+    // While paused the mic stays live but its frames are dropped, so the audio
+    // spoken during the pause never reaches the server.
+    paused: false,
     committed: "",
     interim: "",
   })
 
   let session: { socket: WebSocket; context: AudioContext; stream: MediaStream; target: number } | undefined
+  // Read by the worklet's frame handler to drop audio while paused. A plain
+  // variable rather than store state so the hot per-frame path never reads
+  // through the reactive layer.
+  let paused = false
   // The live analyser drives the waveform canvas directly (its own rAF reads
   // frequency data), so per-frame audio levels never churn the Solid store.
   let analyser: AnalyserNode | undefined
@@ -226,12 +233,13 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     epoch++
     abortStart?.()
     settling = undefined
+    paused = false
     if (!session) return
     const { socket, context, stream, target } = session
     session = undefined
     analyser = undefined
     if (active === stop) active = undefined
-    setStore({ active: false, listening: false, transcribing: false, committed: "", interim: "" })
+    setStore({ active: false, listening: false, transcribing: false, paused: false, committed: "", interim: "" })
     release(socket, context, stream, target)()
   }
 
@@ -251,8 +259,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     const { socket, context, stream, target } = session
     session = undefined
     analyser = undefined
+    paused = false
     if (active === stop) active = undefined
-    setStore({ active: false, listening: false, transcribing: true })
+    setStore({ active: false, listening: false, paused: false, transcribing: true })
     const asked = performance.now()
     const closeAudio = release(socket, context, stream, target)
     settling = new Promise<string>((resolve) => {
@@ -281,6 +290,22 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   }
 
   const stop = () => teardown()
+
+  // Pausing commits the audio so far as its own chunk, then drops incoming
+  // frames until resume. Committing on pause (not resume) means a long pause's
+  // chunk is already transcribed by the time the user accepts.
+  const pause = () => {
+    if (!session || paused) return
+    if (session.socket.readyState === WebSocket.OPEN) session.socket.send(JSON.stringify({ type: "commit" }))
+    paused = true
+    setStore("paused", true)
+  }
+
+  const resume = () => {
+    if (!session || !paused) return
+    paused = false
+    setStore("paused", false)
+  }
 
   const text = () => [store.committed, store.interim].filter(Boolean).join(" ")
 
@@ -376,6 +401,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       // microphone is live and the user can safely start speaking.
       let silent = true
       worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
+        if (paused) return
         if (silent && event.data.some((sample) => sample !== 0)) {
           silent = false
           setStore("listening", true)
@@ -426,9 +452,14 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     active: () => store.active,
     listening: () => store.listening,
     transcribing: () => store.transcribing,
+    paused: () => store.paused,
+    committed: () => store.committed,
+    interim: () => store.interim,
     settle,
     analyser: () => analyser,
     start,
     stop,
+    pause,
+    resume,
   }
 }

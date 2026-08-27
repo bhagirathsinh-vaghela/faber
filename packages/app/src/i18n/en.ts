@@ -253,6 +253,9 @@ export const dict = {
   "dictation.starting": "Starting",
   "dictation.listening": "Listening",
   "dictation.transcribing": "Transcribing",
+  "dictation.paused": "Paused",
+  "dictation.pause": "Pause",
+  "dictation.resume": "Resume",
   "dictation.accept": "Accept",
   "dictation.discard": "Discard",
 

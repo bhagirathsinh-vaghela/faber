@@ -129,6 +129,9 @@ export function deepgram(host: Host): Engine {
       }
       pending.push(data)
     },
+    // Deepgram streams interim and final transcripts as it goes, so a pause
+    // commit needs nothing extra: the finals already in flight are the chunks.
+    commit() {},
     stop() {
       stopping = true
       if (upstream?.readyState === WebSocket.OPEN) upstream.send(JSON.stringify({ type: "CloseStream" }))
