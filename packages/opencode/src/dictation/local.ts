@@ -1,4 +1,5 @@
 import { Log } from "../util/log"
+import { DictationRate } from "./rate"
 import type { Engine, Host } from "./engine"
 
 const log = Log.create({ service: "dictation.local" })
@@ -20,7 +21,8 @@ export function local(host: Host, url: string): Engine {
         .catch(() => undefined)
       if (closed) return
       if (health && typeof health.sampleRate === "number" && health.sampleRate !== rate) {
-        host.fail("The dictation model changed. Please reload and try again.")
+        DictationRate.set(health.sampleRate)
+        host.fail("The dictation model changed. Please try again.")
         return
       }
       const audio = new Blob(frames)
