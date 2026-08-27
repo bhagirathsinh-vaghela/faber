@@ -1013,26 +1013,32 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   }
 
-  const stashDictation = (text: string) => {
-    // Appends to the prompt draft state, which outlives this component, so the
-    // transcript never vanishes. The toast tells the user where it went.
-    const next = [
-      ...clonePrompt(prompt.current()),
-      { type: "text" as const, content: " " + text + " ", start: 0, end: 0 },
-    ]
-    prompt.set(next, promptLength(next))
-    showToast({
-      title: language.t("dictation.stashed.title"),
-      description: language.t("dictation.stashed.description"),
-      duration: 2000,
+  // The dictation overlay anchors to the composer, not the dock: the dock also
+  // contains the question panel, so its height swings with unrelated UI and
+  // dragged the overlay off screen.
+  const trackComposer = (el: HTMLElement) => {
+    const publish = () => {
+      const gap = Math.max(0, Math.round(window.innerHeight - el.getBoundingClientRect().top))
+      document.documentElement.style.setProperty("--composer-top", `${gap}px`)
+    }
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(el)
+    window.addEventListener("resize", publish)
+    onCleanup(() => {
+      observer.disconnect()
+      window.removeEventListener("resize", publish)
+      document.documentElement.style.removeProperty("--composer-top")
     })
   }
+
   const insertDictation = (text: string) => {
-    // Write straight to prompt state, the way stashDictation does. The old path
-    // focused the editor and deferred addPart to a rAF, because addPart reads
-    // window.getSelection() and needs focus first. On touch that focus raises the
-    // soft keyboard, so the rAF landed behind the viewport resize and the text
-    // visibly lagged the tap. State needs no selection, so it lands immediately.
+    // Write straight to prompt state. The old path focused the editor and
+    // deferred addPart to a rAF, because addPart reads window.getSelection()
+    // and needs focus first. On touch that focus raises the soft keyboard, so
+    // the rAF landed behind the viewport resize and the text visibly lagged the
+    // tap. State needs no selection, so it lands immediately, and it outlives
+    // this component so an unmount cannot lose the transcript.
     const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: text + " ", start: 0, end: 0 }]
     const end = promptLength(next)
     prompt.set(next, end)
@@ -1051,7 +1057,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const toggleDictation = () => {
     if (store.dictating) {
-      dictation.stop()
+      // Pressing the mic to end a dictation means "I'm done speaking", so the
+      // transcript is inserted rather than stashed behind a toast.
+      dictation.settle().then((text) => {
+        if (text.trim()) insertDictation(text.trim())
+      })
       setStore("dictating", false)
       return
     }
@@ -2112,6 +2122,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </Show>
         <form
           onSubmit={handleSubmit}
+          ref={(el) => trackComposer(el)}
           classList={{
             "group/prompt-input": true,
             "bg-surface-raised-stronger-non-alpha shadow-xs-border relative": true,
@@ -2125,7 +2136,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               dictation={dictation}
               accent={workingTint()}
               onAccept={insertDictation}
-              onStash={stashDictation}
               onClose={() => setStore("dictating", false)}
             />
           </Show>

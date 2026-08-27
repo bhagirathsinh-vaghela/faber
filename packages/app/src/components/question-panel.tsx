@@ -17,7 +17,7 @@ import { agentColor } from "@/utils/agent"
 import { createDictation, dictationActive, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
-import { clonePrompt, usePrompt } from "@/context/prompt"
+import { usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
 
 // Pinned question prompt. Mirrors the TUI QuestionPrompt
@@ -209,14 +209,32 @@ function Panel(props: {
     },
   })
 
+  // WebKit drops the rest of a tap's event sequence when a handler mutates the
+  // DOM during mousemove, so a touch device's synthesized hover would eat the
+  // click and force a second tap.
+  const hoverSelect = (index: number) => {
+    if (coarse() || !focused()) return
+    setStore("selected", index)
+  }
+
+  // A dictated answer arrives as a paragraph, and a textarea holds its initial
+  // row count regardless of content, so the height is driven off the text.
+  const grow = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto"
+    el.style.height = `${el.scrollHeight}px`
+  }
+
+  // Reveals the textarea the transcript will land in without focusing it, so
+  // speaking an answer never raises the soft keyboard over the panel.
   const toggleDictation = () => {
     if (dictating()) {
       dictation.stop()
       setDictating(false)
       return
     }
+    setStore("editing", true)
+    setStore("selected", options().length)
     setDictating(true)
-    if (!coarse()) input?.focus()
     dictation.start()
   }
 
@@ -226,29 +244,14 @@ function Panel(props: {
   // shortcut, click, or tap): the tint means "this is the active mic".
   registerDictationTarget({ id: "question", toggle: toggleDictation }, inputFocused)
   const dictationTargeted = () => dictationTarget()?.id === "question"
-  const stashDictation = (text: string) => {
-    // The prompt draft outlives this panel, so the transcript survives even
-    // when the question is answered or dismissed mid-dictation.
-    const next = [
-      ...clonePrompt(promptDraft.current()),
-      { type: "text" as const, content: " " + text + " ", start: 0, end: 0 },
-    ]
-    promptDraft.set(
-      next,
-      next.reduce((len, part) => len + ("content" in part ? part.content.length : 0), 0),
-    )
-    showToast({
-      title: language.t("dictation.stashed.title"),
-      description: language.t("dictation.stashed.description"),
-      duration: 2000,
-    })
-  }
   const acceptDictation = (text: string) => {
-    if (!input?.isConnected) {
-      stashDictation(text)
-      return
-    }
+    // Redirecting elsewhere would put words in a composer the user never aimed
+    // them at.
+    if (!input?.isConnected) return
     input.value = (input.value ? input.value + " " : "") + text
+    // Writing .value directly fires no input event, so the height has to be
+    // recomputed by hand.
+    grow(input)
     if (!coarse()) {
       input.focus()
       input.setSelectionRange(input.value.length, input.value.length)
@@ -718,7 +721,7 @@ function Panel(props: {
                     class="flex flex-col items-start text-left px-2 py-1 rounded border-l-2 border-transparent transition-colors"
                     classList={{ "bg-surface-interactive-base": active() }}
                     style={active() ? { "border-left-color": accent() } : undefined}
-                    onMouseEnter={() => focused() && setStore("selected", i())}
+                    onMouseEnter={() => hoverSelect(i())}
                     onClick={() => activate(i())}
                   >
                     <div class="flex flex-row gap-1.5 text-13-regular w-full">
@@ -757,26 +760,49 @@ function Panel(props: {
                 classList={{ "bg-surface-interactive-base": other() }}
                 style={other() ? { "border-left-color": accent() } : undefined}
               >
-                <button
-                  class="flex flex-row gap-1.5 text-13-regular text-left"
-                  onMouseEnter={() => focused() && setStore("selected", options().length)}
-                  onClick={() => activate(options().length)}
-                >
-                  <span classList={{ "text-text-weak": !other() }} style={other() ? { color: accent() } : undefined}>
-                    {options().length + 1}.
-                  </span>
-                  <span
-                    classList={{
-                      "text-markdown-strong font-bold": other(),
-                      "text-success": !other() && customPicked(),
-                      "text-text-base": !other() && !customPicked(),
-                    }}
+                <div class="flex flex-row items-center gap-2 w-full">
+                  <button
+                    class="flex flex-row gap-1.5 text-13-regular text-left"
+                    onMouseEnter={() => hoverSelect(options().length)}
+                    onClick={() => activate(options().length)}
                   >
-                    {multi() ? `[${customPicked() ? "✓" : " "}] Type your own answer` : "Type your own answer"}
-                  </span>
-                </button>
+                    <span classList={{ "text-text-weak": !other() }} style={other() ? { color: accent() } : undefined}>
+                      {options().length + 1}.
+                    </span>
+                    <span
+                      classList={{
+                        "text-markdown-strong font-bold": other(),
+                        "text-success": !other() && customPicked(),
+                        "text-text-base": !other() && !customPicked(),
+                      }}
+                    >
+                      {multi() ? `[${customPicked() ? "✓" : " "}] Type your own answer` : "Type your own answer"}
+                    </span>
+                  </button>
+                  <Show when={dictation.supported()}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class="size-6 any-pointer-coarse:size-11 px-1 ml-auto"
+                      data-dictation-toggle
+                      data-dictation-focused={dictationTargeted() ? "" : undefined}
+                      onClick={toggleDictation}
+                      aria-label={
+                        dictating() ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
+                      }
+                      aria-pressed={dictating()}
+                    >
+                      <Icon
+                        name="mic"
+                        class="size-4.5 any-pointer-coarse:size-6"
+                        classList={{ "text-icon-critical-base animate-pulse": dictating() }}
+                        style={dictationTargeted() ? { color: accent() } : undefined}
+                      />
+                    </Button>
+                  </Show>
+                </div>
                 <Show when={!store.editing && customText()}>
-                  <div class="pl-4 text-11-regular text-text-weak">{customText()}</div>
+                  <div class="pl-4 text-11-regular text-text-weak line-clamp-2">{customText()}</div>
                 </Show>
                 <Show when={store.editing}>
                   <form
@@ -788,11 +814,12 @@ function Panel(props: {
                   >
                     <textarea
                       ref={(el) => (input = el)}
-                      class="flex-1 min-h-8 rounded border border-border-weak-base bg-background-base px-2 py-1 text-13-regular text-text-base resize-none"
+                      class="flex-1 min-h-8 max-h-32 overflow-y-auto rounded border border-border-weak-base bg-background-base px-2 py-1 text-13-regular text-text-base resize-none"
                       placeholder="Type your own answer"
                       value={customText()}
                       rows={1}
                       inputmode="text"
+                      onInput={(e) => grow(e.currentTarget)}
                       onFocus={() => setInputFocused(true)}
                       onBlur={() => setInputFocused(false)}
                       onKeyDown={(e) => {
@@ -806,27 +833,6 @@ function Panel(props: {
                         }
                       }}
                     />
-                    <Show when={dictation.supported()}>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        class="size-6 any-pointer-coarse:size-11 px-1"
-                        data-dictation-toggle
-                        data-dictation-focused={dictationTargeted() ? "" : undefined}
-                        onClick={toggleDictation}
-                        aria-label={
-                          dictating() ? language.t("prompt.action.dictateStop") : language.t("prompt.action.dictate")
-                        }
-                        aria-pressed={dictating()}
-                      >
-                        <Icon
-                          name="mic"
-                          class="size-4.5 any-pointer-coarse:size-6"
-                          classList={{ "text-icon-critical-base animate-pulse": dictating() }}
-                          style={dictationTargeted() ? { color: accent() } : undefined}
-                        />
-                      </Button>
-                    </Show>
                     {/* Add (multi-select, appends another answer) and Submit are
                         distinct actions, so they carry distinct glyphs. */}
                     <IconButton
@@ -843,7 +849,6 @@ function Panel(props: {
                       dictation={dictation}
                       accent={accent()}
                       onAccept={acceptDictation}
-                      onStash={stashDictation}
                       onClose={() => setDictating(false)}
                     />
                   </Show>
