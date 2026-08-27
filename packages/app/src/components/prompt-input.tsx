@@ -1103,7 +1103,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       title: language.t("command.prompt.focus"),
       description: language.t("command.prompt.focus.description"),
       category: language.t("command.category.session"),
-      keybind: "alt+z",
+      keybind: "alt+/",
       onSelect: () => {
         // preventScroll: auto-focus on session load must not scroll the
         // contenteditable (bottom of the dock) into view and yank the message
