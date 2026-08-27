@@ -79,23 +79,35 @@ const defaultSettings: Settings = {
 const monoFallback =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
+// Symbol-rescue tail, inserted before IBM Plex in every stack. Anthropic emits
+// box-drawing, arrows, geometric shapes, and circled digits (①–④) that most
+// mono fonts lack; when a glyph is missing the browser falls through to the
+// system, which substitutes a PROPORTIONAL glyph and shears ASCII diagrams.
+// These three rescuers all render at the SAME 0.602em cell, so filling a gap
+// never changes advance width. Meslo covers ★ ✦ ➤ ✱ ▢ ◷ ▭; Geist Mono (the
+// full Nerd Font, not the Latin-only variable) is the only bundled face with
+// ①–⑦ at cell width.
+const symbolRescue = `"Meslo LGS Nerd Font", "Geist Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`
+
+// A "…Variable" woff2 is subset to Latin-only (~225 glyphs). It must sit AFTER
+// its full static Nerd Font, never first, or every symbol falls through it.
 const monoFonts: Record<string, string> = {
-  "ibm-plex-mono": `"IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "cascadia-code": `"Cascadia Code Nerd Font", "Cascadia Code NF", "Cascadia Mono NF", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "fira-code": `"Fira Code Nerd Font", "FiraMono Nerd Font", "FiraMono Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  hack: `"Hack Nerd Font", "Hack Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  inconsolata: `"Inconsolata Nerd Font", "Inconsolata Nerd Font Mono","IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "intel-one-mono": `"Intel One Mono Nerd Font", "IntoneMono Nerd Font", "IntoneMono Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  iosevka: `"Iosevka Nerd Font", "Iosevka Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "jetbrains-mono": `"JetBrains Mono Variable", "JetBrainsMono Nerd Font", "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "JetBrainsMonoNL Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "geist-mono": `"Geist Mono Variable", "Geist Mono", "GeistMono Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "monaspace-neon": `"Monaspace Neon", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "commit-mono": `"Commit Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "maple-mono": `"Maple Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "meslo-lgs": `"Meslo LGS Nerd Font", "MesloLGS Nerd Font", "MesloLGM Nerd Font", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "roboto-mono": `"Roboto Mono Nerd Font", "RobotoMono Nerd Font", "RobotoMono Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "source-code-pro": `"Source Code Pro Variable", "Source Code Pro Nerd Font", "SauceCodePro Nerd Font", "SauceCodePro Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
-  "ubuntu-mono": `"Ubuntu Mono Nerd Font", "UbuntuMono Nerd Font", "UbuntuMono Nerd Font Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`,
+  "ibm-plex-mono": symbolRescue,
+  "cascadia-code": `"Cascadia Code Nerd Font", "Cascadia Code NF", "Cascadia Mono NF", ${symbolRescue}`,
+  "fira-code": `"Fira Code Nerd Font", "FiraMono Nerd Font", "FiraMono Nerd Font Mono", ${symbolRescue}`,
+  hack: `"Hack Nerd Font", "Hack Nerd Font Mono", ${symbolRescue}`,
+  inconsolata: `"Inconsolata Nerd Font", "Inconsolata Nerd Font Mono", ${symbolRescue}`,
+  "intel-one-mono": `"Intel One Mono Nerd Font", "IntoneMono Nerd Font", "IntoneMono Nerd Font Mono", ${symbolRescue}`,
+  iosevka: `"Iosevka Nerd Font", "Iosevka Nerd Font Mono", ${symbolRescue}`,
+  "jetbrains-mono": `"JetBrainsMono Nerd Font", "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "JetBrainsMonoNL Nerd Font Mono", "JetBrains Mono Variable", ${symbolRescue}`,
+  "geist-mono": `"GeistMono Nerd Font", "Geist Mono Variable", ${symbolRescue}`,
+  "monaspace-neon": `"Monaspace Neon", ${symbolRescue}`,
+  "commit-mono": `"Commit Mono", ${symbolRescue}`,
+  "maple-mono": `"Maple Mono", ${symbolRescue}`,
+  "meslo-lgs": `"Meslo LGS Nerd Font", "MesloLGS Nerd Font", "MesloLGM Nerd Font", ${symbolRescue}`,
+  "roboto-mono": `"Roboto Mono Nerd Font", "RobotoMono Nerd Font", "RobotoMono Nerd Font Mono", ${symbolRescue}`,
+  "source-code-pro": `"Source Code Pro Nerd Font", "SauceCodePro Nerd Font", "SauceCodePro Nerd Font Mono", "Source Code Pro Variable", ${symbolRescue}`,
+  "ubuntu-mono": `"Ubuntu Mono Nerd Font", "UbuntuMono Nerd Font", "UbuntuMono Nerd Font Mono", ${symbolRescue}`,
 }
 
 export function monoFontFamily(font: string | undefined) {
