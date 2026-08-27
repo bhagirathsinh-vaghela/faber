@@ -1066,7 +1066,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
     setStore("dictating", true)
-    editorRef.focus()
+    // Speaking is an alternative to typing, so taking the caret would raise the
+    // soft keyboard over the overlay the user is about to watch.
+    if (!coarse()) editorRef.focus()
     dictation.start()
   }
 
