@@ -8,6 +8,9 @@ import jetbrainsMonoVariable from "../assets/fonts/jetbrains-mono-variable.woff2
 import sourceCodeProVariable from "../assets/fonts/source-code-pro-variable.woff2"
 import geistMonoVariable from "../assets/fonts/geist-mono-variable.woff2"
 
+import symbolRescue from "../assets/fonts/symbol-rescue.woff2"
+import symbolRescueEnclosed from "../assets/fonts/symbol-rescue-enclosed.woff2"
+
 import cascadiaCode from "../assets/fonts/cascadia-code-nerd-font.woff2"
 import cascadiaCodeBold from "../assets/fonts/cascadia-code-nerd-font-bold.woff2"
 import firaCode from "../assets/fonts/fira-code-nerd-font.woff2"
@@ -246,10 +249,27 @@ export const Font = () => {
           descent-override: 25%;
           line-gap-override: 1%;
         }
+        @font-face {
+          font-family: "Symbol Rescue";
+          src: url("${symbolRescue}") format("woff2");
+          font-display: swap;
+          font-style: normal;
+          font-weight: 400;
+          unicode-range: U+2000-206F, U+20A0-20BF, U+2100-214F, U+2190-23FF, U+2500-27BF, U+27C0-27FF, U+2B00-2BFF, U+FE00-FE0F;
+        }
+        @font-face {
+          font-family: "Symbol Rescue";
+          src: url("${symbolRescueEnclosed}") format("woff2");
+          font-display: swap;
+          font-style: normal;
+          font-weight: 400;
+          unicode-range: U+2460-24FF;
+        }
 ${monoNerdCss}
       `}</Style>
+      {/* ibm-plex-mono.woff2 is a symlink to the full 1MB BlexMono Nerd Font,
+          so preloading it costs a megabyte for the one setting that picks it. */}
       <Link rel="preload" href={inter} as="font" type="font/woff2" crossorigin="anonymous" />
-      <Link rel="preload" href={ibmPlexMonoRegular} as="font" type="font/woff2" crossorigin="anonymous" />
       <Link rel="preload" href={jetbrainsMonoVariable} as="font" type="font/woff2" crossorigin="anonymous" />
     </>
   )

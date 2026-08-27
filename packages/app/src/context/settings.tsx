@@ -83,11 +83,10 @@ const monoFallback =
 // box-drawing, arrows, geometric shapes, and circled digits (①–④) that most
 // mono fonts lack; when a glyph is missing the browser falls through to the
 // system, which substitutes a PROPORTIONAL glyph and shears ASCII diagrams.
-// These three rescuers all render at the SAME 0.602em cell, so filling a gap
-// never changes advance width. Meslo covers ★ ✦ ➤ ✱ ▢ ◷ ▭; Geist Mono (the
-// full Nerd Font, not the Latin-only variable) is the only bundled face with
-// ①–⑦ at cell width.
-const symbolRescue = `"Meslo LGS Nerd Font", "Geist Mono", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`
+// "Symbol Rescue" (declared in ui/components/font.tsx) carries exactly those
+// glyphs at the same 0.602em cell as the full faces, so filling a gap never
+// changes advance width.
+const symbolRescue = `"Symbol Rescue", "IBM Plex Mono", "IBM Plex Mono Fallback", ${monoFallback}`
 
 // A "…Variable" woff2 is subset to Latin-only (~225 glyphs). It must sit AFTER
 // its full static Nerd Font, never first, or every symbol falls through it.
@@ -100,7 +99,7 @@ const monoFonts: Record<string, string> = {
   "intel-one-mono": `"Intel One Mono Nerd Font", "IntoneMono Nerd Font", "IntoneMono Nerd Font Mono", ${symbolRescue}`,
   iosevka: `"Iosevka Nerd Font", "Iosevka Nerd Font Mono", ${symbolRescue}`,
   "jetbrains-mono": `"JetBrainsMono Nerd Font", "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "JetBrainsMonoNL Nerd Font Mono", "JetBrains Mono Variable", ${symbolRescue}`,
-  "geist-mono": `"GeistMono Nerd Font", "Geist Mono Variable", ${symbolRescue}`,
+  "geist-mono": `"GeistMono Nerd Font", "Geist Mono", "Geist Mono Variable", ${symbolRescue}`,
   "monaspace-neon": `"Monaspace Neon", ${symbolRescue}`,
   "commit-mono": `"Commit Mono", ${symbolRescue}`,
   "maple-mono": `"Maple Mono", ${symbolRescue}`,
