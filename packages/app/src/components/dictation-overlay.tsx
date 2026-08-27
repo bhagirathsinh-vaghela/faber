@@ -133,6 +133,19 @@ export function DictationOverlay(props: {
     )
   })
 
+  // Elapsed recording time, shown top-right like native dictation apps. It counts
+  // only while listening: a pause captures no audio, so its seconds do not belong
+  // to the recording.
+  const [elapsed, setElapsed] = createSignal(0)
+  const timer = setInterval(() => {
+    if (props.dictation.listening() && !props.dictation.paused()) setElapsed((s) => s + 1)
+  }, 1000)
+  onCleanup(() => clearInterval(timer))
+  const clock = () => {
+    const total = elapsed()
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`
+  }
+
   return (
     <Portal>
       <span ref={probe} aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, "background-color": accent() }} />
@@ -159,15 +172,6 @@ export function DictationOverlay(props: {
           }}
         >
           <div class="shrink-0 flex items-center gap-2 px-3 pt-2">
-            <span class="flex size-2.5 shrink-0">
-              <Show
-                when={props.dictation.listening()}
-                fallback={<span class="relative inline-flex size-2.5 rounded-full bg-icon-base opacity-40" />}
-              >
-                <span class="absolute inline-flex size-2.5 rounded-full bg-icon-critical-base opacity-60 animate-ping" />
-                <span class="relative inline-flex size-2.5 rounded-full bg-icon-critical-base animate-pulse" />
-              </Show>
-            </span>
             <span class="text-11-medium uppercase tracking-wide text-text-weak" aria-live="polite">
               {props.dictation.transcribing()
                 ? language.t("dictation.transcribing")
@@ -178,6 +182,18 @@ export function DictationOverlay(props: {
                     : language.t("dictation.starting")}
               …
             </span>
+            <div class="ml-auto flex items-center gap-1.5">
+              <span class="flex size-2.5 shrink-0">
+                <Show
+                  when={props.dictation.listening() && !props.dictation.paused()}
+                  fallback={<span class="relative inline-flex size-2.5 rounded-full bg-icon-base opacity-50" />}
+                >
+                  <span class="absolute inline-flex size-2.5 rounded-full bg-icon-critical-base opacity-60 animate-ping" />
+                  <span class="relative inline-flex size-2.5 rounded-full bg-icon-critical-base animate-pulse" />
+                </Show>
+              </span>
+              <span class="text-13-medium font-bold tabular-nums text-text-base">{clock()}</span>
+            </div>
           </div>
           {/* Chrome on Android composites a promoted canvas layer opaque, so
               the bars arrive on a black rectangle. */}
