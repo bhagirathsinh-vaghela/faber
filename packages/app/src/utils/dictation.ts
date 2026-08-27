@@ -234,12 +234,14 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     abortStart?.()
     settling = undefined
     paused = false
+    // Clear the transcript even with no live session, so a discard after the
+    // mic already stopped cannot leave stale text for the next dictation.
+    setStore({ active: false, listening: false, transcribing: false, paused: false, committed: "", interim: "" })
     if (!session) return
     const { socket, context, stream, target } = session
     session = undefined
     analyser = undefined
     if (active === stop) active = undefined
-    setStore({ active: false, listening: false, transcribing: false, paused: false, committed: "", interim: "" })
     release(socket, context, stream, target)()
   }
 
@@ -313,6 +315,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     if (session) return
     active?.()
     active = stop
+    // A fresh dictation starts from an empty transcript, whatever an earlier
+    // session's exit path left behind.
+    setStore({ committed: "", interim: "" })
     const generation = ++epoch
 
     // Dial before touching the mic: the handshake crosses the network (a full
