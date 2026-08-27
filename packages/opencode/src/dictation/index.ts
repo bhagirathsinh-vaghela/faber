@@ -3,6 +3,7 @@ import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { deepgram } from "./deepgram"
 import { local } from "./local"
+import { DictationRate } from "./rate"
 import type { Engine, Host } from "./engine"
 
 export namespace Dictation {
@@ -16,7 +17,7 @@ export namespace Dictation {
     // Selecting the engine is async, and the browser starts sending as soon as
     // the socket opens, so early frames wait here rather than being dropped.
     const buffered: ArrayBuffer[] = []
-    let pendingStop = false
+    let pendingStop: number | undefined
 
     const host: Host = {
       transcript(value) {
@@ -42,14 +43,20 @@ export namespace Dictation {
     // The websocket upgrade carries no instance context, so this reads the
     // global config rather than Config.get().
     Config.getGlobal()
-      .then((config) => {
+      .then(async (config) => {
         const chosen = config.dictation?.engine ?? "deepgram"
         log.info("starting engine", { engine: chosen })
-        engine = chosen === "local" ? local(host, config.dictation?.url ?? DEFAULT_LOCAL_URL) : deepgram(host)
+        const url = config.dictation?.url ?? DEFAULT_LOCAL_URL
+        // The browser is told the rate to sample at rather than assuming one, so
+        // a model whose rate differs from the default is fed correctly.
+        const rate = chosen === "local" ? await DictationRate.get(url) : DictationRate.DEFAULT
+        if (closed) return
+        client.send(JSON.stringify({ type: "rate", rate }))
+        engine = chosen === "local" ? local(host, url) : deepgram(host)
         if (closed) engine.close()
         for (const frame of buffered) engine.frame(frame)
         buffered.length = 0
-        if (pendingStop) engine.stop()
+        if (pendingStop !== undefined) engine.stop(pendingStop)
       })
       .catch((error) => {
         log.error("engine failed to start", { error })
@@ -59,12 +66,13 @@ export namespace Dictation {
     return {
       onMessage(data: string | ArrayBuffer) {
         if (typeof data === "string") {
-          if (JSON.parse(data).type !== "stop") return
+          const message = JSON.parse(data)
+          if (message.type !== "stop") return
           if (!engine) {
-            pendingStop = true
+            pendingStop = message.rate
             return
           }
-          engine.stop()
+          engine.stop(message.rate)
           return
         }
         if (!engine) {

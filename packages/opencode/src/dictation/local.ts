@@ -14,7 +14,15 @@ export function local(host: Host, url: string): Engine {
     // The whole utterance goes to the model in one piece: splitting it costs
     // the context that disambiguates words at the boundary, which is the
     // accuracy this engine was chosen for.
-    async stop() {
+    async stop(rate) {
+      const health = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) })
+        .then((r) => (r.ok ? r.json() : undefined))
+        .catch(() => undefined)
+      if (closed) return
+      if (health && typeof health.sampleRate === "number" && health.sampleRate !== rate) {
+        host.fail("The dictation model changed. Please reload and try again.")
+        return
+      }
       const audio = new Blob(frames)
       const bytes = audio.size
       frames.length = 0

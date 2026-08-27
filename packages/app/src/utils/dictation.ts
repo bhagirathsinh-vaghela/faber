@@ -4,10 +4,12 @@ import { createStore } from "solid-js/store"
 // Worklet source is inlined via a Blob URL so no separate asset has to flow
 // through the embedded web bundle pipeline.
 const WORKLET = `
-const TARGET = 16000
 class DictationCapture extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super()
+    // The wire rate is served by the backend, not assumed, so a model whose
+    // rate changed is fed correctly once the client reconnects with the new one.
+    this.target = options.processorOptions.target
     this.buffer = []
     this.length = 0
     this.phase = 0
@@ -19,7 +21,7 @@ class DictationCapture extends AudioWorkletProcessor {
     // the wire rate is met here instead of being assumed. Averaging the samples
     // that collapse into one output low-passes them; taking a single sample
     // aliases voice back into the speech band.
-    const step = sampleRate / TARGET
+    const step = sampleRate / this.target
     const out = new Float32Array(Math.ceil((channel.length - this.phase) / step))
     let taken = 0
     for (let at = this.phase; at < channel.length; at += step) {
@@ -92,12 +94,12 @@ function afterPaint(fn: () => void) {
   setTimeout(once, 500)
 }
 
-async function acquire() {
+async function acquire(target: number) {
   // Nothing here depends on the microphone, so building the graph in parallel
   // takes its cost off the press instead of adding to it.
-  // WebKit opens the route faster for an explicit 16kHz context than for a
-  // native-rate one whose output has to be decimated afterwards.
-  const context = new AudioContext({ sampleRate: 16000 })
+  // WebKit opens the route faster for an explicit target-rate context than for
+  // a native-rate one whose output has to be decimated afterwards.
+  const context = new AudioContext({ sampleRate: target })
   const ready = context.audioWorklet.addModule(workletModule())
   const stream = await navigator.mediaDevices
     // Echo cancellation and noise suppression put iOS on its voice-processing
@@ -113,10 +115,10 @@ async function acquire() {
   // The worklet decimates whatever arrives down to the wire rate, so a WebKit
   // that ignored the request is fine. Only a context slower than the target is
   // unusable: decimation can discard samples, never invent them.
-  if (context.sampleRate < 16000) {
+  if (context.sampleRate < target) {
     for (const track of stream.getTracks()) track.stop()
     context.close().catch(() => {})
-    throw new Error(`AudioContext sample rate is ${context.sampleRate}, below the 16000 dictation needs`)
+    throw new Error(`AudioContext sample rate is ${context.sampleRate}, below the ${target} dictation needs`)
   }
   // WebKit starts a context suspended when it is constructed outside the
   // gesture that began the press, and audio silently never flows.
@@ -128,12 +130,14 @@ async function acquire() {
 // The mic is never held past the dictation: an idle capture keeps the OS
 // recording indicator lit, telling the user they are being listened to when
 // they are not.
-function release(socket: WebSocket, context: AudioContext, stream: MediaStream) {
+function release(socket: WebSocket, context: AudioContext, stream: MediaStream, rate: number) {
   // The server closes once it has flushed the last transcript. A batch engine
   // only starts transcribing at "stop", so closing here would drop the result;
   // the timer covers a server that never closes.
   if (socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "stop" }))
+    // The captured rate rides along so the server can reject it when a model
+    // change has made it stale rather than transcribe garbled audio.
+    socket.send(JSON.stringify({ type: "stop", rate }))
     setTimeout(() => socket.close(), DRAIN_MS)
   } else socket.close()
   for (const track of stream.getTracks()) track.stop()
@@ -200,7 +204,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     interim: "",
   })
 
-  let session: { socket: WebSocket; context: AudioContext; stream: MediaStream } | undefined
+  let session: { socket: WebSocket; context: AudioContext; stream: MediaStream; target: number } | undefined
   // The live analyser drives the waveform canvas directly (its own rAF reads
   // frequency data), so per-frame audio levels never churn the Solid store.
   let analyser: AnalyserNode | undefined
@@ -223,12 +227,12 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     abortStart?.()
     settling = undefined
     if (!session) return
-    const { socket, context, stream } = session
+    const { socket, context, stream, target } = session
     session = undefined
     analyser = undefined
     if (active === stop) active = undefined
     setStore({ active: false, listening: false, transcribing: false, committed: "", interim: "" })
-    release(socket, context, stream)()
+    release(socket, context, stream, target)()
   }
 
   // Releases the microphone but leaves the socket open, since a batch engine
@@ -244,13 +248,13 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       setStore({ transcribing: false, committed: "", interim: "" })
       return Promise.resolve(transcript)
     }
-    const { socket, context, stream } = session
+    const { socket, context, stream, target } = session
     session = undefined
     analyser = undefined
     if (active === stop) active = undefined
     setStore({ active: false, listening: false, transcribing: true })
     const asked = performance.now()
-    const closeAudio = release(socket, context, stream)
+    const closeAudio = release(socket, context, stream, target)
     settling = new Promise<string>((resolve) => {
       let done = false
       const settled = () => {
@@ -303,8 +307,17 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       for (const frame of pending) socket.send(frame)
       pending.length = 0
     }
+    // The wire rate is always asked of the server rather than assumed, so a
+    // model whose rate changed reaches every client through a reconnect. Capture
+    // waits on this, so there is no path where the browser guesses a rate.
+    let resolveRate: (rate: number) => void
+    const wireRate = new Promise<number>((resolve) => (resolveRate = resolve))
     socket.onmessage = (event) => {
       const message = JSON.parse(String(event.data))
+      if (message.type === "rate") {
+        resolveRate(message.rate)
+        return
+      }
       if (message.type === "transcript") {
         if (message.final) {
           setStore({
@@ -342,7 +355,12 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     abortStart = dispose
 
     try {
-      const graph = await acquire()
+      const target = await wireRate
+      if (generation !== epoch) {
+        dispose()
+        return
+      }
+      const graph = await acquire(target)
       stream = graph.stream
       context = graph.context
       if (generation !== epoch) {
@@ -353,7 +371,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
         throw new Error("Dictation connection closed")
       }
 
-      const worklet = new AudioWorkletNode(context, "dictation-capture")
+      const worklet = new AudioWorkletNode(context, "dictation-capture", { processorOptions: { target } })
       // Frames arrive before the audio route opens, so signal is what proves the
       // microphone is live and the user can safely start speaking.
       let silent = true
@@ -385,7 +403,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
       source.connect(visual)
       visual.connect(analyser)
 
-      session = { socket, context, stream }
+      session = { socket, context, stream, target }
       abortStart = undefined
       setStore("active", true)
     } catch (error) {

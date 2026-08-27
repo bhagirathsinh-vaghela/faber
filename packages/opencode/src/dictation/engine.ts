@@ -6,7 +6,10 @@ export type Transcript = { text: string; final: boolean }
 // the same way.
 export interface Engine {
   frame(data: ArrayBuffer): void
-  stop(): void
+  // `rate` is the sample rate the client actually captured at, so the server
+  // can reject audio a model-rate change has made stale rather than transcribe
+  // it garbled.
+  stop(rate: number): void
   close(): void
 }
 
