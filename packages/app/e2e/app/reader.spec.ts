@@ -4,15 +4,14 @@ import { withSession } from "../actions"
 import { promptSelector } from "../selectors"
 import type { createSdk } from "../utils"
 
-// On a touch device zen is the full-screen read: the prompt dock and both
-// pinned headers go, and the pill is the only way in or out. The reclaim is a
-// contract between a CSS variable and the five consumers that reserve space
-// against it, and a pending question suspends the whole mode so the control
-// that answers it stays on screen.
+// Reader is the full-screen read: the composer and both pinned headers go, and
+// the pill is the only way in or out. The reclaim is a contract between a CSS
+// variable and the five consumers that reserve space against it.
 
 const PHONE = { width: 430, height: 900 }
+const DESKTOP = { width: 1500, height: 900 }
 
-const zenPill = (page: Page) => page.locator("button.fixed").first()
+const readerPill = (page: Page) => page.locator("button.fixed").first()
 
 const scroller = (page: Page) => page.locator(".session-scroller")
 
@@ -28,7 +27,7 @@ const settle = (page: Page) => page.waitForTimeout(400)
 // transcript need to exist at all. Shell is the one way to get one without
 // spending a model call.
 async function seedTurn(sdk: ReturnType<typeof createSdk>, sessionID: string) {
-  await sdk.session.shell({ sessionID, agent: "build", command: "echo immersive" })
+  await sdk.session.shell({ sessionID, agent: "build", command: "echo reader" })
 }
 
 async function tapBackdrop(page: Page) {
@@ -38,35 +37,39 @@ async function tapBackdrop(page: Page) {
   await settle(page)
 }
 
-async function enterZen(page: Page) {
-  await zenPill(page).click()
+async function enterReader(page: Page) {
+  await readerPill(page).click()
   await settle(page)
 }
 
-test.describe("immersive reading", () => {
+test.describe("reader mode", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: PHONE })
 
-  test("the pill reclaims the dock's space, and taking it out gives it back", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive clearance ${Date.now()}`, async (session) => {
+  test("the pill reclaims the composer's space, and taking it out gives it back", async ({
+    page,
+    sdk,
+    gotoSession,
+  }) => {
+    await withSession(sdk, `reader clearance ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
 
       const docked = await clearance(page)
       expect(docked).not.toBe("0px")
 
-      await enterZen(page)
+      await enterReader(page)
       expect(await clearance(page)).toBe("0px")
 
-      await zenPill(page).click()
+      await readerPill(page).click()
       await settle(page)
       expect(await clearance(page)).toBe(docked)
     })
   })
 
   test("nothing but the pill changes the mode", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive gestures ${Date.now()}`, async (session) => {
+    await withSession(sdk, `reader gestures ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
-      await enterZen(page)
+      await enterReader(page)
       expect(await clearance(page)).toBe("0px")
 
       await tapBackdrop(page)
@@ -92,7 +95,7 @@ test.describe("immersive reading", () => {
   })
 
   test("the pinned title stops reserving space", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive headers ${Date.now()}`, async (session) => {
+    await withSession(sdk, `reader headers ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
 
       const pinned = await scroller(page).evaluate((el) =>
@@ -100,7 +103,7 @@ test.describe("immersive reading", () => {
       )
       expect(pinned).not.toBe("0px")
 
-      await enterZen(page)
+      await enterReader(page)
 
       const released = await scroller(page).evaluate((el) =>
         getComputedStyle(el).getPropertyValue("--session-title-height").trim(),
@@ -110,7 +113,7 @@ test.describe("immersive reading", () => {
   })
 
   test("a released prompt bar reserves no offset for the boxes below it", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive offsets ${Date.now()}`, async (session) => {
+    await withSession(sdk, `reader offsets ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
 
@@ -133,32 +136,38 @@ test.describe("immersive reading", () => {
 
       expect(await offset()).not.toBe("0px")
 
-      await enterZen(page)
+      await enterReader(page)
       expect(await offset()).toBe("0px")
     })
   })
 
-  test("the hidden dock is inert, so it holds no focus and no tab stop", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive inert ${Date.now()}`, async (session) => {
+  test("the hidden composer is inert, so it holds no focus and no tab stop", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader inert ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
 
       const editor = page.locator(promptSelector)
       await editor.tap()
       await expect(editor).toBeFocused()
 
-      await enterZen(page)
+      await enterReader(page)
 
+      // The composer carries its own hidden/inert state rather than inheriting
+      // the dock's, because a pending question keeps the dock on screen and the
+      // composer must go anyway.
+      const composer = page.locator('[data-slot="composer"]')
+      await expect(composer).toHaveAttribute("inert", "")
+      await expect(composer).toBeHidden()
       await expect(page.locator('[data-slot="prompt-dock"]')).toHaveAttribute("inert", "")
       await expect(editor).not.toBeFocused()
     })
   })
 
-  test("the zen pill stays on screen, so the mode is always escapable", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive escape ${Date.now()}`, async (session) => {
+  test("the pill stays on screen, so the mode is always escapable", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader escape ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
-      await enterZen(page)
+      await enterReader(page)
 
-      const pill = zenPill(page)
+      const pill = readerPill(page)
       await expect(pill).toBeVisible()
 
       const box = await pill.boundingBox()
@@ -169,18 +178,51 @@ test.describe("immersive reading", () => {
   })
 })
 
-test.describe("immersive reading on a fine pointer", () => {
-  test.use({ viewport: PHONE })
+// The mode is a declaration that the user is not interacting, which a mouse
+// makes as readily as a finger. Pointer type earns no branch.
+test.describe("reader mode on a fine pointer", () => {
+  test.use({ viewport: DESKTOP })
 
-  // Zen slims the dock under a mouse rather than removing it, so the clearance
-  // shrinks but never reaches zero.
-  test("zen keeps the dock on screen under a mouse", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive pointer ${Date.now()}`, async (session) => {
+  test("a mouse gets the same reclaim a finger does", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader pointer ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
-      await enterZen(page)
 
+      const docked = await clearance(page)
+      expect(docked).not.toBe("0px")
+
+      await enterReader(page)
+      expect(await clearance(page)).toBe("0px")
+      await expect(page.locator('[data-slot="prompt-dock"]')).toHaveAttribute("inert", "")
+      await expect(page.locator('[data-slot="composer"]')).toBeHidden()
+    })
+  })
+
+  test("the pill is draggable, and the parked position survives a mode toggle", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader drag ${Date.now()}`, async (session) => {
+      await gotoSession(session.id)
+
+      const pill = readerPill(page)
+      const start = await pill.boundingBox()
+      if (!start) throw new Error("pill has no box")
+
+      await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(start.x + 40, start.y - 220, { steps: 12 })
+      await page.mouse.up()
+      await settle(page)
+
+      const parked = await pill.boundingBox()
+      if (!parked) throw new Error("pill has no box after drag")
+      expect(Math.abs(parked.y - start.y)).toBeGreaterThan(100)
+
+      // Moving the control and activating it are the two things the gesture
+      // must keep apart, so a drag past the slop cannot also toggle.
       expect(await clearance(page)).not.toBe("0px")
-      await expect(page.locator('[data-slot="prompt-dock"]')).not.toHaveAttribute("inert", "")
+
+      await enterReader(page)
+      const afterToggle = await pill.boundingBox()
+      if (!afterToggle) throw new Error("pill has no box in reader")
+      expect(Math.round(afterToggle.y)).toBe(Math.round(parked.y))
     })
   })
 })

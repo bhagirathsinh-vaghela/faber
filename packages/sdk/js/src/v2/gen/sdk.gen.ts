@@ -2566,7 +2566,7 @@ export class Boxes extends HeyApiClient {
   /**
    * Get box collapse preferences
    *
-   * Get the server-owned per-box-type collapse defaults (per normal/zen mode).
+   * Get the server-owned per-box-type collapse defaults (per normal/reader mode).
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {

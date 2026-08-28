@@ -2377,7 +2377,7 @@ export default function Layout(props: ParentProps) {
               <div
                 class="h-full w-full flex flex-col items-center gap-3 px-3 py-2 overflow-y-auto no-scrollbar"
                 style={{
-                  "padding-top": layout.zen.opened() ? "calc(0.5rem + env(titlebar-area-height, 0px))" : undefined,
+                  "padding-top": layout.reader.opened() ? "calc(0.5rem + env(titlebar-area-height, 0px))" : undefined,
                 }}
               >
                 <SortableProvider ids={layout.projects.list().map((p) => p.worktree)}>
@@ -2461,7 +2461,7 @@ export default function Layout(props: ParentProps) {
           data-component="sidebar-nav-desktop"
           classList={{
             hidden: true,
-            "expanded:block": !layout.zen.opened(),
+            "expanded:block": !layout.reader.opened(),
             "relative shrink-0": true,
           }}
           style={{ width: layout.sidebar.opened() ? `${Math.max(layout.sidebar.width(), 244)}px` : "64px" }}
@@ -2523,7 +2523,7 @@ export default function Layout(props: ParentProps) {
         <main
           classList={{
             "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base": true,
-            "expanded:border-l expanded:rounded-tl-sm": !layout.sidebar.opened() && !layout.zen.opened(),
+            "expanded:border-l expanded:rounded-tl-sm": !layout.sidebar.opened() && !layout.reader.opened(),
           }}
         >
           {props.children}

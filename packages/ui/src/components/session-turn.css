@@ -2,7 +2,7 @@
   --session-turn-sticky-height: 0px;
   --sticky-header-height: calc(var(--session-title-height, 0px) + var(--session-turn-sticky-height, 0px) + 24px);
 
-  /* An ancestor marked immersive hides every pinned header, so the prompt bar
+  /* An ancestor in reader mode hides every pinned header, so the prompt bar
      scrolls away with its turn and contributes no offset. Both halves live here
      because they are one state: releasing the pin while still reserving the
      bar's height leaves every consumer of --sticky-header-height (accordion
@@ -10,7 +10,7 @@
      that is no longer on screen. The derived value is overridden rather than
      its --session-turn-sticky-height input, which the measuring observer writes
      inline and which therefore outranks any rule here. */
-  :where([data-immersive]) & {
+  :where([data-reader]) & {
     --sticky-header-height: 0px;
   }
   /* flex: 1; */
@@ -62,7 +62,7 @@
 
     /* relative, not static: the ::before backdrop is absolutely positioned
        against this box and would otherwise resolve to a distant ancestor. */
-    :where([data-immersive]) & {
+    :where([data-reader]) & {
       position: relative;
     }
     top: var(--session-title-height, 0px);

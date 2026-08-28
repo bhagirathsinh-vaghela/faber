@@ -56,7 +56,7 @@ import { findLast } from "@opencode-ai/util/array"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectFile } from "@/components/dialog-select-file"
 import FileTree from "@/components/file-tree"
-import { ZenPill } from "@/components/zen-pill"
+import { ReaderPill } from "@/components/reader-pill"
 import { DialogSelectModel } from "@/components/dialog-select-model"
 import { DialogSettings } from "@/components/dialog-settings"
 import { DialogFork } from "@/components/dialog-fork"
@@ -406,15 +406,15 @@ export default function Page() {
   const centered = createMemo(() => wide() && !layout.fileTree.opened())
   const openContextPanel = useOpenContext()
 
-  const coarse = createCoarsePointer()
-  // A pending question or permission lives inside the dock, so hiding it would
-  // strand the only control that can answer.
+  // The question and permission panels are siblings of the composer inside the
+  // dock, so reader hides the composer alone and leaves the dock to size itself
+  // around whichever of them is pending.
   const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
-  const immersive = () => coarse() && layout.zen.opened() && !awaitingAnswer()
-  // The soft keyboard follows focus, and would cover the space the off-screen
-  // dock gave back.
+  const reader = () => layout.reader.opened()
+  // A soft keyboard is summoned by focus and dismissed by losing it, and it
+  // covers more space than the composer it serves.
   createEffect(() => {
-    if (!immersive()) return
+    if (!reader()) return
     inputRef?.blur()
   })
 
@@ -1277,12 +1277,12 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogPending />),
     },
     {
-      id: "zen.toggle",
-      title: language.t("command.zen.toggle"),
-      description: language.t("command.zen.toggle.description"),
+      id: "reader.toggle",
+      title: language.t("command.reader.toggle"),
+      description: language.t("command.reader.toggle.description"),
       category: language.t("command.category.session"),
       keybind: "alt+z",
-      onSelect: () => layout.zen.toggle(),
+      onSelect: () => layout.reader.toggle(),
     },
     {
       id: "companion.toggle",
@@ -1960,7 +1960,7 @@ export default function Page() {
     setStore("busyHeight", next)
   })
 
-  // Clearance is the RESTING measurement gated by immersive, not a live read of
+  // Clearance is the RESTING measurement gated by reader, not a live read of
   // a sliding dock: the dock leaves by transform, so its measured height never
   // changes and the observer above stays a pure size probe. Publishing 0 is what
   // turns the slide into reclaimed space rather than a dead band.
@@ -1969,7 +1969,7 @@ export default function Page() {
   // clear both. Folding the bar into the value it positions against would walk
   // it up the screen one measurement per cycle.
   createEffect(() => {
-    const dock = immersive() ? 0 : store.promptHeight
+    const dock = reader() && !awaitingAnswer() ? 0 : store.promptHeight
     const next = dock + (store.busyHeight ? store.busyHeight + BUSY_GAP : 0)
     // On the root element, not the session panel: the dictation overlay
     // portals to <body> and would otherwise inherit nothing to anchor to.
@@ -1989,7 +1989,7 @@ export default function Page() {
     if (untrack(following)) settleToBottom()
   })
 
-  // Zen and immersive both reflow the tail in ways the content ResizeObserver
+  // Reader reflows the tail in ways the content ResizeObserver
   // can't catch: the sticky session title (a scroller child, not virtua content)
   // unmounts, the scroller's --session-title-height flips, and the dock's
   // reserved clearance changes. The scroller runs overflow-anchor:none (virtua needs it to avoid
@@ -2002,7 +2002,7 @@ export default function Page() {
   // and virtua's later size-change compensation arrive over subsequent frames.
   createEffect(
     on(
-      () => [layout.zen.opened(), immersive()],
+      () => [reader(), awaitingAnswer()],
       () => {
         const el = scroller
         if (!el) return
@@ -2292,25 +2292,23 @@ export default function Page() {
 
   // Desktop pill hugs the top-right corner of the visible input box, so it
   // never floats over the input or lands in the centered layout's side gutter.
-  // Track that box's viewport rect; the corner anchor is derived from it. In
-  // zen the dock height changes but the box keeps its last rect, so the pill
-  // stays put. Re-measured on dock resize, zen toggle, file-tree/centering
-  // changes, and window resize.
+  // Track that box's viewport rect; the corner anchor is derived from it.
+  // Re-measured on dock resize, reader toggle, file-tree/centering changes, and
+  // window resize.
   const [dockRect, setDockRect] = createSignal<{ right: number; top: number } | null>(null)
   const measureDock = () => {
-    // A dock translated off-screen would drag the pill down with it, taking the
-    // only way out of zen off the viewport. Null hands the pill its corner.
-    if (immersive()) {
+    // A composer translated off-screen would drag the pill down with it, taking
+    // the only way out of reader off the viewport. Null hands the pill its
+    // corner.
+    if (reader()) {
       setDockRect(null)
       return
     }
     // Anchor to the input box itself, not promptInner (the dock content column).
     // promptInner stacks the question panel, permission prompt, and busy bar
     // ABOVE the input, so its top edge rises when any of those appear and the
-    // pill would ride up with it. In the slim zen dock that also lands the pill
-    // on top of the submit/stop button. The input box's top edge is stable.
-    // inputRef is the contenteditable, which desktop zen shrinks to flex-1
-    // beside the button row; its form wrapper spans the box in both modes.
+    // pill would ride up with it. The input box's top edge is stable.
+    // inputRef is the contenteditable; its form wrapper spans the box.
     const el = inputRef?.closest("form")
     if (!el) return
     const r = el.getBoundingClientRect()
@@ -2328,8 +2326,7 @@ export default function Page() {
   createEffect(() => {
     // Depend on the triggers that move the box, then measure post-layout.
     void store.promptHeight
-    void layout.zen.opened()
-    void immersive()
+    void reader()
     void centered()
     requestAnimationFrame(measureDock)
   })
@@ -2362,7 +2359,7 @@ export default function Page() {
       <SessionHeader />
       {/* Anchored just above the prompt dock; the held dock height keeps it put
           across the zen toggle. */}
-      <ZenPill anchor={dockRect} />
+      <ReaderPill anchor={dockRect} />
       <div class="flex-1 min-h-0 flex flex-col wide:flex-row">
         {/* Session panel */}
         <div
@@ -2379,7 +2376,7 @@ export default function Page() {
             // Zen hides the titlebar, so on mobile the panel must clear the top
             // safe-area inset the titlebar was covering; --sat is 0 elsewhere, so
             // this reserves exactly the status bar and nothing more.
-            "padding-top": layout.zen.opened() ? "var(--sat)" : undefined,
+            "padding-top": layout.reader.opened() ? "var(--sat)" : undefined,
           }}
         >
           {/* Companion mode hides the transcript with CSS rather than
@@ -2602,13 +2599,13 @@ export default function Page() {
                           if (wide() && !settling && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
-                        data-immersive={immersive() ? "" : undefined}
+                        data-reader={reader() ? "" : undefined}
                         style={{
                           "--session-title-height":
-                            immersive() || !(info()?.title || info()?.parentID) ? "0px" : wide() ? "28px" : "24px",
+                            reader() || !(info()?.title || info()?.parentID) ? "0px" : wide() ? "28px" : "24px",
                         }}
                       >
-                        <Show when={(info()?.title || info()?.parentID) && !immersive()}>
+                        <Show when={(info()?.title || info()?.parentID) && !reader()}>
                           <div
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,
@@ -2799,7 +2796,7 @@ export default function Page() {
           {/* Busy-turn bar in the gap between the message boxes and the dock,
               the busy cue in every mode. The dock's own busy spinner (dock-line1)
               is suppressed, so this bar is the single indicator. It sits OUTSIDE
-              the dock so immersive's slide leaves it on screen — a hidden
+              the dock so reader's slide leaves it on screen — a hidden
               composer must still show that a turn is running. Its own height
               feeds the transcript clearance (see the clearance effect), since it
               covers the tail exactly as the dock does. */}
@@ -2841,22 +2838,21 @@ export default function Page() {
               // panel used to guess with a hardcoded max-height. With the chain
               // bounded, its inner scroller resolves a real height and engages.
               "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
-              // Zen keeps a slimmed dock (input + attach + submit + question/permission
-              // prompts) rather than hiding it, so questions stay answerable in zen.
-              // PromptInput drops its own chrome via useLayout().zen. Only the mobile
-              // Changes tab hides the dock outright.
+              // The mobile Changes tab hides the dock outright.
               hidden: reviewReplacesTranscript(),
               // Slide, not display:none: the dock keeps its measured height, so
               // the resize observer stays a pure size probe and the clearance
               // effect owns whether that height is reserved.
               "transition-transform duration-200 ease-out motion-reduce:transition-none": true,
-              "translate-y-full": immersive(),
+              // A pending question rides in this dock, so reader holds it on
+              // screen and hides only the composer within it.
+              "translate-y-full": reader() && !awaitingAnswer(),
             }}
             // inert, not aria-hidden: the dock is hidden by transform alone, so
             // it keeps its tab order. aria-hidden over focusable descendants is
             // the violation inert exists to fix, and inert also blurs the
             // subtree, covering focus that never sat in the editor.
-            inert={immersive()}
+            inert={reader() && !awaitingAnswer()}
             // The pill anchors to the dock's rect, and a measurement taken while
             // the slide is mid-flight reads a transformed box. Re-measuring on
             // arrival lands it on the resting one.
@@ -2939,23 +2935,34 @@ export default function Page() {
                 )}
               </Show>
 
-              <Show
-                when={prompt.ready()}
-                fallback={
-                  <div class="w-full min-h-32 panel-wide:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
-                    {handoff.prompt || language.t("prompt.loading")}
-                  </div>
-                }
+              {/* display:none, not a transform: a translated composer keeps its
+                  box, so the dock could not shrink around a question holding it
+                  on screen. Hidden rather than unmounted, so the editor keeps
+                  its draft and the dock keeps its size probe. */}
+              <div
+                data-slot="composer"
+                class="w-full min-h-0 flex flex-col"
+                classList={{ hidden: reader() }}
+                inert={reader()}
               >
-                <PromptInput
-                  ref={(el) => {
-                    inputRef = el
-                  }}
-                  newSessionWorktree={newSessionWorktree()}
-                  onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
-                  onSubmit={resumeScroll}
-                />
-              </Show>
+                <Show
+                  when={prompt.ready()}
+                  fallback={
+                    <div class="w-full min-h-32 panel-wide:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
+                      {handoff.prompt || language.t("prompt.loading")}
+                    </div>
+                  }
+                >
+                  <PromptInput
+                    ref={(el) => {
+                      inputRef = el
+                    }}
+                    newSessionWorktree={newSessionWorktree()}
+                    onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
+                    onSubmit={resumeScroll}
+                  />
+                </Show>
+              </div>
             </div>
           </div>
 

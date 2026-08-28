@@ -87,7 +87,10 @@ describe("sinceLastPrompt", () => {
   // message, rewriting the tail every time.
   test("a synthetic message minted mid-turn keeps the turn's reminder in scope", () => {
     const prompt = user({ texts: [{ text: "use a subtask" }, reminder] })
-    const summary = user({ synthetic: true, texts: [{ text: "Summarize the task tool output above.", synthetic: true }] })
+    const summary = user({
+      synthetic: true,
+      texts: [{ text: "Summarize the task tool output above.", synthetic: true }],
+    })
     const window = SessionPrompt.sinceLastPrompt([prompt, assistant(), summary])
 
     expect(window.some(SessionPrompt.hasConciseReminder)).toBe(true)

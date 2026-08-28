@@ -25,9 +25,7 @@ describe("cache markers with an appended concise reminder", () => {
     const plain = [system("S1"), system("S2"), prompt(["do the thing"])]
     const withReminder = [system("S1"), system("S2"), prompt(["do the thing", REMINDER])]
 
-    expect(ProviderTransform.cacheMarkerIndices(withReminder)).toEqual(
-      ProviderTransform.cacheMarkerIndices(plain),
-    )
+    expect(ProviderTransform.cacheMarkerIndices(withReminder)).toEqual(ProviderTransform.cacheMarkerIndices(plain))
   })
 
   test("the reminder does not shift markers mid-conversation", () => {

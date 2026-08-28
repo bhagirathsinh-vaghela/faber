@@ -24,7 +24,6 @@ export interface Settings {
   general: {
     autoSave: boolean
     releaseNotes: boolean
-    zenDefault: boolean
   }
   updates: {
     startup: boolean
@@ -40,19 +39,20 @@ export interface Settings {
   sounds: SoundSettings
 }
 
-export type BoxMode = "normal" | "zen"
+// One declaration, in the layer that cannot import this one.
+import type { BoxMode } from "@opencode-ai/ui/context/box-defaults"
+export type { BoxMode }
 
 // Per-box-type collapse defaults, keyed by tool/box name. Each mode flag is
 // `true` = collapsed by default, absent/`false` = expanded. Server-persisted
 // (mirrors AppearancePreference) so it syncs across clients, unlike the
 // localStorage Settings above.
-export type BoxDefaults = Record<string, { normal?: boolean; zen?: boolean }>
+export type BoxDefaults = Record<string, { normal?: boolean; reader?: boolean }>
 
 const defaultSettings: Settings = {
   general: {
     autoSave: true,
     releaseNotes: true,
-    zenDefault: false,
   },
   updates: {
     startup: true,
@@ -467,10 +467,6 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         releaseNotes: createMemo(() => store.general?.releaseNotes ?? defaultSettings.general.releaseNotes),
         setReleaseNotes(value: boolean) {
           setStore("general", "releaseNotes", value)
-        },
-        zenDefault: createMemo(() => store.general?.zenDefault ?? defaultSettings.general.zenDefault),
-        setZenDefault(value: boolean) {
-          setStore("general", "zenDefault", value)
         },
       },
       updates: {

@@ -49,7 +49,7 @@ export function QuestionPanel(props: { onClose?: () => void }) {
   // driven by the "question" row of the box-defaults matrix for the current
   // mode (ticked = collapsed).
   const applyDefault = () => {
-    const mode = layout.zen.opened() ? "zen" : "normal"
+    const mode = layout.reader.opened() ? "reader" : "normal"
     if (settings.boxes.collapsed("question", mode)) question.collapse()
     else question.expand()
   }
@@ -75,7 +75,7 @@ export function QuestionPanel(props: { onClose?: () => void }) {
   // contract as the transcript boxes, whose manual state resets on mode change.
   createEffect(
     on(
-      () => layout.zen.opened(),
+      () => layout.reader.opened(),
       () => {
         if (question.count > 0) applyDefault()
       },

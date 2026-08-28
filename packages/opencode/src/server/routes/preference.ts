@@ -105,7 +105,7 @@ export const PreferenceRoutes = lazy(() =>
       "/boxes",
       describeRoute({
         summary: "Get box collapse preferences",
-        description: "Get the server-owned per-box-type collapse defaults (per normal/zen mode).",
+        description: "Get the server-owned per-box-type collapse defaults (per normal/reader mode).",
         operationId: "preference.boxes.get",
         responses: {
           200: {

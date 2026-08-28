@@ -123,19 +123,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }),
     )
 
-    // Zen mode is intentionally ephemeral — an in-memory signal, never
+    // Reader mode is intentionally ephemeral — an in-memory signal, never
     // persisted, so it always starts off on a fresh load/reload.
-    const [zenOpened, setZenOpened] = createSignal(false)
+    const [readerOpened, setReaderOpened] = createSignal(false)
 
-    // Which session each zen state belongs to, so leaving a session for the
-    // overview and coming back restores the toggle rather than re-applying the
-    // default. Deliberately a plain Map, not persisted state: a reload must
-    // still land outside zen, since that is the only way out of a session whose
-    // chrome is hidden.
-    const zenMemory = new Map<string, boolean>()
+    // Which session each reader state belongs to, so leaving a session for the
+    // overview and coming back restores the toggle. Deliberately a plain Map,
+    // not persisted state: a reload must still land outside reader, since that
+    // is the only way out of a session whose composer is hidden.
+    const readerMemory = new Map<string, boolean>()
 
     // Manual expand/collapse of transcript boxes, session id -> box id -> open.
-    // Ephemeral for zen's reason, and lifted here for zen's reason too: the
+    // Ephemeral for reader's reason, and lifted here for it too: the
     // session page unmounts on the way to the overview, and virtua unmounts a
     // turn scrolled far enough out of view, so state owned by a box cannot
     // outlive either trip.
@@ -163,66 +162,78 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       for (const session of drop) boxUsed.delete(session)
     }
 
-    // Toggling zen re-lays-out the chrome around the prompt (the slim zen dock
-    // drops the model/agent cluster and action row), which blurs a focused
-    // input. Snapshot focus before the flip and restore it after, in BOTH
-    // directions — so a cursor in the input survives the toggle. Exit also uses
-    // the snapshot to hand focus back to whatever held it when zen opened.
-    let zenFocus: (() => boolean) | undefined
-    const enterZen = () => {
+    // Entering reader takes the composer off screen, which blurs a focused
+    // input. Snapshot focus before the flip and restore it after, so exit hands
+    // focus back to whatever held it when reader opened.
+    let readerFocus: (() => boolean) | undefined
+    const enterReader = () => {
       if (companionOpened()) exitCompanion()
       const restore = captureFocus()
-      zenFocus = restore
-      setZenOpened(true)
-      rememberZen(true)
+      readerFocus = restore
+      setReaderOpened(true)
+      rememberReader(true)
       restore()
+      collapseChrome()
     }
-    const exitZen = () => {
-      const restore = zenFocus
-      zenFocus = undefined
-      setZenOpened(false)
-      rememberZen(false)
+    const exitReader = () => {
+      const restore = readerFocus
+      readerFocus = undefined
+      setReaderOpened(false)
+      rememberReader(false)
       restore?.()
     }
 
-    // Zen slims the chrome around a transcript, so it only means anything on a
-    // session route. The overview has no transcript to slim, and reading the raw
-    // flag there hid the project rail and titlebar for no gain. Consumers read
-    // this gated value rather than the signal.
+    // Reader strips the chrome around a transcript, so it only means anything on
+    // a session route. The overview has no transcript, and reading the raw flag
+    // there hid the project rail and titlebar for no gain. Consumers read this
+    // gated value rather than the signal.
     const location = useLocation()
-    const zenRoute = createMemo(() => /\/session(?:\/([^/?#]+))?/.exec(location.pathname))
-    const zenActive = createMemo(() => zenOpened() && zenRoute() !== null)
+    const readerRoute = createMemo(() => /\/session(?:\/([^/?#]+))?/.exec(location.pathname))
+    const readerActive = createMemo(() => readerOpened() && readerRoute() !== null)
 
-    const rememberZen = (opened: boolean) => {
-      const id = zenRoute()?.[1]
-      if (id) zenMemory.set(id, opened)
+    const rememberReader = (opened: boolean) => {
+      const id = readerRoute()?.[1]
+      if (id) readerMemory.set(id, opened)
     }
 
-    // Landing on a session takes its remembered toggle, falling back to the
-    // zenDefault setting the first time that session is seen. This lives here
-    // rather than on the session page because that page unmounts on the way to
-    // the overview, which is exactly the trip the memory has to survive.
+    const collapseChrome = () => {
+      const probe = document.createElement("div")
+      probe.style.cssText = "position:absolute;visibility:hidden;height:100lvh"
+      document.body.appendChild(probe)
+      const large = probe.getBoundingClientRect().height
+      probe.style.height = "100svh"
+      const small = probe.getBoundingClientRect().height
+      probe.remove()
+      if (large <= small) return
+      // The shell is sticky, so this moves browser chrome and nothing else.
+      window.scrollTo({ top: large - small, behavior: "smooth" })
+    }
+
+    // A first-seen session always opens interactive: reader declares that you
+    // are not interacting, which cannot be decided before the transcript is on
+    // screen. Lives here because the session page unmounts on the way to the
+    // overview, the trip this memory has to survive.
     createEffect(
       on(
-        () => zenRoute()?.[1],
+        () => readerRoute()?.[1],
         (id) => {
           if (!id) return
-          const next = zenMemory.get(id) ?? settings.general.zenDefault()
-          if (next === zenOpened()) return
-          if (next) enterZen()
-          else exitZen()
+          const next = readerMemory.get(id) ?? false
+          if (next === readerOpened()) return
+          if (next) enterReader()
+          else exitReader()
         },
       ),
     )
 
-    // Companion mode is zen inverted: zen keeps the transcript and slims the
-    // dock, companion drops the transcript and keeps the dock whole. Ephemeral
-    // for the same reason zen is, and mutually exclusive with it — the two
-    // together would leave a near-blank screen with a slim input.
+    // Companion mode is reader inverted: reader keeps the transcript and drops
+    // the dock, companion drops the transcript and keeps the dock whole.
+    // Ephemeral for the same reason reader is, and mutually exclusive with it —
+    // the two together would leave a near-blank screen.
     const [companionOpened, setCompanionOpened] = createSignal(false)
     let companionFocus: (() => boolean) | undefined
     const enterCompanion = () => {
-      if (zenOpened()) exitZen()
+      if (readerOpened()) exitReader()
       const restore = captureFocus()
       companionFocus = restore
       setCompanionOpened(true)
@@ -617,20 +628,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("mobileSidebar", "opened", (x) => !x)
         },
       },
-      // Zen mode: hides all chrome (titlebar, tab bar, prompt dock), leaving
-      // only the scrollable message list and a floating exit pill. Deliberately
-      // NOT persisted — it always resets to off on load/reload.
-      zen: {
-        opened: zenActive,
-        enter: enterZen,
-        exit: exitZen,
+      // Reader mode: hides all chrome (titlebar, tab bar, composer), leaving the
+      // scrollable message list, the busy indicator, and any pending question.
+      // Deliberately NOT persisted — it always resets to off on load/reload.
+      reader: {
+        opened: readerActive,
+        enter: enterReader,
+        exit: exitReader,
         toggle() {
-          // enterZen/exitZen cannot own this: the restore effect calls them on
-          // arrival, where a wipe would hit the session being left.
-          const session = zenRoute()?.[1]
+          // enterReader/exitReader cannot own this: the restore effect calls
+          // them on arrival, where a wipe would hit the session being left.
+          const session = readerRoute()?.[1]
           if (session) setBoxOpen(produce((draft) => delete draft[session]))
-          if (zenOpened()) exitZen()
-          else enterZen()
+          if (readerOpened()) exitReader()
+          else enterReader()
         },
       },
       // Companion mode: hides the transcript, keeps the full prompt dock plus

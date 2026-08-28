@@ -4,7 +4,6 @@ import { Checkbox } from "@opencode-ai/ui/checkbox"
 import { Button } from "@opencode-ai/ui/button"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
-import { SettingsRow } from "./settings-row"
 
 // Collapsible transcript box types that have a body (header-only tools like
 // webfetch/skill are omitted — nothing to collapse). Label is shown as-is; the
@@ -40,25 +39,6 @@ export const SettingsLayout: Component = () => {
       </div>
 
       <div class="flex flex-col gap-8 w-full">
-        {/* Zen mode Section */}
-        <div class="flex flex-col gap-1">
-          <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.layout.section.zen")}</h3>
-
-          <div class="bg-surface-raised-base px-4 rounded-lg">
-            <SettingsRow
-              title={language.t("settings.layout.zenDefault.title")}
-              description={language.t("settings.layout.zenDefault.description")}
-            >
-              <div data-action="settings-zen-default">
-                <Switch
-                  checked={settings.general.zenDefault()}
-                  onChange={(checked) => settings.general.setZenDefault(checked)}
-                />
-              </div>
-            </SettingsRow>
-          </div>
-        </div>
-
         {/* Box collapse defaults Section */}
         <div class="flex flex-col gap-1">
           <div class="flex items-center justify-between pb-2">
@@ -93,7 +73,7 @@ export const SettingsLayout: Component = () => {
             <div class="grid grid-cols-[1fr_4rem_4rem] items-center py-2 border-b border-border-weak-base text-11-medium text-text-weak">
               <span />
               <span class="text-center">{language.t("settings.layout.boxes.normal")}</span>
-              <span class="text-center">{language.t("settings.layout.boxes.zen")}</span>
+              <span class="text-center">{language.t("settings.layout.boxes.reader")}</span>
             </div>
             <For each={BOX_TYPES}>
               {(box) => (
@@ -105,10 +85,10 @@ export const SettingsLayout: Component = () => {
                       onChange={(checked) => settings.boxes.setCollapsed(box.key, "normal", checked)}
                     />
                   </div>
-                  <div class="flex justify-center" data-action={`settings-box-${box.key}-zen`}>
+                  <div class="flex justify-center" data-action={`settings-box-${box.key}-reader`}>
                     <Checkbox
-                      checked={settings.boxes.draft(box.key, "zen")}
-                      onChange={(checked) => settings.boxes.setCollapsed(box.key, "zen", checked)}
+                      checked={settings.boxes.draft(box.key, "reader")}
+                      onChange={(checked) => settings.boxes.setCollapsed(box.key, "reader", checked)}
                     />
                   </div>
                 </div>

@@ -1,8 +1,8 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useLayout } from "@/context/layout"
 import { useLanguage } from "@/context/language"
-import { createCoarsePointer, useShell, TOUCH_SLOP } from "@/utils/mobile"
+import { createCoarsePointer, TOUCH_SLOP } from "@/utils/mobile"
 
 // Sized for a fingertip on every device: the pill floats over content, so it
 // gets the enhanced touch target even under a mouse, and a touch pointer a
@@ -22,12 +22,11 @@ const NUDGE = 12
 const inset = (name: "--sat" | "--sar" | "--sab" | "--sal") =>
   parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0
 
-// The one zen control. `anchor` is the box it hovers above; a page without one
-// (a document rather than a transcript) passes nothing and gets the corner.
-export function ZenPill(props: { anchor?: () => { right: number; top: number } | null }) {
+// The one reader control. `anchor` is the box it hovers above; a page without
+// one passes nothing and gets the corner.
+export function ReaderPill(props: { anchor?: () => { right: number; top: number } | null }) {
   const layout = useLayout()
   const language = useLanguage()
-  const wide = useShell().wide
   const coarse = createCoarsePointer()
   const size = () => (coarse() ? 56 : 52)
 
@@ -38,8 +37,8 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
 
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
-  // A press that toggles zen reshapes the dock under the pointer, which would
-  // otherwise slide the pill away mid-press and land the release elsewhere.
+  // A press reshapes the dock under the pointer, which would otherwise slide the
+  // pill away mid-press and land the release elsewhere.
   const [held, setHeld] = createSignal<{ x: number; y: number } | null>(null)
 
   const anchored = createMemo(() => {
@@ -50,15 +49,6 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
       y: rect.top - size() - GAP,
     }
   })
-
-  // Only a coarse-pointer layout can drag, so a position carried into any other
-  // mode would strand the pill away from the corner with no way to put it back.
-  createEffect(
-    on(wide, () => {
-      setDrag(null)
-      setPos(null)
-    }),
-  )
 
   // A viewport that shrinks under a parked pill — rotation, the soft keyboard,
   // a resized window — leaves it outside the bounds, where it can be neither
@@ -76,9 +66,10 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
     onCleanup(() => window.removeEventListener("resize", reclamp))
   })
 
-  // Anchor priority: a mobile drag override wins, then a held press, then the
-  // live anchor. Null until the first measurement, or with no anchor at all.
-  const coords = createMemo(() => (wide() ? (held() ?? anchored()) : (drag() ?? pos() ?? held() ?? anchored())))
+  // Anchor priority: a live drag wins, then a parked position, then a held
+  // press, then the live anchor. Null until the first measurement, or with no
+  // anchor at all.
+  const coords = createMemo(() => drag() ?? pos() ?? held() ?? anchored())
 
   // Pointer events TRACK the drag; they never toggle. The toggle is the click,
   // so the pill activates like every other control (and stays reachable by
@@ -86,8 +77,6 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
   // click, which is what separates "moved the pill" from "tapped the pill".
   let dragged = false
   function start(e: PointerEvent) {
-    // A desktop press reshapes the dock too, so the hold is taken for every
-    // pointer, not just the ones that can drag.
     setHeld(anchored())
     const release = () => {
       setHeld(null)
@@ -97,7 +86,6 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
     document.addEventListener("pointerup", release)
     document.addEventListener("pointercancel", release)
 
-    if (wide()) return
     const pill = e.currentTarget as HTMLElement
     const startX = e.clientX
     const startY = e.clientY
@@ -143,13 +131,10 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
             dragged = false
             return
           }
-          layout.zen.toggle()
+          layout.reader.toggle()
         }}
-        aria-label={layout.zen.opened() ? language.t("zen.exit") : language.t("zen.enter")}
-        // wide:, not panel-wide:: the pill portals to <body>, where no ancestor
-        // declares a container, so a container variant never matches and the
-        // class silently does nothing.
-        class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing wide:cursor-pointer wide:active:cursor-pointer hover:bg-surface-raised-base-hover"
+        aria-label={layout.reader.opened() ? language.t("reader.exit") : language.t("reader.enter")}
+        class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing hover:bg-surface-raised-base-hover"
         classList={{ "transition-none": drag() !== null }}
         style={{
           ...(coords()
@@ -163,7 +148,7 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
         }}
       >
         <span class="text-xl leading-none select-none" aria-hidden="true">
-          {layout.zen.opened() ? "🌐" : "🧘"}
+          {layout.reader.opened() ? "✏️" : "📖"}
         </span>
       </button>
     </Portal>

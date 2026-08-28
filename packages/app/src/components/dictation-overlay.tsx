@@ -127,9 +127,7 @@ export function DictationOverlay(props: {
     const [r, g, b] = match.map(Number)
     const luminance = (0.299 * r! + 0.587 * g! + 0.114 * b!) / 255
     setAccentText(
-      luminance > 0.5
-        ? `color-mix(in srgb, ${accent()} 25%, black)`
-        : `color-mix(in srgb, ${accent()} 25%, white)`,
+      luminance > 0.5 ? `color-mix(in srgb, ${accent()} 25%, black)` : `color-mix(in srgb, ${accent()} 25%, white)`,
     )
   })
 
@@ -148,7 +146,11 @@ export function DictationOverlay(props: {
 
   return (
     <Portal>
-      <span ref={probe} aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, "background-color": accent() }} />
+      <span
+        ref={probe}
+        aria-hidden="true"
+        style={{ position: "absolute", width: 0, height: 0, "background-color": accent() }}
+      />
       {/* Dim scrim. Captures clicks so an outside click means only "dismiss"
           (handlePointer stashes) and never leaks to the app behind, but
           re-dispatches wheel to the element under the cursor so the app still
@@ -264,7 +266,11 @@ export function DictationOverlay(props: {
                   class="flex size-5 items-center justify-center rounded-md border"
                   style={{ "border-color": accentText() }}
                 >
-                  <Icon name={props.dictation.paused() ? "play" : "pause"} size="small" style={{ color: accentText() }} />
+                  <Icon
+                    name={props.dictation.paused() ? "play" : "pause"}
+                    size="small"
+                    style={{ color: accentText() }}
+                  />
                 </span>
                 {props.dictation.paused() ? language.t("dictation.resume") : language.t("dictation.pause")}
               </button>

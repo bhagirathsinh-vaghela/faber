@@ -1189,7 +1189,7 @@ export type EventAppearancePreferenceUpdated = {
 export type BoxPreference = {
   [key: string]: {
     normal?: boolean
-    zen?: boolean
+    reader?: boolean
   }
 }
 

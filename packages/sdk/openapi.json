@@ -3632,6 +3632,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg.*"
+                  },
                   "agent": {
                     "type": "string"
                   },
@@ -4610,7 +4614,7 @@
           }
         ],
         "summary": "Get box collapse preferences",
-        "description": "Get the server-owned per-box-type collapse defaults (per normal/zen mode).",
+        "description": "Get the server-owned per-box-type collapse defaults (per normal/reader mode).",
         "responses": {
           "200": {
             "description": "Box preferences",
@@ -12299,6 +12303,12 @@
           },
           "mcpCatalogText": {
             "type": "string"
+          },
+          "contextDate": {
+            "type": "string"
+          },
+          "contextBranch": {
+            "type": "string"
           }
         },
         "required": [
@@ -12863,7 +12873,7 @@
             "normal": {
               "type": "boolean"
             },
-            "zen": {
+            "reader": {
               "type": "boolean"
             }
           }
@@ -14619,6 +14629,24 @@
               }
             }
           },
+          "dictation": {
+            "description": "Speech-to-text engine for the prompt microphone",
+            "type": "object",
+            "properties": {
+              "engine": {
+                "description": "Transcription backend: 'deepgram' streams to the cloud, 'local' posts to a sidecar",
+                "type": "string",
+                "enum": [
+                  "deepgram",
+                  "local"
+                ]
+              },
+              "url": {
+                "description": "Base URL of the local transcription sidecar",
+                "type": "string"
+              }
+            }
+          },
           "watcher": {
             "type": "object",
             "properties": {
@@ -15019,6 +15047,16 @@
                 "cacheWrite5m",
                 "cacheWrite1h"
               ]
+            }
+          },
+          "concise": {
+            "description": "Opt a model into the per-turn concise reminder, keyed by model ID, e.g. 'anthropic/claude-opus-5': true. Absent or false means no reminder.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
             }
           },
           "anthropic": {

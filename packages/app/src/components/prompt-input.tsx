@@ -116,10 +116,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return home && sdk.directory.startsWith(home) ? "~" + sdk.directory.slice(home.length) : sdk.directory
   })
   const layout = useLayout()
-  // Zen slims the dock to just input + attach + submit (and the question/permission
-  // prompts). All other dock chrome (model/agent/variant selectors, the bottom
-  // status/action row, the permission auto-accept toggle) is gated behind !zen().
-  const zen = () => layout.zen.opened()
+  // Reader takes the composer off screen entirely, so this slims what remains
+  // for the frame in which it is still painted. All other dock chrome
+  // (model/agent/variant selectors, the bottom status/action row, the permission
+  // auto-accept toggle) is gated behind !reader().
+  const reader = () => layout.reader.opened()
   // Companion mode keeps every control (this dock is the only interface on that
   // device) but hands the freed transcript space to the touch targets: 72px
   // buttons against the normal 44px, with the icons scaled to match. 5 buttons
@@ -2267,20 +2268,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             The dock is bottom-anchored, so a taller cap grows it upward into
             the reachable lower half rather than pushing controls off-thumb.
             Applied at every width — the dock keeps its normal full width. */}
-          {/* Desktop zen puts the editor and the button row on one line. They must
+          {/* Desktop reader puts the editor and the button row on one line. They must
             share it as flex siblings so the buttons claim real width and wrapped
             text can never reach under them. Everywhere else this wrapper is
             display:contents, leaving the two as direct children of the form. */}
           <div
             classList={{
               contents: true,
-              "dock-wide:flex dock-wide:flex-row dock-wide:items-center": zen(),
+              "dock-wide:flex dock-wide:flex-row dock-wide:items-center": reader(),
             }}
           >
             <div
               classList={{
                 "relative overflow-y-auto min-w-0": true,
-                "dock-wide:flex-1": zen(),
+                "dock-wide:flex-1": reader(),
                 "max-h-[240px]": !companionTall(),
                 "max-h-[45vh]": companionTall(),
               }}
@@ -2314,8 +2315,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 classList={{
                   "select-text": true,
                   "w-full px-2 text-13-semibold dock-wide:px-3 dock-wide:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
-                  "pt-2 pb-0 dock-wide:py-3": !zen(),
-                  "pt-2 pb-0 dock-wide:py-2.5": zen(),
+                  "pt-2 pb-0 dock-wide:py-3": !reader(),
+                  "pt-2 pb-0 dock-wide:py-2.5": reader(),
                   // Hold the tall surface open on an empty draft, so entering
                   // companion doesn't collapse the dock back to one line.
                   "min-h-[28vh]": companionTall(),
@@ -2330,8 +2331,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     "absolute top-0 inset-x-0 px-2 text-13-regular dock-wide:px-3 dock-wide:text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate": true,
                     // Mirror the editor's vertical padding so the placeholder sits
                     // exactly where typed text will appear.
-                    "pt-2 pb-0 dock-wide:py-3": !zen(),
-                    "pt-2 pb-0 dock-wide:py-2.5": zen(),
+                    "pt-2 pb-0 dock-wide:py-3": !reader(),
+                    "pt-2 pb-0 dock-wide:py-2.5": reader(),
                   }}
                 >
                   {store.mode === "shell"
@@ -2352,22 +2353,22 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 // Default: the button row sits below the input. The mobile pt-2
                 // mirrors the editor's own pt-2 (symmetric space above/below the
                 // text), and pb-1.5 keeps the buttons off the bottom border. On
-                // mobile this holds in zen too, giving the same two-row layout as
+                // mobile this holds in reader too, giving the same two-row layout as
                 // the collapsed dock.
-                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:py-1.5": !zen(),
-                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:pb-0": zen(),
-                // Desktop zen keeps the original single row: buttons sit at the
+                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:py-1.5": !reader(),
+                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:pb-0": reader(),
+                // Desktop reader keeps the original single row: buttons sit at the
                 // input's right edge (the mobile stack still applies below md).
-                "dock-wide:shrink-0 dock-wide:px-2 dock-wide:pt-0 dock-wide:pb-0": zen(),
+                "dock-wide:shrink-0 dock-wide:px-2 dock-wide:pt-0 dock-wide:pb-0": reader(),
               }}
             >
               <div
                 classList={{
                   "dock-line1 flex flex-wrap items-center gap-0 min-w-0 flex-1 [&_*]:[font-weight:var(--dock-font-weight)]! [&_*]:[font-size:var(--dock-font-size)]!": true,
-                  // Zen drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
-                  hidden: zen(),
+                  // Reader drops the model/agent/variant/cwd cluster; only input+attach+submit remain.
+                  hidden: reader(),
                   // Mobile: hidden unless the chevron expands it. Desktop always shows.
-                  "hidden dock-wide:flex": !zen() && !dockInfoOpen(),
+                  "hidden dock-wide:flex": !reader() && !dockInfoOpen(),
                 }}
               >
                 {/* Suppressed in favor of the busy-bar above the dock (session.tsx),
@@ -2552,7 +2553,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 {/* Mobile only: grabber toggles the dock info line + chip row
                 together (both collapsed by default). Outward arrows = expand;
                 inward arrows = collapse. */}
-                <Show when={store.mode === "normal" && !zen()}>
+                <Show when={store.mode === "normal" && !reader()}>
                   <Tooltip placement="top" value={dockInfoOpen() ? "Hide session info" : "Show session info"}>
                     <Button
                       type="button"
@@ -2573,7 +2574,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 useful when those are visible. On mobile it hides while collapsed
                 (a display:none span leaves no flex slot, so the row still spreads
                 evenly); it's always present on desktop. */}
-                <Show when={store.mode === "normal" && !zen()}>
+                <Show when={store.mode === "normal" && !reader()}>
                   <span
                     classList={{
                       contents: dockInfoOpen(),
@@ -2594,7 +2595,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </span>
                 </Show>
                 <Show
-                  when={local.dock.isVisible("auto-accept") && permission.permissionsEnabled() && params.id && !zen()}
+                  when={
+                    local.dock.isVisible("auto-accept") && permission.permissionsEnabled() && params.id && !reader()
+                  }
                 >
                   <span class="contents">
                     <TooltipKeybind
@@ -2753,7 +2756,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </div>
             </div>
           </div>
-          <Show when={!zen()}>
+          <Show when={!reader()}>
             <Show
               when={!dockHidden()}
               fallback={
