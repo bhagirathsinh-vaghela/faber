@@ -58,7 +58,11 @@ export function Titlebar() {
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
   const zoom = () => platform.webviewZoom?.() ?? 1
-  const minHeight = () => (mac() ? `${40 / zoom()}px` : undefined)
+  // The traffic lights are drawn by the OS at a fixed size, so the bar can never
+  // be shorter than the strip they need — but it still grows with the control it
+  // seats, which is why this is a floor under the derived height, not a swap for
+  // it.
+  const minHeight = () => (mac() ? `max(var(--titlebar-height), ${40 / zoom()}px)` : undefined)
 
   // In an installed browser PWA the window-controls-overlay hands the native
   // title strip to the app. Track its visibility so we paint into that strip

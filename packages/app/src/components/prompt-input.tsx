@@ -122,10 +122,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // auto-accept toggle) is gated behind !reader().
   const reader = () => layout.reader.opened()
   // Companion mode keeps every control (this dock is the only interface on that
-  // device) but hands the freed transcript space to the touch targets: 72px
-  // buttons against the normal 44px, with the icons scaled to match. 5 buttons
-  // at 72px still fit a 393px-wide phone. Applied at EVERY width, so the mode
-  // looks like itself on desktop too.
+  // device) but hands the freed transcript space to the touch targets: double
+  // the usual control, with the icons scaled to match. Five of them at that size
+  // still fit a 393px-wide phone. Applied at EVERY width, so the mode looks like
+  // itself on desktop too.
   const companion = () => layout.companion.opened()
   // The tall writing surface only earns its space when the composer IS the
   // screen. A pending question or permission prompt stacks directly above the
@@ -134,14 +134,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // chain would now shrink the editor on its own, but yielding outright gives
   // the panel the whole gap rather than making it fight for a share.
   const companionTall = () => companion() && question.pending().length === 0
-  const actionButton = () => (companion() ? "size-[72px]! px-1" : "px-1")
+  const actionButton = () => (companion() ? "size-[calc(var(--control-height)*2)]! px-1" : "px-1")
   // Icon sizes through its WRAPPER: [data-component=icon] is the sized box and
   // the svg inside is width:100% of it, so a class on the svg alone only moves
   // its height and leaves a stretched sliver. Target the wrapper instead. The
-  // component's own size prop tops out at 24px, too small against a 72px button.
+  // component's own size prop tops out well below what this button needs.
   const actionIcon = () =>
     companion()
-      ? "[&>[data-component=icon]]:!size-9"
+      ? "[&>[data-component=icon]]:!size-(--control-height)"
       : ""
   const comments = useComments()
   const stash = useStash()
@@ -2558,7 +2558,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Button
                       type="button"
                       variant="ghost"
-                      class={`dock-wide:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : ""} items-center justify-center`}
+                      class={`dock-wide:hidden flex ${companion() ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)" : ""} items-center justify-center`}
                       onClick={() => setDockInfoOpen((v) => !v)}
                       aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                       aria-expanded={dockInfoOpen()}
@@ -2585,7 +2585,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <Button
                         type="button"
                         variant="ghost"
-                        class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : ""} items-center justify-center`}
+                        class={`flex ${companion() ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)" : ""} items-center justify-center`}
                         onClick={() => dialog.show(() => <DialogDock />)}
                         aria-label="Customize fields"
                       >
@@ -2712,7 +2712,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       variant="primary"
                       class={
                         companion()
-                          ? "size-[72px]! [&>[data-component=icon]]:!size-9"
+                          ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
                           : ""
                       }
                       aria-label={language.t("prompt.action.stop")}
@@ -2745,7 +2745,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       variant="primary"
                       class={
                         companion()
-                          ? "size-[72px]! [&>[data-component=icon]]:!size-9"
+                          ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
                           : ""
                       }
                       aria-label={language.t("prompt.action.send")}
@@ -2765,7 +2765,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <IconButton
                       icon="arrow-up"
                       variant="ghost"
-                      class="size-5 p-0"
+                      class="size-(--control-height) p-0"
                       onClick={() => setDockHidden(false)}
                       aria-label={language.t("dock.show")}
                     />

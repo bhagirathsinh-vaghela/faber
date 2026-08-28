@@ -89,7 +89,7 @@
       color: var(--text-strong);
 
       display: flex;
-      height: 32px;
+      height: var(--control-height);
       padding: 2px 12px;
       align-items: center;
       flex: 1;
@@ -117,7 +117,7 @@
 
     textarea[data-slot="input-input"] {
       height: auto;
-      min-height: 32px;
+      min-height: var(--control-height);
       padding: 6px 12px;
       resize: none;
     }

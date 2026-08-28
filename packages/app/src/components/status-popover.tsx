@@ -112,7 +112,7 @@ export function StatusPopover() {
           defaultValue="servers"
           variant="alt"
         >
-          <Tabs.List data-slot="tablist" class="bg-transparent border-b-0 px-4 pt-2 pb-0 gap-4 h-10">
+          <Tabs.List data-slot="tablist" class="bg-transparent border-b-0 px-4 pt-2 pb-0 gap-4 h-(--control-bar)">
             <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular">
               <Show when={server.status() === "down"}>
                 <span class="size-1.5 rounded-full shrink-0 bg-icon-critical-base inline-block mr-1.5" />

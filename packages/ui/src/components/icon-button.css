@@ -11,8 +11,14 @@
   /* A hit area is sized for a finger, which is larger than the control should
      look. Every variant paints this inset layer rather than its own box, so the
      target keeps its size while the fill pulls in, away from the glyph it wraps
-     and the edge of whatever holds it. */
+     and the edge of whatever holds it.
+
+     The isolation is what keeps the fill behind the label: a negative z-index
+     paints below every child, including a bare text node, which nothing can
+     select and so nothing can lift. It needs its own stacking context, or the
+     layer sinks past this box and behind whatever ancestor holds it. */
   position: relative;
+  isolation: isolate;
 
   &::before {
     content: "";
@@ -21,12 +27,7 @@
     border-radius: inherit;
     background-color: transparent;
     pointer-events: none;
-  }
-
-  /* Above the fill, which a child paints rather than the box behind it. */
-  > * {
-    position: relative;
-    z-index: 1;
+    z-index: -1;
   }
 
   &[data-variant="primary"] {
@@ -162,18 +163,25 @@
     }
   }
 
+  /* An icon button is a square target either way, so large differs from normal
+     only in carrying a bigger glyph — the box itself is the same one number, or
+     a row mixing the two sizes steps. */
   &[data-size="large"] {
-    height: 32px;
-    /* padding: 0 8px 0 6px; */
+    width: var(--control-height);
+    height: var(--control-height);
     gap: 8px;
 
-    /* text-12-medium */
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
+    font-size: var(--control-icon);
     font-style: normal;
     font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large); /* 166.667% */
     letter-spacing: var(--letter-spacing-normal);
+
+    [data-component="icon"],
+    > div:only-child:has(> [data-component="icon"]) {
+      width: var(--control-icon);
+      height: var(--control-icon);
+    }
   }
 
   &:focus {

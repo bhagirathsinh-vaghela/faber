@@ -840,7 +840,6 @@ function Panel(props: {
                       variant="primary"
                       size="large"
                       icon={multi() ? "plus" : "check"}
-                      class="size-(--control-height)"
                       aria-label={multi() ? "Add" : "Submit"}
                     />
                   </form>
@@ -890,7 +889,6 @@ function Panel(props: {
             variant="secondary"
             size="large"
             icon="close"
-            class="size-(--control-height)"
             aria-label="Dismiss"
             onClick={reject}
           />
@@ -903,7 +901,6 @@ function Panel(props: {
               variant="ghost"
               size="large"
               icon="arrow-right"
-              class="size-(--control-height)"
               aria-label="Next question"
               onClick={() => cycleRequest(1)}
             />
@@ -917,7 +914,6 @@ function Panel(props: {
               variant="primary"
               size="large"
               icon="check"
-              class="size-(--control-height)"
               aria-label="Submit"
               onClick={single() ? () => activate(store.selected) : submit}
             />

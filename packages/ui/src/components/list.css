@@ -32,8 +32,8 @@
     margin-bottom: 4px;
 
     > [data-component="icon-button"] {
-      width: 24px;
-      height: 24px;
+      width: var(--control-height);
+      height: var(--control-height);
       flex-shrink: 0;
       background-color: transparent;
       opacity: 0.5;
@@ -71,7 +71,9 @@
       align-items: center;
       gap: 8px;
       flex: 1 0 0;
-      max-height: 20px;
+      /* The clamp keeps the search field to one line; it tracks the control so
+         a grown input is not sheared by the row it sits in. */
+      max-height: var(--control-height);
 
       /* The TextField root must fill the container so its wrapper spans the row
          and the keyboard toggle can pin to the right edge. */
@@ -88,15 +90,15 @@
         width: 100%;
 
         &[data-slot="input-input"] {
-          line-height: 20px;
-          max-height: 20px;
+          line-height: var(--control-height);
+          max-height: var(--control-height);
         }
       }
     }
 
     > [data-component="icon-button"] {
-      width: 20px;
-      height: 20px;
+      width: var(--control-height);
+      height: var(--control-height);
       background-color: transparent;
       opacity: 0.5;
       transition: opacity 0.15s ease;

@@ -46,7 +46,7 @@ export function SortableTab(props: { tab: string; onTabClose: (tab: string) => v
               <IconButton
                 icon="close-small"
                 variant="ghost"
-                class="h-5 w-5"
+                class="size-(--control-height)"
                 onClick={() => props.onTabClose(props.tab)}
                 aria-label={language.t("common.closeTab")}
               />

@@ -938,7 +938,7 @@ export function Code<T>(props: CodeProps<T>) {
       <Show when={findOpen()}>
         <div
           ref={findBar}
-          class="z-50 flex h-8 items-center gap-2 rounded-md border border-border-base bg-background-base px-3 shadow-md"
+          class="z-50 flex h-(--control-bar) items-center gap-2 rounded-md border border-border-base bg-background-base px-3 shadow-md"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <Icon name="magnifying-glass" size="small" class="text-text-weak shrink-0" />
@@ -969,7 +969,7 @@ export function Code<T>(props: CodeProps<T>) {
           <div class="flex items-center">
             <button
               type="button"
-              class="size-6 grid place-items-center rounded text-text-weak hover:bg-surface-base-hover hover:text-text-strong disabled:opacity-40 disabled:pointer-events-none"
+              class="size-(--control-height) grid place-items-center rounded text-text-weak hover:bg-surface-base-hover hover:text-text-strong disabled:opacity-40 disabled:pointer-events-none"
               disabled={findCount() === 0}
               aria-label="Previous match"
               onClick={() => stepFind(-1)}
@@ -978,7 +978,7 @@ export function Code<T>(props: CodeProps<T>) {
             </button>
             <button
               type="button"
-              class="size-6 grid place-items-center rounded text-text-weak hover:bg-surface-base-hover hover:text-text-strong disabled:opacity-40 disabled:pointer-events-none"
+              class="size-(--control-height) grid place-items-center rounded text-text-weak hover:bg-surface-base-hover hover:text-text-strong disabled:opacity-40 disabled:pointer-events-none"
               disabled={findCount() === 0}
               aria-label="Next match"
               onClick={() => stepFind(1)}
@@ -988,7 +988,7 @@ export function Code<T>(props: CodeProps<T>) {
           </div>
           <button
             type="button"
-            class="size-6 grid place-items-center rounded text-text-weak hover:bg-surface-base-hover hover:text-text-strong"
+            class="size-(--control-height) grid place-items-center rounded text-text-weak hover:bg-surface-base-hover hover:text-text-strong"
             aria-label="Close search"
             onClick={closeFind}
           >

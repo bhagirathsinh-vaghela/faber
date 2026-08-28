@@ -9,12 +9,22 @@
   user-select: none;
   outline: none;
   white-space: nowrap;
+  /* A label can be squeezed by a flex parent until the target is narrower than
+     it is tall. Width carries the same floor the height does, or the control
+     shrinks under the target size on one axis only. */
+  min-width: var(--control-height);
 
   /* A hit area is sized for a finger, which is larger than the control should
      look. Every variant paints this inset layer rather than its own box, so the
      target keeps its size while the fill pulls in, away from the glyph it wraps
-     and the edge of whatever holds it. */
+     and the edge of whatever holds it.
+
+     The isolation is what keeps the fill behind the label: a negative z-index
+     paints below every child, including a bare text node, which nothing can
+     select and so nothing can lift. It needs its own stacking context, or the
+     layer sinks past this box and behind whatever ancestor holds it. */
   position: relative;
+  isolation: isolate;
 
   &::before {
     content: "";
@@ -23,12 +33,7 @@
     border-radius: inherit;
     background-color: transparent;
     pointer-events: none;
-  }
-
-  /* Above the fill, which a child paints rather than the box behind it. */
-  > * {
-    position: relative;
-    z-index: 1;
+    z-index: -1;
   }
 
   &[data-variant="primary"] {
@@ -165,23 +170,24 @@
     }
   }
 
+  /* All three sizes are the same target. `small` and `large` differ from the
+     default in their TYPE and padding, not in how big a thing there is to hit —
+     a button that is harder to press because of where it sits is the bug this
+     system exists to remove. */
   &[data-size="small"] {
-    height: 22px;
+    height: var(--control-height);
     padding: 0 8px;
     &[data-icon] {
       padding: 0 12px 0 4px;
     }
 
-    font-size: var(--font-size-small);
-    line-height: var(--line-height-large);
     gap: 4px;
 
-    /* text-12-medium */
     font-family: var(--font-family-sans);
     font-size: var(--font-size-small);
     font-style: normal;
     font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large); /* 166.667% */
+    line-height: var(--line-height-large);
     letter-spacing: var(--letter-spacing-normal);
   }
 
@@ -224,8 +230,8 @@
   }
 
   &[data-size="large"] {
-    height: 32px;
-    padding: 6px 12px;
+    height: var(--control-height);
+    padding: 0 12px;
 
     &[data-icon] {
       padding: 0 12px 0 8px;
@@ -233,12 +239,11 @@
 
     gap: 4px;
 
-    /* text-14-medium */
     font-family: var(--font-family-sans);
     font-size: 14px;
     font-style: normal;
     font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large); /* 142.857% */
+    line-height: var(--line-height-large);
     letter-spacing: var(--letter-spacing-normal);
   }
 

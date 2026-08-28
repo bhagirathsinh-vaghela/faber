@@ -2469,7 +2469,7 @@ export default function Page() {
                         }}
                       >
                         <button
-                          class="pointer-events-auto size-8 flex items-center justify-center rounded-full bg-background-base border border-border-base shadow-sm text-text-base hover:bg-background-stronger transition-colors"
+                          class="pointer-events-auto size-(--control-height) flex items-center justify-center rounded-full bg-background-base border border-border-base shadow-sm text-text-base hover:bg-background-stronger transition-colors"
                           onClick={resumeScroll}
                         >
                           <Icon name="arrow-down-to-line" />
@@ -2612,7 +2612,9 @@ export default function Page() {
                         data-reader={reader() ? "" : undefined}
                         style={{
                           "--session-title-height":
-                            reader() || !(info()?.title || info()?.parentID) ? "0px" : wide() ? "28px" : "24px",
+                            reader() || !(info()?.title || info()?.parentID)
+                              ? "0px"
+                              : "var(--control-height)",
                         }}
                       >
                         <Show when={(info()?.title || info()?.parentID) && !reader()}>
@@ -2624,7 +2626,7 @@ export default function Page() {
                               "panel-wide:max-w-[95%] panel-wide:mx-auto": centered(),
                             }}
                           >
-                            <div class="h-6 panel-wide:h-7 flex items-center gap-1">
+                            <div class="h-(--control-height) flex items-center gap-1">
                               <Show when={info()?.parentID}>
                                 <IconButton
                                   tabIndex={-1}
@@ -3066,7 +3068,7 @@ export default function Page() {
                                   <IconButton
                                     icon="close-small"
                                     variant="ghost"
-                                    class="h-5 w-5"
+                                    class="size-(--control-height)"
                                     onClick={() => tabs().close("context")}
                                     aria-label={language.t("common.closeTab")}
                                   />
@@ -3705,7 +3707,7 @@ export default function Page() {
                         {(tab) => {
                           const path = createMemo(() => file.pathFromTab(tab()))
                           return (
-                            <div class="relative px-6 h-12 flex items-center bg-background-stronger border-x border-border-weak-base border-b border-b-transparent">
+                            <div class="relative px-6 h-(--control-bar) flex items-center bg-background-stronger border-x border-border-weak-base border-b border-b-transparent">
                               <Show when={path()}>{(p) => <FileVisual active path={p()} />}</Show>
                             </div>
                           )
@@ -3818,7 +3820,7 @@ export default function Page() {
             when={terminal.ready()}
             fallback={
               <div class="flex flex-col h-full pointer-events-none">
-                <div class="h-10 flex items-center gap-2 px-2 border-b border-border-weak-base bg-background-stronger overflow-hidden">
+                <div class="h-(--control-bar) flex items-center gap-2 px-2 border-b border-border-weak-base bg-background-stronger overflow-hidden">
                   <For each={handoff.terminals}>
                     {(title) => (
                       <div class="px-2 py-1 rounded-md bg-surface-base text-14-regular text-text-weak truncate max-w-40">
@@ -3856,7 +3858,7 @@ export default function Page() {
                   }}
                   class="!h-auto !flex-none"
                 >
-                  <Tabs.List class="h-10">
+                  <Tabs.List class="h-(--control-bar)">
                     <SortableProvider ids={terminal.all().map((t: LocalPTY) => t.id)}>
                       <For each={terminal.all()}>
                         {(pty) => (
@@ -3916,7 +3918,7 @@ export default function Page() {
                     return (
                       <Show when={pty()}>
                         {(t) => (
-                          <div class="relative p-1 h-10 flex items-center bg-background-stronger text-14-regular">
+                          <div class="relative p-1 h-(--control-bar) flex items-center bg-background-stronger text-14-regular">
                             {(() => {
                               const title = t().title
                               const number = t().titleNumber

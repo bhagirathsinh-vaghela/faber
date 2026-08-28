@@ -226,7 +226,7 @@ export function ModelSelectorPopover<T extends ValidComponent = "div">(props: {
                     icon="plus-small"
                     variant="ghost"
                     iconSize="normal"
-                    class="size-6"
+                    class="size-(--control-height)"
                     aria-label={language.t("command.provider.connect")}
                     onClick={handleConnectProvider}
                   />
@@ -236,7 +236,7 @@ export function ModelSelectorPopover<T extends ValidComponent = "div">(props: {
                     icon="sliders"
                     variant="ghost"
                     iconSize="normal"
-                    class="size-6"
+                    class="size-(--control-height)"
                     aria-label={language.t("dialog.model.manage")}
                     onClick={handleManage}
                   />
@@ -259,7 +259,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
       title={language.t("dialog.model.select.title")}
       action={
         <Button
-          class="h-7 -my-1 text-14-medium"
+          class="h-(--control-height) text-14-medium"
           icon="plus-small"
           tabIndex={-1}
           onClick={() => dialog.show(() => <DialogSelectProvider />)}

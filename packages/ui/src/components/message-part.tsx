@@ -617,7 +617,7 @@ export function MessageBox(props: {
           <Show when={isUser && data.revertMessage}>
             <div data-slot="message-box-revert">
               <Tooltip value="Cache-safe revert" placement="top" gutter={8}>
-                <Button variant="secondary" size="small" onClick={confirmRevert}>
+                <Button variant="secondary" onClick={confirmRevert}>
                   Revert here
                 </Button>
               </Tooltip>

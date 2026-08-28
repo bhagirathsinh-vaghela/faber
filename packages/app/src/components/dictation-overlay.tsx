@@ -229,7 +229,7 @@ export function DictationOverlay(props: {
                   variant="secondary"
                   size="normal"
                   icon="close"
-                  class="size-9 any-pointer-coarse:size-11 rounded-full"
+                  class="size-(--control-height) rounded-full"
                   aria-label={language.t("dictation.discard")}
                   onClick={() => finish("discard")}
                 />
@@ -241,7 +241,7 @@ export function DictationOverlay(props: {
                   variant="secondary"
                   size="normal"
                   icon="check"
-                  class="size-9 any-pointer-coarse:size-11 rounded-full text-icon-interactive-base"
+                  class="size-(--control-height) rounded-full text-icon-interactive-base"
                   aria-label={language.t("dictation.accept")}
                   onClick={() => finish("accept")}
                 />

@@ -420,7 +420,7 @@ export function DialogSelectServer() {
                     as={IconButton}
                     icon="dot-grid"
                     variant="ghost"
-                    class="shrink-0 size-8 hover:bg-surface-base-hover data-[expanded]:bg-surface-base-active"
+                    class="shrink-0 size-(--control-height) hover:bg-surface-base-hover data-[expanded]:bg-surface-base-active"
                   />
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content class="mt-1">

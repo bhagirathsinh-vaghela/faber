@@ -97,55 +97,59 @@
    padding on a device with no inset at all. */
 #root[data-standalone] [data-slot="titlebar"] {
   padding-top: env(safe-area-inset-top);
-  min-height: calc(2.75rem + env(safe-area-inset-top));
+  min-height: var(--titlebar-height);
   height: auto;
 }
 
 /* Anything anchored below the titlebar reads this rather than repeating its
    height, which varies with the size class and grows by the safe-area inset in
    a standalone PWA. */
-/* Every control sized "normal" reads this, and every bar holding one derives
-   its own height from it, so a change here moves the controls and the boxes
-   around them together. A bar that hardcodes a matching number instead goes on
-   clipping its contents the first time this moves. */
+/* THE CONTROL SIZING SYSTEM
+   =========================
+   ONE size, everywhere. Every button is a touch target, and a target does not
+   get smaller because of where it happens to sit — the same control is the same
+   size in the titlebar, in a tab, in a tool row, on desktop, tablet and phone.
+
+   The direction of accommodation is therefore fixed and one-way:
+
+       a control NEVER shrinks to fit its row
+       a row ALWAYS grows to fit its control
+
+   So a row's height is expressed in terms of the control it seats
+   (`--control-bar`, or a min-height of `--control-height`), never the reverse.
+   A row that wants to be denser than its contents is asking for the one thing
+   this system does not do; it wants a smaller mark instead, which is what
+   `--control-icon` is for.
+
+   `--control-height` is the single number, and it does not branch. A control is
+   the same size for a cursor and for a finger, in a wide window and a narrow
+   one: the window's width decides how many panes fit, never how big a button is,
+   and a target sized for the finger is merely generous for the mouse rather than
+   wrong for it. Everything else here is a formula over that one number. */
 :root {
-  --control-height: 36px;
+  --control-height: 40px;
   --control-gutter: 8px;
   /* The glyph is a fraction of its target rather than its own constant, so a
      bigger button carries a bigger mark instead of more empty padding. */
   --control-icon: calc(var(--control-height) * 0.55);
   /* How far a control's painted fill sits inside its hit area. The target is
      sized for a finger; the chip that reads as the control is smaller, or it
-     crowds both the glyph it wraps and the edges of whatever holds it. A
-     fraction rather than a constant, so the chip keeps its proportions when the
-     target moves. */
+     crowds both the glyph it wraps and the edges of whatever holds it. */
   --control-inset: calc(var(--control-height) * 0.08);
-  --titlebar-height: calc(var(--control-height) + var(--control-gutter));
+  /* A bar seats a control and adds the room around it. Every row that holds a
+     control reads this rather than choosing its own height. */
+  --control-bar: calc(var(--control-height) + var(--control-gutter));
 }
 
-/* A finger needs a bigger target than a mouse, and the bars follow it up. */
-@media (any-pointer: coarse) {
-  :root {
-    --control-height: 40px;
-  }
+:root {
+  --titlebar-height: var(--control-bar);
 }
 
-/* The compact layout is the one-pane phone shell, which a narrow window reaches
-   with a mouse attached, so it grows on width rather than waiting for a touch
-   pointer to report itself. */
+/* The gutter, not the target, is what gives way when vertical space is scarce:
+   the one-pane shell is the shortest viewport and the room comes out of the bar
+   around the control rather than out of the control itself. */
 :root[data-size-class="compact"] {
-  --control-height: 40px;
-}
-
-/* A phone is both, and wants more than either alone gives. The gutter tightens
-   as the target grows: vertical space is scarcest on the device whose controls
-   are largest, and the room comes out of the bar rather than out of the target,
-   which is the half a finger needs. */
-@media (any-pointer: coarse) {
-  :root[data-size-class="compact"] {
-    --control-height: 44px;
-    --control-gutter: 4px;
-  }
+  --control-gutter: 4px;
 }
 
 #root[data-standalone] {

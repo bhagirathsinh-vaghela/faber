@@ -9,8 +9,8 @@
 }
 
 [data-component="line-comment"] [data-slot="line-comment-button"] {
-  width: 20px;
-  height: 20px;
+  width: var(--control-height);
+  height: var(--control-height);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
