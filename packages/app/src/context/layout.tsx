@@ -162,25 +162,19 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       for (const session of drop) boxUsed.delete(session)
     }
 
-    // Entering reader takes the composer off screen, which blurs a focused
-    // input. Snapshot focus before the flip and restore it after, so exit hands
-    // focus back to whatever held it when reader opened.
-    let readerFocus: (() => boolean) | undefined
+    // Focus across the toggle belongs to the session page, which blurs on entry
+    // and lands the caret in the composer on exit. A snapshot restored here
+    // would fight it, and would hand focus back to whatever the user was
+    // reading rather than to the thing they just chose to type into.
     const enterReader = () => {
       if (companionOpened()) exitCompanion()
-      const restore = captureFocus()
-      readerFocus = restore
       setReaderOpened(true)
       rememberReader(true)
-      restore()
       collapseChrome()
     }
     const exitReader = () => {
-      const restore = readerFocus
-      readerFocus = undefined
       setReaderOpened(false)
       rememberReader(false)
-      restore?.()
     }
 
     // Reader strips the chrome around a transcript, so it only means anything on

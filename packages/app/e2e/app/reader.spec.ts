@@ -197,6 +197,30 @@ test.describe("reader mode on a fine pointer", () => {
     })
   })
 
+  // Fine-pointer only: a mobile browser refuses programmatic focus of a
+  // contenteditable, since it would raise the keyboard unasked. Verified with a
+  // bare editor.focus() under mobile emulation, which is also refused.
+  test("leaving reader puts the caret in the composer, wherever it was", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader focus ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+
+      const editor = page.locator(promptSelector)
+      await enterReader(page)
+      await expect(editor).not.toBeFocused()
+
+      // Park focus off the composer, so the exit has something to move rather
+      // than something to leave alone.
+      await scroller(page).click({ position: { x: 5, y: 60 } })
+      await settle(page)
+      await expect(editor).not.toBeFocused()
+
+      await readerPill(page).click()
+      await settle(page)
+      await expect(editor).toBeFocused()
+    })
+  })
+
   test("the pill is draggable, and the parked position survives a mode toggle", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader drag ${Date.now()}`, async (session) => {
       await gotoSession(session.id)

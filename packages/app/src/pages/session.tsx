@@ -412,11 +412,23 @@ export default function Page() {
   const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
   const reader = () => layout.reader.opened()
   // A soft keyboard is summoned by focus and dismissed by losing it, and it
-  // covers more space than the composer it serves.
-  createEffect(() => {
-    if (!reader()) return
-    inputRef?.blur()
-  })
+  // covers more space than the composer it serves. Leaving reader is the
+  // declaration that you are interacting again, so the caret goes to the
+  // composer wherever it sat before, unless a pending prompt owns the dock and
+  // is the thing being answered.
+  createEffect(
+    on(reader, (opened, was) => {
+      if (opened) {
+        inputRef?.blur()
+        return
+      }
+      if (was === undefined || awaitingAnswer()) return
+      // This effect is created far above the composer's own bindings, so Solid
+      // runs it while that element is still hidden and inert, and neither can
+      // take focus.
+      requestAnimationFrame(() => command.trigger("prompt.focus.end"))
+    }),
+  )
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
