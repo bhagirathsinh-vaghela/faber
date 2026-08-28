@@ -4,11 +4,11 @@ import { withSession } from "../actions"
 import { promptSelector } from "../selectors"
 import type { createSdk } from "../utils"
 
-// Immersive reading hides the prompt dock and both pinned headers so a
-// transcript can use the whole screen. Four independent gates guard the toggle
-// (a coarse pointer, zen mode, no pending question, an unclaimed tap target),
-// and the reclaim itself is a contract between a CSS variable and the five
-// consumers that reserve space against it.
+// On a touch device zen is the full-screen read: the prompt dock and both
+// pinned headers go, and the pill is the only way in or out. The reclaim is a
+// contract between a CSS variable and the five consumers that reserve space
+// against it, and a pending question suspends the whole mode so the control
+// that answers it stays on screen.
 
 const PHONE = { width: 430, height: 900 }
 
@@ -31,7 +31,6 @@ async function seedTurn(sdk: ReturnType<typeof createSdk>, sessionID: string) {
   await sdk.session.shell({ sessionID, agent: "build", command: "echo immersive" })
 }
 
-// A tap on transcript background rather than on any turn's content.
 async function tapBackdrop(page: Page) {
   const box = await scroller(page).boundingBox()
   if (!box) throw new Error("transcript scroller has no box")
@@ -47,33 +46,61 @@ async function enterZen(page: Page) {
 test.describe("immersive reading", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: PHONE })
 
-  test("a tap reclaims the dock's space and a second tap gives it back", async ({ page, sdk, gotoSession }) => {
+  test("the pill reclaims the dock's space, and taking it out gives it back", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `immersive clearance ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
-      await enterZen(page)
 
       const docked = await clearance(page)
       expect(docked).not.toBe("0px")
 
-      await tapBackdrop(page)
+      await enterZen(page)
+      expect(await clearance(page)).toBe("0px")
+
+      await zenPill(page).click()
+      await settle(page)
+      expect(await clearance(page)).toBe(docked)
+    })
+  })
+
+  test("nothing but the pill changes the mode", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `immersive gestures ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterZen(page)
       expect(await clearance(page)).toBe("0px")
 
       await tapBackdrop(page)
-      expect(await clearance(page)).toBe(docked)
+      expect(await clearance(page)).toBe("0px")
+
+      const box = await scroller(page).boundingBox()
+      if (!box) throw new Error("transcript scroller has no box")
+      const x = Math.round(box.x + 5)
+      const y = Math.round(box.y + box.height / 2)
+      await page.mouse.move(x, y)
+      await page.mouse.down()
+      await page.mouse.move(x, y - 140, { steps: 10 })
+      await page.mouse.up()
+      await settle(page)
+      expect(await clearance(page)).toBe("0px")
+
+      const turn = page.locator('[data-component="session-turn"]').first()
+      await expect(turn).toBeVisible()
+      await turn.click({ position: { x: 5, y: 5 } })
+      await settle(page)
+      expect(await clearance(page)).toBe("0px")
     })
   })
 
   test("the pinned title stops reserving space", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `immersive headers ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
-      await enterZen(page)
 
       const pinned = await scroller(page).evaluate((el) =>
         getComputedStyle(el).getPropertyValue("--session-title-height").trim(),
       )
       expect(pinned).not.toBe("0px")
 
-      await tapBackdrop(page)
+      await enterZen(page)
 
       const released = await scroller(page).evaluate((el) =>
         getComputedStyle(el).getPropertyValue("--session-title-height").trim(),
@@ -104,10 +131,9 @@ test.describe("immersive reading", () => {
           return top
         })
 
-      await enterZen(page)
       expect(await offset()).not.toBe("0px")
 
-      await tapBackdrop(page)
+      await enterZen(page)
       expect(await offset()).toBe("0px")
     })
   })
@@ -115,13 +141,12 @@ test.describe("immersive reading", () => {
   test("the hidden dock is inert, so it holds no focus and no tab stop", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `immersive inert ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
-      await enterZen(page)
 
       const editor = page.locator(promptSelector)
       await editor.tap()
       await expect(editor).toBeFocused()
 
-      await tapBackdrop(page)
+      await enterZen(page)
 
       await expect(page.locator('[data-slot="prompt-dock"]')).toHaveAttribute("inert", "")
       await expect(editor).not.toBeFocused()
@@ -132,7 +157,6 @@ test.describe("immersive reading", () => {
     await withSession(sdk, `immersive escape ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
       await enterZen(page)
-      await tapBackdrop(page)
 
       const pill = zenPill(page)
       await expect(pill).toBeVisible()
@@ -143,65 +167,20 @@ test.describe("immersive reading", () => {
       expect(box!.y + box!.height).toBeLessThanOrEqual(PHONE.height)
     })
   })
-
-  test("a drag scrolls without toggling", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive drag ${Date.now()}`, async (session) => {
-      await gotoSession(session.id)
-      await enterZen(page)
-
-      const before = await clearance(page)
-      const box = await scroller(page).boundingBox()
-      if (!box) throw new Error("transcript scroller has no box")
-
-      const x = Math.round(box.x + 5)
-      const y = Math.round(box.y + box.height / 2)
-      await page.mouse.move(x, y)
-      await page.mouse.down()
-      await page.mouse.move(x, y - 140, { steps: 10 })
-      await page.mouse.up()
-      await settle(page)
-
-      expect(await clearance(page)).toBe(before)
-    })
-  })
-
-  test("leaving zen restores the chrome", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive zen exit ${Date.now()}`, async (session) => {
-      await gotoSession(session.id)
-      await enterZen(page)
-
-      const docked = await clearance(page)
-      await tapBackdrop(page)
-      expect(await clearance(page)).toBe("0px")
-
-      await zenPill(page).click()
-      await settle(page)
-      expect(await clearance(page)).toBe(docked)
-    })
-  })
-
-  test("a tap outside zen does nothing", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `immersive zen gate ${Date.now()}`, async (session) => {
-      await gotoSession(session.id)
-
-      const before = await clearance(page)
-      await tapBackdrop(page)
-      expect(await clearance(page)).toBe(before)
-    })
-  })
 })
 
 test.describe("immersive reading on a fine pointer", () => {
   test.use({ viewport: PHONE })
 
-  test("a click never toggles, because it already places the caret", async ({ page, sdk, gotoSession }) => {
+  // Zen slims the dock under a mouse rather than removing it, so the clearance
+  // shrinks but never reaches zero.
+  test("zen keeps the dock on screen under a mouse", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `immersive pointer ${Date.now()}`, async (session) => {
       await gotoSession(session.id)
       await enterZen(page)
 
-      const before = await clearance(page)
-      await tapBackdrop(page)
-      expect(await clearance(page)).toBe(before)
+      expect(await clearance(page)).not.toBe("0px")
+      await expect(page.locator('[data-slot="prompt-dock"]')).not.toHaveAttribute("inert", "")
     })
   })
 })

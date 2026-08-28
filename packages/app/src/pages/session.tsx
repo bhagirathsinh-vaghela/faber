@@ -12,7 +12,7 @@ import {
   untrack,
   type JSX,
 } from "solid-js"
-import { createCoarsePointer, useShell, TOUCH_SLOP } from "@/utils/mobile"
+import { createCoarsePointer, useShell } from "@/utils/mobile"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
@@ -92,20 +92,6 @@ import { probe } from "@/utils/transcript-probe"
 import { Visibility } from "@/utils/visibility"
 
 type DiffStyle = "unified" | "split"
-
-// Surface whose tap already means something, so the reading-mode toggle keeps
-// off it. The last two carry their own click handler on a plain element, which
-// no interactive-role selector would find.
-const CLAIMED = [
-  "button",
-  "a",
-  "input",
-  "textarea",
-  "[role='button']",
-  "[data-scrollable]",
-  "[data-slot='session-turn-message-content']",
-  "[data-slot='inline-code']",
-].join(",")
 
 // Breathing room between the busy bar and the dock below it, and the same gap
 // again above the bar; the bar's `bottom` offset carries one and the transcript
@@ -420,52 +406,17 @@ export default function Page() {
   const centered = createMemo(() => wide() && !layout.fileTree.opened())
   const openContextPanel = useOpenContext()
 
-  // Touch-primary only: a mouse click in the transcript already means "place
-  // the caret / clear a selection", so overloading it would fire on every
-  // stray click.
   const coarse = createCoarsePointer()
   // A pending question or permission lives inside the dock, so hiding it would
   // strand the only control that can answer.
   const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
-  const immersiveAvailable = () => coarse() && layout.zen.opened() && !awaitingAnswer()
-  // Availability reads server state that churns through a turn, so it gates the
-  // rendered mode without touching the stored intent, which only a gesture
-  // writes. A turn that asks repeatedly therefore costs no extra taps.
-  const immersive = () => store.immersive && immersiveAvailable()
-  createEffect(
-    on(
-      () => params.id,
-      () => setStore("immersive", false),
-      { defer: true },
-    ),
-  )
-  // A selection inside a shadow root is invisible to the document selection, so
-  // ask each open root as well before concluding the user selected nothing.
-  const selecting = () => {
-    if (window.getSelection()?.toString()) return true
-    return [...document.querySelectorAll("diffs-container")].some((host) => {
-      const root = host.shadowRoot as (ShadowRoot & { getSelection?: () => Selection | null }) | null
-      return !!root?.getSelection?.()?.toString()
-    })
-  }
-
-  let tapOrigin: { x: number; y: number } | undefined
-  const toggleImmersive = (event: MouseEvent & { currentTarget: HTMLDivElement }) => {
-    const origin = tapOrigin
-    tapOrigin = undefined
-    if (!immersiveAvailable()) return
-    if (!origin) return
-    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > TOUCH_SLOP) return
-    // composedPath, not target.closest: diffs and code blocks render inside a
-    // shadow root, which retargets the event to the host and hides everything
-    // the tap actually landed on.
-    if (event.composedPath().some((node) => node instanceof HTMLElement && node.matches(CLAIMED))) return
-    if (selecting()) return
-    // A focused editor holds the soft keyboard up over the space this just
-    // reclaimed.
-    if (!immersive()) inputRef?.blur()
-    setStore("immersive", !immersive())
-  }
+  const immersive = () => coarse() && layout.zen.opened() && !awaitingAnswer()
+  // The soft keyboard follows focus, and would cover the space the off-screen
+  // dock gave back.
+  createEffect(() => {
+    if (!immersive()) return
+    inputRef?.blur()
+  })
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -621,9 +572,6 @@ export default function Page() {
     newSessionWorktree: "main",
     promptHeight: 0,
     busyHeight: 0,
-    // A tap on inert transcript surface drops the composer and the pinned
-    // title/prompt headers; a second tap brings them back.
-    immersive: false,
   })
 
   // The most recent turns render with their steps expanded by default; older
@@ -2603,19 +2551,10 @@ export default function Page() {
                         onTouchCancel={() => {
                           touchGesture = undefined
                         }}
-                        // A canceled pointer (the browser claiming the gesture
-                        // for a scroll) delivers no click, so an origin left
-                        // behind would outlive its gesture and validate a later
-                        // unrelated one.
-                        onPointerCancel={() => {
-                          tapOrigin = undefined
-                        }}
                         onPointerDown={(e) => {
-                          tapOrigin = { x: e.clientX, y: e.clientY }
                           if (e.target !== e.currentTarget) return
                           markScrollGesture(e.currentTarget)
                         }}
-                        onClick={toggleImmersive}
                         onScroll={(e) => {
                           // Keep the pre-toggle tail snapshot current on EVERY
                           // scroll (gesture or programmatic pin), so the zen
