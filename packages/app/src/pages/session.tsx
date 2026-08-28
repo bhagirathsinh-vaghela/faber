@@ -9,9 +9,10 @@ import {
   createEffect,
   createSignal,
   on,
+  untrack,
   type JSX,
 } from "solid-js"
-import { createCoarsePointer, useShell } from "@/utils/mobile"
+import { createCoarsePointer, useShell, TOUCH_SLOP } from "@/utils/mobile"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
@@ -71,6 +72,7 @@ import { DialogStash } from "@/components/dialog-stash"
 import { DialogTasks } from "@/components/dialog-tasks"
 import { DialogPending } from "@/components/dialog-pending"
 import { useComments, type LineComment } from "@/context/comments"
+import { useQuestion } from "@/context/question"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
 import { usePermission } from "@/context/permission"
@@ -90,6 +92,25 @@ import { probe } from "@/utils/transcript-probe"
 import { Visibility } from "@/utils/visibility"
 
 type DiffStyle = "unified" | "split"
+
+// Surface whose tap already means something, so the reading-mode toggle keeps
+// off it. The last two carry their own click handler on a plain element, which
+// no interactive-role selector would find.
+const CLAIMED = [
+  "button",
+  "a",
+  "input",
+  "textarea",
+  "[role='button']",
+  "[data-scrollable]",
+  "[data-slot='session-turn-message-content']",
+  "[data-slot='inline-code']",
+].join(",")
+
+// Breathing room between the busy bar and the dock below it, and the same gap
+// again above the bar; the bar's `bottom` offset carries one and the transcript
+// clearance the other.
+const BUSY_GAP = 8
 
 const handoff = {
   prompt: "",
@@ -291,6 +312,7 @@ export default function Page() {
   const stash = useStash()
   const comments = useComments()
   const permission = usePermission()
+  const question = useQuestion()
 
   // Permissions answered locally but not yet confirmed removed over SSE. On a
   // remote client that confirmation is a full round-trip away, and a prompt
@@ -397,6 +419,53 @@ export default function Page() {
   const wide = useShell().wide
   const centered = createMemo(() => wide() && !layout.fileTree.opened())
   const openContextPanel = useOpenContext()
+
+  // Touch-primary only: a mouse click in the transcript already means "place
+  // the caret / clear a selection", so overloading it would fire on every
+  // stray click.
+  const coarse = createCoarsePointer()
+  // A pending question or permission lives inside the dock, so hiding it would
+  // strand the only control that can answer.
+  const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
+  const immersiveAvailable = () => coarse() && layout.zen.opened() && !awaitingAnswer()
+  // Availability reads server state that churns through a turn, so it gates the
+  // rendered mode without touching the stored intent, which only a gesture
+  // writes. A turn that asks repeatedly therefore costs no extra taps.
+  const immersive = () => store.immersive && immersiveAvailable()
+  createEffect(
+    on(
+      () => params.id,
+      () => setStore("immersive", false),
+      { defer: true },
+    ),
+  )
+  // A selection inside a shadow root is invisible to the document selection, so
+  // ask each open root as well before concluding the user selected nothing.
+  const selecting = () => {
+    if (window.getSelection()?.toString()) return true
+    return [...document.querySelectorAll("diffs-container")].some((host) => {
+      const root = host.shadowRoot as (ShadowRoot & { getSelection?: () => Selection | null }) | null
+      return !!root?.getSelection?.()?.toString()
+    })
+  }
+
+  let tapOrigin: { x: number; y: number } | undefined
+  const toggleImmersive = (event: MouseEvent & { currentTarget: HTMLDivElement }) => {
+    const origin = tapOrigin
+    tapOrigin = undefined
+    if (!immersiveAvailable()) return
+    if (!origin) return
+    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > TOUCH_SLOP) return
+    // composedPath, not target.closest: diffs and code blocks render inside a
+    // shadow root, which retargets the event to the host and hides everything
+    // the tap actually landed on.
+    if (event.composedPath().some((node) => node instanceof HTMLElement && node.matches(CLAIMED))) return
+    if (selecting()) return
+    // A focused editor holds the soft keyboard up over the space this just
+    // reclaimed.
+    if (!immersive()) inputRef?.blur()
+    setStore("immersive", !immersive())
+  }
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -551,6 +620,10 @@ export default function Page() {
     messageId: undefined as string | undefined,
     newSessionWorktree: "main",
     promptHeight: 0,
+    busyHeight: 0,
+    // A tap on inert transcript surface drops the composer and the pinned
+    // title/prompt headers; a second tap brings them back.
+    immersive: false,
   })
 
   // The most recent turns render with their steps expanded by default; older
@@ -640,6 +713,7 @@ export default function Page() {
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
   let promptInner: HTMLDivElement | undefined
+  const [busyBar, setBusyBar] = createSignal<HTMLDivElement>()
   let scroller: HTMLDivElement | undefined
   // A signal (not a plain ref) so the tail-follow ResizeObserver attaches
   // whenever the transcript (re)mounts; a bare `let` is invisible to it.
@@ -1929,24 +2003,48 @@ export default function Page() {
       if (next <= 0 || next === store.promptHeight) return
 
       setStore("promptHeight", next)
-      // On the root element, not the session panel: the dictation overlay
-      // portals to <body> and would otherwise inherit nothing to anchor to.
-      document.documentElement.style.setProperty("--prompt-height", `${next}px`)
-
-      // A taller dock covers the tail; re-pin if following. The dock grows when
-      // the busy bar mounts mid-stream, and the height change propagates through
-      // --prompt-height -> last-turn padding -> scrollHeight over SEVERAL frames,
-      // not one. A single pinToBottom lands the first frame and then the padding
-      // keeps growing, leaving the view short (the busy-session bug). settle each
-      // frame until the bottom holds.
-      if (following()) settleToBottom()
     },
   )
 
-  // Zen toggling reflows the tail in ways the content ResizeObserver can't
-  // catch: the sticky session title (a scroller child, not virtua content)
-  // unmounts, the scroller's --session-title-height flips, and the dock swaps
-  // height. The scroller runs overflow-anchor:none (virtua needs it to avoid
+  createResizeObserver(busyBar, ({ height }) => {
+    const next = Math.ceil(height)
+    if (next === store.busyHeight) return
+    setStore("busyHeight", next)
+  })
+
+  // Clearance is the RESTING measurement gated by immersive, not a live read of
+  // a sliding dock: the dock leaves by transform, so its measured height never
+  // changes and the observer above stays a pure size probe. Publishing 0 is what
+  // turns the slide into reclaimed space rather than a dead band.
+  //
+  // Two vars, because the bar anchors to the dock while the transcript must
+  // clear both. Folding the bar into the value it positions against would walk
+  // it up the screen one measurement per cycle.
+  createEffect(() => {
+    const dock = immersive() ? 0 : store.promptHeight
+    const next = dock + (store.busyHeight ? store.busyHeight + BUSY_GAP : 0)
+    // On the root element, not the session panel: the dictation overlay
+    // portals to <body> and would otherwise inherit nothing to anchor to.
+    document.documentElement.style.setProperty("--dock-height", `${dock}px`)
+    document.documentElement.style.setProperty("--prompt-height", `${next}px`)
+
+    // A taller dock covers the tail; re-pin if following. The dock grows when
+    // the busy bar mounts mid-stream, and the height change propagates through
+    // --prompt-height -> last-turn padding -> scrollHeight over SEVERAL frames,
+    // not one. A single pinToBottom lands the first frame and then the padding
+    // keeps growing, leaving the view short (the busy-session bug). settle each
+    // frame until the bottom holds.
+    //
+    // Untracked: a clearance change is the trigger. Subscribing to the flag
+    // would launch a second settle loop from each of the many places that
+    // re-assert follow, and two loops racing overwrite each other's counters.
+    if (untrack(following)) settleToBottom()
+  })
+
+  // Zen and immersive both reflow the tail in ways the content ResizeObserver
+  // can't catch: the sticky session title (a scroller child, not virtua content)
+  // unmounts, the scroller's --session-title-height flips, and the dock's
+  // reserved clearance changes. The scroller runs overflow-anchor:none (virtua needs it to avoid
   // oscillation), so the browser no longer compensates these height changes the
   // way it did before virtua. The tail slides under the dock and stays there.
   //
@@ -1956,7 +2054,7 @@ export default function Page() {
   // and virtua's later size-change compensation arrive over subsequent frames.
   createEffect(
     on(
-      () => layout.zen.opened(),
+      () => [layout.zen.opened(), immersive()],
       () => {
         const el = scroller
         if (!el) return
@@ -2252,6 +2350,12 @@ export default function Page() {
   // changes, and window resize.
   const [dockRect, setDockRect] = createSignal<{ right: number; top: number } | null>(null)
   const measureDock = () => {
+    // A dock translated off-screen would drag the pill down with it, taking the
+    // only way out of zen off the viewport. Null hands the pill its corner.
+    if (immersive()) {
+      setDockRect(null)
+      return
+    }
     // Anchor to the input box itself, not promptInner (the dock content column).
     // promptInner stacks the question panel, permission prompt, and busy bar
     // ABOVE the input, so its top edge rises when any of those appear and the
@@ -2277,6 +2381,7 @@ export default function Page() {
     // Depend on the triggers that move the box, then measure post-layout.
     void store.promptHeight
     void layout.zen.opened()
+    void immersive()
     void centered()
     requestAnimationFrame(measureDock)
   })
@@ -2498,10 +2603,19 @@ export default function Page() {
                         onTouchCancel={() => {
                           touchGesture = undefined
                         }}
+                        // A canceled pointer (the browser claiming the gesture
+                        // for a scroll) delivers no click, so an origin left
+                        // behind would outlive its gesture and validate a later
+                        // unrelated one.
+                        onPointerCancel={() => {
+                          tapOrigin = undefined
+                        }}
                         onPointerDown={(e) => {
+                          tapOrigin = { x: e.clientX, y: e.clientY }
                           if (e.target !== e.currentTarget) return
                           markScrollGesture(e.currentTarget)
                         }}
+                        onClick={toggleImmersive}
                         onScroll={(e) => {
                           // Keep the pre-toggle tail snapshot current on EVERY
                           // scroll (gesture or programmatic pin), so the zen
@@ -2549,12 +2663,13 @@ export default function Page() {
                           if (wide() && !settling && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
+                        data-immersive={immersive() ? "" : undefined}
                         style={{
                           "--session-title-height":
-                            info()?.title || info()?.parentID ? (wide() ? "28px" : "24px") : "0px",
+                            immersive() || !(info()?.title || info()?.parentID) ? "0px" : wide() ? "28px" : "24px",
                         }}
                       >
-                        <Show when={info()?.title || info()?.parentID}>
+                        <Show when={(info()?.title || info()?.parentID) && !immersive()}>
                           <div
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,
@@ -2742,6 +2857,38 @@ export default function Page() {
             </Switch>
           </div>
 
+          {/* Busy-turn bar in the gap between the message boxes and the dock,
+              the busy cue in every mode. The dock's own busy spinner (dock-line1)
+              is suppressed, so this bar is the single indicator. It sits OUTSIDE
+              the dock so immersive's slide leaves it on screen — a hidden
+              composer must still show that a turn is running. Its own height
+              feeds the transcript clearance (see the clearance effect), since it
+              covers the tail exactly as the dock does. */}
+          <Show when={titleWorking()}>
+            <div
+              ref={setBusyBar}
+              data-slot="busy-bar-dock"
+              classList={{
+                // The dock's gradient extends above its opaque edge, and the bar
+                // sits in that overlap.
+                "absolute inset-x-0 z-[51] px-4 panel-wide:px-0 pointer-events-none": true,
+                "panel-wide:max-w-[95%] panel-wide:mx-auto": centered(),
+              }}
+              style={{ bottom: `calc(var(--dock-height, 8rem) + ${BUSY_GAP}px)` }}
+            >
+              <div class="w-full px-3">
+                <div class="busy-bar-track">
+                  <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
+                    <span class="busy-bar-fill" />
+                    <Show when={mixing()}>
+                      <span class="busy-bar-fill busy-bar-fill-task" />
+                    </Show>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Show>
+
           {/* Prompt input — hidden entirely in zen mode (messages only) and on
               the mobile Changes tab, where you're reviewing a diff, not
               composing, so the dock is dead weight over the file list. */}
@@ -2760,6 +2907,23 @@ export default function Page() {
               // PromptInput drops its own chrome via useLayout().zen. Only the mobile
               // Changes tab hides the dock outright.
               hidden: reviewReplacesTranscript(),
+              // Slide, not display:none: the dock keeps its measured height, so
+              // the resize observer stays a pure size probe and the clearance
+              // effect owns whether that height is reserved.
+              "transition-transform duration-200 ease-out motion-reduce:transition-none": true,
+              "translate-y-full": immersive(),
+            }}
+            // inert, not aria-hidden: the dock is hidden by transform alone, so
+            // it keeps its tab order. aria-hidden over focusable descendants is
+            // the violation inert exists to fix, and inert also blurs the
+            // subtree, covering focus that never sat in the editor.
+            inert={immersive()}
+            // The pill anchors to the dock's rect, and a measurement taken while
+            // the slide is mid-flight reads a transformed box. Re-measuring on
+            // arrival lands it on the resting one.
+            onTransitionEnd={(e) => {
+              if (e.target !== e.currentTarget) return
+              measureDock()
             }}
           >
             {/* flex column + min-h-0 so the constraint from the bounded dock
@@ -2790,27 +2954,6 @@ export default function Page() {
               </Show>
 
               <QuestionPanel onClose={() => command.trigger("prompt.focus")} />
-
-              {/* Busy-turn bar in the gap between the message boxes and the dock,
-                  the busy cue in BOTH modes. The dock's own busy spinner
-                  (dock-line1) is suppressed, so this bar is the single indicator.
-                  mt-2 matters: the bar is the dock's FIRST child, sitting in the
-                  pt-12 transparent gradient zone the transcript scrolls under.
-                  The clearance math (offsetHeight - padTop) only reserves space
-                  BELOW that zone, so without its own top offset the bar overlays
-                  the last box instead of the gap. */}
-              <Show when={titleWorking()}>
-                <div class="w-full px-3 mt-2 mb-2">
-                  <div class="busy-bar-track">
-                    <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
-                      <span class="busy-bar-fill" />
-                      <Show when={mixing()}>
-                        <span class="busy-bar-fill busy-bar-fill-task" />
-                      </Show>
-                    </div>
-                  </div>
-                </div>
-              </Show>
 
               <Show when={request()} keyed>
                 {(perm) => (
