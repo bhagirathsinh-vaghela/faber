@@ -62,6 +62,7 @@ import { playSound, soundSrc } from "@/utils/sound"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
 import { useShell } from "@/utils/mobile"
+import { SidebarModeProvider, useSidebarMode } from "@/context/sidebar-mode"
 
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
@@ -1718,11 +1719,11 @@ export default function Layout(props: ParentProps) {
   const SessionItem = (props: {
     session: Session
     slug: string
-    mobile?: boolean
     dense?: boolean
     popover?: boolean
     children?: Map<string, string[]>
   }): JSX.Element => {
+    const sidebarMode = useSidebarMode()
     const [sessionStore] = globalSync.child(props.session.directory)
     const hasPermissions = createMemo(() => {
       const permissions = sessionStore.permission?.[props.session.id] ?? []
@@ -1784,7 +1785,7 @@ export default function Layout(props: ParentProps) {
       sessionStore.message[props.session.id]?.filter((message) => message.role === "user"),
     )
     const hoverReady = createMemo(() => sessionStore.message[props.session.id] !== undefined)
-    const hoverAllowed = createMemo(() => !props.mobile && sidebarExpanded())
+    const hoverAllowed = createMemo(() => !sidebarMode.overlay && sidebarExpanded())
     const hoverEnabled = createMemo(() => (props.popover ?? true) && hoverAllowed())
     const isActive = createMemo(() => props.session.id === params.id)
     const [menu, setMenu] = createStore({
@@ -1895,7 +1896,7 @@ export default function Layout(props: ParentProps) {
         <Show
           when={hoverEnabled()}
           fallback={
-            <Tooltip placement={props.mobile ? "bottom" : "right"} value={props.session.title} gutter={10}>
+            <Tooltip placement={sidebarMode.overlay ? "bottom" : "right"} value={props.session.title} gutter={10}>
               {item}
             </Tooltip>
           }
@@ -1907,7 +1908,7 @@ export default function Layout(props: ParentProps) {
             gutter={16}
             shift={-2}
             trigger={item}
-            mount={!props.mobile ? state.nav : undefined}
+            mount={!sidebarMode.overlay ? state.nav : undefined}
             open={state.hoverSession === props.session.id}
             onOpenChange={(open) => setState("hoverSession", open ? props.session.id : undefined)}
           >
@@ -1951,11 +1952,11 @@ export default function Layout(props: ParentProps) {
                 as={IconButton}
                 icon="dot-grid"
                 variant="ghost"
-                class="size-6 rounded-md data-[expanded]:bg-surface-base-active"
+                class="size-(--control-height) rounded-md data-[expanded]:bg-surface-base-active"
                 aria-label={language.t("common.moreOptions")}
               />
             </Tooltip>
-            <DropdownMenu.Portal mount={!props.mobile ? state.nav : undefined}>
+            <DropdownMenu.Portal mount={!sidebarMode.overlay ? state.nav : undefined}>
               <DropdownMenu.Content
                 onCloseAutoFocus={(event) => {
                   if (!menu.pendingRename) return
@@ -1987,9 +1988,10 @@ export default function Layout(props: ParentProps) {
     )
   }
 
-  const NewSessionItem = (props: { slug: string; mobile?: boolean; dense?: boolean }): JSX.Element => {
+  const NewSessionItem = (props: { slug: string; dense?: boolean }): JSX.Element => {
+    const sidebarMode = useSidebarMode()
     const label = language.t("command.session.new")
-    const tooltip = () => props.mobile || !sidebarExpanded()
+    const tooltip = () => sidebarMode.overlay || !sidebarExpanded()
     const item = (
       <A
         href={`${props.slug}/session`}
@@ -2017,7 +2019,7 @@ export default function Layout(props: ParentProps) {
         <Show
           when={!tooltip()}
           fallback={
-            <Tooltip placement={props.mobile ? "bottom" : "right"} value={label} gutter={10}>
+            <Tooltip placement={sidebarMode.overlay ? "bottom" : "right"} value={label} gutter={10}>
               {item}
             </Tooltip>
           }
@@ -2052,12 +2054,13 @@ export default function Layout(props: ParentProps) {
     )
   }
 
-  const SortableProject = (props: { project: LocalProject; mobile?: boolean }): JSX.Element => {
+  const SortableProject = (props: { project: LocalProject }): JSX.Element => {
+    const sidebarMode = useSidebarMode()
     const sortable = createSortable(props.project.worktree)
     const selected = createMemo(() => {
       // Mobile drawer and the expanded desktop sidebar highlight the previewed
       // project; the collapsed rail highlights the routed one.
-      if (props.mobile || layout.sidebar.opened()) return props.project.worktree === previewProject()?.worktree
+      if (sidebarMode.overlay || layout.sidebar.opened()) return props.project.worktree === previewProject()?.worktree
       const current = decode64(params.dir) ?? ""
       return props.project.worktree === current
     })
@@ -2072,7 +2075,7 @@ export default function Layout(props: ParentProps) {
     // opens a session. On the collapsed rail a second click on the same icon
     // dismisses the flyout (toggle).
     const handleClick = () => {
-      if (!props.mobile && !layout.sidebar.opened() && state.previewProject === props.project.worktree) {
+      if (!sidebarMode.overlay && !layout.sidebar.opened() && state.previewProject === props.project.worktree) {
         setState("previewProject", undefined)
         return
       }
@@ -2101,7 +2104,7 @@ export default function Layout(props: ParentProps) {
         >
           <ProjectIcon project={props.project} notify />
         </ContextMenu.Trigger>
-        <ContextMenu.Portal mount={!props.mobile ? state.nav : undefined}>
+        <ContextMenu.Portal mount={!sidebarMode.overlay ? state.nav : undefined}>
           <ContextMenu.Content>
             <ContextMenu.Item onSelect={() => dialog.show(() => <DialogEditProject project={props.project} />)}>
               <ContextMenu.ItemLabel>{language.t("common.edit")}</ContextMenu.ItemLabel>
@@ -2127,7 +2130,8 @@ export default function Layout(props: ParentProps) {
     )
   }
 
-  const LocalWorkspace = (props: { project: LocalProject; mobile?: boolean }): JSX.Element => {
+  const LocalWorkspace = (props: { project: LocalProject }): JSX.Element => {
+    const sidebarMode = useSidebarMode()
     const [workspaceStore, setWorkspaceStore] = globalSync.child(props.project.worktree)
     const slug = createMemo(() => base64Encode(props.project.worktree))
     const sessions = createMemo(
@@ -2185,7 +2189,7 @@ export default function Layout(props: ParentProps) {
       >
         <div
           ref={(el) => {
-            if (!props.mobile) scrollContainerRef = el
+            if (!sidebarMode.overlay) scrollContainerRef = el
           }}
           class="size-full flex flex-col py-2 overflow-y-auto no-scrollbar [overflow-anchor:none]"
         >
@@ -2194,7 +2198,7 @@ export default function Layout(props: ParentProps) {
               <SessionSkeleton />
             </Show>
             <For each={sessions()}>
-              {(session) => <SessionItem session={session} slug={slug()} mobile={props.mobile} children={children()} />}
+              {(session) => <SessionItem session={session} slug={slug()} children={children()} />}
             </For>
             <Show when={hasMore()}>
               <div class="relative w-full py-1">
@@ -2217,7 +2221,8 @@ export default function Layout(props: ParentProps) {
     )
   }
 
-  const SidebarPanel = (panelProps: { project: LocalProject | undefined; mobile?: boolean }) => {
+  const SidebarPanel = (panelProps: { project: LocalProject | undefined }) => {
+    const sidebarMode = useSidebarMode()
     const projectName = createMemo(() => {
       const project = panelProps.project
       if (!project) return ""
@@ -2230,9 +2235,9 @@ export default function Layout(props: ParentProps) {
       <div
         classList={{
           "flex flex-col min-h-0 bg-background-stronger border border-b-0 border-border-weak-base rounded-tl-sm": true,
-          "flex-1 min-w-0": panelProps.mobile,
+          "flex-1 min-w-0": sidebarMode.overlay,
         }}
-        style={{ width: panelProps.mobile ? undefined : `${Math.max(layout.sidebar.width() - 64, 0)}px` }}
+        style={{ width: sidebarMode.overlay ? undefined : `${Math.max(layout.sidebar.width() - 64, 0)}px` }}
       >
         <Show when={panelProps.project}>
           {(p) => (
@@ -2272,10 +2277,10 @@ export default function Layout(props: ParentProps) {
                       variant="ghost"
                       data-action="project-menu"
                       data-project={base64Encode(p().worktree)}
-                      class="shrink-0 size-6 rounded-md opacity-0 group-hover/project:opacity-100 data-[expanded]:opacity-100 data-[expanded]:bg-surface-base-active"
+                      class="shrink-0 size-(--control-height) rounded-md opacity-0 group-hover/project:opacity-100 data-[expanded]:opacity-100 data-[expanded]:bg-surface-base-active"
                       aria-label={language.t("common.moreOptions")}
                     />
-                    <DropdownMenu.Portal mount={!panelProps.mobile ? state.nav : undefined}>
+                    <DropdownMenu.Portal mount={!sidebarMode.overlay ? state.nav : undefined}>
                       <DropdownMenu.Content class="mt-1">
                         <DropdownMenu.Item onSelect={() => dialog.show(() => <DialogEditProject project={p()} />)}>
                           <DropdownMenu.ItemLabel>{language.t("common.edit")}</DropdownMenu.ItemLabel>
@@ -2320,7 +2325,7 @@ export default function Layout(props: ParentProps) {
                   </TooltipKeybind>
                 </div>
                 <div class="flex-1 min-h-0">
-                  <LocalWorkspace project={p()} mobile={panelProps.mobile} />
+                  <LocalWorkspace project={p()} />
                 </div>
               </div>
             </>
@@ -2353,8 +2358,9 @@ export default function Layout(props: ParentProps) {
     )
   }
 
-  const SidebarContent = (sidebarProps: { mobile?: boolean }) => {
-    const expanded = () => sidebarProps.mobile || layout.sidebar.opened()
+  const SidebarContent = () => {
+    const sidebarMode = useSidebarMode()
+    const expanded = () => sidebarMode.overlay || layout.sidebar.opened()
 
     return (
       <div class="flex h-full w-full overflow-hidden">
@@ -2382,15 +2388,15 @@ export default function Layout(props: ParentProps) {
               >
                 <SortableProvider ids={layout.projects.list().map((p) => p.worktree)}>
                   <For each={layout.projects.list()}>
-                    {(project) => <SortableProject project={project} mobile={sidebarProps.mobile} />}
+                    {(project) => <SortableProject project={project} />}
                   </For>
                 </SortableProvider>
                 <Tooltip
-                  placement={sidebarProps.mobile ? "bottom" : "right"}
+                  placement={sidebarMode.overlay ? "bottom" : "right"}
                   value={
                     <div class="flex items-center gap-2">
                       <span>{language.t("command.project.open")}</span>
-                      <Show when={!sidebarProps.mobile}>
+                      <Show when={!sidebarMode.overlay}>
                         <span class="text-icon-base text-12-medium">{command.keybind("project.open")}</span>
                       </Show>
                     </div>
@@ -2411,9 +2417,9 @@ export default function Layout(props: ParentProps) {
             </DragDropProvider>
           </div>
           <div class="shrink-0 w-full pt-3 pb-3 flex flex-col items-center gap-2">
-            <NotificationCenter mobile={sidebarProps.mobile} />
+            <NotificationCenter />
             <TooltipKeybind
-              placement={sidebarProps.mobile ? "bottom" : "right"}
+              placement={sidebarMode.overlay ? "bottom" : "right"}
               title={language.t("sidebar.settings")}
               keybind={command.keybind("settings.open")}
             >
@@ -2425,7 +2431,7 @@ export default function Layout(props: ParentProps) {
                 aria-label={language.t("sidebar.settings")}
               />
             </TooltipKeybind>
-            <Tooltip placement={sidebarProps.mobile ? "bottom" : "right"} value={language.t("sidebar.help")}>
+            <Tooltip placement={sidebarMode.overlay ? "bottom" : "right"} value={language.t("sidebar.help")}>
               <IconButton
                 icon="help"
                 variant="ghost"
@@ -2446,7 +2452,7 @@ export default function Layout(props: ParentProps) {
             current project) it resolves to undefined, so the mobile drawer
             shows just the bare rail. */}
         <Show when={expanded() ? previewProject() : undefined} keyed>
-          {(project) => <SidebarPanel project={project} mobile={sidebarProps.mobile} />}
+          {(project) => <SidebarPanel project={project} />}
         </Show>
       </div>
     )
@@ -2470,7 +2476,9 @@ export default function Layout(props: ParentProps) {
           }}
         >
           <div class="@container w-full h-full contain-strict">
-            <SidebarContent />
+            <SidebarModeProvider>
+              <SidebarContent />
+            </SidebarModeProvider>
           </div>
           <Show when={flyoutProject()} keyed>
             {(project) => (
@@ -2516,7 +2524,9 @@ export default function Layout(props: ParentProps) {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <SidebarContent mobile />
+            <SidebarModeProvider overlay>
+              <SidebarContent />
+            </SidebarModeProvider>
           </nav>
         </div>
 

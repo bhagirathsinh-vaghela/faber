@@ -10,8 +10,10 @@ import { useRecent, type OverviewRow } from "@/context/recent"
 import { useLayout } from "@/context/layout"
 import { useLanguage } from "@/context/language"
 import { attention, flat, strongest } from "@/utils/attention"
+import { useSidebarMode } from "@/context/sidebar-mode"
 
-export function NotificationCenter(props: { mobile?: boolean }) {
+export function NotificationCenter() {
+  const sidebarMode = useSidebarMode()
   const recent = useRecent()
   const layout = useLayout()
   const language = useLanguage()
@@ -66,12 +68,12 @@ export function NotificationCenter(props: { mobile?: boolean }) {
   }
 
   return (
-    <Tooltip placement={props.mobile ? "bottom" : "right"} value={language.t("notification.center.title")}>
+    <Tooltip placement={sidebarMode.overlay ? "bottom" : "right"} value={language.t("notification.center.title")}>
       <div class="relative">
         <Popover
           open={open()}
           onOpenChange={setOpen}
-          placement={props.mobile ? "top" : "right-end"}
+          placement={sidebarMode.overlay ? "top" : "right-end"}
           title={language.t("notification.center.title")}
           class="w-[320px] max-w-[calc(100vw-40px)]"
           triggerAs={IconButton}
