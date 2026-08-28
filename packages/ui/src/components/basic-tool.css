@@ -4,14 +4,18 @@
      then grows to its real height on render. Naming the rendered height keeps
      the estimate honest so scrolling past an unrendered row does not resize the
      turn around it. */
-  contain-intrinsic-size: auto 44px;
+  contain-intrinsic-size: auto var(--control-bar);
   width: 100%;
   display: flex;
   align-items: center;
   align-self: stretch;
   gap: 8px;
-  padding: 6px 8px 6px 12px;
-  min-height: 32px;
+  /* The right inset matches a message box's, so this row's chevron lands on the
+     same vertical line as the copy button on the box above it. */
+  padding: 6px 12px;
+  /* The row seats the copy and action buttons, so its floor is the control it
+     carries — below that the row clips the very buttons it exists to present. */
+  min-height: var(--control-height);
 
   /* This wrapper owns the row's box, so the trigger inside it must contribute
      none of its own. Handing the collapsible its overrides through its own
@@ -131,9 +135,9 @@
     gap: 4px;
     flex-shrink: 0;
 
-    /* The dense tool row (32px, clipped by the collapsible) has no room for the
-       button's 3px focus ring, which would be cropped top/bottom. Keep the
-       resting 1px hairline border on focus instead of the large focus ring. */
+    /* The row is dense enough that the large focus ring reads as a smudge
+       against the trigger behind it; the resting hairline is the focus
+       affordance here instead. */
     [data-component="icon-button"]:focus-visible:not(:active) {
       box-shadow: var(--shadow-xs-border);
     }

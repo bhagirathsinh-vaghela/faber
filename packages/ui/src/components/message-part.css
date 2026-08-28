@@ -388,21 +388,26 @@
 
 [data-component="tool-output"] {
   white-space: pre;
-  padding: 8px 12px;
+  /* Half the horizontal inset a prose row takes: the content here is usually a
+     code block that already carries its own padding inside its own border, so
+     the full inset reads as the block being pushed away from an edge it is
+     meant to sit near. */
+  padding: 8px 6px;
   height: fit-content;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
 
+  /* Published so a copy button positioned against the block inside can subtract
+     this row's inset and land on the same line as the copy button on the message
+     box beside it. */
+  --markdown-host-inset: 6px;
+
   [data-component="markdown"] {
     width: 100%;
     min-width: 0;
 
-    /* Let the fenced .shiki code block keep its full GitHub-style box
-       (background, border, padding from markdown.css) inside tool output, so
-       shell/search results look like the code blocks in prose. Only reset the
-       outer margin; tool-output's own padding becomes the gap around the box. */
     pre {
       margin: 0;
     }
@@ -628,8 +633,8 @@
 }
 
 [data-component="tool-action"] {
-  width: 24px;
-  height: 24px;
+  width: var(--control-height);
+  height: var(--control-height);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -790,7 +795,7 @@ a[data-component="tool-action"]:hover {
   &[data-permission="true"],
   &[data-question="true"] {
     position: sticky;
-    top: calc(2px + var(--sticky-header-height, 40px));
+    top: calc(2px + var(--sticky-header-height, var(--control-bar)));
     bottom: 0px;
     z-index: 20;
     border-radius: 6px;

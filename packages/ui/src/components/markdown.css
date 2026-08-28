@@ -178,10 +178,15 @@
     position: relative;
   }
 
+  /* The gap the eye judges is to the MESSAGE BOX's edge, not the code block's: a
+     copy button in a box and a copy button over a code block inside that box
+     have to sit on one line. A host that insets the markdown publishes how much
+     (--markdown-host-inset), and that is subtracted here — otherwise the button
+     lands that much further in than its neighbour. */
   [data-slot="markdown-copy-button"] {
     position: absolute;
     top: 8px;
-    right: 8px;
+    right: calc(12px - var(--markdown-host-inset, 0px));
     opacity: 0;
     transition: opacity 0.15s ease;
     z-index: 1;
