@@ -22,13 +22,31 @@ const NUDGE = 12
 const inset = (name: "--sat" | "--sar" | "--sab" | "--sal") =>
   parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0
 
+// The pill computes its own geometry (drag bounds, the anchor corner), so it
+// reads the shared control size as a number rather than inheriting it in CSS.
+const cssPx = (name: string, fallback: number) =>
+  parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || fallback
+
+// Bigger than a dock button: it floats over content with no neighbours to
+// separate it from, and it is the only way out of reader.
+const PILL_SCALE = 1.45
+
+// The glyph fills the same fraction of this control that an icon fills of any
+// other, read from the ratio the stylesheet already applies.
+const iconRatio = () => cssPx("--control-icon", 20) / cssPx("--control-height", 36)
+
 // The one reader control. `anchor` is the box it hovers above; a page without
 // one passes nothing and gets the corner.
 export function ReaderPill(props: { anchor?: () => { right: number; top: number } | null }) {
   const layout = useLayout()
   const language = useLanguage()
   const coarse = createCoarsePointer()
-  const size = () => (coarse() ? 56 : 52)
+  // Tracks --control-height, so the one number that sizes every button sizes
+  // this too. coarse() is read so the value recomputes when the pointer changes.
+  const size = () => {
+    void coarse()
+    return Math.round(cssPx("--control-height", 36) * PILL_SCALE)
+  }
 
   const clamp = (x: number, y: number) => ({
     x: Math.max(MARGIN + inset("--sal"), Math.min(x, window.innerWidth - size() - MARGIN - inset("--sar"))),
@@ -147,7 +165,11 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
           height: `${size()}px`,
         }}
       >
-        <span class="text-xl leading-none select-none" aria-hidden="true">
+        <span
+          class="leading-none select-none"
+          style={{ "font-size": `${Math.round(size() * iconRatio())}px` }}
+          aria-hidden="true"
+        >
           {layout.reader.opened() ? "✏️" : "📖"}
         </span>
       </button>

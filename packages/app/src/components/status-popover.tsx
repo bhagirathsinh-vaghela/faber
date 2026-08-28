@@ -65,7 +65,7 @@ export function StatusPopover() {
       triggerProps={{
         variant: "ghost",
         class:
-          "rounded-sm h-[24px] any-pointer-coarse:h-10 max-w-[140px] min-w-0 shrink py-1.5 pr-3 pl-2 gap-2 border-none shadow-none data-[expanded]:bg-surface-raised-base-active",
+          "rounded-sm max-w-[140px] min-w-0 shrink py-1.5 pr-3 pl-2 gap-2 border-none shadow-none data-[expanded]:bg-surface-raised-base-active",
         style: { scale: 1 },
         // The visible label is the server's short name, which says nothing
         // about what the control opens.

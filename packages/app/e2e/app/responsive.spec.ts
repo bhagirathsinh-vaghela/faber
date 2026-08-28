@@ -325,18 +325,43 @@ test.describe("pointer capability", () => {
       await settle(page)
 
       const small = await page.evaluate(() => {
-        // The pointer type cannot be emulated per-page, so each control is
-        // asked whether it carries a rule that would enlarge it on a coarse
-        // one. A control sized only for a mouse has none.
-        return [...document.querySelectorAll<HTMLElement>('[data-slot="titlebar"] button')]
+        // The pointer type cannot be emulated per-page, so the coarse rules are
+        // lifted out of the stylesheet and re-applied unconditionally. Measuring
+        // the result asks what the control BECOMES under a finger, which a check
+        // for a particular class cannot: the size may arrive from a shared
+        // custom property that names no pointer at all.
+        const coarse: string[] = []
+        const walk = (list: CSSRuleList) => {
+          for (const rule of list) {
+            if ((rule as CSSMediaRule).conditionText === "(any-pointer: coarse)") {
+              for (const inner of (rule as CSSMediaRule).cssRules) coarse.push(inner.cssText)
+              continue
+            }
+            const nested = (rule as CSSGroupingRule).cssRules
+            if (nested) walk(nested)
+          }
+        }
+        for (const sheet of document.styleSheets) {
+          try {
+            walk(sheet.cssRules)
+          } catch {}
+        }
+        const patch = document.createElement("style")
+        patch.textContent = coarse.join("\n")
+        document.head.appendChild(patch)
+
+        const measured = [...document.querySelectorAll<HTMLElement>('[data-slot="titlebar"] button')]
           .filter((button) => button.getBoundingClientRect().width > 0)
           .filter((button) => {
             const box = button.getBoundingClientRect()
-            if (box.width >= 40 && box.height >= 40) return false
-            const carrier = button.closest("[class*='any-pointer-coarse:']") ?? button
-            return !/any-pointer-coarse:(size|h)-(?:10|11)/.test(carrier.className)
+            // A control wider than it is tall carries text or an input, so its
+            // width is set by content rather than by the touch target.
+            return box.height < 40 || (box.width < 40 && box.width >= box.height)
           })
           .map((button) => button.getAttribute("aria-label") ?? "unnamed")
+
+        patch.remove()
+        return measured
       })
 
       expect(small, `${name}: every control must grow on a coarse pointer`).toEqual([])

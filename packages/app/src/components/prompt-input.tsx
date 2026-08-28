@@ -134,7 +134,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // chain would now shrink the editor on its own, but yielding outright gives
   // the panel the whole gap rather than making it fight for a share.
   const companionTall = () => companion() && question.pending().length === 0
-  const actionButton = () => (companion() ? "size-[72px]! px-1" : "size-6 any-pointer-coarse:size-11 px-1")
+  const actionButton = () => (companion() ? "size-[72px]! px-1" : "px-1")
   // Icon sizes through its WRAPPER: [data-component=icon] is the sized box and
   // the svg inside is width:100% of it, so a class on the svg alone only moves
   // its height and leaves a stretched sliver. Target the wrapper instead. The
@@ -142,7 +142,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const actionIcon = () =>
     companion()
       ? "[&>[data-component=icon]]:!size-9"
-      : "[&>[data-component=icon]]:!size-[18px] any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+      : ""
   const comments = useComments()
   const stash = useStash()
   const params = useParams()
@@ -2558,7 +2558,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Button
                       type="button"
                       variant="ghost"
-                      class={`dock-wide:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-11"} items-center justify-center`}
+                      class={`dock-wide:hidden flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : ""} items-center justify-center`}
                       onClick={() => setDockInfoOpen((v) => !v)}
                       aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                       aria-expanded={dockInfoOpen()}
@@ -2585,7 +2585,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <Button
                         type="button"
                         variant="ghost"
-                        class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"} items-center justify-center`}
+                        class={`flex ${companion() ? "size-[72px]! [&>[data-component=icon]]:!size-9" : ""} items-center justify-center`}
                         onClick={() => dialog.show(() => <DialogDock />)}
                         aria-label="Customize fields"
                       >
@@ -2610,7 +2610,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         variant="ghost"
                         onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
                         classList={{
-                          "flex size-6 any-pointer-coarse:size-11 any-pointer-coarse:[&_[data-component=icon]]:!size-6 items-center justify-center": true,
+                          "flex items-center justify-center": true,
                           "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
                           "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
                         }}
@@ -2713,7 +2713,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       class={
                         companion()
                           ? "size-[72px]! [&>[data-component=icon]]:!size-9"
-                          : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+                          : ""
                       }
                       aria-label={language.t("prompt.action.stop")}
                       onClick={abort}
@@ -2746,7 +2746,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       class={
                         companion()
                           ? "size-[72px]! [&>[data-component=icon]]:!size-9"
-                          : "size-6 any-pointer-coarse:size-11 [&>[data-component=icon]]:!size-4 any-pointer-coarse:[&>[data-component=icon]]:!size-6"
+                          : ""
                       }
                       aria-label={language.t("prompt.action.send")}
                       {...preserveFocus()}

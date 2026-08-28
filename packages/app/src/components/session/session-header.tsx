@@ -89,7 +89,7 @@ export function SessionHeader() {
           <Portal mount={mount()} ref={(el) => (el.style.display = "contents")}>
             <button
               type="button"
-              class="hidden @2xl/titlebar:flex w-[320px] max-w-full min-w-0 shrink any-pointer-coarse:h-10 any-pointer-coarse:[&_[data-component=icon]]:!size-6 p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
+              class="hidden @2xl/titlebar:flex w-[320px] max-w-full min-w-0 shrink h-(--control-height) p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
               onClick={() => command.trigger("file.open")}
               aria-label={language.t("session.header.searchFiles")}
             >
@@ -130,7 +130,7 @@ export function SessionHeader() {
                     icon="text-cursor-input"
                     iconSize="medium"
                     variant={layout.companion.opened() ? "primary" : "ghost"}
-                    class="size-10 shrink-0 p-0"
+                    class="shrink-0 p-0"
                     onClick={() => layout.companion.toggle()}
                     aria-pressed={layout.companion.opened()}
                     aria-label={
@@ -146,7 +146,7 @@ export function SessionHeader() {
                   variant="ghost"
                   onClick={stopSession}
                   aria-label={language.t("session.stop")}
-                  class="size-10 shrink-0 [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
+                  class="shrink-0 [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
                 />
               </Tooltip>
             </Show>
@@ -154,7 +154,7 @@ export function SessionHeader() {
               <Tooltip value={language.t("command.review.toggle")} placement="bottom" gutter={8}>
                 <button
                   type="button"
-                  class="group/file-tree-toggle-m flex items-center justify-center size-10 shrink-0 rounded-md leading-none [&_[data-slot=icon-svg]]:!text-icon-strong-base"
+                  class="group/file-tree-toggle-m flex items-center justify-center size-(--control-height) shrink-0 rounded-md leading-none [&_[data-slot=icon-svg]]:!text-icon-strong-base"
                   onClick={toggleReview}
                   aria-label={language.t("command.review.toggle")}
                   aria-expanded={reviewActive()}
@@ -183,7 +183,7 @@ export function SessionHeader() {
                         icon="text-cursor-input"
                         iconSize="medium"
                         variant={layout.companion.opened() ? "primary" : "ghost"}
-                        class="size-6 any-pointer-coarse:size-10 [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
+                        class=""
                         onClick={() => layout.companion.toggle()}
                         aria-pressed={layout.companion.opened()}
                         aria-label={
@@ -199,7 +199,7 @@ export function SessionHeader() {
                       variant="ghost"
                       onClick={stopSession}
                       aria-label={language.t("session.stop")}
-                      class="size-6 any-pointer-coarse:size-10 [&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-component=icon]]:size-4 any-pointer-coarse:[&_[data-component=icon]]:!size-6 hover:!bg-surface-critical-weak"
+                      class="[&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
                     />
                   </Tooltip>
                 </div>
@@ -212,13 +212,13 @@ export function SessionHeader() {
                   >
                     <Button
                       variant="ghost"
-                      class="group/terminal-toggle size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
+                      class="group/terminal-toggle p-0"
                       onClick={() => view().terminal.toggle()}
                       aria-label={language.t("command.terminal.toggle")}
                       aria-expanded={view().terminal.opened()}
                       aria-controls="terminal-panel"
                     >
-                      <div class="relative flex items-center justify-center size-4 any-pointer-coarse:size-6 [&>*]:absolute [&>*]:inset-0">
+                      <div class="relative flex items-center justify-center [&>*]:absolute [&>*]:inset-0">
                         <Icon
                           size="small"
                           name={view().terminal.opened() ? "layout-bottom-full" : "layout-bottom"}
@@ -247,13 +247,13 @@ export function SessionHeader() {
                   >
                     <Button
                       variant="ghost"
-                      class="group/file-tree-toggle size-6 any-pointer-coarse:size-10 p-0 any-pointer-coarse:[&_[data-component=icon]]:!size-6"
+                      class="group/file-tree-toggle p-0"
                       onClick={toggleReview}
                       aria-label={language.t("command.review.toggle")}
                       aria-expanded={reviewActive()}
                       aria-controls="review-panel"
                     >
-                      <div class="relative flex items-center justify-center size-4 any-pointer-coarse:size-6 [&>*]:absolute [&>*]:inset-0">
+                      <div class="relative flex items-center justify-center [&>*]:absolute [&>*]:inset-0">
                         <Icon
                           size="small"
                           name={reviewActive() ? "layout-right-full" : "layout-right"}

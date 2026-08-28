@@ -148,14 +148,13 @@
   }
 
   &[data-size="normal"] {
-    height: 24px;
-    line-height: 24px;
+    height: var(--control-height);
+    line-height: var(--control-height);
     padding: 0 6px;
     &[data-icon] {
       padding: 0 12px 0 4px;
     }
 
-    font-size: var(--font-size-small);
     gap: 6px;
 
     /* text-12-medium */
@@ -164,6 +163,26 @@
     font-style: normal;
     font-weight: var(--font-weight-medium);
     letter-spacing: var(--letter-spacing-normal);
+
+    /* Everything the button draws is sized from the button. An svg icon, an
+       emoji or text mark with no box of its own, and the wrapper a stacked pair
+       is positioned against are one case: a mark whose job is to fill this
+       target. Sizing any of them on its own leaves a bigger button reading as
+       padding around an unchanged glyph. */
+    [data-component="icon"],
+    > div:only-child:has(> [data-component="icon"]) {
+      width: var(--control-icon);
+      height: var(--control-icon);
+    }
+
+    /* No text besides the mark, so nothing else inherits this font size. */
+    &:has(> [data-component="icon"]:only-child),
+    &:has(> div:only-child > [data-component="icon"]),
+    &:has(> span:only-child) {
+      width: var(--control-height);
+      padding: 0;
+      font-size: var(--control-icon);
+    }
   }
 
   &[data-size="large"] {

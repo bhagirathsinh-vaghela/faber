@@ -122,12 +122,20 @@
   }
 
   &[data-size="normal"] {
-    width: 24px;
-    height: 24px;
+    width: var(--control-height);
+    height: var(--control-height);
 
-    font-size: var(--font-size-small);
     line-height: var(--line-height-large);
     gap: calc(var(--spacing) * 0.5);
+
+    /* The mark fills the target, whether it draws as an svg or as a glyph. */
+    font-size: var(--control-icon);
+
+    [data-component="icon"],
+    > div:only-child:has(> [data-component="icon"]) {
+      width: var(--control-icon);
+      height: var(--control-icon);
+    }
   }
 
   &[data-size="large"] {

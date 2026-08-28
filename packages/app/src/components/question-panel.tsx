@@ -783,7 +783,7 @@ function Panel(props: {
                     <Button
                       type="button"
                       variant="ghost"
-                      class="size-6 any-pointer-coarse:size-11 px-1 ml-auto"
+                      class="px-1 ml-auto"
                       data-dictation-toggle
                       data-dictation-focused={dictationTargeted() ? "" : undefined}
                       onClick={toggleDictation}
@@ -840,7 +840,7 @@ function Panel(props: {
                       variant="primary"
                       size="large"
                       icon={multi() ? "plus" : "check"}
-                      class="size-8 any-pointer-coarse:size-11"
+                      class="size-(--control-height)"
                       aria-label={multi() ? "Add" : "Submit"}
                     />
                   </form>
@@ -890,7 +890,7 @@ function Panel(props: {
             variant="secondary"
             size="large"
             icon="close"
-            class="size-8 any-pointer-coarse:size-11"
+            class="size-(--control-height)"
             aria-label="Dismiss"
             onClick={reject}
           />
@@ -903,7 +903,7 @@ function Panel(props: {
               variant="ghost"
               size="large"
               icon="arrow-right"
-              class="size-8 any-pointer-coarse:size-11"
+              class="size-(--control-height)"
               aria-label="Next question"
               onClick={() => cycleRequest(1)}
             />
@@ -917,7 +917,7 @@ function Panel(props: {
               variant="primary"
               size="large"
               icon="check"
-              class="size-8 any-pointer-coarse:size-11"
+              class="size-(--control-height)"
               aria-label="Submit"
               onClick={single() ? () => activate(store.selected) : submit}
             />
