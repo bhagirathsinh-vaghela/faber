@@ -23,6 +23,10 @@ export function preserveFocus() {
   return { onMouseDown: (e: MouseEvent) => e.preventDefault() }
 }
 
+// The platform touch slop (Android ~8dp, iOS ~10pt). Below it a thumb's normal
+// wander during a tap reads as a drag, and the tap is silently dropped.
+export const TOUCH_SLOP = 10
+
 // Reactive "is this a touch-primary device" signal. Coarse pointer with no hover
 // targets phones/tablets, not touchscreen laptops that still drive a trackpad.
 // The question is "will focusing an input raise the OS keyboard", which UA

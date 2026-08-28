@@ -1,16 +1,13 @@
-import { createEffect, createMemo, createSignal, on } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useLayout } from "@/context/layout"
 import { useLanguage } from "@/context/language"
-import { createCoarsePointer, useShell } from "@/utils/mobile"
+import { createCoarsePointer, useShell, TOUCH_SLOP } from "@/utils/mobile"
 
 // Sized for a fingertip on every device: the pill floats over content, so it
 // gets the enhanced touch target even under a mouse, and a touch pointer a
 // little more.
 const MARGIN = 16
-// Matches the platform touch slop (Android ~8dp, iOS ~10pt). Below it a thumb's
-// normal wander during a tap reads as a drag, and the tap is silently dropped.
-const DRAG_THRESHOLD = 10
 // Gap between the pill and the anchor's top edge. Kept large enough that the
 // pill clears a button's tap zone at the anchor's right edge, so a tap on the
 // pill never lands on that button (and vice versa).
@@ -63,6 +60,22 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
     }),
   )
 
+  // A viewport that shrinks under a parked pill — rotation, the soft keyboard,
+  // a resized window — leaves it outside the bounds, where it can be neither
+  // tapped nor dragged back.
+  createEffect(() => {
+    const current = pos()
+    if (!current) return
+    const bounded = clamp(current.x, current.y)
+    if (bounded.x === current.x && bounded.y === current.y) return
+    setPos(bounded)
+  })
+  onMount(() => {
+    const reclamp = () => setPos((p) => (p ? clamp(p.x, p.y) : p))
+    window.addEventListener("resize", reclamp)
+    onCleanup(() => window.removeEventListener("resize", reclamp))
+  })
+
   // Anchor priority: a mobile drag override wins, then a held press, then the
   // live anchor. Null until the first measurement, or with no anchor at all.
   const coords = createMemo(() => (wide() ? (held() ?? anchored()) : (drag() ?? pos() ?? held() ?? anchored())))
@@ -92,7 +105,7 @@ export function ZenPill(props: { anchor?: () => { right: number; top: number } |
 
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return
-      if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return
+      if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < TOUCH_SLOP) return
       dragged = true
       setDrag(clamp(ev.clientX - size() / 2, ev.clientY - size() / 2))
     }
