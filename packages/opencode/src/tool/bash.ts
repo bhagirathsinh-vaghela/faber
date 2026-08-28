@@ -17,6 +17,7 @@ import { Shell } from "@/shell/shell"
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
 import { Plugin } from "@/plugin"
+import { Server } from "@/server/server"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -166,12 +167,19 @@ export const BashTool = Tool.define("bash", async () => {
       }
 
       const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
+      const listening = Server.listening()
       const proc = spawn(params.command, {
         shell,
         cwd,
         env: {
           ...process.env,
           ...shellEnv.env,
+          OPENCODE_SESSION_ID: ctx.sessionID,
+          OPENCODE_MESSAGE_ID: ctx.messageID,
+          OPENCODE_AGENT: ctx.agent,
+          // Absent under a TUI that was never given --port: there is no API to
+          // reach, and a default origin would name a port nothing is bound to.
+          ...(listening ? { OPENCODE_SERVER_URL: listening } : {}),
         },
         stdio: ["ignore", "pipe", "pipe"],
         detached: process.platform !== "win32",

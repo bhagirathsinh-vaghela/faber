@@ -100,6 +100,16 @@ export namespace Server {
     return _url ?? new URL("http://localhost:4096")
   }
 
+  // A TUI worker calls listen() only when --port is passed, so the fallback in
+  // url() names a port nothing is bound to. An unset value is the honest answer
+  // for a caller that has to reach the API over the network. A wildcard bind
+  // reaches _url verbatim, and no client can dial 0.0.0.0.
+  export function listening() {
+    if (!_url) return
+    if (_url.hostname !== "0.0.0.0" && _url.hostname !== "::") return _url.origin
+    return `http://127.0.0.1:${_url.port}`
+  }
+
   const app = new Hono()
   export const App: () => Hono = lazy(
     () =>
