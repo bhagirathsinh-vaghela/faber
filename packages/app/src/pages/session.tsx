@@ -412,10 +412,8 @@ export default function Page() {
   const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
   const reader = () => layout.reader.opened()
   // A soft keyboard is summoned by focus and dismissed by losing it, and it
-  // covers more space than the composer it serves. Leaving reader is the
-  // declaration that you are interacting again, so the caret goes to the
-  // composer wherever it sat before, unless a pending prompt owns the dock and
-  // is the thing being answered.
+  // covers more space than the composer it serves. A pending prompt owns the
+  // dock and is the thing being answered, so it keeps the caret.
   createEffect(
     on(reader, (opened, was) => {
       if (opened) {
@@ -2852,12 +2850,11 @@ export default function Page() {
               "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
               // The mobile Changes tab hides the dock outright.
               hidden: reviewReplacesTranscript(),
-              // Slide, not display:none: the dock keeps its measured height, so
-              // the resize observer stays a pure size probe and the clearance
-              // effect owns whether that height is reserved.
-              "transition-transform duration-200 ease-out motion-reduce:transition-none": true,
-              // A pending question rides in this dock, so reader holds it on
-              // screen and hides only the composer within it.
+              // Transform, not display:none: the dock keeps its measured height,
+              // so the resize observer stays a pure size probe and the clearance
+              // effect owns whether that height is reserved. Any transition
+              // duration here animates the dock through content that reflowed
+              // into its space on the first frame.
               "translate-y-full": reader() && !awaitingAnswer(),
             }}
             // inert, not aria-hidden: the dock is hidden by transform alone, so
@@ -2865,13 +2862,6 @@ export default function Page() {
             // the violation inert exists to fix, and inert also blurs the
             // subtree, covering focus that never sat in the editor.
             inert={reader() && !awaitingAnswer()}
-            // The pill anchors to the dock's rect, and a measurement taken while
-            // the slide is mid-flight reads a transformed box. Re-measuring on
-            // arrival lands it on the resting one.
-            onTransitionEnd={(e) => {
-              if (e.target !== e.currentTarget) return
-              measureDock()
-            }}
           >
             {/* flex column + min-h-0 so the constraint from the bounded dock
                 reaches the question panel. A flex item's automatic minimum size
