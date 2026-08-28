@@ -10,10 +10,36 @@
   outline: none;
   white-space: nowrap;
 
+  /* A hit area is sized for a finger, which is larger than the control should
+     look. Every variant paints this inset layer rather than its own box, so the
+     target keeps its size while the fill pulls in, away from the glyph it wraps
+     and the edge of whatever holds it. */
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: var(--control-inset, 0);
+    border-radius: inherit;
+    background-color: transparent;
+    pointer-events: none;
+  }
+
+  /* Above the fill, which a child paints rather than the box behind it. */
+  > * {
+    position: relative;
+    z-index: 1;
+  }
+
   &[data-variant="primary"] {
-    background-color: var(--button-primary-base);
-    border-color: var(--border-weak-base);
+    background-color: transparent;
+    border-color: transparent;
     color: var(--icon-invert-base);
+
+    &::before {
+      background-color: var(--button-primary-base);
+      border: 1px solid var(--border-weak-base);
+    }
 
     [data-slot="icon-svg"] {
       color: var(--icon-invert-base);
@@ -24,21 +50,23 @@
        is the standard sticky-hover fix. :focus and :active are unaffected by it
        (keyboard focus still shows; :active is the transient press). */
     @media (hover: hover) {
-      &:hover:not(:disabled) {
+      &:hover:not(:disabled)::before {
         background-color: var(--icon-strong-hover);
       }
     }
-    &:focus:not(:disabled) {
+    &:focus:not(:disabled)::before {
       background-color: var(--icon-strong-focus);
     }
-    &:active:not(:disabled) {
+    &:active:not(:disabled)::before {
       background-color: var(--icon-strong-active);
     }
     &:disabled {
-      background-color: var(--icon-strong-disabled);
-
       [data-slot="icon-svg"] {
         color: var(--icon-invert-base);
+      }
+
+      &::before {
+        background-color: var(--icon-strong-disabled);
       }
     }
   }
@@ -58,14 +86,14 @@
        only fires for keyboard focus, so it never sticks on a tap) and :active is
        the transient press effect. */
     @media (hover: hover) {
-      &:hover:not(:disabled) {
+      &:hover:not(:disabled)::before {
         background-color: var(--surface-raised-base-hover);
       }
     }
-    &:focus-visible:not(:disabled) {
+    &:focus-visible:not(:disabled)::before {
       background-color: var(--surface-raised-base-hover);
     }
-    &:active:not(:disabled) {
+    &:active:not(:disabled)::before {
       background-color: var(--surface-raised-base-active);
     }
     &:disabled {
@@ -76,50 +104,60 @@
         color: var(--icon-disabled);
       }
     }
-    &[data-selected="true"]:not(:disabled) {
+    &[data-selected="true"]:not(:disabled)::before {
       background-color: var(--surface-raised-base-hover);
     }
-    &[data-active="true"] {
+    &[data-active="true"]::before {
       background-color: var(--surface-raised-base-active);
     }
   }
 
   &[data-variant="secondary"] {
     border: transparent;
-    background-color: var(--button-secondary-base);
+    background-color: transparent;
     color: var(--text-strong);
-    box-shadow: var(--shadow-xs-border);
+
+    &::before {
+      background-color: var(--button-secondary-base);
+      box-shadow: var(--shadow-xs-border);
+    }
 
     /* :hover gated to hover-capable pointers (standard sticky-hover fix): iOS
        leaves :hover applied after a tap, which read as a stuck fill on touch. */
     @media (hover: hover) {
-      &:hover:not(:disabled) {
+      &:hover:not(:disabled)::before {
         background-color: var(--button-secondary-hover);
       }
     }
     /* Exclude :hover so a focused-then-hovered button still shows the hover
        background — otherwise these (equal specificity, later in source) win over
        :hover and the hover effect vanishes once the button has been clicked. */
-    &:focus:not(:hover):not(:disabled) {
+    &:focus:not(:hover):not(:disabled)::before {
       background-color: var(--button-secondary-base);
     }
-    &:focus-visible:not(:active):not(:hover) {
+    &:focus-visible:not(:active):not(:hover)::before {
       background-color: var(--button-secondary-base);
       box-shadow: var(--shadow-xs-border-focus);
     }
-    &:focus-visible:active {
+    &:focus-visible:active::before {
       box-shadow: none;
     }
     &:active:not(:hover):not(:disabled) {
-      background-color: var(--button-secondary-base);
       scale: 0.99;
       transition: all 150ms ease-out;
+
+      &::before {
+        background-color: var(--button-secondary-base);
+      }
     }
     &:disabled {
-      border-color: var(--border-disabled);
-      background-color: var(--surface-disabled);
       color: var(--text-weak);
       cursor: not-allowed;
+
+      &::before {
+        border: 1px solid var(--border-disabled);
+        background-color: var(--surface-disabled);
+      }
     }
 
     [data-slot="icon-svg"] {

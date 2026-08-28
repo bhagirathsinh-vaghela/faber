@@ -114,6 +114,12 @@
   /* The glyph is a fraction of its target rather than its own constant, so a
      bigger button carries a bigger mark instead of more empty padding. */
   --control-icon: calc(var(--control-height) * 0.55);
+  /* How far a control's painted fill sits inside its hit area. The target is
+     sized for a finger; the chip that reads as the control is smaller, or it
+     crowds both the glyph it wraps and the edges of whatever holds it. A
+     fraction rather than a constant, so the chip keeps its proportions when the
+     target moves. */
+  --control-inset: calc(var(--control-height) * 0.08);
   --titlebar-height: calc(var(--control-height) + var(--control-gutter));
 }
 
@@ -138,7 +144,7 @@
 @media (any-pointer: coarse) {
   :root[data-size-class="compact"] {
     --control-height: 44px;
-    --control-gutter: 6px;
+    --control-gutter: 4px;
   }
 }
 
