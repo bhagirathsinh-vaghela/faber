@@ -95,10 +95,17 @@ test.describe("forced size class", () => {
     expect(await sizeClass(page), "a press on an unforced shell pins the opposite end").toBe("compact")
 
     // The forced class has to reach stylesheets that never learn it exists.
-    const titlebarHeight = await page.evaluate(
-      () => getComputedStyle(document.querySelector('[data-slot="titlebar"]')!).height,
-    )
-    expect(titlebarHeight, "compact titlebar is taller").toBe("48px")
+    // No control's SIZE branches on the size class, so only a topology rule can
+    // witness this; a measured height answers the same at every class.
+    const cssSaysCompact = await page.evaluate(() => {
+      const probe = document.createElement("div")
+      probe.className = "hidden compact:block"
+      document.body.appendChild(probe)
+      const verdict = getComputedStyle(probe).display === "block"
+      probe.remove()
+      return verdict
+    })
+    expect(cssSaysCompact, "a forced class must reach the stylesheet, not just the attribute").toBe(true)
 
     await toggle.click()
     await settle(page)

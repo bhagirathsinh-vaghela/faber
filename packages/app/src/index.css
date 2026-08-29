@@ -102,13 +102,12 @@
 }
 
 /* Anything anchored below the titlebar reads this rather than repeating its
-   height, which varies with the size class and grows by the safe-area inset in
-   a standalone PWA. */
+   height, which grows by the safe-area inset in a standalone PWA. */
 /* THE CONTROL SIZING SYSTEM
    =========================
-   ONE size, everywhere. Every button is a touch target, and a target does not
-   get smaller because of where it happens to sit — the same control is the same
-   size in the titlebar, in a tab, in a tool row, on desktop, tablet and phone.
+   ONE size per device. A control does not get smaller because of where it
+   happens to sit — the same control is the same size in the titlebar, in a tab,
+   and in a tool row.
 
    The direction of accommodation is therefore fixed and one-way:
 
@@ -121,14 +120,27 @@
    this system does not do; it wants a smaller mark instead, which is what
    `--control-icon` is for.
 
-   `--control-height` is the single number, and it does not branch. A control is
-   the same size for a cursor and for a finger, in a wide window and a narrow
-   one: the window's width decides how many panes fit, never how big a button is,
-   and a target sized for the finger is merely generous for the mouse rather than
-   wrong for it. Everything else here is a formula over that one number. */
+   `--control-height` is the number everything else here is a formula over. It
+   branches on exactly one thing — whether a finger can reach the screen — and
+   never on the window's width, which decides how many panes fit and nothing
+   about how big a button is. The pointer is a physical fact about the device: a
+   fingertip covers about 9mm and a cursor covers a pixel, so one size cannot be
+   honest for both. Handhelds also pack ~160 CSS px to the inch against a
+   desktop's ~110, which compounds it — the same 40px is a third larger in the
+   hand on a monitor than on a phone. */
 :root {
-  --control-height: 40px;
-  --control-gutter: 8px;
+  /* Coarse WINS, and the base is the fine size, because `any-pointer: coarse`
+     asks whether ANY pointer is coarse. A tablet on a trackpad answers to both
+     queries, so branching the other way would shrink a screen still being
+     touched. */
+  --control-height: 32px;
+  /* The room a bar adds around the control it seats, split above and below.
+     It does not branch either: the size class is a WIDTH classification, so it
+     cannot answer a question about vertical room — a tall phone and a window
+     dragged flat land on opposite sides of it while wanting the same answer.
+     Every bar takes the tightest device's spacing, which a roomier one has
+     height to spare for. */
+  --control-gutter: 4px;
   /* The glyph is a fraction of its target rather than its own constant, so a
      bigger button carries a bigger mark instead of more empty padding. */
   --control-icon: calc(var(--control-height) * 0.55);
@@ -141,15 +153,14 @@
   --control-bar: calc(var(--control-height) + var(--control-gutter));
 }
 
-:root {
-  --titlebar-height: var(--control-bar);
+@media (any-pointer: coarse) {
+  :root {
+    --control-height: 40px;
+  }
 }
 
-/* The gutter, not the target, is what gives way when vertical space is scarce:
-   the one-pane shell is the shortest viewport and the room comes out of the bar
-   around the control rather than out of the control itself. */
-:root[data-size-class="compact"] {
-  --control-gutter: 4px;
+:root {
+  --titlebar-height: var(--control-bar);
 }
 
 #root[data-standalone] {
