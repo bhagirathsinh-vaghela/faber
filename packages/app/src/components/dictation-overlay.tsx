@@ -3,7 +3,7 @@ import { Portal } from "solid-js/web"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
-import type { createDictation } from "@/utils/dictation"
+import { markDictationOverlay, type createDictation } from "@/utils/dictation"
 import { DictationWaveform } from "./dictation-waveform"
 
 // Live transcription HUD: a compact floating pill with a canvas waveform, in
@@ -96,10 +96,12 @@ export function DictationOverlay(props: {
   }
 
   onMount(() => {
+    markDictationOverlay(true)
     document.addEventListener("keydown", handleKey, true)
     document.addEventListener("pointerdown", handlePointer, true)
   })
   onCleanup(() => {
+    markDictationOverlay(false)
     document.removeEventListener("keydown", handleKey, true)
     document.removeEventListener("pointerdown", handlePointer, true)
     if (done) return
@@ -163,8 +165,12 @@ export function DictationOverlay(props: {
       {/* --composer-top is the gap from the viewport bottom to the top of the
           composer, published by PromptInput. The dock's own height is not
           usable here: it also contains the question panel, so it swings with
-          UI that has nothing to do with where the transcript lands. */}
-      <div class="fixed inset-x-0 bottom-[calc(var(--composer-top,8rem)+16px)] z-[9999] flex justify-center pointer-events-none px-4">
+          UI that has nothing to do with where the transcript lands. It is
+          absent when no composer is rendered (reader dictating from the pill),
+          and the panel then sits a fifth of the way up instead, which places it
+          over the transcript rather than against the edge the pill occupies.
+          dvh, not vh: the mobile bar collapsing must not shift it mid-sentence. */}
+      <div class="fixed inset-x-0 bottom-[calc(var(--composer-top,20dvh)+16px)] z-[9999] flex justify-center pointer-events-none px-4">
         <div
           ref={panelRef}
           class="pointer-events-auto w-full max-w-md flex flex-col gap-2 rounded-[1.75rem] border-[4.5px] bg-surface-raised-stronger-non-alpha p-2 transform-gpu isolate"

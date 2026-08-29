@@ -14,9 +14,16 @@ import { useLocal } from "@/context/local"
 import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { agentColor } from "@/utils/agent"
-import { createDictation, dictationActive, dictationTarget, registerDictationTarget } from "@/utils/dictation"
+import {
+  createDictation,
+  dictationActive,
+  dictationOverlayOpen,
+  dictationTarget,
+  registerDictationTarget,
+} from "@/utils/dictation"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
+import { MicIcon } from "@/components/mic-icon"
 import { usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
 
@@ -439,6 +446,9 @@ function Panel(props: {
   // it has focus.
   function handleKey(event: KeyboardEvent) {
     if (store.editing) return
+    // The dictation overlay owns Enter, Escape and Space (accept, discard,
+    // pause) for as long as it is on screen, transcription included.
+    if (dictationOverlayOpen()) return
     // Held arrows may repeat (navigation); a repeating Enter/Space must not
     // act, or a held key answers every queued request in order.
     if (event.repeat && (event.key === "Enter" || event.key === " ")) return
@@ -792,11 +802,10 @@ function Panel(props: {
                       }
                       aria-pressed={dictating()}
                     >
-                      <Icon
-                        name="mic"
+                      <MicIcon
                         class="size-4.5 any-pointer-coarse:size-6"
-                        classList={{ "text-icon-critical-base animate-pulse": dictating() }}
-                        style={dictationTargeted() ? { color: accent() } : undefined}
+                        running={dictating()}
+                        targeted={dictationTargeted()}
                       />
                     </Button>
                   </Show>

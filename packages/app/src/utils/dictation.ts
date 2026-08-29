@@ -160,6 +160,27 @@ let active: (() => void) | undefined
 // grab focus.
 export const dictationActive = () => !!active
 
+// The reactive twin, for a mic that has to paint its own capturing state while
+// the host owning the session is somewhere else (the reader pill, whose
+// composer is not rendered).
+const [dictating, setDictating] = createSignal(false)
+export const dictationRunning = dictating
+
+// Every assignment to `active` goes through here, so the two cannot disagree.
+const setActive = (next: (() => void) | undefined) => {
+  active = next
+  setDictating(!!next)
+}
+
+// Whether the transcription HUD is on screen, which OUTLIVES capture: it stays
+// up while a batch engine transcribes. It owns Enter, Escape and Space for that
+// whole time, so every other document-level handler consults this and yields.
+// Capture-phase handlers fire in mount order rather than by what is in front of
+// the user, so precedence has to be stated rather than inferred.
+const [overlay, setOverlay] = createSignal(false)
+export const dictationOverlayOpen = overlay
+export const markDictationOverlay = setOverlay
+
 // A dictation shortcut has to fire against exactly one mic, but two composers
 // (the prompt dock and an expanded question panel) can show one at once. The
 // focused composer registers itself as the target; the prompt dock also
@@ -241,7 +262,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     const { socket, context, stream, target } = session
     session = undefined
     analyser = undefined
-    if (active === stop) active = undefined
+    if (active === stop) setActive(undefined)
     release(socket, context, stream, target)()
   }
 
@@ -262,7 +283,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     session = undefined
     analyser = undefined
     paused = false
-    if (active === stop) active = undefined
+    if (active === stop) setActive(undefined)
     setStore({ active: false, listening: false, paused: false, transcribing: true })
     const asked = performance.now()
     const closeAudio = release(socket, context, stream, target)
@@ -314,7 +335,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   const start = async () => {
     if (session) return
     active?.()
-    active = stop
+    setActive(stop)
     // A fresh dictation starts from an empty transcript, whatever an earlier
     // session's exit path left behind.
     setStore({ committed: "", interim: "" })
@@ -443,7 +464,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
         analyser = undefined
       }
       dispose()
-      if (active === stop) active = undefined
+      if (active === stop) setActive(undefined)
       setStore({ active: false, listening: false })
       if (generation !== epoch) return
       opts.onError?.(error instanceof Error ? error.message : String(error))
