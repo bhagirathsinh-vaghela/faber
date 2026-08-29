@@ -93,11 +93,6 @@ import { Visibility } from "@/utils/visibility"
 
 type DiffStyle = "unified" | "split"
 
-// Breathing room between the busy bar and the dock below it, and the same gap
-// again above the bar; the bar's `bottom` offset carries one and the transcript
-// clearance the other.
-const BUSY_GAP = 8
-
 const handoff = {
   prompt: "",
   terminals: [] as string[],
@@ -411,6 +406,13 @@ export default function Page() {
   // around whichever of them is pending.
   const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
   const reader = () => layout.reader.opened()
+  // A draft is unsendable while the dock is away, and dictation from the reader
+  // pill writes one without the composer ever being on screen. Reader means "I
+  // am not typing", which a draft contradicts, so the dock returns to carry it
+  // and leaves again once it is sent or cleared. Summoning is the same request
+  // made deliberately, for the empty composer nothing else would keep up.
+  const composerWanted = createMemo(() => prompt.dirty() || layout.reader.composer.summoned())
+  const readerDocked = createMemo(() => reader() && !awaitingAnswer() && !composerWanted())
   // A soft keyboard is summoned by focus and dismissed by losing it, and it
   // covers more space than the composer it serves. A pending prompt owns the
   // dock and is the thing being answered, so it keeps the caret.
@@ -427,6 +429,30 @@ export default function Page() {
       requestAnimationFrame(() => command.trigger("prompt.focus.end"))
     }),
   )
+
+  // Summoning is asking to type, so the caret goes with the composer. Deferred
+  // for the same reason as above: the element is still hidden on this tick.
+  createEffect(
+    on(layout.reader.composer.summoned, (summoned) => {
+      if (!summoned) return
+      requestAnimationFrame(() => command.trigger("prompt.focus.end"))
+    }),
+  )
+
+  // A summoned composer is a question ("type something?"), and a press anywhere
+  // else answers no. Only while it is still empty: once there is a draft the
+  // composer stays regardless, since a hidden draft cannot be sent or seen.
+  onMount(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (!layout.reader.composer.summoned() || prompt.dirty()) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[data-slot="prompt-dock"]')) return
+      if (target?.closest("[data-reader-cluster]")) return
+      layout.reader.composer.dismiss()
+    }
+    document.addEventListener("pointerdown", dismiss, true)
+    onCleanup(() => document.removeEventListener("pointerdown", dismiss, true))
+  })
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -581,7 +607,6 @@ export default function Page() {
     messageId: undefined as string | undefined,
     newSessionWorktree: "main",
     promptHeight: 0,
-    busyHeight: 0,
   })
 
   // The most recent turns render with their steps expanded by default; older
@@ -671,7 +696,6 @@ export default function Page() {
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
   let promptInner: HTMLDivElement | undefined
-  const [busyBar, setBusyBar] = createSignal<HTMLDivElement>()
   let scroller: HTMLDivElement | undefined
   // A signal (not a plain ref) so the tail-follow ResizeObserver attaches
   // whenever the transcript (re)mounts; a bare `let` is invisible to it.
@@ -1952,38 +1976,24 @@ export default function Page() {
     () => promptDock,
     () => {
       if (!promptDock) return
-      // Clearance = the dock's OPAQUE footprint = border-box height minus the
-      // pt-12 transparent gradient top (the transcript scrolls under that). The
-      // border box includes the dock's bottom padding (which carries the
-      // safe-area inset in standalone), so the last card clears the input.
-      const padTop = parseFloat(getComputedStyle(promptDock).paddingTop) || 0
-      const next = Math.ceil(promptDock.offsetHeight - padTop)
-      if (next <= 0 || next === store.promptHeight) return
+      // The column's padding is the gap it owes the transcript above and the
+      // window below, so both belong in the height the transcript clears.
+      const next = Math.max(0, Math.ceil(promptDock.offsetHeight))
+      if (next === store.promptHeight) return
 
       setStore("promptHeight", next)
     },
   )
 
-  createResizeObserver(busyBar, ({ height }) => {
-    const next = Math.ceil(height)
-    if (next === store.busyHeight) return
-    setStore("busyHeight", next)
-  })
-
-  // Clearance is the RESTING measurement gated by reader, not a live read of
-  // a sliding dock: the dock leaves by transform, so its measured height never
-  // changes and the observer above stays a pure size probe. Publishing 0 is what
-  // turns the slide into reclaimed space rather than a dead band.
-  //
-  // Two vars, because the bar anchors to the dock while the transcript must
-  // clear both. Folding the bar into the value it positions against would walk
-  // it up the screen one measurement per cycle.
+  // One measurement of the whole column, so whatever is inside it — busy bar,
+  // question panel, composer, or nothing — is already accounted for by the time
+  // the transcript reads this. Nothing inside adds its own height on top, and
+  // the breathing room above the column is carried here rather than re-added by
+  // each consumer.
   createEffect(() => {
-    const dock = reader() && !awaitingAnswer() ? 0 : store.promptHeight
-    const next = dock + (store.busyHeight ? store.busyHeight + BUSY_GAP : 0)
+    const next = store.promptHeight
     // On the root element, not the session panel: the dictation overlay
     // portals to <body> and would otherwise inherit nothing to anchor to.
-    document.documentElement.style.setProperty("--dock-height", `${dock}px`)
     document.documentElement.style.setProperty("--prompt-height", `${next}px`)
 
     // A taller dock covers the tail; re-pin if following. The dock grows when
@@ -2309,8 +2319,10 @@ export default function Page() {
   const measureDock = () => {
     // A composer translated off-screen would drag the pill down with it, taking
     // the only way out of reader off the viewport. Null hands the pill its
-    // corner.
-    if (reader()) {
+    // corner. Keyed to whether the dock actually left, not to reader itself: a
+    // summoned composer is on screen and the cluster has to sit above it rather
+    // than over it.
+    if (readerDocked()) {
       setDockRect(null)
       return
     }
@@ -2336,7 +2348,7 @@ export default function Page() {
   createEffect(() => {
     // Depend on the triggers that move the box, then measure post-layout.
     void store.promptHeight
-    void reader()
+    void readerDocked()
     void centered()
     requestAnimationFrame(measureDock)
   })
@@ -2441,7 +2453,7 @@ export default function Page() {
                                   file.load(path)
                                 }}
                                 classes={{
-                                  root: "pb-[calc(var(--prompt-height,8rem)+12px)]",
+                                  root: "pb-(--prompt-height)",
                                   header: "px-4",
                                   container: "px-4",
                                 }}
@@ -2461,8 +2473,11 @@ export default function Page() {
                     }
                   >
                     <div class="relative w-full h-full min-w-0">
+                      {/* Opacity only: `all` also animated the bottom edge,
+                          which tracks the dock, so the button slid across the
+                          screen whenever the composer came or went. */}
                       <div
-                        class="absolute left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+12px)] z-[60] pointer-events-none transition-all duration-200 ease-out"
+                        class="absolute left-1/2 -translate-x-1/2 bottom-(--prompt-height) z-[60] pointer-events-none transition-opacity duration-200 ease-out"
                         classList={{
                           "opacity-100 translate-y-0 scale-100": !following(),
                           "opacity-0 translate-y-2 scale-95 pointer-events-none": !!following(),
@@ -2701,7 +2716,7 @@ export default function Page() {
                         <div
                           ref={setContent}
                           role="log"
-                          class="flex flex-col gap-4 items-start justify-start transition-[margin]"
+                          class="flex flex-col gap-4 items-start justify-start"
                           classList={{
                             "w-full": true,
                             "panel-wide:max-w-[95%] panel-wide:mx-auto": centered(),
@@ -2756,8 +2771,7 @@ export default function Page() {
                                   // The last turn carries the floating-dock
                                   // clearance so virtua's align:"end" lands the
                                   // message above the dock, not under it.
-                                  "!pb-[calc(var(--prompt-height,8rem)+12px)] panel-wide:!pb-[calc(var(--prompt-height,10rem)+12px)]":
-                                    index() === lastIndex(),
+                                  "!pb-(--prompt-height)": index() === lastIndex(),
                                 }}
                               >
                                 <SessionTurn
@@ -2805,41 +2819,10 @@ export default function Page() {
             </Switch>
           </div>
 
-          {/* Busy-turn bar in the gap between the message boxes and the dock,
-              the busy cue in every mode. The dock's own busy spinner (dock-line1)
-              is suppressed, so this bar is the single indicator. It sits OUTSIDE
-              the dock so reader's slide leaves it on screen — a hidden
-              composer must still show that a turn is running. Its own height
-              feeds the transcript clearance (see the clearance effect), since it
-              covers the tail exactly as the dock does. */}
-          <Show when={titleWorking()}>
-            <div
-              ref={setBusyBar}
-              data-slot="busy-bar-dock"
-              classList={{
-                // The dock's gradient extends above its opaque edge, and the bar
-                // sits in that overlap.
-                "absolute inset-x-0 z-[51] px-4 panel-wide:px-0 pointer-events-none": true,
-                "panel-wide:max-w-[95%] panel-wide:mx-auto": centered(),
-              }}
-              style={{ bottom: `calc(var(--dock-height, 8rem) + ${BUSY_GAP}px)` }}
-            >
-              <div class="w-full px-3">
-                <div class="busy-bar-track">
-                  <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
-                    <span class="busy-bar-fill" />
-                    <Show when={mixing()}>
-                      <span class="busy-bar-fill busy-bar-fill-task" />
-                    </Show>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Show>
-
-          {/* Prompt input — hidden entirely in zen mode (messages only) and on
-              the mobile Changes tab, where you're reviewing a diff, not
-              composing, so the dock is dead weight over the file list. */}
+          {/* Everything below the transcript lives in this one column, so what
+              is on screen stacks by layout rather than by each part measuring
+              the parts beneath it. The transcript clears the column's whole
+              height; nothing inside needs to know that height. */}
           <div
             ref={(el) => (promptDock = el)}
             data-slot="prompt-dock"
@@ -2849,22 +2832,42 @@ export default function Page() {
               // inside can know how much room it has, which is why the question
               // panel used to guess with a hardcoded max-height. With the chain
               // bounded, its inner scroller resolves a real height and engages.
-              "absolute inset-x-0 bottom-0 max-h-full min-h-0 pt-12 pb-4 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none": true,
+              // The column owns every gap around and between its children, so
+              // nothing inside adds its own and stacks two spacings into one
+              // edge. py + gap are the single source: 8px above, between, and
+              // below, whatever the column happens to hold.
+              "absolute inset-x-0 bottom-0 max-h-full min-h-0 py-2 gap-2 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 pointer-events-none": true,
               // The mobile Changes tab hides the dock outright.
               hidden: reviewReplacesTranscript(),
-              // Transform, not display:none: the dock keeps its measured height,
-              // so the resize observer stays a pure size probe and the clearance
-              // effect owns whether that height is reserved. Any transition
-              // duration here animates the dock through content that reflowed
-              // into its space on the first frame.
-              "translate-y-full": reader() && !awaitingAnswer(),
+              // Opaque under the content so the transcript cannot read through
+              // it, with a 6px ramp above that the padding clears by a pixel.
+              // A progress line is thin enough that nothing reads through it.
+              "bg-[linear-gradient(to_top,var(--background-stronger)_0%,var(--background-stronger)_calc(100%-6px),transparent_100%)]":
+                !titleWorking(),
             }}
-            // inert, not aria-hidden: the dock is hidden by transform alone, so
-            // it keeps its tab order. aria-hidden over focusable descendants is
-            // the violation inert exists to fix, and inert also blurs the
-            // subtree, covering focus that never sat in the editor.
-            inert={reader() && !awaitingAnswer()}
           >
+            {/* The busy cue outlives the composer: reader hides the one below
+                and a running turn must still say so. */}
+            <Show when={titleWorking()}>
+              <div
+                data-slot="busy-bar-dock"
+                classList={{
+                  "w-full pointer-events-none": true,
+                  "panel-wide:max-w-[95%] panel-wide:mx-auto": centered(),
+                }}
+              >
+                <div class="w-full px-3">
+                  <div class="busy-bar-track">
+                    <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
+                      <span class="busy-bar-fill" />
+                      <Show when={mixing()}>
+                        <span class="busy-bar-fill busy-bar-fill-task" />
+                      </Show>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Show>
             {/* flex column + min-h-0 so the constraint from the bounded dock
                 reaches the question panel. A flex item's automatic minimum size
                 is content-based, so without min-h-0 at EVERY level this column
@@ -2875,7 +2878,12 @@ export default function Page() {
               classList={{
                 "w-full pointer-events-auto flex flex-col min-h-0": true,
                 "panel-wide:max-w-[95%] panel-wide:mx-auto": centered(),
+                // display:none, not a transform: the column below must collapse
+                // so the busy bar above it drops to the screen edge, rather than
+                // hovering where the composer used to be.
+                hidden: readerDocked(),
               }}
+              inert={readerDocked()}
             >
               <Show when={revertMessageID()}>
                 <button
@@ -2946,8 +2954,8 @@ export default function Page() {
               <div
                 data-slot="composer"
                 class="w-full min-h-0 flex flex-col"
-                classList={{ hidden: reader() }}
-                inert={reader()}
+                classList={{ hidden: reader() && !composerWanted() }}
+                inert={reader() && !composerWanted()}
               >
                 <Show
                   when={prompt.ready()}

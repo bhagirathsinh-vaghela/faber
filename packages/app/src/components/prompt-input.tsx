@@ -60,6 +60,7 @@ import { confirmAbsent } from "@/utils/confirm-absent"
 import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { createCoarsePointer, preserveFocus } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
+import { MicIcon } from "@/components/mic-icon"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
 import { PromptActionBar } from "@/components/prompt-actionbar"
@@ -1019,7 +1020,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // dragged the overlay off screen.
   const trackComposer = (el: HTMLElement) => {
     const publish = () => {
-      const gap = Math.max(0, Math.round(window.innerHeight - el.getBoundingClientRect().top))
+      const box = el.getBoundingClientRect()
+      // An unrendered composer measures at the origin, so the subtraction below
+      // would publish the whole viewport height and put the overlay above the
+      // top of the screen. Reader hides the composer while dictation stays
+      // reachable from the pill, which is when that happens.
+      if (!box.height) {
+        document.documentElement.style.removeProperty("--composer-top")
+        return
+      }
+      const gap = Math.max(0, Math.round(window.innerHeight - box.top))
       document.documentElement.style.setProperty("--composer-top", `${gap}px`)
     }
     publish()
@@ -1160,6 +1170,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (lastEntry && isPromptEqual(lastEntry, entry)) return
 
     setCurrentHistory("entries", (entries) => [entry, ...entries].slice(0, MAX_HISTORY))
+  }
+
+  // Empty the composer. Attachments and pinned context survive: this is the
+  // text field's own clear, and each attachment carries its own remove control.
+  const clearPrompt = () => {
+    prompt.reset()
+    setStore("mode", "normal")
+    setStore("popover", null)
   }
 
   // Leaving shell mode stashes the command rather than carrying it into normal
@@ -1315,9 +1333,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (ctrl && event.code === "KeyC") {
       const sel = window.getSelection()
       if (sel && !sel.isCollapsed) return
-      prompt.reset()
-      setStore("mode", "normal")
-      setStore("popover", null)
+      clearPrompt()
       event.preventDefault()
       return
     }
@@ -2143,6 +2159,30 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               onClose={() => setStore("dictating", false)}
             />
           </Show>
+          <Show when={prompt.dirty()}>
+            <div class="absolute top-0.5 right-0.5 z-20">
+              <Tooltip
+                placement="top"
+                value={
+                  <div class="flex items-center gap-2">
+                    <span>{language.t("prompt.action.clear")}</span>
+                    <span class="text-icon-base text-12-medium text-[10px]!">^C</span>
+                  </div>
+                }
+              >
+                <IconButton
+                  type="button"
+                  icon="close"
+                  variant="ghost"
+                  aria-label={language.t("prompt.action.clear")}
+                  onClick={() => {
+                    clearPrompt()
+                    editorRef.focus()
+                  }}
+                />
+              </Tooltip>
+            </div>
+          </Show>
           <Show when={store.dragging}>
             <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
               <div class="flex flex-col items-center gap-2 text-text-weak">
@@ -2268,20 +2308,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             The dock is bottom-anchored, so a taller cap grows it upward into
             the reachable lower half rather than pushing controls off-thumb.
             Applied at every width — the dock keeps its normal full width. */}
-          {/* Desktop reader puts the editor and the button row on one line. They must
-            share it as flex siblings so the buttons claim real width and wrapped
-            text can never reach under them. Everywhere else this wrapper is
-            display:contents, leaving the two as direct children of the form. */}
-          <div
-            classList={{
-              contents: true,
-              "dock-wide:flex dock-wide:flex-row dock-wide:items-center": reader(),
-            }}
-          >
+          <div class="contents">
             <div
               classList={{
                 "relative overflow-y-auto min-w-0": true,
-                "dock-wide:flex-1": reader(),
                 "max-h-[240px]": !companionTall(),
                 "max-h-[45vh]": companionTall(),
               }}
@@ -2317,6 +2347,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   "w-full px-2 text-13-semibold dock-wide:px-3 dock-wide:text-14-semibold text-text-strong focus:outline-none whitespace-pre-wrap": true,
                   "pt-2 pb-0 dock-wide:py-3": !reader(),
                   "pt-2 pb-0 dock-wide:py-2.5": reader(),
+                  // The clear button overlays this corner; the first line stops
+                  // short of it and the rest of the draft wraps underneath.
+                  "pr-9": prompt.dirty(),
                   // Hold the tall surface open on an empty draft, so entering
                   // companion doesn't collapse the dock back to one line.
                   "min-h-[28vh]": companionTall(),
@@ -2350,16 +2383,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 // Mobile stacks so the dock info line (when expanded) sits above the
                 // flat button row; desktop keeps them side by side.
                 "flex flex-col dock-wide:flex-row dock-wide:items-center dock-wide:justify-between gap-2": true,
-                // Default: the button row sits below the input. The mobile pt-2
-                // mirrors the editor's own pt-2 (symmetric space above/below the
-                // text), and pb-1.5 keeps the buttons off the bottom border. On
-                // mobile this holds in reader too, giving the same two-row layout as
-                // the collapsed dock.
-                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:py-1.5": !reader(),
-                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:pb-0": reader(),
-                // Desktop reader keeps the original single row: buttons sit at the
-                // input's right edge (the mobile stack still applies below md).
-                "dock-wide:shrink-0 dock-wide:px-2 dock-wide:pt-0 dock-wide:pb-0": reader(),
+                "relative px-3 pt-2 pb-1.5 dock-wide:pt-0 dock-wide:py-1.5": true,
               }}
             >
               <div
@@ -2549,7 +2573,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </span>
                 </Show>
               </div>
-              <div class="flex items-center justify-between flex-1 py-1 dock-wide:flex-none dock-wide:justify-end dock-wide:gap-1 shrink-0">
+              <div
+                classList={{
+                  "flex items-center py-1 dock-wide:flex-none dock-wide:justify-end dock-wide:gap-1 shrink-0": true,
+                  // Spreading the icons needs the info cluster opposite them to
+                  // push against. Reader hides it, so they group at the end
+                  // instead of stretching across the whole dock.
+                  "justify-between flex-1": !reader(),
+                  "ml-auto gap-1": reader(),
+                }}
+              >
                 {/* Mobile only: grabber toggles the dock info line + chip row
                 together (both collapsed by default). Outward arrows = expand;
                 inward arrows = collapse. */}
@@ -2681,13 +2714,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         }
                         aria-pressed={store.dictating}
                       >
-                        <Icon
-                          name="mic"
-                          classList={{ "text-icon-critical-base animate-pulse": store.dictating }}
-                          style={
-                            dictationTargeted() ? { color: workingTint() ?? "var(--icon-interactive-base)" } : undefined
-                          }
-                        />
+                        <MicIcon running={store.dictating} targeted={dictationTargeted()} />
                       </Button>
                     </Tooltip>
                   </Show>

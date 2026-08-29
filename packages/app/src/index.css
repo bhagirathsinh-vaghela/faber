@@ -311,7 +311,15 @@
   max-width: 240px;
   padding: 5px 8px;
   border-radius: 999px;
-  background: var(--background-stronger);
+  /* Opaque across the bar and through half the padding, then a steep fade over
+     the remainder: the halo needs to occlude the transcript everywhere the bar
+     sits, and only its outermost edge should soften. */
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    var(--background-stronger) 0%,
+    var(--background-stronger) 78%,
+    transparent 100%
+  );
 }
 
 .busy-bar {
