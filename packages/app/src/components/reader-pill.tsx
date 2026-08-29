@@ -83,7 +83,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
   // A press reshapes the dock under the pointer, which would otherwise slide the
   // pill away mid-press and land the release elsewhere.
-  const [held, setHeld] = createSignal<{ x: number; y: number } | null>(null)
+  const [pressing, setPressing] = createSignal(false)
 
   const anchored = createMemo(() => {
     const rect = props.anchor?.()
@@ -92,6 +92,13 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
       x: Math.min(rect.right - size() + NUDGE, window.innerWidth - size() - MARGIN),
       y: rect.top - size() - GAP,
     }
+  })
+
+  const [resting, setResting] = createSignal<{ x: number; y: number } | null>(null)
+  createEffect(() => {
+    const live = anchored()
+    if (!live || pressing()) return
+    setResting(live)
   })
 
   // A viewport that shrinks under a parked pill — rotation, the soft keyboard,
@@ -127,10 +134,18 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     onCleanup(() => window.removeEventListener("resize", reclamp))
   })
 
-  // Anchor priority: a live drag wins, then a parked position, then a held
-  // press, then the live anchor. Null until the first measurement, or with no
-  // anchor at all.
-  const coords = createMemo(() => drag() ?? pos() ?? held() ?? anchored())
+  // Anchor priority: a live drag wins, then a parked position, then the live
+  // anchor, then the last one the anchor offered. Null until the first
+  // measurement, or with no anchor at all.
+  //
+  // Clamped here rather than at the source, because the fallback was measured
+  // for a shorter stack than the one that reads it.
+  const coords = createMemo(() => {
+    const moved = drag() ?? pos()
+    if (moved) return moved
+    const at = (pressing() ? resting() : anchored()) ?? resting()
+    return at && clamp(at.x, at.y)
+  })
 
   // Pointer events TRACK the drag; they never toggle. The toggle is the click,
   // so the pill activates like every other control (and stays reachable by
@@ -138,9 +153,9 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // click, which is what separates "moved the pill" from "tapped the pill".
   let dragged = false
   function start(e: PointerEvent) {
-    setHeld(anchored())
+    setPressing(true)
     const release = () => {
-      setHeld(null)
+      setPressing(false)
       document.removeEventListener("pointerup", release)
       document.removeEventListener("pointercancel", release)
     }
