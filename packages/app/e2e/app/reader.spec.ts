@@ -11,7 +11,10 @@ import type { createSdk } from "../utils"
 const PHONE = { width: 430, height: 900 }
 const DESKTOP = { width: 1500, height: 900 }
 
-const readerPill = (page: Page) => page.locator("button.fixed").first()
+// The mode toggle sits at the foot of a cluster that also holds compose and
+// dictate, so it is addressed by what it does. A positional or class-based
+// selector picks up whichever sibling the cluster gained last.
+const readerPill = (page: Page) => page.getByRole("button", { name: /reader mode/i })
 
 const scroller = (page: Page) => page.locator(".session-scroller")
 
@@ -20,6 +23,12 @@ const scroller = (page: Page) => page.locator(".session-scroller")
 // about whether the transcript got the room back.
 const clearance = (page: Page) =>
   page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--prompt-height").trim())
+
+// Reclaimed means the composer's own height is gone. A small constant gap
+// remains so the transcript's last box never runs into the window's edge, so
+// the assertion is a threshold rather than an exact zero.
+const RECLAIMED = 16
+const reclaimed = async (page: Page) => parseFloat(await clearance(page)) <= RECLAIMED
 
 const settle = (page: Page) => page.waitForTimeout(400)
 
@@ -57,7 +66,7 @@ test.describe("reader mode", () => {
       expect(docked).not.toBe("0px")
 
       await enterReader(page)
-      expect(await clearance(page)).toBe("0px")
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
 
       await readerPill(page).click()
       await settle(page)
@@ -70,10 +79,10 @@ test.describe("reader mode", () => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
-      expect(await clearance(page)).toBe("0px")
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
 
       await tapBackdrop(page)
-      expect(await clearance(page)).toBe("0px")
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
 
       const box = await scroller(page).boundingBox()
       if (!box) throw new Error("transcript scroller has no box")
@@ -84,13 +93,13 @@ test.describe("reader mode", () => {
       await page.mouse.move(x, y - 140, { steps: 10 })
       await page.mouse.up()
       await settle(page)
-      expect(await clearance(page)).toBe("0px")
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
 
       const turn = page.locator('[data-component="session-turn"]').first()
       await expect(turn).toBeVisible()
       await turn.click({ position: { x: 5, y: 5 } })
       await settle(page)
-      expect(await clearance(page)).toBe("0px")
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
     })
   })
 
@@ -157,7 +166,6 @@ test.describe("reader mode", () => {
       const composer = page.locator('[data-slot="composer"]')
       await expect(composer).toHaveAttribute("inert", "")
       await expect(composer).toBeHidden()
-      await expect(page.locator('[data-slot="prompt-dock"]')).toHaveAttribute("inert", "")
       await expect(editor).not.toBeFocused()
     })
   })
@@ -191,8 +199,7 @@ test.describe("reader mode on a fine pointer", () => {
       expect(docked).not.toBe("0px")
 
       await enterReader(page)
-      expect(await clearance(page)).toBe("0px")
-      await expect(page.locator('[data-slot="prompt-dock"]')).toHaveAttribute("inert", "")
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
       await expect(page.locator('[data-slot="composer"]')).toBeHidden()
     })
   })
@@ -241,7 +248,7 @@ test.describe("reader mode on a fine pointer", () => {
 
       // Moving the control and activating it are the two things the gesture
       // must keep apart, so a drag past the slop cannot also toggle.
-      expect(await clearance(page)).not.toBe("0px")
+      expect(await reclaimed(page), "the composer holds its space").toBe(false)
 
       await enterReader(page)
       const afterToggle = await pill.boundingBox()

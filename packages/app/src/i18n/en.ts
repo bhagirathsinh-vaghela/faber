@@ -122,6 +122,8 @@ export const dict = {
   "dock.show": "Show usage",
   "reader.enter": "Reader mode",
   "reader.exit": "Exit reader mode",
+  "reader.dictate": "Dictate",
+  "reader.compose": "Write a message",
 
   "dialog.provider.search.placeholder": "Search providers",
   "dialog.provider.empty": "No providers found",
@@ -248,6 +250,7 @@ export const dict = {
   "prompt.action.send": "Send",
   "prompt.action.stop": "Stop",
   "prompt.action.dictate": "Dictate",
+  "prompt.action.clear": "Clear",
   "prompt.action.dictateStop": "Stop dictation",
   "prompt.toast.dictationFailed.title": "Dictation failed",
   "dictation.starting": "Starting",

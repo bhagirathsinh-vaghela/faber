@@ -1,7 +1,10 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
+import { Icon } from "@opencode-ai/ui/icon"
+import { MicIcon } from "@/components/mic-icon"
 import { useLayout } from "@/context/layout"
 import { useLanguage } from "@/context/language"
+import { dictationRunning, dictationTarget } from "@/utils/dictation"
 import { createCoarsePointer, TOUCH_SLOP } from "@/utils/mobile"
 
 // Sized for a fingertip on every device: the pill floats over content, so it
@@ -31,6 +34,11 @@ const cssPx = (name: string, fallback: number) =>
 // separate it from, and it is the only way out of reader.
 const PILL_SCALE = 1.45
 
+// The mic sits above the reader button in one stack, so speaking does not cost
+// a trip out of reader. It rides the same coordinates: two separately parked
+// controls would need two clamps and could be dragged on top of each other.
+const STACK_GAP = 10
+
 // The glyph fills the same fraction of this control that an icon fills of any
 // other, read from the ratio the stylesheet already applies.
 const iconRatio = () => cssPx("--control-icon", 20) / cssPx("--control-height", 36)
@@ -48,9 +56,27 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     return Math.round(cssPx("--control-height", 36) * PILL_SCALE)
   }
 
+  // The reader button, plus the two the mode adds above it.
+  const orbs = () => (layout.reader.opened() ? 3 : 1)
+  const stack = () => orbs() * size() + (orbs() - 1) * STACK_GAP
+
+  // How far the stack rises above its bottom button, which is everything the
+  // bottom button does not occupy itself.
+  const above = () => stack() - size()
+
+  // x/y address the BOTTOM button, and the rest of the cluster hangs off it
+  // upward. That button is the one constant: it is present in every mode, and
+  // it is where a parked position was aimed, so it must not move when a
+  // sibling appears above it and changes the stack's height.
+  //
+  // The upper bound is still the stack's, since a bottom button pinned legally
+  // can still push its neighbours off the top of the screen.
   const clamp = (x: number, y: number) => ({
     x: Math.max(MARGIN + inset("--sal"), Math.min(x, window.innerWidth - size() - MARGIN - inset("--sar"))),
-    y: Math.max(MARGIN + inset("--sat"), Math.min(y, window.innerHeight - size() - MARGIN - inset("--sab"))),
+    y: Math.max(
+      MARGIN + inset("--sat") + above(),
+      Math.min(y, window.innerHeight - size() - MARGIN - inset("--sab")),
+    ),
   })
 
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
@@ -71,6 +97,24 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // A viewport that shrinks under a parked pill — rotation, the soft keyboard,
   // a resized window — leaves it outside the bounds, where it can be neither
   // tapped nor dragged back.
+  //
+  // The gap to the NEARER horizontal edge is what a resize preserves, rather
+  // than the absolute x. Clamping x alone is lossy in one direction: a narrowing
+  // window pulls a right-parked pill inward, and widening it back leaves that
+  // smaller x sitting mid-screen, away from the side it was parked on.
+  // Measured against the width the pill was last placed in, since by the time a
+  // resize fires window.innerWidth is already the new one.
+  let placedIn = window.innerWidth
+  const reclamp = () => {
+    const was = placedIn
+    placedIn = window.innerWidth
+    setPos((p) => {
+      if (!p) return p
+      const right = was - (p.x + size())
+      if (right > p.x) return clamp(p.x, p.y)
+      return clamp(window.innerWidth - size() - right, p.y)
+    })
+  }
   createEffect(() => {
     const current = pos()
     if (!current) return
@@ -79,7 +123,6 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     setPos(bounded)
   })
   onMount(() => {
-    const reclamp = () => setPos((p) => (p ? clamp(p.x, p.y) : p))
     window.addEventListener("resize", reclamp)
     onCleanup(() => window.removeEventListener("resize", reclamp))
   })
@@ -108,12 +151,15 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     const startX = e.clientX
     const startY = e.clientY
     dragged = false
+    const box = (pill.parentElement ?? pill).getBoundingClientRect()
+    const grabX = e.clientX - box.left
+    const grabY = e.clientY - (box.bottom - size())
 
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return
       if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < TOUCH_SLOP) return
       dragged = true
-      setDrag(clamp(ev.clientX - size() / 2, ev.clientY - size() / 2))
+      setDrag(clamp(ev.clientX - grabX, ev.clientY - grabY))
     }
     const end = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return
@@ -137,42 +183,70 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     if (e.isTrusted) pill.setPointerCapture(e.pointerId)
   }
 
+  const glyph = () => Math.round(size() * iconRatio())
+
+  // One button of the cluster. Every one of them is a drag handle, so the whole
+  // stack moves from wherever it is grabbed, and each suppresses the click that
+  // a drag ending on it would otherwise deliver.
+  const Orb = (props: { label: string; onPress: () => void; dictation?: boolean; children: JSX.Element }) => (
+    <button
+      type="button"
+      onPointerDown={start}
+      onClick={() => {
+        if (dragged) {
+          dragged = false
+          return
+        }
+        props.onPress()
+      }}
+      aria-label={props.label}
+      data-dictation-toggle={props.dictation ? "" : undefined}
+      class="pointer-events-auto flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-strong-base touch-none select-none cursor-grab active:cursor-grabbing hover:bg-surface-raised-base-hover"
+      style={{ width: `${size()}px`, height: `${size()}px` }}
+    >
+      <span class="flex items-center justify-center" style={{ width: `${glyph()}px`, height: `${glyph()}px` }}>
+        {props.children}
+      </span>
+    </button>
+  )
+
   return (
     <Portal>
-      <button
-        type="button"
-        onPointerDown={start}
-        onClick={() => {
-          // A drag that ended elsewhere still emits a click here; only a tap
-          // that stayed put should toggle.
-          if (dragged) {
-            dragged = false
-            return
-          }
-          layout.reader.toggle()
-        }}
-        aria-label={layout.reader.opened() ? language.t("reader.exit") : language.t("reader.enter")}
-        class="fixed z-[100] flex items-center justify-center rounded-full shadow-md border border-border-weak-base bg-surface-raised-base text-icon-base touch-none select-none cursor-grab active:cursor-grabbing hover:bg-surface-raised-base-hover"
-        classList={{ "transition-none": drag() !== null }}
+      <div
+        data-reader-cluster
+        class="fixed z-[100] flex flex-col items-center justify-end pointer-events-none transition-none"
         style={{
+          // Positioned by its foot, so a button appearing above the bottom one
+          // grows the stack upward and leaves that button where it was.
           ...(coords()
-            ? { left: `${coords()!.x}px`, top: `${coords()!.y}px` }
+            ? { left: `${coords()!.x}px`, top: `${coords()!.y - above()}px` }
             : {
                 right: `calc(${MARGIN}px + env(safe-area-inset-right))`,
                 bottom: `calc(${MARGIN}px + env(safe-area-inset-bottom))`,
               }),
           width: `${size()}px`,
-          height: `${size()}px`,
+          gap: `${STACK_GAP}px`,
         }}
       >
-        <span
-          class="leading-none select-none"
-          style={{ "font-size": `${Math.round(size() * iconRatio())}px` }}
-          aria-hidden="true"
+        <Show when={layout.reader.opened()}>
+          <Orb label={language.t("reader.compose")} onPress={() => layout.reader.composer.toggle()}>
+            <Icon name="pencil-line" class="size-full" style={{ color: "var(--icon-strong-base)" }} />
+          </Orb>
+          <Orb label={language.t("reader.dictate")} onPress={() => dictationTarget()?.toggle()} dictation>
+            <MicIcon class="size-full" running={dictationRunning()} targeted />
+          </Orb>
+        </Show>
+        <Orb
+          label={layout.reader.opened() ? language.t("reader.exit") : language.t("reader.enter")}
+          onPress={() => layout.reader.toggle()}
         >
-          {layout.reader.opened() ? "✏️" : "📖"}
-        </span>
-      </button>
+          <Icon
+            name={layout.reader.opened() ? "book-check" : "book-open"}
+            class="size-full"
+            style={{ color: "var(--icon-strong-base)" }}
+          />
+        </Orb>
+      </div>
     </Portal>
   )
 }
