@@ -101,49 +101,42 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     setResting(live)
   })
 
-  // A viewport that shrinks under a parked pill — rotation, the soft keyboard,
-  // a resized window — leaves it outside the bounds, where it can be neither
-  // tapped nor dragged back.
+  // A narrower window changes what an x MEANS, so a parked pill keeps its gap
+  // to the NEARER horizontal edge rather than its absolute value. Holding x
+  // across a narrowing pulls a right-parked pill toward the middle, and the
+  // window widening back leaves it there.
   //
-  // The gap to the NEARER horizontal edge is what a resize preserves, rather
-  // than the absolute x. Clamping x alone is lossy in one direction: a narrowing
-  // window pulls a right-parked pill inward, and widening it back leaves that
-  // smaller x sitting mid-screen, away from the side it was parked on.
   // Measured against the width the pill was last placed in, since by the time a
   // resize fires window.innerWidth is already the new one.
+  //
+  // A shorter window still means the same y, so height needs no equivalent: the
+  // soft keyboard borrows that room for as long as it is up and then returns it.
   let placedIn = window.innerWidth
-  const reclamp = () => {
+  const remap = () => {
     const was = placedIn
     placedIn = window.innerWidth
     setPos((p) => {
       if (!p) return p
       const right = was - (p.x + size())
-      if (right > p.x) return clamp(p.x, p.y)
-      return clamp(window.innerWidth - size() - right, p.y)
+      if (right > p.x) return p
+      return { x: window.innerWidth - size() - right, y: p.y }
     })
   }
-  createEffect(() => {
-    const current = pos()
-    if (!current) return
-    const bounded = clamp(current.x, current.y)
-    if (bounded.x === current.x && bounded.y === current.y) return
-    setPos(bounded)
-  })
   onMount(() => {
-    window.addEventListener("resize", reclamp)
-    onCleanup(() => window.removeEventListener("resize", reclamp))
+    window.addEventListener("resize", remap)
+    onCleanup(() => window.removeEventListener("resize", remap))
   })
 
   // Anchor priority: a live drag wins, then a parked position, then the live
   // anchor, then the last one the anchor offered. Null until the first
   // measurement, or with no anchor at all.
   //
-  // Clamped here rather than at the source, because the fallback was measured
-  // for a shorter stack than the one that reads it.
+  // The clamp applies to what is DRAWN, while the position a drag stored stays
+  // as the finger left it. A pill parked in room the soft keyboard then takes
+  // is drawn above the keyboard and returns to its own spot when the room
+  // comes back.
   const coords = createMemo(() => {
-    const moved = drag() ?? pos()
-    if (moved) return moved
-    const at = (pressing() ? resting() : anchored()) ?? resting()
+    const at = drag() ?? pos() ?? (pressing() ? resting() : anchored()) ?? resting()
     return at && clamp(at.x, at.y)
   })
 

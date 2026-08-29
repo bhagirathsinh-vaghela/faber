@@ -256,4 +256,50 @@ test.describe("reader mode on a fine pointer", () => {
       expect(Math.round(afterToggle.y)).toBe(Math.round(parked.y))
     })
   })
+
+  // A shrunken viewport is temporary, so the bounds it imposes are a matter of
+  // what is drawn, and the parked position outlives them. The soft keyboard is
+  // the case that reaches this: it takes the lower part of the viewport for as
+  // long as it is up, and a pill parked there must be reachable meanwhile and
+  // back in place afterward.
+  test("a viewport shrinking under the pill lends it space rather than taking it", async ({
+    page,
+    sdk,
+    gotoSession,
+  }) => {
+    await withSession(sdk, `reader keyboard ${Date.now()}`, async (session) => {
+      await gotoSession(session.id)
+
+      const pill = readerPill(page)
+      const start = await pill.boundingBox()
+      if (!start) throw new Error("pill has no box")
+
+      // Park it in the lower band, which is the room a keyboard claims.
+      await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(start.x + start.width / 2, DESKTOP.height - 60, { steps: 12 })
+      await page.mouse.up()
+      await settle(page)
+
+      const parked = await pill.boundingBox()
+      if (!parked) throw new Error("pill has no box after drag")
+
+      const shrunk = Math.round(DESKTOP.height * 0.6)
+      await page.setViewportSize({ width: DESKTOP.width, height: shrunk })
+      await settle(page)
+
+      const lifted = await pill.boundingBox()
+      if (!lifted) throw new Error("pill has no box in the shrunken viewport")
+      expect(lifted.y, "the pill stays reachable above the keyboard").toBeGreaterThanOrEqual(0)
+      expect(lifted.y + lifted.height, "the pill stays reachable above the keyboard").toBeLessThanOrEqual(shrunk)
+
+      await page.setViewportSize(DESKTOP)
+      await settle(page)
+
+      const returned = await pill.boundingBox()
+      if (!returned) throw new Error("pill has no box after the viewport returns")
+      expect(Math.round(returned.y)).toBe(Math.round(parked.y))
+      expect(Math.round(returned.x)).toBe(Math.round(parked.x))
+    })
+  })
 })
