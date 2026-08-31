@@ -1,8 +1,8 @@
-import { Show, createEffect, onCleanup, onMount } from "solid-js"
+import { Show, createEffect } from "solid-js"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
-import { RATE, markSpeechOverlay, type createSpeech } from "@/utils/speak"
+import { RATE, type createSpeech } from "@/utils/speak"
 import { OverlayPanel } from "./overlay-panel"
 
 // Playback HUD for an assistant message being read aloud: pause/resume, a speed
@@ -46,9 +46,6 @@ export function SpeechOverlay(props: {
     if (!props.speech.speaking()) return language.t("speech.play")
     return props.speech.paused() ? language.t("speech.resume") : language.t("speech.pause")
   }
-
-  onMount(() => markSpeechOverlay(true))
-  onCleanup(() => markSpeechOverlay(false))
 
   const progress = () => (props.speech.total() ? (props.speech.index() + 1) / props.speech.total() : 0)
 

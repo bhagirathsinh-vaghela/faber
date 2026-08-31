@@ -57,8 +57,8 @@ import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { confirmAbsent } from "@/utils/confirm-absent"
-import { createDictation, dictationOverlayOpen, dictationTarget, registerDictationTarget } from "@/utils/dictation"
-import { speechOverlayOpen } from "@/utils/speak"
+import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
+import { overlayActive } from "@/utils/overlay"
 import { createCoarsePointer, preserveFocus } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { MicIcon } from "@/components/mic-icon"
@@ -1112,6 +1112,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       description: language.t("command.prompt.dictate.description"),
       category: language.t("command.category.session"),
       keybind: "alt+.",
+      // The key that opens the HUD is also the key that closes it, so it is the
+      // one binding that has to survive the HUD owning the keyboard.
+      overlay: true,
       disabled: !dictation.supported(),
       onSelect: () => dictationTarget()?.toggle(),
     },
@@ -1142,17 +1145,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // caret comes along and reader is asked for the composer it hides. While
       // the composer holds focus its own handler takes the key instead, where a
       // live selection means the press was aimed at copying.
-      //
-      // An overlay on screen has taken the keyboard and answers only its own
-      // keys, so this stands down for one rather than clearing a draft behind
-      // it. Dialogs are already covered by the command layer itself; these two
-      // are not dialogs.
       id: "prompt.clear",
       title: language.t("command.prompt.clear"),
       description: language.t("command.prompt.clear.description"),
       category: language.t("command.category.session"),
       keybind: "ctrl+c",
-      disabled: !prompt.dirty() || isFocused() || dictationOverlayOpen() || speechOverlayOpen(),
+      disabled: !prompt.dirty() || isFocused(),
       onSelect: () => {
         clearPrompt()
         layout.reader.composer.summon()
@@ -1360,7 +1358,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // Ctrl+C clears the input, matching the TUI. A non-collapsed selection means
     // the user is copying, so let the browser handle it and clear nothing.
     if (ctrl && event.code === "KeyC") {
-      if (dictationOverlayOpen() || speechOverlayOpen()) return
+      if (overlayActive()) return
       const sel = window.getSelection()
       if (sel && !sel.isCollapsed) return
       clearPrompt()
@@ -1390,7 +1388,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       handleSubmit(event)
     }
     if (event.key === "Escape") {
-      if (dictationOverlayOpen() || speechOverlayOpen()) return
+      if (overlayActive()) return
       if (store.popover) {
         setStore("popover", null)
         return

@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { isEditable } from "@opencode-ai/ui/util/focus"
+import { overlayActive } from "@/utils/overlay"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { Persist, persisted } from "@/utils/persist"
@@ -83,6 +84,10 @@ export interface CommandOption {
   slash?: string
   suggested?: boolean
   disabled?: boolean
+  // Survives an overlay owning the keyboard. For the shortcut that TOGGLES an
+  // overlay, which is the way back out of one: suspending it along with
+  // everything else leaves the keyboard with no exit.
+  overlay?: boolean
   onSelect?: (source?: "palette" | "keybind" | "slash") => void
   onHighlight?: () => (() => void) | void
 }
@@ -339,6 +344,9 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
 
       const option = keymap().get(sig)
       if (!option) return
+      // An overlay owns the keyboard while it is up and answers only its own
+      // keys, so a keybind waits unless it is the one that dismisses the overlay.
+      if (overlayActive() && !option.overlay) return
       fire(() => option.onSelect?.("keybind"))
     }
 

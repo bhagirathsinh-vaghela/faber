@@ -1,5 +1,6 @@
 import { createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
+import { claimOverlay } from "@/utils/overlay"
 
 // The floating HUD shared by dictation and speech playback: a dim scrim, a
 // bottom-anchored accent-bordered panel, and the document-level key/pointer
@@ -21,6 +22,10 @@ export function OverlayPanel(props: {
   children: (color: { accent: () => string; text: () => string }) => JSX.Element
 }) {
   let panelRef: HTMLDivElement | undefined
+
+  // Claimed by the shell rather than by each caller, so a new overlay inherits
+  // the precedence instead of restating it.
+  claimOverlay()
 
   const handleKey = (event: KeyboardEvent) => {
     if (event.key === "Escape") {

@@ -1,5 +1,5 @@
 import { createStore } from "solid-js/store"
-import { createSignal, onCleanup } from "solid-js"
+import { onCleanup } from "solid-js"
 import { convertMarkdown } from "speakable-text"
 
 // Below 0.5 the voice slurs and above 2.5 it stops being followable, so the
@@ -188,14 +188,6 @@ export function toSpeech(markdown: string) {
 // One reading at a time across the whole app: a second speak button starts a
 // new reading rather than two voices overlapping.
 let active: (() => void) | undefined
-
-// Whether the playback HUD is on screen. It owns Escape and Space while it is,
-// so every other document-level handler consults this and yields: capture-phase
-// handlers fire in mount order rather than by what is in front of the user, so
-// precedence has to be stated rather than inferred.
-const [overlay, setOverlay] = createSignal(false)
-export const speechOverlayOpen = overlay
-export const markSpeechOverlay = setOverlay
 
 // fetch() sends Accept: */* and would take whatever the server defaults to, so
 // the container this browser can actually decode is declared rather than left

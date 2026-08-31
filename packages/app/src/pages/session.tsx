@@ -88,8 +88,7 @@ import {
   NewSessionView,
 } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
-import { dictationOverlayOpen } from "@/utils/dictation"
-import { speechOverlayOpen } from "@/utils/speak"
+import { overlayActive } from "@/utils/overlay"
 import { same } from "@/utils/same"
 import { probe } from "@/utils/transcript-probe"
 import { Visibility } from "@/utils/visibility"
@@ -1023,12 +1022,7 @@ export default function Page() {
       description: language.t("command.session.stopTurn.description"),
       category: language.t("command.category.session"),
       keybind: "escape",
-      disabled:
-        !params.id ||
-        !titleWorking() ||
-        composerFocused() ||
-        dictationOverlayOpen() ||
-        speechOverlayOpen(),
+      disabled: !params.id || !titleWorking() || composerFocused(),
       onSelect: () => {
         if (!params.id) return
         abortTurn(sdk.client, params.id)
@@ -1457,7 +1451,7 @@ export default function Page() {
     // key for as long as it is up, so this yields to one rather than racing it:
     // capture-phase handlers fire in mount order, not by what is in front of
     // the user.
-    if (activeElement === inputRef && event.key === "Escape" && !dictationOverlayOpen() && !speechOverlayOpen()) {
+    if (activeElement === inputRef && event.key === "Escape" && !overlayActive()) {
       inputRef?.blur()
       // Blurring is reversible and losing typed text is not, so a draft holds
       // the composer open where an empty one is let go.

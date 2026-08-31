@@ -185,15 +185,6 @@ const setActive = (next: (() => void) | undefined) => {
   setDictating(!!next)
 }
 
-// Whether the transcription HUD is on screen, which OUTLIVES capture: it stays
-// up while a batch engine transcribes. It owns Enter, Escape and Space for that
-// whole time, so every other document-level handler consults this and yields.
-// Capture-phase handlers fire in mount order rather than by what is in front of
-// the user, so precedence has to be stated rather than inferred.
-const [overlay, setOverlay] = createSignal(false)
-export const dictationOverlayOpen = overlay
-export const markDictationOverlay = setOverlay
-
 // A dictation shortcut has to fire against exactly one mic, but two composers
 // (the prompt dock and an expanded question panel) can show one at once. The
 // focused composer registers itself as the target; the prompt dock also

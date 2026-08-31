@@ -1,8 +1,8 @@
-import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { Show, createEffect, createSignal, onCleanup } from "solid-js"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
-import { markDictationOverlay, type createDictation } from "@/utils/dictation"
+import { type createDictation } from "@/utils/dictation"
 import { DictationWaveform } from "./dictation-waveform"
 import { OverlayPanel } from "./overlay-panel"
 
@@ -70,11 +70,7 @@ export function DictationOverlay(props: {
     else props.dictation.pause()
   }
 
-  onMount(() => {
-    markDictationOverlay(true)
-  })
   onCleanup(() => {
-    markDictationOverlay(false)
     if (done) return
     // Read off props before the await: this component is unmounting, so props
     // may no longer be reachable by the time the transcript resolves.
