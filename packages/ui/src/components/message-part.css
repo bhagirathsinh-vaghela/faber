@@ -246,18 +246,22 @@
    revert (user) then copy. Both reveal only on hover over the box's title bar
    (pointer devices); on touch (hover: none) they stay visible. */
 [data-slot="message-box-revert"],
+[data-slot="box-speak"],
 [data-slot="box-copy"] {
   transition: opacity 0.15s ease;
 }
 
 @media (hover: hover) {
   [data-slot="message-box-revert"],
+  [data-component="message-box"] [data-slot="box-speak"],
   [data-component="message-box"] [data-slot="box-copy"] {
     opacity: 0;
   }
 
   [data-component="message-box"]:hover [data-slot="message-box-revert"],
-  [data-component="message-box"]:hover [data-slot="box-copy"] {
+  [data-component="message-box"]:hover [data-slot="box-speak"],
+  [data-component="message-box"]:hover [data-slot="box-copy"],
+  [data-slot="box-speak"][data-speaking] {
     opacity: 1;
   }
 

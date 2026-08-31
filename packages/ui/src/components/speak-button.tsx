@@ -20,7 +20,10 @@ export function SpeakButton(props: { content: () => string; class?: string }) {
 
   return (
     <Show when={host.speakText && props.content()}>
-      <div data-slot="box-speak" class={props.class}>
+      {/* data-speaking keeps the button on screen while THIS message is being
+          read: the hover reveal would otherwise take it away the moment the
+          pointer left the box, mid-reading. */}
+      <div data-slot="box-speak" data-speaking={host.speaking?.(props.content()) || undefined} class={props.class}>
         <Tooltip value={i18n.t("ui.message.speak")} placement="top" gutter={8}>
           <IconButton
             icon="speaker"

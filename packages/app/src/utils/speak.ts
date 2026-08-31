@@ -215,6 +215,9 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
     // Set while the overlay is open with nothing playing, which is what lets it
     // offer resume-or-restart before any audio is fetched.
     armed: false,
+    // Reactive because a message box reads it during render to tell whether the
+    // reading on screen is its own.
+    source: "",
   })
 
   const supported = () => typeof window !== "undefined" && typeof Audio !== "undefined"
@@ -227,9 +230,6 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
   // same message continues where the listener left off rather than restarting a
   // long reading they had already heard most of.
   let cursor = 0
-  // The text the queue was built from, so a later reading can tell whether it
-  // is the same message resuming or a different one starting.
-  let source = ""
   // ONE element for the whole reading, reused by swapping src. iOS grants
   // playback to the element that a user gesture touched, and only that one, so
   // a second element created later for the next segment is refused with
@@ -261,7 +261,7 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
   // listener stopped: the first rewinds so the next press starts over, the
   // second leaves the cursor where it was so the next press resumes.
   const finish = (reached = false) => {
-    if (source) remember(source, reached ? 0 : cursor)
+    if (store.source) remember(store.source, reached ? 0 : cursor)
     if (active === stop) active = undefined
     epoch++
     abort?.abort()
@@ -325,7 +325,7 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
     const held = progress.get(text)
     active?.()
     active = stop
-    source = text
+    setStore("source", text)
     queue = lead(toSpeech(text))
     cursor = Math.min(held ?? 0, Math.max(queue.length - 1, 0))
     setStore({
@@ -342,13 +342,13 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
 
   const start = async (text?: string) => {
     if (!supported()) return
-    const reading = text ?? source
+    const reading = text ?? store.source
     active?.()
     active = stop
     // A different message restarts; the same one continues from where it
     // stopped, which is the whole point of keeping the cursor.
-    if (reading !== source || !queue.length) {
-      source = reading
+    if (reading !== store.source || !queue.length) {
+      setStore("source", reading)
       queue = lead(toSpeech(reading))
       cursor = progress.get(reading) ?? 0
     }
@@ -392,7 +392,7 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
         if (generation !== epoch) return
         at++
         cursor = at
-        remember(source, at)
+        remember(store.source, at)
         setStore("loading", true)
       }
       finish(true)
@@ -437,7 +437,7 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
     if (!queue.length) return
     if (store.speaking) finish()
     cursor = Math.max(0, Math.min(to, queue.length - 1))
-    remember(source, cursor)
+    remember(store.source, cursor)
     setStore({ armed: true, index: cursor, chunk: queue[cursor] ?? "" })
   }
 
@@ -462,6 +462,7 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
     loading: () => store.loading,
     armed: () => store.armed,
     open: () => store.armed || store.speaking,
+    reading: (text: string) => (store.armed || store.speaking) && text === store.source,
     rate: () => store.rate,
     index: () => store.index,
     total: () => store.total,

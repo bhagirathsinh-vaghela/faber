@@ -64,6 +64,10 @@ export type FetchMessageDiffFn = (input: { sessionID: string; messageID: string 
 // implemented here, since the speech engine and its HUD live in the app.
 export type SpeakTextFn = (text: string) => void
 
+// Whether a given block of text is the one currently being read, so its button
+// can stay visible while the reading runs rather than fading out from under it.
+export type SpeakingFn = (text: string) => boolean
+
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
@@ -76,6 +80,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     onRevertMessage?: RevertMessageFn
     onFetchMessageDiff?: FetchMessageDiffFn
     onSpeakText?: SpeakTextFn
+    onSpeaking?: SpeakingFn
   }) => {
     const numbers = createMemo(() => {
       const result: Record<string, Map<string, number>> = {}
@@ -116,6 +121,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       revertMessage: props.onRevertMessage,
       fetchMessageDiff: props.onFetchMessageDiff,
       speakText: props.onSpeakText,
+      speaking: props.onSpeaking,
     }
   },
 })

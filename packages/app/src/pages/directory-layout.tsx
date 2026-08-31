@@ -147,6 +147,7 @@ export default function Layout(props: ParentProps) {
                 onRevertMessage={revertMessage}
                 onFetchMessageDiff={fetchMessageDiff}
                 onSpeakText={speakText}
+                onSpeaking={(text: string) => speech.reading(text)}
               >
                 <LocalProvider>
                   <QuestionProvider>{props.children}</QuestionProvider>

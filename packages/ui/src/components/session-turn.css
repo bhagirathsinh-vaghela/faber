@@ -175,6 +175,7 @@
 
     [data-slot="message-box-label"],
     [data-slot="message-box-revert"],
+    [data-slot="box-speak"],
     [data-slot="box-copy"] {
       display: none !important;
     }
@@ -296,6 +297,7 @@
     }
 
     [data-slot="message-box-revert"],
+    [data-slot="box-speak"],
     [data-slot="box-copy"] {
       display: revert !important;
     }
