@@ -98,10 +98,24 @@ function useFrozen() {
     )
   })
 
+  // The order arrays carry POSITION only; the entry's own section decides
+  // membership, and an entry the arrays have not caught up with is placed here
+  // by the same rule the effect below uses. Both halves matter because the
+  // effect runs after paint: reading membership off the array renders a moved
+  // row in its old section (so a stopped session paints in both), and skipping
+  // the not-yet-listed arrivals renders it in neither. Deriving the whole list
+  // during render makes the first paint correct, leaving the effect to persist
+  // an order this has already settled on.
   const rows = (section: Section) =>
     createMemo(() => {
       const current = live()
-      return order[section].map((id) => current.get(id)).filter((entry): entry is Entry => entry !== undefined)
+      const listed = new Set(order[section])
+      const held = order[section]
+        .map((id) => current.get(id))
+        .filter((entry): entry is Entry => entry !== undefined && entry.section === section)
+      const arrived = [...current.values()].filter((entry) => entry.section === section && !listed.has(entry.sessionID))
+      if (arrived.length === 0) return held
+      return section === "attention" ? [...held, ...arrived] : [...arrived, ...held]
     })
 
   return { attention: rows("attention"), recent: rows("recent") }
