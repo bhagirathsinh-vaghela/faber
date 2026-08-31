@@ -1,10 +1,10 @@
 import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js"
-import { Portal } from "solid-js/web"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
 import { markDictationOverlay, type createDictation } from "@/utils/dictation"
 import { DictationWaveform } from "./dictation-waveform"
+import { OverlayPanel } from "./overlay-panel"
 
 // Live transcription HUD: a compact floating pill with a canvas waveform, in
 // the style of modern dictation apps. Text settles here, not in the host
@@ -58,11 +58,6 @@ export function DictationOverlay(props: {
       event.stopPropagation()
       finish("accept")
     }
-    if (event.key === "Escape") {
-      event.preventDefault()
-      event.stopPropagation()
-      finish("discard")
-    }
     if (event.key === " ") {
       event.preventDefault()
       event.stopPropagation()
@@ -75,35 +70,11 @@ export function DictationOverlay(props: {
     else props.dictation.pause()
   }
 
-  // The mic toggle handles its own stop. Anywhere else outside the panel reads
-  // as "I am done speaking", so the transcript lands where the dictation
-  // started rather than waiting in a draft the user has to go find.
-  const handlePointer = (event: PointerEvent) => {
-    const target = event.target as HTMLElement | null
-    if (!target) return
-    if (panelRef?.contains(target)) return
-    if (target.closest("[data-dictation-toggle]")) return
-    finish("accept")
-  }
-
-  // The scrim eats clicks (so an outside click only dismisses) but must let
-  // the app scroll: find the scrollable element under the cursor and scroll it.
-  const forwardWheel = (event: WheelEvent) => {
-    const under = document
-      .elementsFromPoint(event.clientX, event.clientY)
-      .find((el) => el !== event.currentTarget && el.scrollHeight > el.clientHeight)
-    under?.scrollBy({ top: event.deltaY, left: event.deltaX })
-  }
-
   onMount(() => {
     markDictationOverlay(true)
-    document.addEventListener("keydown", handleKey, true)
-    document.addEventListener("pointerdown", handlePointer, true)
   })
   onCleanup(() => {
     markDictationOverlay(false)
-    document.removeEventListener("keydown", handleKey, true)
-    document.removeEventListener("pointerdown", handlePointer, true)
     if (done) return
     // Read off props before the await: this component is unmounting, so props
     // may no longer be reachable by the time the transcript resolves.
@@ -111,26 +82,6 @@ export function DictationOverlay(props: {
     props.dictation.settle().then((text) => {
       if (text.trim()) accept(text.trim())
     })
-  })
-
-  const accent = () => props.accent ?? "var(--icon-interactive-base)"
-
-  // The label is a deep shade of the accent itself rather than flat black or
-  // white, so the button stays one hue. The probe resolves the accent (which may
-  // be a CSS variable) to measure luminance: a light accent takes a very dark
-  // shade of itself, a dark accent a very light one.
-  let probe: HTMLSpanElement | undefined
-  const [accentText, setAccentText] = createSignal(`color-mix(in srgb, ${accent()} 30%, white)`)
-  createEffect(() => {
-    if (!probe) return
-    const resolved = getComputedStyle(probe).backgroundColor
-    const match = resolved.match(/\d+(\.\d+)?/g)
-    if (!match) return
-    const [r, g, b] = match.map(Number)
-    const luminance = (0.299 * r! + 0.587 * g! + 0.114 * b!) / 255
-    setAccentText(
-      luminance > 0.5 ? `color-mix(in srgb, ${accent()} 25%, black)` : `color-mix(in srgb, ${accent()} 25%, white)`,
-    )
   })
 
   // Elapsed recording time, shown top-right like native dictation apps. It counts
@@ -147,38 +98,17 @@ export function DictationOverlay(props: {
   }
 
   return (
-    <Portal>
-      <span
-        ref={probe}
-        aria-hidden="true"
-        style={{ position: "absolute", width: 0, height: 0, "background-color": accent() }}
-      />
-      {/* Dim scrim. Captures clicks so an outside click means only "dismiss"
-          (handlePointer stashes) and never leaks to the app behind, but
-          re-dispatches wheel to the element under the cursor so the app still
-          scrolls. */}
-      <div
-        class="fixed inset-0 z-[9998] overscroll-contain"
-        style={{ background: "rgba(0, 0, 0, 0.7)" }}
-        onWheel={forwardWheel}
-      />
-      {/* --composer-top is the gap from the viewport bottom to the top of the
-          composer, published by PromptInput. The dock's own height is not
-          usable here: it also contains the question panel, so it swings with
-          UI that has nothing to do with where the transcript lands. It is
-          absent when no composer is rendered (reader dictating from the pill),
-          and the panel then sits a fifth of the way up instead, which places it
-          over the transcript rather than against the edge the pill occupies.
-          dvh, not vh: the mobile bar collapsing must not shift it mid-sentence. */}
-      <div class="fixed inset-x-0 bottom-[calc(var(--composer-top,20dvh)+16px)] z-[9999] flex justify-center pointer-events-none px-4">
-        <div
-          ref={panelRef}
-          class="pointer-events-auto w-full max-w-md flex flex-col gap-2 rounded-[1.75rem] border-[4.5px] bg-surface-raised-stronger-non-alpha p-2 transform-gpu isolate"
-          style={{
-            "border-color": accent(),
-            "box-shadow": `0 0 0 1px color-mix(in srgb, ${accent()} 35%, transparent), 0 0 24px 4px color-mix(in srgb, ${accent()} 30%, transparent), 0 8px 24px rgba(0,0,0,0.4)`,
-          }}
-        >
+    // A pointer outside the panel reads as "I am done speaking", so it accepts
+    // rather than discards; the mic toggle is exempt because it handles its own
+    // stop.
+    <OverlayPanel
+      accent={props.accent}
+      onDismiss={() => finish("accept")}
+      onKey={handleKey}
+      ignore="[data-dictation-toggle]"
+    >
+      {({ accent, text: accentText }) => (
+        <>
           <div class="shrink-0 flex items-center gap-2 px-3 pt-2">
             <span class="text-11-medium uppercase tracking-wide text-text-weak" aria-live="polite">
               {props.dictation.transcribing()
@@ -283,8 +213,8 @@ export function DictationOverlay(props: {
               <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">space</kbd>
             </div>
           </div>
-        </div>
-      </div>
-    </Portal>
+        </>
+      )}
+    </OverlayPanel>
   )
 }
