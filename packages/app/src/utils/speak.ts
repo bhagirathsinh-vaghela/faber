@@ -62,11 +62,14 @@ function speakable(markdown: string) {
 // makes the boundaries findable.
 const REGIONS = /(Table\.\s.*?End table\.|Code block\.\s.*?End code block\.)/gs
 
+// A single capture group makes split alternate prose, region, prose, so the odd
+// positions are the regions themselves. Carrying that as a flag is what lets the
+// pacing below leave them whole.
 function regions(text: string) {
   return text
     .split(REGIONS)
-    .map((part) => part.trim())
-    .filter(Boolean)
+    .map((value, at) => ({ value: value.trim(), atomic: at % 2 === 1 }))
+    .filter((part) => part.value)
 }
 
 // A chunk boundary is heard as a pause, so chunks end at sentence ends where a
@@ -75,6 +78,30 @@ function regions(text: string) {
 // heard as the speech stopping short — takes prose that never ends a sentence.
 const CHUNK = 600
 
+// How much the cap rises per chunk. Synthesis is linear in length and the
+// sidecar renders one chunk at a time, so a chunk arrives in time only when the
+// chunk playing now lasts longer than the next takes to render. The slowest
+// machine measured renders at half of realtime, making 2.0 the break-even
+// multiple; below that leaves margin for a listener who has raised the playback
+// rate, which shortens the cover without changing the cost.
+//
+// It multiplies the previous BUDGET rather than the previous chunk's length.
+// Chunks end on sentence boundaries, so a length is quantized and usually well
+// under the cap that admitted it; ramping on the length reaches a fixed point
+// where the cap can never admit a second sentence, and every chunk in a long
+// reading stays a single sentence.
+const GROWTH = 1.5
+
+// The same bound applied to what a chunk actually says rather than to the cap
+// it was given, since that is the time the chunk after it has to render in.
+//
+// Slightly above two because chunk lengths are quantized to whole sentences: a
+// one-sentence chunk can only be followed by one or two, and two is a shade over
+// double once the separator is counted. At exactly two the budget settles one
+// character below what a second sentence needs and every chunk in the reading
+// stays a single sentence.
+const COVER = 2.05
+
 // A period followed by a digit is a decimal point rather than a sentence end,
 // so the terminator does not match there: splitting reads "39.5s" as two
 // sentences and the voice stops in the middle of a figure.
@@ -82,15 +109,21 @@ const SENTENCE = /(?:[^.!?\n]|\.(?=\d))*(?:[.!?]+|\n+|$)/g
 
 export const sentences = (text: string) => text.match(SENTENCE)?.filter(Boolean) ?? []
 
-function chunks(text: string) {
+function chunks(text: string, budget: number) {
   const parts = sentences(text)
   const out: string[] = []
   // A chunk is handed to a speech engine, where a line break carries nothing a
   // space does not. Collapsing here keeps the boundary decision below free to
   // use newlines without them surviving into what is spoken.
+  // Two bounds, and the tighter one wins. The ramp lets the cap climb toward
+  // CHUNK across a reading, while the emitted length holds it to what this
+  // chunk will really cover: a chunk that lands well under its cap buys less
+  // time than the cap implies, and only the second bound sees that.
   const push = (value: string) => {
     const clean = value.replace(/\s+/g, " ").trim()
-    if (clean) out.push(clean)
+    if (!clean) return
+    out.push(clean)
+    budget = Math.min(CHUNK, Math.round(budget * GROWTH), Math.round(clean.length * COVER))
   }
   let held = ""
   const flush = () => {
@@ -98,21 +131,28 @@ function chunks(text: string) {
     held = ""
   }
   for (const sentence of parts) {
-    if (sentence.length > CHUNK) {
+    if (sentence.length > budget) {
       flush()
+      // Filling each piece to the budget would leave whatever is left over as
+      // the last one, and a remainder far shorter than its predecessors is over
+      // before the chunk after it has rendered. Spreading the sentence evenly
+      // across the pieces it needs keeps every one of them able to cover the
+      // next.
+      const pieces = Math.ceil(sentence.length / budget)
+      const even = Math.ceil(sentence.length / pieces)
       let run = ""
       for (const word of sentence.split(/\s+/)) {
-        if ((run + " " + word).trim().length > CHUNK) {
+        if (run && (run + " " + word).length > even) {
           push(run)
           run = word
           continue
         }
         run = (run + " " + word).trim()
       }
-      push(run)
+      held = run
       continue
     }
-    if ((held + sentence).length > CHUNK) flush()
+    if ((held + sentence).length > budget) flush()
     held += sentence
     // A line break ends a heading, a bullet, or a list item — none of which
     // run on into the next. Ending the chunk here is what puts a spoken pause
@@ -120,14 +160,30 @@ function chunks(text: string) {
     if (sentence.endsWith("\n")) flush()
   }
   flush()
-  return out
+  return { out, budget }
 }
 
-export const toSpeech = (markdown: string) => regions(speakable(markdown)).flatMap(chunks)
+const OPENING = 90
 
-// The chunk cap keeps a single utterance short, which matters here for time to
-// first audio rather than for any engine limit: generation is linear in length,
-// so the opening chunk is what the user waits on.
+export function toSpeech(markdown: string) {
+  const out: string[] = []
+  let budget = OPENING
+  for (const part of regions(speakable(markdown))) {
+    // A table or code block is one utterance by design, since splitting it
+    // would make a single skip land inside it rather than past it. It still
+    // advances the ramp, because the time spent speaking it is cover like any
+    // other chunk's.
+    if (part.atomic) {
+      out.push(part.value.replace(/\s+/g, " "))
+      budget = Math.min(CHUNK, Math.round(budget * GROWTH))
+      continue
+    }
+    const chunked = chunks(part.value, budget)
+    out.push(...chunked.out)
+    budget = chunked.budget
+  }
+  return out
+}
 
 // One reading at a time across the whole app: a second speak button starts a
 // new reading rather than two voices overlapping.
@@ -176,27 +232,15 @@ async function fetchAudio(base: string, text: string, next: string | undefined, 
 // nothing in radio wake-ups, since the app already holds an SSE stream open for
 // the whole session.
 //
-// Synthesis is linear in length, so only the FIRST chunk is capped: every later
-// one is generated during playback of its predecessor, where its length is
-// hidden.
-const LEAD_CHARS = 90
+// Fetching further ahead than this makes stalls WORSE rather than better: the
+// sidecar renders strictly one chunk at a time, so a request for a later chunk
+// queues in front of the one that is due next. Measured at 3.4s of total
+// silence one ahead, 7.6s at two, 9.0s at three. What keeps the pipeline fed is
+// the size ramp in the chunker, not depth here.
 
 // One silent PCM sample, inline so that unlocking costs no request. Playing it
 // is what converts the gesture into a lasting permission on the element.
 const SILENCE = "data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAAAAAA=="
-
-// The first chunk is the only one the user waits on, and the chunker packs
-// chunks close to their own cap, so a long one is split here to get sound out
-// sooner. Its tail becomes a chunk of its own rather than being dropped.
-export function lead(all: string[]) {
-  const first = all[0]
-  if (!first || first.length <= LEAD_CHARS) return all
-  const window = first.slice(0, LEAD_CHARS)
-  const sentence = Math.max(window.lastIndexOf(". "), window.lastIndexOf("? "), window.lastIndexOf("! "))
-  const at = sentence > 0 ? sentence + 1 : window.lastIndexOf(" ")
-  if (at <= 0) return all
-  return [first.slice(0, at).trim(), first.slice(at).trim(), ...all.slice(1)]
-}
 
 // How far into each message the listener got, keyed by the message's own text.
 // Kept outside any one reading so returning to a message read earlier still
@@ -343,7 +387,7 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
     active?.()
     active = stop
     setStore("source", text)
-    queue = lead(toSpeech(text))
+    queue = toSpeech(text)
     cursor = Math.min(held ?? 0, Math.max(queue.length - 1, 0))
     setStore({
       armed: true,
@@ -366,7 +410,7 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
     // stopped, which is the whole point of keeping the cursor.
     if (reading !== store.source || !queue.length) {
       setStore("source", reading)
-      queue = lead(toSpeech(reading))
+      queue = toSpeech(reading)
       cursor = progress.get(reading) ?? 0
     }
     if (!queue.length) return finish(true)

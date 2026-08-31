@@ -80,10 +80,18 @@ describe("toSpeech", () => {
     expect(sentences("One. Two.").length).toBe(2)
   })
 
-  test("a long but ordinary sentence is spoken whole rather than cut mid-clause", () => {
+  test("a long but ordinary sentence is spoken whole once the ramp has room for it", () => {
     const source =
       "I created a new Audio element per chunk, and iOS grants playback only to the element a gesture touched, so chunk one slipped through while every later element was refused."
-    expect(toSpeech(source)).toEqual([source])
+    expect(toSpeech("Short. ".repeat(40) + source)).toContain(source)
+  })
+
+  test("an opening sentence too long for the first chunk splits without losing a word", () => {
+    const source =
+      "I created a new Audio element per chunk, and iOS grants playback only to the element a gesture touched, so chunk one slipped through while every later element was refused."
+    const chunks = toSpeech(source)
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.join(" ")).toBe(source)
   })
 
   test("no prose word is lost between the source and what is spoken", () => {
