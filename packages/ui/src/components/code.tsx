@@ -2,6 +2,7 @@ import { type FileContents, File, FileOptions, LineAnnotation, type SelectedLine
 import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, onMount, Show, splitProps } from "solid-js"
 import { createDefaultOptions, styleVariables } from "../pierre"
 import { getWorkerPool } from "../pierre/worker"
+import { isEditable } from "../util/focus"
 import { Icon } from "./icon"
 
 type SelectionSide = "additions" | "deletions"
@@ -59,13 +60,6 @@ const findHosts = new Set<FindHost>()
 let findTarget: FindHost | undefined
 let findCurrent: FindHost | undefined
 let findInstalled = false
-
-function isEditable(node: unknown): boolean {
-  if (!(node instanceof HTMLElement)) return false
-  if (node.closest("[data-prevent-autofocus]")) return true
-  if (node.isContentEditable) return true
-  return /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(node.tagName)
-}
 
 function hostForNode(node: unknown): FindHost | undefined {
   if (!(node instanceof Node)) return

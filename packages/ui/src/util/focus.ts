@@ -1,3 +1,17 @@
+// Whether a keystroke aimed at this element is text the user is typing rather
+// than a command. A shortcut with no modifier is indistinguishable from typing,
+// so every bare-key handler asks this before claiming the key.
+//
+// BUTTON counts: a focused button takes Space and Enter as activation, and
+// `data-prevent-autofocus` marks a subtree that handles its own keys wholesale
+// (the terminal), where the element holding focus may be neither.
+export function isEditable(node: unknown): boolean {
+  if (!(node instanceof HTMLElement)) return false
+  if (node.closest("[data-prevent-autofocus]")) return true
+  if (node.isContentEditable) return true
+  return /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(node.tagName)
+}
+
 // Snapshot the element that currently holds focus and return a function that
 // restores focus to it. Used by overlays that hide the focused element (zen,
 // the question panel, terminals) and by the dialog provider so focus returns to

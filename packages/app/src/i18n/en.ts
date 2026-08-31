@@ -96,6 +96,8 @@ export const dict = {
   "command.task.pending.description": "Review and accept pending background task results",
   "command.reader.toggle": "Toggle reader mode",
   "command.reader.toggle.description": "Enter or exit reader mode, which hides the composer and all chrome",
+  "command.reader.composer.summon": "Write a message",
+  "command.reader.composer.summon.description": "Bring back the composer without leaving reader mode",
   "command.companion.toggle": "Toggle companion mode",
   "command.companion.toggle.description": "Hide the transcript and show only the prompt input",
   "command.question.list": "Show pending questions",

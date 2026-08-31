@@ -87,6 +87,8 @@ import {
   NewSessionView,
 } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
+import { dictationOverlayOpen } from "@/utils/dictation"
+import { speechOverlayOpen } from "@/utils/speak"
 import { same } from "@/utils/same"
 import { probe } from "@/utils/transcript-probe"
 import { Visibility } from "@/utils/visibility"
@@ -987,6 +989,23 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
     },
     {
+      // Reader hides the composer, which leaves the pill the only way to ask
+      // for it back. A bare letter can be a shortcut here precisely because
+      // there is nothing to type into: the composer is gone, so nothing on
+      // screen wants the keystroke as text.
+      //
+      // Disabled once the composer is up, which is what makes the binding
+      // release the letter: from then on the focused composer takes "e" as the
+      // character it is, and there is no second press to come back to.
+      id: "reader.composer.summon",
+      title: language.t("command.reader.composer.summon"),
+      description: language.t("command.reader.composer.summon.description"),
+      category: language.t("command.category.view"),
+      keybind: "e",
+      disabled: !reader() || composerWanted(),
+      onSelect: () => layout.reader.composer.summon(),
+    },
+    {
       id: "tab.close",
       title: language.t("command.tab.close"),
       category: language.t("command.category.file"),
@@ -1403,17 +1422,26 @@ export default function Page() {
     }
 
     const activeElement = document.activeElement as HTMLElement | undefined
+
+    // Escape reaches the composer while it holds the caret, which the editable
+    // guard below turns every other key away at. An overlay on screen owns the
+    // key for as long as it is up, so this yields to one rather than racing it:
+    // capture-phase handlers fire in mount order, not by what is in front of
+    // the user.
+    if (activeElement === inputRef && event.key === "Escape" && !dictationOverlayOpen() && !speechOverlayOpen()) {
+      inputRef?.blur()
+      // Blurring is reversible and losing typed text is not, so a draft holds
+      // the composer open where an empty one is let go.
+      if (layout.reader.composer.summoned() && !prompt.dirty()) layout.reader.composer.dismiss()
+      return
+    }
+
     if (activeElement) {
       const isProtected = activeElement.closest("[data-prevent-autofocus]")
       const isInput = /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(activeElement.tagName) || activeElement.isContentEditable
       if (isProtected || isInput) return
     }
     if (dialog.active) return
-
-    if (activeElement === inputRef) {
-      if (event.key === "Escape") inputRef?.blur()
-      return
-    }
 
     // Don't autofocus chat if terminal panel is open
     if (view().terminal.opened()) return

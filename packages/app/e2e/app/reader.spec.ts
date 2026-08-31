@@ -288,6 +288,101 @@ test.describe("reader mode on a fine pointer", () => {
     })
   })
 
+  // Reader leaves no composer to click, so the keyboard needs its own way to
+  // ask for one. Fine-pointer only for the reason the focus test above is: a
+  // mobile browser refuses to focus a contenteditable it was not tapped into.
+  test("e summons the composer and takes the caret with it", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader summon ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+
+      const editor = page.locator(promptSelector)
+      const composer = page.locator('[data-slot="composer"]')
+      await expect(composer).toBeHidden()
+
+      await page.keyboard.press("e")
+      await settle(page)
+
+      await expect(composer).toBeVisible()
+      await expect(editor).toBeFocused()
+      await expect(editor).toHaveText("")
+    })
+  })
+
+  test("e is typed rather than obeyed once the composer holds the caret", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader summon typed ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+
+      await page.keyboard.press("e")
+      await settle(page)
+
+      const editor = page.locator(promptSelector)
+      await expect(editor).toBeFocused()
+      await page.keyboard.type("eee")
+      await expect(editor).toHaveText("eee")
+    })
+  })
+
+  test("escape gives back an empty summoned composer", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader dismiss ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+
+      const composer = page.locator('[data-slot="composer"]')
+      await page.keyboard.press("e")
+      await settle(page)
+      await expect(composer).toBeVisible()
+
+      await page.keyboard.press("Escape")
+      await settle(page)
+      await expect(composer).toBeHidden()
+      // Dismissing the composer is not leaving the mode, so the reclaim holds.
+      expect(await reclaimed(page), "reader keeps the composer's space").toBe(true)
+    })
+  })
+
+  test("escape keeps a composer that has something in it", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader dismiss draft ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+
+      await page.keyboard.press("e")
+      await settle(page)
+      const editor = page.locator(promptSelector)
+      await page.keyboard.type("half a thought")
+
+      await page.keyboard.press("Escape")
+      await settle(page)
+
+      const composer = page.locator('[data-slot="composer"]')
+      await expect(composer).toBeVisible()
+      await expect(editor).toHaveText("half a thought")
+    })
+  })
+
+  test("e does nothing outside reader, where the composer is already there", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader summon interactive ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+
+      const editor = page.locator(promptSelector)
+      await scroller(page).click({ position: { x: 5, y: 60 } })
+      await settle(page)
+      await expect(editor).not.toBeFocused()
+
+      await page.keyboard.press("e")
+      await settle(page)
+      // The interactive composer answers a printable key by taking the caret
+      // and the character, which is the behavior the binding must not displace.
+      await expect(editor).toHaveText("e")
+    })
+  })
+
   test("the pill is draggable, and the parked position survives a mode toggle", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader drag ${Date.now()}`, async (session) => {
       await gotoSession(session.id)

@@ -2,6 +2,7 @@ import { createEffect, createMemo, onCleanup, onMount, untrack, type Accessor } 
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { isEditable } from "@opencode-ai/ui/util/focus"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { Persist, persisted } from "@/utils/persist"
@@ -47,6 +48,20 @@ function eventKey(event: KeyboardEvent) {
 
 function signatureFromEvent(event: KeyboardEvent) {
   return signature(eventKey(event), event.ctrlKey, event.metaKey, event.shiftKey, event.altKey)
+}
+
+// Whether this keystroke is the user typing, in which case no binding may claim
+// it. An unmodified printable key is indistinguishable from the character it
+// produces, so it is a command only where that character cannot become text.
+//
+// The length test is what confines this to text. Escape, Tab and the arrows are
+// named keys that mean the same thing inside an input as outside it, and a
+// modified key produces no character at all, so neither is ever the user
+// typing. Shift is not consulted for that reason: it is how a capital is typed.
+export function typing(event: KeyboardEvent, focused: unknown) {
+  if (event.key.length !== 1) return false
+  if (event.ctrlKey || event.metaKey || event.altKey) return false
+  return isEditable(focused)
 }
 
 export type KeybindConfig = string
@@ -307,6 +322,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (suspended() || dialog.active) return
+      if (typing(event, document.activeElement)) return
 
       const sig = signatureFromEvent(event)
 
