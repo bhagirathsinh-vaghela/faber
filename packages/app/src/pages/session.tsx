@@ -13,6 +13,7 @@ import {
   type JSX,
 } from "solid-js"
 import { createCoarsePointer, useShell } from "@/utils/mobile"
+import { createFocusSignal } from "@solid-primitives/active-element"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { Dynamic, Portal } from "solid-js/web"
@@ -20,7 +21,7 @@ import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { diffSnippet, isDeletionOnly, previewLines } from "@/context/diff-snippet"
 import { createStore } from "solid-js/store"
-import { PromptInput } from "@/components/prompt-input"
+import { abortTurn, PromptInput } from "@/components/prompt-input"
 import { QuestionPanel } from "@/components/question-panel"
 import { MessageFooter } from "@/components/message-footer"
 import { SessionContextUsage } from "@/components/session-context-usage"
@@ -415,6 +416,10 @@ export default function Page() {
   // made deliberately, for the empty composer nothing else would keep up.
   const composerWanted = createMemo(() => prompt.dirty() || layout.reader.composer.summoned())
   const readerDocked = createMemo(() => reader() && !awaitingAnswer() && !composerWanted())
+  // A signal rather than a read of document.activeElement, since the keybind
+  // that stands down for the composer resolves `disabled` inside a memo, where a
+  // bare DOM read is not tracked and so is never re-run when focus moves.
+  const composerFocused = createFocusSignal(() => inputRef)
   // A soft keyboard is summoned by focus and dismissed by losing it, and it
   // covers more space than the composer it serves. A pending prompt owns the
   // dock and is the thing being answered, so it keeps the caret.
@@ -1004,6 +1009,30 @@ export default function Page() {
       keybind: "e",
       disabled: !reader() || composerWanted(),
       onSelect: () => layout.reader.composer.summon(),
+    },
+    {
+      // Stopping also sits in the composer's own key handler, which only runs
+      // while it holds the caret. Reader takes the composer off screen and marks
+      // the dock inert, so nothing was focused to receive Escape and the key did
+      // nothing there. As a command it reaches from anywhere, and it stands down
+      // while the composer holds the caret: the command layer fires in the
+      // capture phase and would otherwise swallow the key before the handler
+      // that resolves a popover or leaves shell mode.
+      id: "session.stopTurn",
+      title: language.t("command.session.stopTurn"),
+      description: language.t("command.session.stopTurn.description"),
+      category: language.t("command.category.session"),
+      keybind: "escape",
+      disabled:
+        !params.id ||
+        !titleWorking() ||
+        composerFocused() ||
+        dictationOverlayOpen() ||
+        speechOverlayOpen(),
+      onSelect: () => {
+        if (!params.id) return
+        abortTurn(sdk.client, params.id)
+      },
     },
     {
       id: "tab.close",

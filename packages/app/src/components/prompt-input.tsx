@@ -57,7 +57,8 @@ import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { confirmAbsent } from "@/utils/confirm-absent"
-import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
+import { createDictation, dictationOverlayOpen, dictationTarget, registerDictationTarget } from "@/utils/dictation"
+import { speechOverlayOpen } from "@/utils/speak"
 import { createCoarsePointer, preserveFocus } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { MicIcon } from "@/components/mic-icon"
@@ -83,6 +84,19 @@ type PendingPrompt = {
 }
 
 const pending = new Map<string, PendingPrompt>()
+
+// A prompt still in the send window is held here rather than on the server, so
+// stopping it cancels the request instead of the turn it has not started yet.
+export function abortTurn(client: ReturnType<typeof createOpencodeClient>, sessionID: string) {
+  const queued = pending.get(sessionID)
+  if (queued) {
+    queued.abort.abort()
+    queued.cleanup()
+    pending.delete(sessionID)
+    return
+  }
+  void client.session.abortTurn({ sessionID }).catch(() => {})
+}
 
 interface PromptInputProps {
   class?: string
@@ -1124,6 +1138,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
     },
     {
+      // Clearing is only ever asked for in order to type something else, so the
+      // caret comes along and reader is asked for the composer it hides. While
+      // the composer holds focus its own handler takes the key instead, where a
+      // live selection means the press was aimed at copying.
+      //
+      // An overlay on screen has taken the keyboard and answers only its own
+      // keys, so this stands down for one rather than clearing a draft behind
+      // it. Dialogs are already covered by the command layer itself; these two
+      // are not dialogs.
+      id: "prompt.clear",
+      title: language.t("command.prompt.clear"),
+      description: language.t("command.prompt.clear.description"),
+      category: language.t("command.category.session"),
+      keybind: "ctrl+c",
+      disabled: !prompt.dirty() || isFocused() || dictationOverlayOpen() || speechOverlayOpen(),
+      onSelect: () => {
+        clearPrompt()
+        layout.reader.composer.summon()
+        editorRef.focus({ preventScroll: true })
+      },
+    },
+    {
       // Like prompt.focus but always lands the caret at the end of the draft,
       // ignoring the persisted mid-edit position. Used on session switch/open so
       // the user resumes typing after existing text, not before it.
@@ -1145,14 +1181,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const abort = () => {
     const sessionID = params.id
     if (!sessionID) return
-    const queued = pending.get(sessionID)
-    if (queued) {
-      queued.abort.abort()
-      queued.cleanup()
-      pending.delete(sessionID)
-      return
-    }
-    void sdk.client.session.abortTurn({ sessionID }).catch(() => {})
+    abortTurn(sdk.client, sessionID)
   }
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
@@ -1331,6 +1360,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // Ctrl+C clears the input, matching the TUI. A non-collapsed selection means
     // the user is copying, so let the browser handle it and clear nothing.
     if (ctrl && event.code === "KeyC") {
+      if (dictationOverlayOpen() || speechOverlayOpen()) return
       const sel = window.getSelection()
       if (sel && !sel.isCollapsed) return
       clearPrompt()
@@ -1360,11 +1390,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       handleSubmit(event)
     }
     if (event.key === "Escape") {
+      if (dictationOverlayOpen() || speechOverlayOpen()) return
       if (store.popover) {
         setStore("popover", null)
-      } else if (working()) {
-        abort()
+        return
       }
+      // The session page dismisses the summoned composer on this same key, and
+      // it bubbles there after this handler. Aborting here too spends one press
+      // on two unrelated actions, the destructive one unasked for.
+      if (reader()) return
+      if (working()) abort()
     }
   }
 
