@@ -47,7 +47,7 @@ describe("accept", () => {
     expect(accept(probe("maybe"))).toBe("audio/ogg")
   })
 
-  test("a browser that cannot decode Opus falls back to mp4", () => {
-    expect(accept(probe(""))).toBe("audio/mp4")
+  test("a browser that cannot decode Opus falls back to WAV", () => {
+    expect(accept(probe(""))).toBe("audio/wav")
   })
 })

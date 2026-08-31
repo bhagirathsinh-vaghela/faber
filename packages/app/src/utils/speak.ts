@@ -126,11 +126,12 @@ export const speechOverlayOpen = overlay
 export const markSpeechOverlay = setOverlay
 
 // fetch() sends Accept: */* and would take whatever the server defaults to, so
-// the container is declared from what this browser can actually decode. Opus is
-// roughly a third smaller than the AAC fallback over the same speech.
+// the container this browser can actually decode is declared rather than left
+// to a default. WAV is the fallback because it needs no encoder on either end,
+// which is what makes it the one format every client is guaranteed to play.
 export function accept(probe = document.createElement("audio")) {
   if (probe.canPlayType('audio/ogg; codecs="opus"')) return "audio/ogg"
-  return "audio/mp4"
+  return "audio/wav"
 }
 
 // Identifies this listener's reading to the sidecar, which holds its rendered
