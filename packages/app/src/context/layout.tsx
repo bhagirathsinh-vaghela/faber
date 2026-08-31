@@ -192,6 +192,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const readerRoute = createMemo(() => /\/session(?:\/([^/?#]+))?/.exec(location.pathname))
     const readerActive = createMemo(() => readerOpened() && readerRoute() !== null)
 
+    // The session on screen, or "new" for the one that has no id until its
+    // first message. Undefined anywhere else, which leaves both modes alone.
+    const readerSession = createMemo(() => {
+      const match = readerRoute()
+      if (!match) return undefined
+      return match[1] ?? "new"
+    })
+
     const rememberReader = (opened: boolean) => {
       const id = readerRoute()?.[1]
       if (id) readerMemory.set(id, opened)
@@ -210,21 +218,21 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       window.scrollTo({ top: large - small, behavior: "smooth" })
     }
 
-    // A first-seen session always opens interactive: reader declares that you
-    // are not interacting, which cannot be decided before the transcript is on
-    // screen. Lives here because the session page unmounts on the way to the
-    // overview, the trip this memory has to survive.
+    // A first-seen session always opens interactive: both modes declare that
+    // you are not typing into this session, which cannot be decided before its
+    // transcript is on screen. Nothing ever writes a memory for the unsaved
+    // session, so it opens interactive however the previous one was left.
+    // Lives here because the session page unmounts on the way to the overview,
+    // the trip this memory has to survive.
     createEffect(
-      on(
-        () => readerRoute()?.[1],
-        (id) => {
-          if (!id) return
-          const next = readerMemory.get(id) ?? false
-          if (next === readerOpened()) return
-          if (next) enterReader()
-          else exitReader()
-        },
-      ),
+      on(readerSession, (session) => {
+        if (!session) return
+        if (companionOpened()) exitCompanion()
+        const next = readerMemory.get(session) ?? false
+        if (next === readerOpened()) return
+        if (next) enterReader()
+        else exitReader()
+      }),
     )
 
     // Companion mode is reader inverted: reader keeps the transcript and drops

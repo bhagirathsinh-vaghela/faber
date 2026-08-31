@@ -911,16 +911,6 @@ export default function Page() {
     ),
   )
 
-  // Companion mode is a per-visit choice, never a default: switching sessions
-  // always lands in the normal view.
-  createEffect(
-    on(
-      () => params.id,
-      () => layout.companion.exit(),
-      { defer: true },
-    ),
-  )
-
   createEffect(() => {
     const id = lastUserMessage()?.id
     if (!id) return

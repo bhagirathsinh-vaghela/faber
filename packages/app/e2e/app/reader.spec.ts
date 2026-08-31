@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test"
 import { test, expect } from "../fixtures"
-import { withSession } from "../actions"
-import { promptSelector } from "../selectors"
-import type { createSdk } from "../utils"
+import { defocus, openSidebar, withSession } from "../actions"
+import { promptSelector, sessionItemSelector } from "../selectors"
+import { modKey, type createSdk } from "../utils"
 
 // Reader is the full-screen read: the composer and both pinned headers go, and
 // the pill is the only way in or out. The reclaim is a contract between a CSS
@@ -48,6 +48,22 @@ async function tapBackdrop(page: Page) {
 
 async function enterReader(page: Page) {
   await readerPill(page).click()
+  await settle(page)
+}
+
+async function newSession(page: Page) {
+  await defocus(page)
+  await page.keyboard.press(`${modKey}+Shift+S`)
+  await expect(page).toHaveURL(/\/session$/)
+  await settle(page)
+}
+
+async function openSession(page: Page, sessionID: string) {
+  await openSidebar(page)
+  const item = page.locator(sessionItemSelector(sessionID)).first()
+  await expect(item).toBeVisible()
+  await item.click()
+  await expect(page).toHaveURL(new RegExp("/session/" + sessionID + "$"))
   await settle(page)
 }
 
@@ -182,6 +198,50 @@ test.describe("reader mode", () => {
       expect(box).not.toBeNull()
       expect(box!.y).toBeGreaterThanOrEqual(0)
       expect(box!.y + box!.height).toBeLessThanOrEqual(PHONE.height)
+    })
+  })
+})
+
+// Reader hides the composer, and the new-session view is nothing but a
+// composer, so carrying the mode into one leaves nothing to start a session
+// from. Navigating in-app rather than by URL: a page load drops the mode on
+// its own, which would pass whether or not the arrival resets anything.
+test.describe("reader mode and a new session", () => {
+  test.use({ viewport: DESKTOP })
+
+  test("a new session starts outside reader, whatever the last one was left in", async ({
+    page,
+    sdk,
+    gotoSession,
+  }) => {
+    await withSession(sdk, `reader new session ${Date.now()}`, async (session) => {
+      await gotoSession(session.id)
+
+      const docked = await clearance(page)
+      await enterReader(page)
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+
+      await newSession(page)
+      expect(await clearance(page), "the new session keeps its composer").toBe(docked)
+      await expect(page.locator('[data-slot="composer"]')).toBeVisible()
+    })
+  })
+
+  test("reader on the new-session view belongs to it, not to the session opened next", async ({
+    page,
+    sdk,
+    gotoSession,
+  }) => {
+    await withSession(sdk, `reader new inherit ${Date.now()}`, async (session) => {
+      await gotoSession(session.id)
+      const docked = await clearance(page)
+
+      await newSession(page)
+      await enterReader(page)
+      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+
+      await openSession(page, session.id)
+      expect(await clearance(page), "the opened session keeps its composer").toBe(docked)
     })
   })
 })
