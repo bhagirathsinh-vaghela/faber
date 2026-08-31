@@ -17,6 +17,24 @@ describe("toSpeech", () => {
     expect(spoken).toContain("Done.")
   })
 
+  test("a table is a chunk of its own, so one press skips it", () => {
+    const chunks = toSpeech("Before.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nAfter.")
+    const table = chunks.findIndex((c) => c.startsWith("Table."))
+    expect(table).toBeGreaterThan(-1)
+    expect(chunks[table]).toMatch(/End table\.$/)
+    expect(chunks[table - 1]).toBe("Before.")
+    expect(chunks[table + 1]).toBe("After.")
+  })
+
+  test("a code block is a chunk of its own, so one press skips it", () => {
+    const chunks = toSpeech("Before.\n\n```ts\nconst x = 1\n```\n\nAfter.")
+    const code = chunks.findIndex((c) => c.startsWith("Code block."))
+    expect(code).toBeGreaterThan(-1)
+    expect(chunks[code]).toMatch(/End code block\.$/)
+    expect(chunks[code - 1]).toBe("Before.")
+    expect(chunks[code + 1]).toBe("After.")
+  })
+
   test("a link keeps its text and drops its target", () => {
     expect(toSpeech("See [the docs](https://example.com/x) now.").join(" ")).toBe("See the docs now.")
   })

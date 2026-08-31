@@ -55,6 +55,20 @@ function speakable(markdown: string) {
     .trim()
 }
 
+// A table and a code block are the two things a listener skips rather than
+// hears, so each is forced into a chunk of its own. Packing them in with the
+// prose around them would make one press skip the sentences either side.
+// The library brackets both with an opening and closing phrase, which is what
+// makes the boundaries findable.
+const REGIONS = /(Table\.\s.*?End table\.|Code block\.\s.*?End code block\.)/gs
+
+function regions(text: string) {
+  return text
+    .split(REGIONS)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
 // A chunk boundary is heard as a pause, so chunks end at sentence ends where a
 // pause belongs. The cap only bounds a runaway paragraph: it is set well above
 // a normal sentence so that reaching it — and cutting mid-sentence, which is
@@ -109,7 +123,7 @@ function chunks(text: string) {
   return out
 }
 
-export const toSpeech = (markdown: string) => chunks(speakable(markdown))
+export const toSpeech = (markdown: string) => regions(speakable(markdown)).flatMap(chunks)
 
 // The chunk cap keeps a single utterance short, which matters here for time to
 // first audio rather than for any engine limit: generation is linear in length,
