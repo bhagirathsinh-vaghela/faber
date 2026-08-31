@@ -10,6 +10,8 @@ import { iife } from "@opencode-ai/util/iife"
 import type { QuestionAnswer } from "@opencode-ai/sdk/v2"
 import { decode64 } from "@/utils/base64"
 import { Snapshot } from "@/utils/snapshot"
+import { createSpeech } from "@/utils/speak"
+import { SpeechOverlay } from "@/components/speech-overlay"
 import { Visibility } from "@/utils/visibility"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useLanguage } from "@/context/language"
@@ -113,6 +115,15 @@ export default function Layout(props: ParentProps) {
             const fetchMessageDiff = (input: { sessionID: string; messageID: string }) =>
               sdk.client.session.diff(input).then((r) => r.data)
 
+            // One reading at a time is enforced inside createSpeech, so a single
+            // instance here serves every message box rather than each owning one.
+            const speech = createSpeech({
+              url: () => sdk.url,
+              onError: (message) =>
+                showToast({ variant: "error", title: language.t("speech.failed"), description: message }),
+            })
+            const speakText = (text: string) => speech.show(text)
+
             // Cache-safe revert: prime the cache at the prior assistant via a
             // ping probe before reverting, so the conversation cache survives.
             const revertMessage = async (input: { sessionID: string; messageID: string }) => {
@@ -135,10 +146,14 @@ export default function Layout(props: ParentProps) {
                 onNavigateToSession={navigateToSession}
                 onRevertMessage={revertMessage}
                 onFetchMessageDiff={fetchMessageDiff}
+                onSpeakText={speakText}
               >
                 <LocalProvider>
                   <QuestionProvider>{props.children}</QuestionProvider>
                 </LocalProvider>
+                <Show when={speech.open()}>
+                  <SpeechOverlay speech={speech} onClose={() => speech.close()} />
+                </Show>
               </DataProvider>
             )
           })}

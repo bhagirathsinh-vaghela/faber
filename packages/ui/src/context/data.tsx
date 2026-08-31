@@ -60,6 +60,10 @@ export type RevertMessageFn = (input: { sessionID: string; messageID: string }) 
 
 export type FetchMessageDiffFn = (input: { sessionID: string; messageID: string }) => Promise<FileDiff[] | undefined>
 
+// Reads a block of assistant prose aloud. Supplied by the host rather than
+// implemented here, since the speech engine and its HUD live in the app.
+export type SpeakTextFn = (text: string) => void
+
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
@@ -71,6 +75,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     onNavigateToSession?: NavigateToSessionFn
     onRevertMessage?: RevertMessageFn
     onFetchMessageDiff?: FetchMessageDiffFn
+    onSpeakText?: SpeakTextFn
   }) => {
     const numbers = createMemo(() => {
       const result: Record<string, Map<string, number>> = {}
@@ -110,6 +115,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       navigateToSession: props.onNavigateToSession,
       revertMessage: props.onRevertMessage,
       fetchMessageDiff: props.onFetchMessageDiff,
+      speakText: props.onSpeakText,
     }
   },
 })

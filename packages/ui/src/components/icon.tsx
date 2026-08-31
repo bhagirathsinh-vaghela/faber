@@ -66,6 +66,7 @@ const icons = {
   check: `<path d="M5 11.9657L8.37838 14.7529L15 5.83398" stroke="currentColor" stroke-linecap="square"/>`,
   pause: `<path d="M7.08333 3.75V16.25M12.9167 3.75V16.25" stroke="currentColor" stroke-linecap="square"/>`,
   play: `<path d="M5.41667 3.75L15.4167 10L5.41667 16.25V3.75Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>`,
+  speaker: `<path d="M9.58333 3.33333L5 7.5H2.08333V12.5H5L9.58333 16.6667V3.33333Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.125 7.08333C13.9167 7.875 13.9167 12.125 13.125 12.9167M15.8333 4.58333C17.9167 6.66667 17.9167 13.3333 15.8333 15.4167" stroke="currentColor" stroke-linecap="round"/>`,
   photo: `<path d="M16.6665 16.6666L11.6665 11.6666L9.99984 13.3333L6.6665 9.99996L3.08317 13.5833M2.9165 2.91663H17.0832V17.0833H2.9165V2.91663ZM13.3332 7.49996C13.3332 8.30537 12.6803 8.95829 11.8748 8.95829C11.0694 8.95829 10.4165 8.30537 10.4165 7.49996C10.4165 6.69454 11.0694 6.04163 11.8748 6.04163C12.6803 6.04163 13.3332 6.69454 13.3332 7.49996Z" stroke="currentColor" stroke-linecap="square"/>`,
   share: `<path d="M10.0013 12.0846L10.0013 3.33464M13.7513 6.66797L10.0013 2.91797L6.2513 6.66797M17.0846 10.418V17.0846H2.91797V10.418" stroke="currentColor" stroke-linecap="square"/>`,
   download: `<path d="M13.9583 10.6257L10 14.584L6.04167 10.6257M10 2.08398V13.959M16.25 17.9173H3.75" stroke="currentColor" stroke-linecap="square"/>`,

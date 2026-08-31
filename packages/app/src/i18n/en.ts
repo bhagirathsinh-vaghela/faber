@@ -262,6 +262,23 @@ export const dict = {
   "dictation.accept": "Accept",
   "dictation.discard": "Discard",
 
+  "speech.speak": "Read aloud",
+  "speech.speaking": "Reading",
+  "speech.paused": "Paused",
+  "speech.pause": "Pause",
+  "speech.resume": "Resume",
+  "speech.speed": "Playback speed",
+  "speech.stop": "Stop",
+  "speech.loading": "Preparing",
+  "speech.failed": "Could not read aloud",
+  "speech.ready": "Ready",
+  "speech.play": "Play",
+  "speech.previous": "Previous",
+  "speech.next": "Next",
+  "speech.restart": "Start over",
+  "speech.slower": "Slower",
+  "speech.faster": "Faster",
+
   "companion.enter": "Enter companion mode",
   "companion.exit": "Exit companion mode",
 

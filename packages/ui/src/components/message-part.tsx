@@ -46,6 +46,7 @@ import { getDirectory as _getDirectory, getFilename, truncateMiddle } from "@ope
 import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { CopyButton } from "./copy-button"
+import { SpeakButton } from "./speak-button"
 
 interface Diagnostic {
   range: {
@@ -464,6 +465,7 @@ export function MessageBox(props: {
   label?: string
   accent?: string
   copy?: () => string
+  speak?: () => string
   // Extra control rendered inline in the title-bar actions row, after copy
   // (e.g. the collapse/expand chevron on sticky user messages).
   action?: JSX.Element
@@ -622,6 +624,9 @@ export function MessageBox(props: {
                 </Button>
               </Tooltip>
             </div>
+          </Show>
+          <Show when={props.speak}>
+            <SpeakButton content={props.speak!} />
           </Show>
           <Show when={props.copy}>
             <CopyButton content={props.copy!} />
@@ -1033,7 +1038,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   // the position changes — so the block keeps its identity across the transition.
   return (
     <Show when={throttledText()}>
-      <MessageBox message={props.message} numberKey={part.id} copy={displayText}>
+      <MessageBox message={props.message} numberKey={part.id} copy={displayText} speak={displayText}>
         <Markdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
         {/* Snapshot line under every assistant text box, matching the Response
             box. Gate on this block's OWN completion, not the whole turn: an
