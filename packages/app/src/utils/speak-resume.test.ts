@@ -6,7 +6,12 @@ import { createSpeech } from "./speak"
 // reusing another's text would inherit where that one left off.
 let seq = 0
 const message = () =>
-  Array.from({ length: 6 }, (_, i) => `Message ${++seq} sentence ${i} carries a modest amount of prose.`).join("\n")
+  Array.from(
+    { length: 6 },
+    (_, i) =>
+      `Message ${++seq} sentence ${i} carries enough prose of its own to fill a chunk, since the cap packs short ` +
+      `sentences together and these tests need one chunk per sentence to navigate between.`,
+  ).join("\n\n")
 
 // A never-heard message plays immediately, so the element has to survive the
 // call even though no audio is fetched in these tests.
@@ -67,7 +72,7 @@ describe("createSpeech position", () => {
   })
 
   test("each message keeps its own place, not just the last one read", () => {
-    const other = "Another message here. It has a couple of sentences.\nAnd a third one."
+    const other = message()
     createRoot((dispose) => {
       const it = speech()
       const LONG = message()

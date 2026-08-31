@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSignal, onCleanup } from "solid-js"
+import { convertMarkdown } from "speakable-text"
 
 // Below 0.5 the voice slurs and above 2.5 it stops being followable, so the
 // range ends there rather than wherever repeated presses would reach.
@@ -27,30 +28,31 @@ export function storedRate(store: Pick<Storage, "getItem"> | undefined = safeSto
   return held >= RATE.min && held <= RATE.max ? clampRate(held) : RATE.base
 }
 
-// A fenced block, a table, or a bare URL read aloud verbatim is a minute of
-// spoken punctuation, so each collapses to a phrase naming what was skipped.
-// Inline formatting has no spoken equivalent at all and simply loses its marks.
+const SYMBOLS: [RegExp, string][] = [
+  [/[→⟶]/g, " to "],
+  [/[←⟵]/g, " from "],
+  [/[↔⟷]/g, " both ways "],
+  [/[⇒⟹]/g, " gives "],
+  [/[✓✅☑]/g, " yes "],
+  [/[✗❌✕✘]/g, " no "],
+  [/⚠️?/g, " warning "],
+  [/[•·]/g, " "],
+  [/…/g, " "],
+  [/(\d)\s*[–—]\s*(\d)/g, "$1 to $2"],
+  [/[–—]/g, ", "],
+  [/≈/g, " about "],
+  [/≥/g, " at least "],
+  [/≤/g, " at most "],
+]
+
 function speakable(markdown: string) {
-  return (
-    markdown
-      .replace(/```(\w*)[^\n]*\n[\s\S]*?```/g, (_, lang) => ` (${lang || "code"} block) `)
-      .replace(/^ {4,}\S[\s\S]*?$/gm, " (code block) ")
-      .replace(/^\|.*\|[ \t]*$(?:\n^\|.*\|[ \t]*$)+/gm, " (table) ")
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, (_, alt) => (alt ? ` image, ${alt} ` : " (image) "))
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/^#{1,6}\s+/gm, "")
-      .replace(/^\s*[-*+]\s+/gm, "")
-      .replace(/^\s*>\s?/gm, "")
-      .replace(/^\s*([-*_])(?:\s*\1){2,}\s*$/gm, " ")
-      .replace(/`([^`]+)`/g, "$1")
-      .replace(/(\*\*|__)(.*?)\1/g, "$2")
-      .replace(/(\*|_)(.*?)\1/g, "$2")
-      .replace(/https?:\/\/\S+/g, " (link) ")
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n{2,}/g, "\n")
-      .trim()
-  )
+  // A bare URL is otherwise spelled out character by character, which is
+  // unlistenable and carries nothing the surrounding words do not.
+  const spoken = convertMarkdown(markdown.replace(/(?<![(<\]])https?:\/\/\S+/g, "a link")).text
+  return SYMBOLS.reduce((text, [pattern, word]) => text.replace(pattern, word), spoken)
+    .replace(/[ \t]+/g, " ")
+    .replace(/ ([,.])/g, "$1")
+    .trim()
 }
 
 // A chunk boundary is heard as a pause, so chunks end at sentence ends where a
