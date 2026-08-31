@@ -1646,9 +1646,27 @@ function createGlobalSync() {
     }
   }
 
+  // Drop a session's cached liveness the moment the user stops it, instead of
+  // waiting for the server to say what the stop already decided. Both stores
+  // isAlive reads are caches of a server push, so a stop that only fires the
+  // request leaves them asserting the session is alive until the frame lands —
+  // and the overview the stop navigates to renders from them first. Clearing
+  // here is not a guess about the outcome: the same fields are what the arriving
+  // recent.updated sets, so the push confirms this state rather than correcting
+  // it. A failed abort is healed by that push like any other drift.
+  function clearLiveness(sessionID: string, directory: string) {
+    const [store, setStore] = ensureChild(directory)
+    if (store.session_busy[sessionID])
+      setStore("session_busy", sessionID, { busy: false, busySelf: false, busyDescendant: false })
+    const index = globalStore.recent_hub.findIndex((entry) => entry.sessionID === sessionID)
+    if (index === -1) return
+    setGlobalStore("recent_hub", index, { busy: false, pingAt: undefined })
+  }
+
   return {
     data: globalStore,
     set: setGlobalStore,
+    clearLiveness,
     get ready() {
       return globalStore.ready
     },

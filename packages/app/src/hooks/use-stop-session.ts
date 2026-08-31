@@ -1,4 +1,5 @@
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
 import { useNavigate, useParams } from "@solidjs/router"
 
 // The one Stop action, shared by every stop control (the prompt-input stop
@@ -17,16 +18,20 @@ export function isStopKey(event: KeyboardEvent) {
 
 export function useStopSession() {
   const sdk = useGlobalSDK()
+  const globalSync = useGlobalSync()
   const navigate = useNavigate()
   const params = useParams()
 
   // Returns whether it navigated home (the stopped session was the one on
   // screen), so a caller with extra teardown for that case (e.g. closing an
   // open overlay) can key off the same decision without repeating the rule.
-  // Navigate first so the view leaves immediately, then tear the session down
-  // (abort the turn, which server-side also stops the ping daemon).
+  // Clear the cached liveness BEFORE navigating: the overview classifies rows
+  // from that cache, so leaving it to the server's frame renders the session
+  // this stop just ended under Live sessions for as long as the round trip and
+  // the event batcher take. The abort follows and the server's push confirms it.
   return (sessionID: string, directory: string) => {
     const onScreen = params.id === sessionID
+    globalSync.clearLiveness(sessionID, directory)
     if (onScreen) navigate("/", { state: { stopped: sessionID } })
     void sdk.client.session.abort({ sessionID, directory }).catch(() => {})
     return onScreen
