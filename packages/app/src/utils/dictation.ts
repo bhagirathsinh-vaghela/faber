@@ -153,6 +153,19 @@ function release(socket: WebSocket, context: AudioContext, stream: MediaStream, 
   return close
 }
 
+// Ends a dictation without asking for a transcript: the socket closes instead
+// of sending "stop", so the server drops the audio rather than paying an engine
+// run for text nobody will read. The handlers are cleared first because a
+// transcript already in flight would otherwise land in the store after the
+// discard.
+function abort(socket: WebSocket, context: AudioContext, stream: MediaStream) {
+  socket.onmessage = null
+  socket.onclose = null
+  socket.close()
+  for (const track of stream.getTracks()) track.stop()
+  afterPaint(() => context.close().catch(() => {}))
+}
+
 let active: (() => void) | undefined
 
 // True while any dictation session (from any host) is capturing. Not
@@ -247,6 +260,10 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   let abortStart: (() => void) | undefined
   // Shared by concurrent settle() callers so the transcript is delivered once.
   let settling: Promise<string> | undefined
+  // The graph a settle() is waiting on. settle() hands the session over, so
+  // without this a discard arriving while the engine transcribes has nothing
+  // left to close.
+  let draining: { socket: WebSocket; context: AudioContext; stream: MediaStream } | undefined
 
   const supported = () => !!navigator.mediaDevices?.getUserMedia
 
@@ -258,12 +275,16 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     // Clear the transcript even with no live session, so a discard after the
     // mic already stopped cannot leave stale text for the next dictation.
     setStore({ active: false, listening: false, transcribing: false, paused: false, committed: "", interim: "" })
-    if (!session) return
-    const { socket, context, stream, target } = session
-    session = undefined
     analyser = undefined
+    // Ahead of the graph check: a teardown during start()'s awaits has no
+    // session to release, and leaving the claim behind paints a mic that is
+    // capturing nothing as live.
     if (active === stop) setActive(undefined)
-    release(socket, context, stream, target)()
+    const graph = session ?? draining
+    session = undefined
+    draining = undefined
+    if (!graph) return
+    abort(graph.socket, graph.context, graph.stream)
   }
 
   // Releases the microphone but leaves the socket open, since a batch engine
@@ -281,6 +302,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     }
     const { socket, context, stream, target } = session
     session = undefined
+    draining = { socket, context, stream }
     analyser = undefined
     paused = false
     if (active === stop) setActive(undefined)
@@ -295,6 +317,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
         const transcript = text()
         setStore({ transcribing: false, committed: "", interim: "" })
         settling = undefined
+        draining = undefined
         resolve(transcript)
         closeAudio()
       }

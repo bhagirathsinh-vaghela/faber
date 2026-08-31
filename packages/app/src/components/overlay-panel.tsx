@@ -7,9 +7,11 @@ import { Portal } from "solid-js/web"
 // than in each — a change to the scrim or the anchoring reaches both.
 export function OverlayPanel(props: {
   accent?: string
-  // Escape, and a pointer landing outside the panel. Both mean dismiss, but
-  // what that resolves to is the caller's (accept a transcript, stop a reading).
+  // A pointer landing outside the panel. What that resolves to is the caller's
+  // (accept a transcript, stop a reading).
   onDismiss: () => void
+  // Escape, whose meaning is cancel: discard whatever the panel holds.
+  onEscape?: () => void
   onKey?: (event: KeyboardEvent) => void
   // Pointer targets the panel must not treat as outside, for a toggle that
   // handles its own dismissal.
@@ -24,7 +26,7 @@ export function OverlayPanel(props: {
     if (event.key === "Escape") {
       event.preventDefault()
       event.stopPropagation()
-      props.onDismiss()
+      ;(props.onEscape ?? props.onDismiss)()
       return
     }
     props.onKey?.(event)

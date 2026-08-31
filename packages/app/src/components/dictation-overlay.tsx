@@ -104,6 +104,7 @@ export function DictationOverlay(props: {
     <OverlayPanel
       accent={props.accent}
       onDismiss={() => finish("accept")}
+      onEscape={() => finish("discard")}
       onKey={handleKey}
       ignore="[data-dictation-toggle]"
     >

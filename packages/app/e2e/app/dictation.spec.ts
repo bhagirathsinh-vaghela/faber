@@ -1,4 +1,5 @@
 import { test, expect } from "../fixtures"
+import { promptSelector } from "../selectors"
 
 // The pause control is the chunking feature's user surface: pausing commits the
 // audio so far and drops incoming frames until resume. These assert the overlay
@@ -108,6 +109,65 @@ test.describe("dictation pause control", () => {
     })
 
     await expect(page.getByText("first committed chunk second committed chunk")).toBeVisible()
+  })
+
+  test("escape closes the overlay without asking the server to transcribe", async ({ page, gotoSession }) => {
+    const wire = { audio: 0, stopped: false }
+    page.on("websocket", (ws) => {
+      if (!ws.url().includes("/dictation/connect")) return
+      ws.on("framesent", (frame) => {
+        if (typeof frame.payload !== "string") {
+          wire.audio++
+          return
+        }
+        if (frame.payload.includes('"stop"')) wire.stopped = true
+      })
+    })
+
+    await gotoSession()
+
+    const mic = page.locator('button[aria-label="Dictate"]')
+    test.skip((await mic.count()) === 0, "dictation unsupported in this browser")
+    await mic.click()
+
+    const pause = page.locator("[data-dictation-pause]")
+    await expect(pause).toBeVisible()
+    await expect.poll(() => wire.audio).toBeGreaterThan(0)
+
+    await page.keyboard.press("Escape")
+    await expect(pause).toBeHidden()
+
+    await page.waitForTimeout(1000)
+    expect(wire.stopped).toBe(false)
+    await expect(page.locator(promptSelector)).toHaveText("")
+  })
+
+  test("a pointer outside the overlay ends the dictation the way enter does", async ({ page, gotoSession }) => {
+    const wire = { audio: 0, stopped: false }
+    page.on("websocket", (ws) => {
+      if (!ws.url().includes("/dictation/connect")) return
+      ws.on("framesent", (frame) => {
+        if (typeof frame.payload !== "string") {
+          wire.audio++
+          return
+        }
+        if (frame.payload.includes('"stop"')) wire.stopped = true
+      })
+    })
+
+    await gotoSession()
+
+    const mic = page.locator('button[aria-label="Dictate"]')
+    test.skip((await mic.count()) === 0, "dictation unsupported in this browser")
+    await mic.click()
+
+    const pause = page.locator("[data-dictation-pause]")
+    await expect(pause).toBeVisible()
+    await expect.poll(() => wire.audio).toBeGreaterThan(0)
+
+    await page.mouse.click(5, 5)
+    await expect(pause).toBeHidden()
+    await expect.poll(() => wire.stopped).toBe(true)
   })
 
   test("spacebar toggles pause while the overlay is open", async ({ page, gotoSession }) => {
