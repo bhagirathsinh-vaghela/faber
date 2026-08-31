@@ -75,9 +75,10 @@ export namespace Web {
       ETag: asset.etag,
       Vary: "Accept-Encoding",
       // worker-src/script-src blob: for the dictation AudioWorklet, which loads
-      // its module from an inline Blob URL.
+      // its module from an inline Blob URL. media-src blob: for synthesized
+      // speech, which arrives as bytes and is played from an object URL.
       "Content-Security-Policy":
-        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:",
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' data:",
     }
     if (encoding) headers["Content-Encoding"] = encoding
     return new Response(body, { headers })

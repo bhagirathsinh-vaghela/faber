@@ -45,6 +45,7 @@ import { PreferenceRoutes } from "./routes/preference"
 import { GlobalRoutes } from "./routes/global"
 import { BackgroundRoutes } from "./routes/background"
 import { DictationRoutes } from "./routes/dictation"
+import { TtsRoutes } from "./routes/tts"
 import { MDNS } from "./mdns"
 import { Web } from "./web"
 
@@ -180,6 +181,7 @@ export namespace Server {
         )
         .route("/global", GlobalRoutes())
         .route("/dictation", DictationRoutes())
+        .route("/tts", TtsRoutes())
         .put(
           "/auth/:providerID",
           describeRoute({
