@@ -615,6 +615,29 @@ export namespace Provider {
     }
   >
 
+  // A config model entry is authoritative, not a patch over models.dev: every
+  // field the registry reads must come from one source, so a half-written entry
+  // cannot silently inherit the rest from a registry that moves on its own.
+  // The cache rates are absent for most real models (a provider that bills no
+  // separate cache rate), so `cost` itself is what must be declared, not each rate.
+  const REQUIRED_MODEL_FIELDS: {
+    name: string
+    read: (model: NonNullable<Config.Provider["models"]>[string]) => unknown
+  }[] = [
+    { name: "name", read: (m) => m.name },
+    { name: "family", read: (m) => m.family },
+    { name: "release_date", read: (m) => m.release_date },
+    { name: "limit.context", read: (m) => m.limit?.context },
+    { name: "limit.output", read: (m) => m.limit?.output },
+    { name: "cost", read: (m) => m.cost },
+    { name: "reasoning", read: (m) => m.reasoning },
+    { name: "temperature", read: (m) => m.temperature },
+    { name: "tool_call", read: (m) => m.tool_call },
+    { name: "attachment", read: (m) => m.attachment },
+    { name: "modalities.input", read: (m) => m.modalities?.input },
+    { name: "modalities.output", read: (m) => m.modalities?.output },
+  ]
+
   function fromModelsDevModel(
     provider: ModelsDev.Provider,
     model: ModelsDev.Model,
@@ -765,64 +788,57 @@ export namespace Provider {
       }
 
       for (const [modelID, model] of Object.entries(provider.models ?? {})) {
-        const existingModel = parsed.models[model.id ?? modelID]
-        const name = iife(() => {
-          if (model.name) return model.name
-          if (model.id && model.id !== modelID) return modelID
-          return existingModel?.name ?? modelID
-        })
+        const missing = REQUIRED_MODEL_FIELDS.filter((field) => field.read(model) === undefined).map(
+          (field) => field.name,
+        )
+        if (missing.length > 0) throw new PartialModelConfigError({ providerID, modelID, missing })
         const parsedModel: Model = {
           id: modelID,
           api: {
-            id: model.id ?? existingModel?.api.id ?? modelID,
-            npm:
-              model.provider?.npm ??
-              provider.npm ??
-              existingModel?.api.npm ??
-              modelsDev[providerID]?.npm ??
-              "@ai-sdk/openai-compatible",
-            url: provider?.api ?? existingModel?.api.url ?? modelsDev[providerID]?.api,
+            id: model.id ?? modelID,
+            npm: model.provider?.npm ?? provider.npm ?? modelsDev[providerID]?.npm ?? "@ai-sdk/openai-compatible",
+            url: provider?.api ?? modelsDev[providerID]?.api!,
           },
-          status: model.status ?? existingModel?.status ?? "active",
-          name,
+          status: model.status ?? "active",
+          name: model.name!,
           providerID,
           capabilities: {
-            temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
-            reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
-            attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
-            toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
+            temperature: model.temperature!,
+            reasoning: model.reasoning!,
+            attachment: model.attachment!,
+            toolcall: model.tool_call!,
             input: {
-              text: model.modalities?.input?.includes("text") ?? existingModel?.capabilities.input.text ?? true,
-              audio: model.modalities?.input?.includes("audio") ?? existingModel?.capabilities.input.audio ?? false,
-              image: model.modalities?.input?.includes("image") ?? existingModel?.capabilities.input.image ?? false,
-              video: model.modalities?.input?.includes("video") ?? existingModel?.capabilities.input.video ?? false,
-              pdf: model.modalities?.input?.includes("pdf") ?? existingModel?.capabilities.input.pdf ?? false,
+              text: model.modalities!.input!.includes("text"),
+              audio: model.modalities!.input!.includes("audio"),
+              image: model.modalities!.input!.includes("image"),
+              video: model.modalities!.input!.includes("video"),
+              pdf: model.modalities!.input!.includes("pdf"),
             },
             output: {
-              text: model.modalities?.output?.includes("text") ?? existingModel?.capabilities.output.text ?? true,
-              audio: model.modalities?.output?.includes("audio") ?? existingModel?.capabilities.output.audio ?? false,
-              image: model.modalities?.output?.includes("image") ?? existingModel?.capabilities.output.image ?? false,
-              video: model.modalities?.output?.includes("video") ?? existingModel?.capabilities.output.video ?? false,
-              pdf: model.modalities?.output?.includes("pdf") ?? existingModel?.capabilities.output.pdf ?? false,
+              text: model.modalities!.output!.includes("text"),
+              audio: model.modalities!.output!.includes("audio"),
+              image: model.modalities!.output!.includes("image"),
+              video: model.modalities!.output!.includes("video"),
+              pdf: model.modalities!.output!.includes("pdf"),
             },
             interleaved: model.interleaved ?? false,
           },
           cost: {
-            input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
-            output: model?.cost?.output ?? existingModel?.cost?.output ?? 0,
+            input: model.cost!.input,
+            output: model.cost!.output,
             cache: {
-              read: model?.cost?.cache_read ?? existingModel?.cost?.cache.read ?? 0,
-              write: model?.cost?.cache_write ?? existingModel?.cost?.cache.write ?? 0,
+              read: model.cost!.cache_read ?? 0,
+              write: model.cost!.cache_write ?? 0,
             },
           },
-          options: mergeDeep(existingModel?.options ?? {}, model.options ?? {}),
+          options: model.options ?? {},
           limit: {
-            context: model.limit?.context ?? existingModel?.limit?.context ?? 0,
-            output: model.limit?.output ?? existingModel?.limit?.output ?? 0,
+            context: model.limit!.context!,
+            output: model.limit!.output!,
           },
-          headers: mergeDeep(existingModel?.headers ?? {}, model.headers ?? {}),
-          family: model.family ?? existingModel?.family ?? "",
-          release_date: model.release_date ?? existingModel?.release_date ?? "",
+          headers: model.headers ?? {},
+          family: model.family!,
+          release_date: model.release_date!,
           variants: {},
         }
         const merged = mergeDeep(ProviderTransform.variants(parsedModel), model.variants ?? {})
@@ -1301,6 +1317,15 @@ export namespace Provider {
     "ProviderInitError",
     z.object({
       providerID: z.string(),
+    }),
+  )
+
+  export const PartialModelConfigError = NamedError.create(
+    "ProviderPartialModelConfigError",
+    z.object({
+      providerID: z.string(),
+      modelID: z.string(),
+      missing: z.array(z.string()),
     }),
   )
 }

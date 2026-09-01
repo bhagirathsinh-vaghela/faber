@@ -27,6 +27,53 @@ import { Instance } from "../../src/project/instance"
 import { Provider } from "../../src/provider/provider"
 import { Env } from "../../src/env"
 
+const COMPLETE_MODEL = {
+  name: "Model",
+  family: "test",
+  release_date: "2025-01-01",
+  attachment: false,
+  reasoning: false,
+  temperature: true,
+  tool_call: true,
+  cost: { input: 1, output: 2, cache_read: 0.5, cache_write: 1.5 },
+  limit: { context: 128000, output: 4096 },
+  modalities: { input: ["text"], output: ["text"] },
+}
+
+const COMPLETE_SONNET = {
+  ...COMPLETE_MODEL,
+  name: "Claude Sonnet 4",
+  family: "claude-sonnet",
+  release_date: "2025-05-22",
+  attachment: true,
+  reasoning: true,
+  cost: { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
+  limit: { context: 200000, output: 64000 },
+  modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+}
+
+const ALL_REQUIRED_FIELDS = [
+  "name",
+  "family",
+  "release_date",
+  "limit.context",
+  "limit.output",
+  "cost",
+  "reasoning",
+  "temperature",
+  "tool_call",
+  "attachment",
+  "modalities.input",
+  "modalities.output",
+]
+
+async function listError() {
+  return Provider.list().then(
+    () => undefined,
+    (error) => error,
+  )
+}
+
 test("provider loaded from env variable", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -203,6 +250,7 @@ test("custom model alias via config", async () => {
             anthropic: {
               models: {
                 "my-alias": {
+                  ...COMPLETE_SONNET,
                   id: "claude-sonnet-4-20250514",
                   name: "My Custom Alias",
                 },
@@ -242,12 +290,8 @@ test("custom provider with npm package", async () => {
               env: ["CUSTOM_API_KEY"],
               models: {
                 "custom-model": {
+                  ...COMPLETE_MODEL,
                   name: "Custom Model",
-                  tool_call: true,
-                  limit: {
-                    context: 128000,
-                    output: 4096,
-                  },
                 },
               },
               options: {
@@ -445,9 +489,8 @@ test("provider with baseURL from config", async () => {
               env: [],
               models: {
                 "gpt-4": {
+                  ...COMPLETE_MODEL,
                   name: "GPT-4",
-                  tool_call: true,
-                  limit: { context: 128000, output: 4096 },
                 },
               },
               options: {
@@ -470,7 +513,7 @@ test("provider with baseURL from config", async () => {
   })
 })
 
-test("model cost defaults to zero when not specified", async () => {
+test("model missing cost throws PartialModelConfigError naming cost", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -484,9 +527,9 @@ test("model cost defaults to zero when not specified", async () => {
               env: [],
               models: {
                 "test-model": {
+                  ...COMPLETE_MODEL,
                   name: "Test Model",
-                  tool_call: true,
-                  limit: { context: 128000, output: 4096 },
+                  cost: undefined,
                 },
               },
               options: {
@@ -501,17 +544,18 @@ test("model cost defaults to zero when not specified", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["test-provider"].models["test-model"]
-      expect(model.cost.input).toBe(0)
-      expect(model.cost.output).toBe(0)
-      expect(model.cost.cache.read).toBe(0)
-      expect(model.cost.cache.write).toBe(0)
+      const error = await listError()
+      expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
+      expect(error.data).toEqual({
+        providerID: "test-provider",
+        modelID: "test-model",
+        missing: ["cost"],
+      })
     },
   })
 })
 
-test("model options are merged from existing model", async () => {
+test("model options come from the config entry only", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -522,6 +566,7 @@ test("model options are merged from existing model", async () => {
             anthropic: {
               models: {
                 "claude-sonnet-4-20250514": {
+                  ...COMPLETE_SONNET,
                   options: {
                     customOption: "custom-value",
                   },
@@ -541,7 +586,7 @@ test("model options are merged from existing model", async () => {
     fn: async () => {
       const providers = await Provider.list()
       const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
-      expect(model.options.customOption).toBe("custom-value")
+      expect(model.options).toEqual({ customOption: "custom-value" })
     },
   })
 })
@@ -630,6 +675,7 @@ test("getModel uses realIdByKey for aliased models", async () => {
             anthropic: {
               models: {
                 "my-sonnet": {
+                  ...COMPLETE_SONNET,
                   id: "claude-sonnet-4-20250514",
                   name: "My Sonnet Alias",
                 },
@@ -672,8 +718,8 @@ test("provider api field sets model api.url", async () => {
               env: [],
               models: {
                 "model-1": {
+                  ...COMPLETE_MODEL,
                   name: "Model 1",
-                  tool_call: true,
                   limit: { context: 8000, output: 2000 },
                 },
               },
@@ -711,8 +757,8 @@ test("explicit baseURL overrides api field", async () => {
               env: [],
               models: {
                 "model-1": {
+                  ...COMPLETE_MODEL,
                   name: "Model 1",
-                  tool_call: true,
                   limit: { context: 8000, output: 2000 },
                 },
               },
@@ -735,7 +781,7 @@ test("explicit baseURL overrides api field", async () => {
   })
 })
 
-test("model inherits properties from existing database model", async () => {
+test("model carrying only a name throws PartialModelConfigError listing every other field", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -761,12 +807,13 @@ test("model inherits properties from existing database model", async () => {
       Env.set("ANTHROPIC_API_KEY", "test-api-key")
     },
     fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["anthropic"].models["claude-sonnet-4-20250514"]
-      expect(model.name).toBe("Custom Name for Sonnet")
-      expect(model.capabilities.toolcall).toBe(true)
-      expect(model.capabilities.attachment).toBe(true)
-      expect(model.limit.context).toBeGreaterThan(0)
+      const error = await listError()
+      expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
+      expect(error.data).toEqual({
+        providerID: "anthropic",
+        modelID: "claude-sonnet-4-20250514",
+        missing: ALL_REQUIRED_FIELDS.filter((field) => field !== "name"),
+      })
     },
   })
 })
@@ -853,7 +900,7 @@ test("whitelist and blacklist can be combined", async () => {
   })
 })
 
-test("model modalities default correctly", async () => {
+test("model missing modalities throws PartialModelConfigError listing both modality fields", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -867,9 +914,9 @@ test("model modalities default correctly", async () => {
               env: [],
               models: {
                 "test-model": {
+                  ...COMPLETE_MODEL,
                   name: "Test Model",
-                  tool_call: true,
-                  limit: { context: 8000, output: 2000 },
+                  modalities: undefined,
                 },
               },
               options: { apiKey: "test" },
@@ -882,10 +929,13 @@ test("model modalities default correctly", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["test-provider"].models["test-model"]
-      expect(model.capabilities.input.text).toBe(true)
-      expect(model.capabilities.output.text).toBe(true)
+      const error = await listError()
+      expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
+      expect(error.data).toEqual({
+        providerID: "test-provider",
+        modelID: "test-model",
+        missing: ["modalities.input", "modalities.output"],
+      })
     },
   })
 })
@@ -904,9 +954,8 @@ test("model with custom cost values", async () => {
               env: [],
               models: {
                 "test-model": {
+                  ...COMPLETE_MODEL,
                   name: "Test Model",
-                  tool_call: true,
-                  limit: { context: 8000, output: 2000 },
                   cost: {
                     input: 5,
                     output: 15,
@@ -1049,8 +1098,8 @@ test("provider with custom npm package", async () => {
               env: [],
               models: {
                 "llama-3": {
+                  ...COMPLETE_MODEL,
                   name: "Llama 3",
-                  tool_call: true,
                   limit: { context: 8192, output: 2048 },
                 },
               },
@@ -1077,7 +1126,7 @@ test("provider with custom npm package", async () => {
 
 // Edge cases for model configuration
 
-test("model alias name defaults to alias key when id differs", async () => {
+test("model alias carrying only an id throws PartialModelConfigError for every required field", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -1089,7 +1138,45 @@ test("model alias name defaults to alias key when id differs", async () => {
               models: {
                 sonnet: {
                   id: "claude-sonnet-4-20250514",
-                  // no name specified - should default to "sonnet" (the key)
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    init: async () => {
+      Env.set("ANTHROPIC_API_KEY", "test-api-key")
+    },
+    fn: async () => {
+      const error = await listError()
+      expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
+      expect(error.data).toEqual({
+        providerID: "anthropic",
+        modelID: "sonnet",
+        missing: ALL_REQUIRED_FIELDS,
+      })
+    },
+  })
+})
+
+test("model alias name comes from the config entry", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          provider: {
+            anthropic: {
+              models: {
+                sonnet: {
+                  ...COMPLETE_SONNET,
+                  id: "claude-sonnet-4-20250514",
+                  name: "Sonnet",
                 },
               },
             },
@@ -1105,7 +1192,8 @@ test("model alias name defaults to alias key when id differs", async () => {
     },
     fn: async () => {
       const providers = await Provider.list()
-      expect(providers["anthropic"].models["sonnet"].name).toBe("sonnet")
+      expect(providers["anthropic"].models["sonnet"].name).toBe("Sonnet")
+      expect(providers["anthropic"].models["sonnet"].api.id).toBe("claude-sonnet-4-20250514")
     },
   })
 })
@@ -1124,8 +1212,8 @@ test("provider with multiple env var options only includes apiKey when single en
               env: ["MULTI_ENV_KEY_1", "MULTI_ENV_KEY_2"],
               models: {
                 "model-1": {
+                  ...COMPLETE_MODEL,
                   name: "Model 1",
-                  tool_call: true,
                   limit: { context: 8000, output: 2000 },
                 },
               },
@@ -1166,8 +1254,8 @@ test("provider with single env var includes apiKey automatically", async () => {
               env: ["SINGLE_ENV_KEY"],
               models: {
                 "model-1": {
+                  ...COMPLETE_MODEL,
                   name: "Model 1",
-                  tool_call: true,
                   limit: { context: 8000, output: 2000 },
                 },
               },
@@ -1205,9 +1293,12 @@ test("model cost overrides existing cost values", async () => {
             anthropic: {
               models: {
                 "claude-sonnet-4-20250514": {
+                  ...COMPLETE_SONNET,
                   cost: {
                     input: 999,
                     output: 888,
+                    cache_read: 77,
+                    cache_write: 66,
                   },
                 },
               },
@@ -1246,11 +1337,10 @@ test("completely new provider not in database can be configured", async () => {
               api: "https://new-api.com/v1",
               models: {
                 "new-model": {
+                  ...COMPLETE_MODEL,
                   name: "New Model",
-                  tool_call: true,
                   reasoning: true,
                   attachment: true,
-                  temperature: true,
                   limit: { context: 32000, output: 8000 },
                   modalities: {
                     input: ["text", "image"],
@@ -1329,6 +1419,7 @@ test("model with tool_call false", async () => {
               env: [],
               models: {
                 "basic-model": {
+                  ...COMPLETE_MODEL,
                   name: "Basic Model",
                   tool_call: false,
                   limit: { context: 4000, output: 1000 },
@@ -1350,7 +1441,7 @@ test("model with tool_call false", async () => {
   })
 })
 
-test("model defaults tool_call to true when not specified", async () => {
+test("model missing tool_call throws PartialModelConfigError naming tool_call", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -1364,8 +1455,8 @@ test("model defaults tool_call to true when not specified", async () => {
               env: [],
               models: {
                 model: {
-                  name: "Model",
-                  // tool_call not specified
+                  ...COMPLETE_MODEL,
+                  tool_call: undefined,
                   limit: { context: 4000, output: 1000 },
                 },
               },
@@ -1379,8 +1470,13 @@ test("model defaults tool_call to true when not specified", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const providers = await Provider.list()
-      expect(providers["default-tools"].models["model"].capabilities.toolcall).toBe(true)
+      const error = await listError()
+      expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
+      expect(error.data).toEqual({
+        providerID: "default-tools",
+        modelID: "model",
+        missing: ["tool_call"],
+      })
     },
   })
 })
@@ -1399,8 +1495,7 @@ test("model headers are preserved", async () => {
               env: [],
               models: {
                 model: {
-                  name: "Model",
-                  tool_call: true,
+                  ...COMPLETE_MODEL,
                   limit: { context: 4000, output: 1000 },
                   headers: {
                     "X-Custom-Header": "custom-value",
@@ -1442,8 +1537,7 @@ test("provider env fallback - second env var used if first missing", async () =>
               env: ["PRIMARY_KEY", "FALLBACK_KEY"],
               models: {
                 model: {
-                  name: "Model",
-                  tool_call: true,
+                  ...COMPLETE_MODEL,
                   limit: { context: 4000, output: 1000 },
                 },
               },
@@ -1503,13 +1597,11 @@ test("provider name defaults to id when not in database", async () => {
           $schema: "https://opencode.ai/config.json",
           provider: {
             "my-custom-id": {
-              // no name specified
               npm: "@ai-sdk/openai-compatible",
               env: [],
               models: {
                 model: {
-                  name: "Model",
-                  tool_call: true,
+                  ...COMPLETE_MODEL,
                   limit: { context: 4000, output: 1000 },
                 },
               },
@@ -1677,7 +1769,7 @@ test("closest checks multiple query terms in order", async () => {
   })
 })
 
-test("model limit defaults to zero when not specified", async () => {
+test("model missing limit throws PartialModelConfigError listing both limit fields", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -1691,9 +1783,8 @@ test("model limit defaults to zero when not specified", async () => {
               env: [],
               models: {
                 model: {
-                  name: "Model",
-                  tool_call: true,
-                  // no limit specified
+                  ...COMPLETE_MODEL,
+                  limit: undefined,
                 },
               },
               options: { apiKey: "test" },
@@ -1706,10 +1797,13 @@ test("model limit defaults to zero when not specified", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const providers = await Provider.list()
-      const model = providers["no-limit"].models["model"]
-      expect(model.limit.context).toBe(0)
-      expect(model.limit.output).toBe(0)
+      const error = await listError()
+      expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
+      expect(error.data).toEqual({
+        providerID: "no-limit",
+        modelID: "model",
+        missing: ["limit.context", "limit.output"],
+      })
     },
   })
 })
@@ -1762,8 +1856,8 @@ test("custom model inherits npm package from models.dev provider config", async 
             openai: {
               models: {
                 "my-custom-model": {
+                  ...COMPLETE_MODEL,
                   name: "My Custom Model",
-                  tool_call: true,
                   limit: { context: 8000, output: 2000 },
                 },
               },
@@ -1797,8 +1891,12 @@ test("custom model inherits api.url from models.dev provider", async () => {
           provider: {
             openrouter: {
               models: {
-                "prime-intellect/intellect-3": {},
+                "prime-intellect/intellect-3": {
+                  ...COMPLETE_MODEL,
+                  name: "INTELLECT-3",
+                },
                 "deepseek/deepseek-r1-0528": {
+                  ...COMPLETE_MODEL,
                   name: "DeepSeek R1",
                 },
               },
@@ -1869,6 +1967,7 @@ test("model variants can be disabled via config", async () => {
             anthropic: {
               models: {
                 "claude-sonnet-4-20250514": {
+                  ...COMPLETE_SONNET,
                   variants: {
                     high: { disabled: true },
                   },
@@ -1907,6 +2006,7 @@ test("model variants can be customized via config", async () => {
             anthropic: {
               models: {
                 "claude-sonnet-4-20250514": {
+                  ...COMPLETE_SONNET,
                   variants: {
                     high: {
                       thinking: {
@@ -1948,6 +2048,7 @@ test("disabled key is stripped from variant config", async () => {
             anthropic: {
               models: {
                 "claude-sonnet-4-20250514": {
+                  ...COMPLETE_SONNET,
                   variants: {
                     max: {
                       disabled: false,
@@ -1988,6 +2089,7 @@ test("all variants can be disabled via config", async () => {
             anthropic: {
               models: {
                 "claude-sonnet-4-20250514": {
+                  ...COMPLETE_SONNET,
                   variants: {
                     adaptive: { disabled: true },
                     high: { disabled: true },
@@ -2026,6 +2128,7 @@ test("variant config merges with generated variants", async () => {
             anthropic: {
               models: {
                 "claude-sonnet-4-20250514": {
+                  ...COMPLETE_SONNET,
                   variants: {
                     high: {
                       extraOption: "custom-value",
@@ -2066,6 +2169,16 @@ test("variants filtered in second pass for database models", async () => {
             openai: {
               models: {
                 "gpt-5": {
+                  ...COMPLETE_MODEL,
+                  name: "GPT-5",
+                  family: "gpt",
+                  release_date: "2025-08-07",
+                  attachment: true,
+                  reasoning: true,
+                  temperature: false,
+                  cost: { input: 1.25, output: 10, cache_read: 0.125, cache_write: 0 },
+                  limit: { context: 400000, output: 128000 },
+                  modalities: { input: ["text", "image"], output: ["text"] },
                   variants: {
                     high: { disabled: true },
                   },
@@ -2107,8 +2220,8 @@ test("custom model with variants enabled and disabled", async () => {
               env: [],
               models: {
                 "reasoning-model": {
+                  ...COMPLETE_MODEL,
                   name: "Reasoning Model",
-                  tool_call: true,
                   reasoning: true,
                   limit: { context: 128000, output: 16000 },
                   variants: {
