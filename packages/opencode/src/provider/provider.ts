@@ -1034,8 +1034,13 @@ export namespace Provider {
         // Merge configured headers into request headers
         // SDK-level headers (options["headers"]) are defaults; request-level headers (opts.headers) take precedence.
         // For anthropic-beta, merge both comma-separated lists so SDK betas and request betas are both sent.
-        const reqHeaders = typeof opts.headers === "object" ? opts.headers : {}
-        const sdkHeaders = options["headers"] ?? {}
+        const reqHeaders: Record<string, string> = iife(() => {
+          if (!opts.headers) return {}
+          if (opts.headers instanceof Headers) return Object.fromEntries(opts.headers.entries())
+          if (Array.isArray(opts.headers)) return Object.fromEntries(opts.headers)
+          return { ...opts.headers }
+        })
+        const sdkHeaders: Record<string, string> = options["headers"] ?? {}
         const mergedHeaders = { ...sdkHeaders, ...reqHeaders }
         if (sdkHeaders["anthropic-beta"] && reqHeaders["anthropic-beta"]) {
           const betas = new Set([
