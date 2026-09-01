@@ -1062,7 +1062,16 @@ export namespace SessionPrompt {
         const ctx = context(args, opts)
 
         const denial = (await mcpDenied(key)) ?? toolDenial(allowedTools, key, args)
-        if (denial) return { content: [{ type: "text" as const, text: denial }] }
+        // The processor builds a completed tool part out of title/metadata/output,
+        // so a content-only return fails ToolStateCompleted validation and aborts
+        // the turn instead of showing the model why the call was refused.
+        if (denial)
+          return {
+            title: mcpTitles[key] ?? key,
+            metadata: {},
+            output: denial,
+            content: [{ type: "text" as const, text: denial }],
+          }
 
         await Plugin.trigger(
           "tool.execute.before",
