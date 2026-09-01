@@ -701,6 +701,36 @@ export namespace MessageV2 {
     for (const message of messages) yield message
   })
 
+  // The newest user message whose selector returns a value. Synthetic turns
+  // stamp what they inherit but never leave a setting blank, so the newest
+  // message carrying it is the session's current pick — a turn that names none
+  // inherits rather than snapping to a default. The one scan every forward-pick
+  // reader shares (model, variant).
+  async function lastStamped<T>(sessionID: string, pick: (user: User) => T | undefined) {
+    for await (const item of stream(sessionID)) {
+      if (item.info.role !== "user") continue
+      const value = pick(item.info)
+      if (value !== undefined) return value
+    }
+    return undefined
+  }
+
+  export const lastModel = fn(Identifier.schema("session"), (sessionID) =>
+    lastStamped(sessionID, (user) => user.model),
+  )
+
+  export const lastVariant = fn(Identifier.schema("session"), (sessionID) =>
+    lastStamped(sessionID, (user) => user.variant),
+  )
+
+  // The per-turn parameters a synthetic message inherits from the turn it
+  // continues: which agent is running, and the model/variant it runs as. Every
+  // synthetic writer spreads exactly these, so a new one cannot silently omit
+  // one and leave a blank the next reader falls through.
+  export function inherit(source: User) {
+    return { agent: source.agent, model: source.model, variant: source.variant }
+  }
+
   export const parts = fn(Identifier.schema("message"), async (messageID) => {
     return sizedParts(messageID).then((x) => x.parts)
   })

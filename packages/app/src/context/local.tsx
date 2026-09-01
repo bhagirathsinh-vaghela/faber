@@ -188,10 +188,10 @@ export const {
         const base = offered(pref) ? pref : undefined
         const id = activeSessionID()
         if (id) {
-          const last = lastMessage(id)
+          const named = sync.data.message[id]?.findLast((msg) => msg.role === "user" && msg.variant !== undefined)
           const baseline =
-            last && sameModel(last.model, { providerID: m.provider.id, modelID: m.id }) && offered(last.variant)
-              ? last.variant
+            named?.role === "user" && sameModel(named.model, { providerID: m.provider.id, modelID: m.id })
+              ? named.variant
               : base
           if (id in ephemeral.variantBySession && offered(ephemeral.variantBySession[id]))
             return { value: ephemeral.variantBySession[id], baseline }

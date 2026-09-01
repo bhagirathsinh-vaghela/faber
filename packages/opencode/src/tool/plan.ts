@@ -11,10 +11,7 @@ import EXIT_DESCRIPTION from "./plan-exit.txt"
 import ENTER_DESCRIPTION from "./plan-enter.txt"
 
 async function getLastModel(sessionID: string) {
-  for await (const item of MessageV2.stream(sessionID)) {
-    if (item.info.role === "user" && item.info.model) return item.info.model
-  }
-  return Provider.defaultModel()
+  return (await MessageV2.lastModel(sessionID)) ?? (await Provider.defaultModel())
 }
 
 export const PlanExitTool = Tool.define("plan_exit", {
@@ -53,6 +50,7 @@ export const PlanExitTool = Tool.define("plan_exit", {
       },
       agent: "build",
       model,
+      variant: await MessageV2.lastVariant(ctx.sessionID),
     }
     await Session.updateMessage(userMsg)
     await Session.updatePart({
@@ -110,6 +108,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
       },
       agent: "plan",
       model,
+      variant: await MessageV2.lastVariant(ctx.sessionID),
     }
     await Session.updateMessage(userMsg)
     await Session.updatePart({

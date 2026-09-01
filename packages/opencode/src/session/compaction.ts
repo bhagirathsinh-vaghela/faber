@@ -226,8 +226,7 @@ export namespace SessionCompaction {
         time: {
           created: Date.now(),
         },
-        agent: userMessage.agent,
-        model: userMessage.model,
+        ...MessageV2.inherit(userMessage),
       })
       await Session.updatePart({
         id: Identifier.ascending("part"),
@@ -269,6 +268,7 @@ export namespace SessionCompaction {
         model: input.model,
         sessionID: input.sessionID,
         agent: input.agent,
+        variant: await MessageV2.lastVariant(input.sessionID),
         time: {
           created: Date.now(),
         },

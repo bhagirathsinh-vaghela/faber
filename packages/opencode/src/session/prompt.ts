@@ -95,6 +95,13 @@ export namespace SessionPrompt {
     },
   )
 
+  // Each in-flight turn's parameters, claimed synchronously by its opener before
+  // the opener's first await. A prompt that joins a running turn adopts these
+  // instead of resolving its own, so one turn runs under one parameter set. The
+  // slot is a Promise so a join arriving while the opener is still resolving
+  // waits for it rather than racing to resolve in parallel.
+  const turnParams = Instance.state(() => new Map<string, Promise<ReturnType<typeof MessageV2.inherit>>>())
+
   export function assertNotBusy(sessionID: string) {
     const match = state()[sessionID]
     if (match) throw new Session.BusyError(sessionID)
@@ -176,6 +183,16 @@ export namespace SessionPrompt {
   }
 
   async function run(input: PromptInput, onPersisted?: () => void | Promise<void>) {
+    // Claim the turn's parameters synchronously, before the first await, so two
+    // prompts racing on an idle session cannot both resolve their own: the first
+    // installs the slot, the second sees it and joins. The opener resolves the
+    // slot once its message is built; a join awaits that. noReply writes a
+    // message without running a turn, so it never claims.
+    const claimed = !input.noReply && !turnParams().has(input.sessionID)
+    let settleParams: ((params: ReturnType<typeof MessageV2.inherit>) => void) | undefined
+    if (claimed) turnParams().set(input.sessionID, new Promise((resolve) => (settleParams = resolve)))
+    const joinedParams = !claimed ? turnParams().get(input.sessionID) : undefined
+
     // The cache-ping daemon stays ARMED across the turn — we do NOT stop it here.
     // A turn that keeps dispatching model requests inside CACHE_TTL re-anchors the
     // cache faster than the daemon's scheduled ping, so evaluate() naturally keeps
@@ -209,7 +226,8 @@ export namespace SessionPrompt {
       })
     }
 
-    const message = await createUserMessage(input)
+    const message = await createUserMessage(input, joinedParams)
+    if (settleParams) settleParams(MessageV2.inherit(message.info as MessageV2.User))
     await Session.touch(input.sessionID)
     await onPersisted?.()
 
@@ -303,6 +321,10 @@ export namespace SessionPrompt {
     log.info("cancel", { sessionID })
     const s = state()
     const match = s[sessionID]
+    // The turn is over, so its parameter claim must go too — otherwise the next
+    // fresh turn on this session would adopt the finished turn's parameters as a
+    // phantom join.
+    turnParams().delete(sessionID)
     // Both branches drop the session's open prompts. A prompt outlives the tool
     // call that raised it only as a dot nobody can answer, and the no-match
     // branch is reached with one still open: a session waiting on a permission
@@ -619,8 +641,7 @@ export namespace SessionPrompt {
             time: {
               created: Date.now(),
             },
-            agent: lastUser.agent,
-            model: lastUser.model,
+            ...MessageV2.inherit(lastUser),
           }
           await Session.updateMessage(summaryUserMsg)
           await Session.updatePart({
@@ -851,10 +872,7 @@ export namespace SessionPrompt {
   })
 
   async function lastModel(sessionID: string) {
-    for await (const item of MessageV2.stream(sessionID)) {
-      if (item.info.role === "user" && item.info.model) return item.info.model
-    }
-    return Provider.defaultModel()
+    return (await MessageV2.lastModel(sessionID)) ?? (await Provider.defaultModel())
   }
 
   // Tools that carry a file path we can scope against (the edit family).
@@ -1137,12 +1155,24 @@ export namespace SessionPrompt {
     return tools
   }
 
-  async function createUserMessage(input: PromptInput) {
+  async function createUserMessage(
+    input: PromptInput,
+    joined?: Promise<ReturnType<typeof MessageV2.inherit>>,
+  ) {
     const snapshot = await SessionPin.get(input.sessionID)
     const agent =
       snapshot.agents[input.agent ?? snapshot.defaultAgent ?? ""] ??
       (await Agent.get(input.agent ?? (await Agent.defaultAgent())))
-    const model = input.model ?? (await lastModel(input.sessionID)) ?? agent.model
+    // A prompt that joined a running turn adopts that turn's parameters — not the
+    // picker values the client echoed since. Changing them is a conscious
+    // idle-time act: interrupt, change, then send.
+    const resolved = joined
+      ? await joined
+      : {
+          agent: agent.name,
+          model: input.model ?? (await lastModel(input.sessionID)) ?? agent.model,
+          variant: input.variant ?? (await MessageV2.lastVariant(input.sessionID)) ?? agent.variant,
+        }
     const info: MessageV2.User = {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
@@ -1151,10 +1181,8 @@ export namespace SessionPrompt {
         created: Date.now(),
       },
       tools: input.tools,
-      agent: agent.name,
-      model,
       system: input.system,
-      variant: input.variant ?? agent.variant,
+      ...resolved,
     }
     using _ = defer(() => InstructionPrompt.clear(info.id))
 
@@ -1919,6 +1947,7 @@ export namespace SessionPrompt {
         providerID: model.providerID,
         modelID: model.modelID,
       },
+      variant: await MessageV2.lastVariant(input.sessionID),
     }
     await Session.updateMessage(userMsg)
     const userPart: MessageV2.Part = {

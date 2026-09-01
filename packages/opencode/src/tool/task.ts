@@ -128,6 +128,15 @@ async function injectCompletionResult(task: BackgroundTask.Info, output: string,
   await doInject(task, output, error, duration)
 }
 
+function inheritedParams(existingMessages: MessageV2.WithParts[]) {
+  const parentUser = existingMessages.findLast((m) => m.info.role === "user" && !m.info.synthetic)?.info as
+    | MessageV2.User
+    | undefined
+  return parentUser
+    ? MessageV2.inherit(parentUser)
+    : { agent: "build", model: { providerID: "unknown", modelID: "unknown" }, variant: undefined }
+}
+
 async function doInject(
   task: BackgroundTask.Info,
   output: string,
@@ -144,17 +153,9 @@ async function doInject(
   const status: "completed" | "failed" | "cancelled" = statusOverride ?? (error ? "failed" : "completed")
   const notification = buildNotification(task, output, error, duration, status)
 
-  // Get existing messages to calculate next promptIndex and resolve parent session's agent/model
+  // Get existing messages to calculate next promptIndex and resolve parent session's params
   const existingMessages = await Session.messages({ sessionID: task.parentSessionID })
   const maxPromptIndex = existingMessages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0)
-
-  // Use the parent session's agent/model so the triggered LLM loop doesn't switch agents
-  // (which would change the system prompt and break the cache prefix)
-  const lastRealUser = existingMessages.findLast((m) => m.info.role === "user" && !m.info.synthetic)
-  const parentUser = lastRealUser?.info as MessageV2.User | undefined
-  const model = parentUser?.model ?? { providerID: "unknown", modelID: "unknown" }
-  const agent = parentUser?.agent ?? "build"
-  const variant = parentUser?.variant
 
   const messageID = Identifier.ascending("message")
   const userMsg: MessageV2.User = {
@@ -162,9 +163,7 @@ async function doInject(
     sessionID: task.parentSessionID,
     role: "user",
     time: { created: Date.now() },
-    agent,
-    model,
-    variant,
+    ...inheritedParams(existingMessages),
     synthetic: true,
     promptIndex: maxPromptIndex + 1,
   }
