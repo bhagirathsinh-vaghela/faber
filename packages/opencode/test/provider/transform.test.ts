@@ -2020,3 +2020,27 @@ describe("ProviderTransform.variants", () => {
     })
   })
 })
+
+describe("ProviderTransform.anthropicMaxTokens", () => {
+  test("the registry ceiling wins over every hardcoded branch", () => {
+    expect(ProviderTransform.anthropicMaxTokens("claude-opus-5", 128000)).toBe(128000)
+    expect(ProviderTransform.anthropicMaxTokens("claude-fable-5-1", 128000)).toBe(128000)
+    expect(ProviderTransform.anthropicMaxTokens("claude-opus-4-6", 128000)).toBe(128000)
+    expect(ProviderTransform.anthropicMaxTokens("claude-3-5-haiku", 8192)).toBe(8192)
+  })
+
+  test("an id carrying 3-5 outside the claude-3-5 generation is not capped at 8192", () => {
+    expect(ProviderTransform.anthropicMaxTokens("claude-opus-13-5")).toBe(32000)
+    expect(ProviderTransform.anthropicMaxTokens("claude-sonnet-6-3-5", 200000)).toBe(200000)
+  })
+
+  test("the ladder answers only when the registry has no ceiling", () => {
+    expect(ProviderTransform.anthropicMaxTokens("claude-3-5-sonnet")).toBe(8192)
+    expect(ProviderTransform.anthropicMaxTokens("claude-3-opus")).toBe(4096)
+    expect(ProviderTransform.anthropicMaxTokens("claude-3-haiku")).toBe(4096)
+    expect(ProviderTransform.anthropicMaxTokens("claude-opus-4-5")).toBe(64000)
+    expect(ProviderTransform.anthropicMaxTokens("claude-opus-4-1")).toBe(32000)
+    expect(ProviderTransform.anthropicMaxTokens("claude-sonnet-4-0")).toBe(64000)
+    expect(ProviderTransform.anthropicMaxTokens("claude-unheard-of-9")).toBe(32000)
+  })
+})

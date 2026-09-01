@@ -878,15 +878,18 @@ export namespace ProviderTransform {
   // motivated this: it matched neither "opus-4-5" nor "opus-4" and was capped at
   // 32000 against a real ceiling of 128000.
   export function anthropicMaxTokens(modelId: string, registryLimit?: number): number {
+    // The registry's own ceiling wins wherever it has one; the ladder below
+    // only answers for the generations that predate that field being reliable.
+    if (registryLimit && registryLimit > 0) return registryLimit
     const id = modelId.toLowerCase()
-    if (id.includes("3-5")) return 8192
+    if (id.includes("claude-3-5")) return 8192
     if (id.includes("claude-3-opus")) return 4096
     if (id.includes("claude-3-sonnet")) return 8192
     if (id.includes("claude-3-haiku")) return 4096
     if (id.includes("opus-4-5")) return 64000
     if (id.includes("opus-4")) return 32000
     if (id.includes("sonnet-4") || id.includes("haiku-4")) return 64000
-    return registryLimit && registryLimit > 0 ? registryLimit : 32000
+    return 32000
   }
 
   export function maxOutputTokens(
