@@ -1243,6 +1243,8 @@ export namespace Provider {
 
     const provider = await state().then((state) => state.providers[providerID])
     if (provider) {
+      // The bare family names trail the versioned ids so a newer generation
+      // still resolves to the small model of its family.
       let priority = [
         "claude-haiku-4-5",
         "claude-haiku-4.5",
@@ -1251,6 +1253,9 @@ export namespace Provider {
         "gemini-3-flash",
         "gemini-2.5-flash",
         "gpt-5-nano",
+        "haiku",
+        "flash",
+        "nano",
       ]
       if (providerID.startsWith("opencode")) {
         priority = ["gpt-5-nano"]
