@@ -152,6 +152,22 @@ export namespace BackgroundOrchestrator {
       log.info("holding a result for a session the user stopped", { job: job.id, kind })
       return
     }
-    await BackgroundDeliver.send(job, kind)
+    // A send that finds no session is the one path that loses finished work
+    // for good: the record settles either way, and reconcile returns early on
+    // a settled record, so nothing sends it again. Nothing retries it here
+    // (the lookup that just failed would fail identically on every later
+    // pass), but it is recorded rather than dropped in silence, so a lost
+    // result leaves a trace naming the project it could not be delivered to.
+    if (!(await BackgroundDeliver.send(job, kind))) {
+      log.error("lost a result: no session to deliver it to", {
+        job: job.id,
+        kind,
+        sessionID: job.sessionID,
+        project: BackgroundJob.owner(job),
+      })
+      await BackgroundJob.update(job.id, (draft) => {
+        draft.time.lost = Date.now()
+      })
+    }
   }
 }

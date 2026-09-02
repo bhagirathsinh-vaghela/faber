@@ -164,6 +164,67 @@ describe("BackgroundJob.owner", () => {
   })
 })
 
+// The record settles whether or not its result lands, and reconcile returns
+// early on a settled record, so a send that finds no session is the one path
+// that loses finished work for good. It cannot be retried (the same lookup
+// fails identically every pass), so the stamp is what keeps it from being lost
+// in silence.
+describe("BackgroundOrchestrator: a result with nowhere to go", () => {
+  // The signal the stamp depends on. `send` reports whether the result landed,
+  // and every caller reaches it through one guard, so a false here is what
+  // separates a lost result from a delivered one.
+  test("a delivery that finds no session reports false", async () => {
+    const project = await tmpdir({ git: true })
+    const { BackgroundDeliver } = await import("../../src/background/deliver")
+    expect(
+      await BackgroundDeliver.send(
+        {
+          id: BackgroundJob.id(),
+          sessionID: "ses_orchestrator_undeliverable",
+          directory: project.path,
+          project: project.path,
+          command: "echo done",
+          description: "undeliverable job",
+          status: "exited",
+          exit: 0,
+          time: { created: Date.now(), hard: Date.now() + 600_000, completed: Date.now() },
+        },
+        "completed",
+        false,
+      ),
+    ).toBe(false)
+  })
+
+  // Driven through a RUNNING job whose process is gone, which is what a pass
+  // assesses as finished and then delivers. A record already stored as exited
+  // is never reconciled at all, so it would pass this whether the guard exists
+  // or not.
+  test("stamps a record whose result could not be delivered", async () => {
+    const project = await tmpdir({ git: true })
+    const proc = spawnJob("true")
+    await proc.exited
+    const id = BackgroundJob.id()
+    created.push(id)
+    await BackgroundJob.write({
+      id,
+      sessionID: "ses_orchestrator_undeliverable",
+      directory: project.path,
+      project: project.path,
+      command: "true",
+      description: "undeliverable job",
+      status: "running",
+      time: { created: Date.now(), hard: Date.now() + 600_000 },
+      process: { pid: proc.pid, start: "gone", pgid: proc.pid },
+    })
+
+    await BackgroundOrchestrator.sweep()
+
+    const stamped = await BackgroundJob.get(id)
+    expect(stamped?.status).toBe("exited")
+    expect(stamped?.time.lost).toBeGreaterThan(0)
+  }, 20_000)
+})
+
 describe("BackgroundOrchestrator settle window", () => {
   // The window has to outlast the asynchronous rebuild of session liveness
   // (re-arming daemons, resuming interrupted turns) and still end well before

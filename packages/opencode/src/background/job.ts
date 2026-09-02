@@ -63,6 +63,11 @@ export namespace BackgroundJob {
         // When the soft deadline's check-in was delivered, so a reconcile
         // that runs every few minutes does not re-deliver it.
         notified: z.number().optional(),
+        // When a finished result could not be delivered. The work ran and its
+        // output is still on disk; what is gone is the session that asked for
+        // it, so the stamp is what distinguishes a result nobody read from one
+        // that was never produced.
+        lost: z.number().optional(),
       }),
       exit: z.number().optional(),
     })
