@@ -1,4 +1,4 @@
-import { Bus } from "@/bus"
+import { GlobalBus } from "@/bus/global"
 import { Instance } from "@/project/instance"
 import { Identifier } from "@/id/id"
 import { Log } from "@/util/log"
@@ -35,13 +35,25 @@ export namespace SessionSpawn {
   // settles.
   const settling = new Set<string>()
 
+  // Subscribed on the GLOBAL bus, not the per-instance one. This runs at server
+  // start-up, where there is no instance context to scope a subscription to, and
+  // the sessions it must watch belong to whichever project they were spawned
+  // under rather than to one. Every instance publish forwards here, so the
+  // events are the same ones.
+  //
+  // Once per process. The global bus outlives every instance, so a second
+  // init would leave two listeners on it and deliver each result twice.
+  let watching = false
+
   export function init() {
-    Bus.subscribe(SessionStatus.Event.Idle, async (event) => {
-      await discharge(event.properties.sessionID).catch((error) =>
-        log.error("failed to deliver a spawned session's result", {
-          sessionID: event.properties.sessionID,
-          error,
-        }),
+    if (watching) return
+    watching = true
+    GlobalBus.on("event", (event) => {
+      if (event.payload?.type !== SessionStatus.Event.Idle.type) return
+      const sessionID = event.payload.properties?.sessionID
+      if (!sessionID) return
+      void discharge(sessionID).catch((error) =>
+        log.error("failed to deliver a spawned session's result", { sessionID, error }),
       )
     })
   }
