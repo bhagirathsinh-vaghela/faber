@@ -7,6 +7,7 @@ import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Identifier } from "../../src/id/id"
 import { SessionRecent } from "../../src/session/recent"
+import { SessionPrompt } from "../../src/session/prompt"
 import { tmpdir } from "../fixture/fixture"
 
 // A helper session's result reaching the peer that asked for it cannot depend
@@ -647,6 +648,44 @@ describe("SessionSpawn", () => {
         expect(await bounded(MessageV2.lastVariant(solo.id))).toBeUndefined()
         expect(await bounded(MessageV2.lastVariant(a.id))).toBeUndefined()
         expect(await bounded(MessageV2.lastModel(b.id))).toBeUndefined()
+      },
+    })
+  }, 20_000)
+
+  // A report that lands without waking the parent is text in a transcript that
+  // nobody reads. The parent asked for the work, the answer arrived, and
+  // nothing acts on it until something unrelated happens to start a turn: the
+  // same stranding this mechanism exists to prevent, moved from a peer that
+  // never reported to a spawner that never read what it was sent. A delivered
+  // JOB result already wakes its session; a delivered report must too.
+  test("a delivered report wakes the session it was delivered to", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+
+        const woke: string[] = []
+        const real = SessionPrompt.loop
+        // @ts-expect-error - swapped for the assertion, restored below
+        SessionPrompt.loop = async (id: string) => {
+          woke.push(id)
+          return undefined
+        }
+
+        try {
+          await answer(child.id, "the finding")
+          SessionStatus.set(child.id, { type: "idle" })
+          await Bun.sleep(300)
+        } finally {
+          // @ts-expect-error - restoring the real implementation
+          SessionPrompt.loop = real
+        }
+
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(1)
+        expect(woke).toContain(parent.id)
       },
     })
   }, 20_000)

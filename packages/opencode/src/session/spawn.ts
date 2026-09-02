@@ -8,6 +8,7 @@ import { Session } from "./index"
 import { SessionStatus } from "./status"
 import { SessionBusy } from "./busy"
 import { SessionPing } from "./ping"
+import { SessionPrompt } from "./prompt"
 import { MessageV2 } from "./message-v2"
 import { SessionRecent } from "./recent"
 
@@ -276,6 +277,21 @@ export namespace SessionSpawn {
       // the parent may still have a follow-up.
       await here(() => Session.stop({ sessionID }))
       log.info("reported a spawned session's result", { child: sessionID, parent: debt.parent })
+
+      // WAKING is what turns a delivered report into work, the same way a
+      // delivered job result is woken. Written and not woken, the report sits in
+      // the transcript as text until something else happens to start a turn:
+      // the parent asked for the work, the answer arrived, and nothing acted on
+      // it. That is the failure this whole mechanism exists to prevent, moved
+      // one step later — from a peer that never reported to a spawner that never
+      // read what it was sent.
+      //
+      // Last, after the stop and both stamps. The wake starts a turn in the
+      // PARENT, so anything still to write on the helper has to be written
+      // before a concurrent turn can reach either record.
+      void there(() => SessionPrompt.loop(debt.parent)).catch((error) =>
+        log.error("failed to wake the session a report was delivered to", { parent: debt.parent, error }),
+      )
     } finally {
       settling.delete(sessionID)
     }
