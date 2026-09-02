@@ -662,6 +662,7 @@ export namespace SessionPrompt {
             type: "text",
             text: "Summarize the task tool output above and continue with your task.",
             synthetic: true,
+            internal: true,
           } satisfies MessageV2.TextPart)
         }
 
@@ -1485,6 +1486,7 @@ export namespace SessionPrompt {
                   type: "text",
                   text: `Called the Read tool with the following input: {\"filePath\":\"${filepath}\"}`,
                   synthetic: true,
+                  internal: true,
                 },
                 {
                   id: part.id ?? Identifier.ascending("part"),
@@ -1644,6 +1646,7 @@ export namespace SessionPrompt {
       type: "text",
       text: wrapped,
       synthetic: true,
+      internal: true,
     }
     await Session.updatePart(part)
     userMessage.parts.push(part)
@@ -1697,6 +1700,7 @@ export namespace SessionPrompt {
       type: "text",
       text: catalog,
       synthetic: true,
+      internal: true,
     }
     await Session.updatePart(part)
     userMessage.parts.push(part)

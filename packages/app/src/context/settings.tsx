@@ -37,6 +37,12 @@ export interface Settings {
   }
   notifications: NotificationSettings
   sounds: SoundSettings
+  debug: {
+    // Render every injected block the transcript hides: rule reminders, the
+    // MCP catalog, mid-turn nudges. For inspecting what the model was actually
+    // sent, so what it reveals is shown plainly rather than styled.
+    showInternal: boolean
+  }
 }
 
 // One declaration, in the layer that cannot import this one.
@@ -73,6 +79,9 @@ const defaultSettings: Settings = {
     agent: "staplebops-01",
     blocking: "staplebops-02",
     errors: "nope-03",
+  },
+  debug: {
+    showInternal: false,
   },
 }
 
@@ -619,6 +628,12 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         errors: createMemo(() => store.notifications?.errors ?? defaultSettings.notifications.errors),
         setErrors(value: boolean) {
           setStore("notifications", "errors", value)
+        },
+      },
+      debug: {
+        showInternal: createMemo(() => store.debug?.showInternal ?? defaultSettings.debug.showInternal),
+        setShowInternal(value: boolean) {
+          setStore("debug", "showInternal", value)
         },
       },
       sounds: {

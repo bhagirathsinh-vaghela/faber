@@ -82,6 +82,7 @@ function BoxDefaultsBridge(props: ParentProps) {
       collapsed={settings.boxes.collapsed}
       open={layout.boxes.open}
       setOpen={layout.boxes.setOpen}
+      showInternal={settings.debug.showInternal}
     >
       {props.children}
     </BoxDefaultsProvider>

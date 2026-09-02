@@ -47,6 +47,7 @@ import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { CopyButton } from "./copy-button"
 import { SpeakButton } from "./speak-button"
+import { useBoxDefaults } from "../context/box-defaults"
 
 interface Diagnostic {
   range: {
@@ -472,13 +473,19 @@ function jobResultPart(parts: PartType[]): TextPart | undefined {
   return parts.find((p) => p.type === "text" && (p as TextPart).backgroundJobResult) as TextPart | undefined
 }
 
-// A synthetic user message the system wrote rather than the user: the
-// supervisor's continue prompt after a restart is the one in practice. The
+// A message the system wrote ON ITS OWN, which the reader needs told about:
+// the supervisor's continue prompt after a restart is the one in practice. The
 // user branch renders only non-synthetic text, so without its own branch such
-// a message draws an empty box carrying no indication of what happened.
-function noticePart(parts: PartType[]): TextPart | undefined {
+// a message draws an empty box saying nothing about what happened.
+//
+// Machinery the model reads carries `internal`, so it is excluded by the flag
+// the writer set rather than by sniffing its text for a marker. Debug mode
+// drops that exclusion, which is the whole point of the mode.
+function noticePart(parts: PartType[], showInternal = false): TextPart | undefined {
   if (taskResultPart(parts) || jobResultPart(parts)) return undefined
-  const text = parts.find((p) => p.type === "text" && (p as TextPart).synthetic) as TextPart | undefined
+  const text = parts.find(
+    (p) => p.type === "text" && (p as TextPart).synthetic && (showInternal || !(p as TextPart).internal),
+  ) as TextPart | undefined
   return text?.text.trim() ? text : undefined
 }
 
@@ -566,6 +573,8 @@ function JobResultDisplay(props: { part: TextPart }) {
 }
 
 export function Message(props: MessageProps) {
+  const boxDefaults = useBoxDefaults()
+  const debugInternal = () => boxDefaults?.showInternal?.() ?? false
   return (
     <Switch>
       <Match when={props.message.role === "user" && taskResultPart(props.parts)}>
@@ -600,12 +609,12 @@ export function Message(props: MessageProps) {
           </Show>
         )}
       </Match>
-      <Match when={props.message.role === "user" && noticePart(props.parts)}>
+      <Match when={props.message.role === "user" && noticePart(props.parts, debugInternal())}>
         {(part) => (
           <Show when={props.boxed} fallback={<NoticeDisplay part={part()} />}>
             <MessageBox
               message={props.message}
-              label="SYSTEM"
+              label={part().internal ? "INTERNAL" : "SYSTEM"}
               accent="var(--box-accent-tool)"
               action={props.action}
               onJump={props.onJump}

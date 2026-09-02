@@ -281,6 +281,7 @@ export type TextPart = {
   text: string
   synthetic?: boolean
   ignored?: boolean
+  internal?: boolean
   backgroundTaskResult?: {
     taskId: string
     type: "subagent" | "shell"
@@ -2615,6 +2616,7 @@ export type TextPartInput = {
   text: string
   synthetic?: boolean
   ignored?: boolean
+  internal?: boolean
   backgroundTaskResult?: {
     taskId: string
     type: "subagent" | "shell"

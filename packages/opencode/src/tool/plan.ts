@@ -60,6 +60,7 @@ export const PlanExitTool = Tool.define("plan_exit", {
       type: "text",
       text: `The plan at ${plan} has been approved, you can now edit files. Execute the plan`,
       synthetic: true,
+      internal: true,
     } satisfies MessageV2.TextPart)
 
     return {
@@ -118,6 +119,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
       type: "text",
       text: "User has requested to enter plan mode. Switch to plan mode and begin planning.",
       synthetic: true,
+      internal: true,
     } satisfies MessageV2.TextPart)
 
     return {

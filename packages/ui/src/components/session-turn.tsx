@@ -478,10 +478,14 @@ export function SessionTurn(
     const parts = stickyParts()
     if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundJobResult)) return "job_result"
     if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundTaskResult)) return "task_result"
-    // Synthetic text with no result record is a system notice, e.g. the
-    // supervisor's continue prompt after a restart.
-    if (parts.some((part) => part?.type === "text" && (part as TextPart).synthetic && part.text.trim()))
-      return "system_notice"
+    // A message the system wrote on its own, e.g. the supervisor's continue
+    // prompt after a restart. Machinery the model reads carries `internal` and
+    // is excluded by that flag rather than by matching its text.
+    const notice = parts.find(
+      (part) =>
+        part?.type === "text" && (part as TextPart).synthetic && !(part as TextPart).internal && part.text.trim(),
+    )
+    if (notice) return "system_notice"
     return "user"
   }
   const configuredOpen = () => (boxDefaults ? !boxDefaults.collapsed(boxKey(), boxDefaults.mode()) : true)

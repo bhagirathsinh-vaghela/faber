@@ -4,6 +4,7 @@ import { Checkbox } from "@opencode-ai/ui/checkbox"
 import { Button } from "@opencode-ai/ui/button"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
+import { SettingsRow } from "./settings-row"
 
 // Collapsible transcript box types that have a body (header-only tools like
 // webfetch/skill are omitted — nothing to collapse). Label is shown as-is; the
@@ -98,6 +99,18 @@ export const SettingsLayout: Component = () => {
             </For>
           </div>
         </div>
+
+        {/* Last on the page and unlabelled as a section: a switch for reading
+            what the model was sent, not one a normal session touches. */}
+        <SettingsRow
+          title="Show internal messages"
+          description="Render the injected blocks the transcript hides: rule reminders, the MCP catalog, and mid-turn nudges. Debug only; these appear as plain boxes."
+        >
+          <Switch
+            checked={settings.debug.showInternal()}
+            onChange={(checked) => settings.debug.setShowInternal(checked)}
+          />
+        </SettingsRow>
       </div>
     </div>
   )

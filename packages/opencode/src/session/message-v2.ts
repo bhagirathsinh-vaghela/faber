@@ -90,6 +90,12 @@ export namespace MessageV2 {
     text: z.string(),
     synthetic: z.boolean().optional(),
     ignored: z.boolean().optional(),
+    // Machinery the model reads and the reader does not: a rule reminder, the
+    // MCP catalog, a mid-turn nudge. Distinct from `synthetic`, which marks
+    // anything the user did not type and so covers job results and the restart
+    // notice too — both of which ARE for the reader. A transcript hides this;
+    // the model still receives it.
+    internal: z.boolean().optional(),
     backgroundTaskResult: BackgroundTaskResult.optional(),
     backgroundJobResult: BackgroundJobResult.optional(),
     time: z

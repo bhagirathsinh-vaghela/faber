@@ -11,13 +11,27 @@ export type BoxDefaults = {
   collapsed: (type: string, mode: BoxMode) => boolean
   open: (sessionID: string, boxID: string) => boolean | undefined
   setOpen: (sessionID: string, boxID: string, open: boolean) => void
+  // Debug: render the injected blocks the transcript hides (rule reminders,
+  // the MCP catalog, mid-turn nudges) so what the model was sent can be read.
+  // Absent outside the provider, which reads as off.
+  showInternal?: Accessor<boolean>
 }
 
 const ctx = createContext<BoxDefaults>()
 
 export function BoxDefaultsProvider(props: ParentProps<BoxDefaults>) {
   return (
-    <ctx.Provider value={{ mode: props.mode, collapsed: props.collapsed, open: props.open, setOpen: props.setOpen }}>
+    <ctx.Provider
+      value={{
+        mode: props.mode,
+        collapsed: props.collapsed,
+        open: props.open,
+        setOpen: props.setOpen,
+        get showInternal() {
+          return props.showInternal
+        },
+      }}
+    >
       {props.children}
     </ctx.Provider>
   )
