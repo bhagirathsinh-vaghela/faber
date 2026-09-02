@@ -18,6 +18,7 @@ export type AttentionInput = {
   busySelf?: boolean
   busyDescendant?: boolean
   busyHelper?: boolean
+  busyJob?: boolean
   unseen?: boolean
   agent?: string
 }
@@ -41,6 +42,7 @@ export function attention(input: AttentionInput, custom?: string): Attention | u
       busySelf: !!input.busySelf,
       busyDescendant: !!input.busyDescendant,
       busyHelper: !!input.busyHelper,
+      busyJob: !!input.busyJob,
     }
     const agent = input.busySelf ? agentTint(input.agent, custom) : undefined
     return { kind: "busy", tint: busyBase(facts, agent), overlays: busyOverlays(facts, agent) }

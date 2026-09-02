@@ -61,7 +61,7 @@ import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
-import { busyBase, busyDelay, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
+import { busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
 import { useShell } from "@/utils/mobile"
 import { SidebarModeProvider, useSidebarMode } from "@/context/sidebar-mode"
 
@@ -1779,7 +1779,7 @@ export default function Layout(props: ParentProps) {
     // coming back to it.
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
-      return busyFacts().busy || busyFacts().busyHelper === true
+      return busyShown(busyFacts())
     })
 
     // Busy renders as the spinner above, so the dot only covers the flat states.

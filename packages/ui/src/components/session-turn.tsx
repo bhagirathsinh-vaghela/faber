@@ -32,7 +32,7 @@ import {
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { legacyInternal, Message, Part } from "./message-part"
-import { busyBase, busyDelay, busyOverlays } from "../util/busy-tint"
+import { busyBase, busyDelay, busyOverlays, busyShown } from "../util/busy-tint"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
@@ -410,7 +410,7 @@ export function SessionTurn(
   const busyFacts = createMemo(
     () => data.store.session_busy[props.sessionID] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
-  const busy = createMemo(() => busyFacts().busy || busyFacts().busyHelper === true)
+  const busy = createMemo(() => busyShown(busyFacts()))
   const working = createMemo(() => busy() && isLastUserMessage())
   // No agent color in the ui context, so an own turn keeps the inherited
   // currentColor rather than resolving a tint of its own.

@@ -38,7 +38,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
-import { busyBase, busyDelay, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
+import { busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -265,7 +265,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
   // A helper session owing this one a report keeps the indicator up too: work
   // is still coming back, so going dark would say the session is done.
-  const working = createMemo(() => busy().busy || busy().busyHelper === true)
+  const working = createMemo(() => busyShown(busy()))
   // Something is in the box worth sending — text draft or pending comments.
   const submittable = createMemo(() => prompt.dirty() || commentCount() > 0)
   const workingTint = createMemo(() => {

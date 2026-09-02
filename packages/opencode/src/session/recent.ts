@@ -54,6 +54,12 @@ export namespace SessionRecent {
       // idle while work it is waiting on is still running, and stopping it
       // throws that work away.
       busyHelper: z.boolean(),
+      // A background job this session started is still running. Like
+      // busyHelper, and unlike the other two, this is work the session is
+      // waiting on that no turn is executing: the job outlives the turn that
+      // spawned it, so without this a session with a twenty-minute build
+      // running looks idle.
+      busyJob: z.boolean(),
       unseen: z.boolean(),
       // A question is pending an answer. Derived from the pending set rather
       // than counted, so a session with several open questions clears only when
@@ -107,6 +113,7 @@ export namespace SessionRecent {
         busySelf: false,
         busyDescendant: false,
         busyHelper: false,
+        busyJob: false,
         question: false,
         error: false,
         permission: false,
@@ -121,7 +128,7 @@ export namespace SessionRecent {
     timer = setTimeout(() => {
       timer = undefined
       const durable: Stored[] = sorted().map(
-        ({ busy, busySelf, busyDescendant, busyHelper, question, error, permission, pingAt, ...rest }) => rest,
+        ({ busy, busySelf, busyDescendant, busyHelper, busyJob, question, error, permission, pingAt, ...rest }) => rest,
       )
       void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
@@ -180,6 +187,7 @@ export namespace SessionRecent {
       | "busySelf"
       | "busyDescendant"
       | "busyHelper"
+      | "busyJob"
       | "unseen"
       | "question"
       | "permission"
@@ -197,6 +205,7 @@ export namespace SessionRecent {
       busySelf: prev?.busySelf ?? false,
       busyDescendant: prev?.busyDescendant ?? false,
       busyHelper: prev?.busyHelper ?? false,
+      busyJob: prev?.busyJob ?? false,
       unseen: prev?.unseen ?? false,
       question: prev?.question ?? false,
       permission: prev?.permission ?? false,
@@ -254,6 +263,20 @@ export namespace SessionRecent {
       const next = owed.has(entry.sessionID)
       if (entry.busyHelper === next) continue
       entry.busyHelper = next
+      publish()
+    }
+  }
+
+  // Derived from the job records, for the same reason busyHelper is derived
+  // from the debts: a job outlives both the turn that started it and the
+  // process that spawned it, so nothing held in memory has seen both ends. A
+  // flag with no running job behind it is cleared by the pass that discovers it.
+  export async function syncBusyJob(running: Set<string>) {
+    await hydrate()
+    for (const entry of entries.values()) {
+      const next = running.has(entry.sessionID)
+      if (entry.busyJob === next) continue
+      entry.busyJob = next
       publish()
     }
   }

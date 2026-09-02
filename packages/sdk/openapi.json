@@ -9004,6 +9004,9 @@
           "busyHelper": {
             "type": "boolean"
           },
+          "busyJob": {
+            "type": "boolean"
+          },
           "unseen": {
             "type": "boolean"
           },
@@ -9032,6 +9035,7 @@
           "busySelf",
           "busyDescendant",
           "busyHelper",
+          "busyJob",
           "unseen",
           "question",
           "error",

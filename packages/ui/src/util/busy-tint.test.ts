@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { busyBase, busyDelay, busyOverlays } from "./busy-tint"
+import { busyBase, busyDelay, busyOverlays, busyShown } from "./busy-tint"
 
 const AGENT = "#agent"
 
@@ -47,5 +47,47 @@ describe("busy tints", () => {
     const facts = { busySelf: false, busyDescendant: false, busyHelper: false }
     expect(busyBase(facts, AGENT)).toBe("var(--box-accent-task)")
     expect(busyOverlays(facts, AGENT)).toEqual([])
+  })
+})
+
+describe("busy tints — a running job", () => {
+  test("a job alone: the job accent is the base", () => {
+    const facts = { busySelf: false, busyDescendant: false, busyHelper: false, busyJob: true }
+    expect(busyBase(facts, AGENT)).toBe("var(--box-accent-job)")
+    expect(busyOverlays(facts, AGENT)).toEqual([])
+  })
+
+  test("own turn + job: the job accent crossfades over the agent base", () => {
+    const facts = { busySelf: true, busyDescendant: false, busyHelper: false, busyJob: true }
+    expect(busyBase(facts, AGENT)).toBe(AGENT)
+    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-job)"])
+  })
+
+  test("all four: three overlays, evenly phased", () => {
+    const facts = { busySelf: true, busyDescendant: true, busyHelper: true, busyJob: true }
+    expect(busyOverlays(facts, AGENT)).toEqual([
+      "var(--box-accent-task)",
+      "var(--box-accent-helper)",
+      "var(--box-accent-job)",
+    ])
+    expect(busyDelay(0, 3)).toBe("-0.65s")
+    expect(busyDelay(2, 3)).toBe("-1.95s")
+  })
+})
+
+// A job outlives the turn that started it, so `busy` is false while it runs.
+// An indicator keyed on that alone goes dark on a session that is still
+// waiting, which is what a reader takes for finished.
+describe("busy shown", () => {
+  test("a running job shows an indicator with no turn in flight", () => {
+    expect(busyShown({ busy: false, busySelf: false, busyDescendant: false, busyJob: true })).toBe(true)
+  })
+
+  test("a helper owing a report shows one too", () => {
+    expect(busyShown({ busy: false, busySelf: false, busyDescendant: false, busyHelper: true })).toBe(true)
+  })
+
+  test("nothing running shows nothing", () => {
+    expect(busyShown({ busy: false, busySelf: false, busyDescendant: false })).toBe(false)
   })
 })

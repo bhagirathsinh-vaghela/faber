@@ -44,7 +44,7 @@ import { SessionReview } from "@opencode-ai/ui/session-review"
 import { Mark } from "@opencode-ai/ui/logo"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
-import { busyBase, busyDelay, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
+import { busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
 
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
@@ -870,7 +870,7 @@ export default function Page() {
   const subtaskBusy = createMemo(() => busy().busyDescendant)
   // A helper session owing this one a report keeps the bar up too: work is
   // still coming back, so the bar going dark would say the session is done.
-  const titleWorking = createMemo(() => busy().busy || busy().busyHelper === true)
+  const titleWorking = createMemo(() => busyShown(busy()))
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined

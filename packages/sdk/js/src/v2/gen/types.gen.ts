@@ -22,6 +22,7 @@ export type RecentSession = {
   busySelf: boolean
   busyDescendant: boolean
   busyHelper: boolean
+  busyJob: boolean
   unseen: boolean
   question: boolean
   error: boolean

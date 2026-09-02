@@ -1,5 +1,6 @@
 import { Session } from "@/session"
 import { Instance } from "@/project/instance"
+import { SessionRecent } from "@/session/recent"
 import { Scheduler } from "@/scheduler"
 import { Log } from "@/util/log"
 import { BackgroundJob } from "./job"
@@ -138,6 +139,14 @@ export namespace BackgroundOrchestrator {
       if (action.type === "reaped") log.info("reaped", { job: action.job.id, reason: action.reason })
     }
     await BackgroundJob.cleanup()
+    // AFTER the pass, so a job this sweep just settled reads as finished rather
+    // than as one more tick of a spinner nobody is waiting on. Read from disk
+    // for the same reason the pass is: a job outlives the process that spawned
+    // it, so a set built anywhere else would miss the ones this server never saw
+    // start.
+    await SessionRecent.syncBusyJob(
+      new Set((await BackgroundJob.list()).flatMap((job) => (job.status === "running" ? [job.sessionID] : []))),
+    ).catch(() => undefined)
   }
 
   async function deliver(job: BackgroundJob.Info, kind: "completed" | "timeout" | "checkin") {

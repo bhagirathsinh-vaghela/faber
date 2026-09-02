@@ -96,7 +96,13 @@ type State = {
   // this — no more recent_hub-vs-session_status split. recent_hub still carries
   // busy for the durable list, but the live flip everyone animates off is here.
   session_busy: {
-    [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean; busyHelper?: boolean }
+    [sessionID: string]: {
+      busy: boolean
+      busySelf: boolean
+      busyDescendant: boolean
+      busyHelper?: boolean
+      busyJob?: boolean
+    }
   }
   // Session IDs whose ping daemon is armed on this server instance. The hub's
   // will-ping countdown is gated on this, never on the persisted cache anchor
@@ -986,7 +992,7 @@ function createGlobalSync() {
               prev.busyDescendant === facts.busyDescendant
             )
               continue
-            // busyHelper is CARRIED, not rewritten. This tick is authoritative
+            // busyHelper and busyJob are CARRIED, not rewritten. This tick is authoritative
             // about turns in the open subtree and knows nothing about a helper
             // session owing a report, so writing the whole record would blank
             // that flag every five seconds and leave the spinner strobing.
@@ -995,6 +1001,7 @@ function createGlobalSync() {
               busySelf: facts.busySelf,
               busyDescendant: facts.busyDescendant,
               busyHelper: prev?.busyHelper,
+              busyJob: prev?.busyJob,
             })
           }
           return
@@ -1641,7 +1648,8 @@ function createGlobalSync() {
         prev.busy === entry.busy &&
         prev.busySelf === entry.busySelf &&
         prev.busyDescendant === entry.busyDescendant &&
-        prev.busyHelper === entry.busyHelper
+        prev.busyHelper === entry.busyHelper &&
+        prev.busyJob === entry.busyJob
       )
         continue
       setStore("session_busy", entry.sessionID, {
@@ -1649,6 +1657,7 @@ function createGlobalSync() {
         busySelf: entry.busySelf,
         busyDescendant: entry.busyDescendant,
         busyHelper: entry.busyHelper,
+        busyJob: entry.busyJob,
       })
     }
   }
@@ -1672,6 +1681,7 @@ function createGlobalSync() {
         busySelf: false,
         busyDescendant: false,
         busyHelper: false,
+        busyJob: false,
       })
     const index = globalStore.recent_hub.findIndex((entry) => entry.sessionID === sessionID)
     if (index === -1) return

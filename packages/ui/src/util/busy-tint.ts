@@ -10,25 +10,30 @@
 // own render site can only express the states its author had in mind, so a new
 // busy cause reaches whichever copies get edited and silently omits the rest.
 
-// The task accent covers a subtask, the helper accent a spawned session. Own
+// The task accent covers a subtask, the helper accent a spawned session, and
+// the job accent a background command. The job accent is the one its result
+// card already uses, so the spinner and the card that follows it agree. Own
 // turns carry the agent's own colour, which the caller resolves and passes in.
 const TASK = "var(--box-accent-task)"
 const HELPER = "var(--box-accent-helper)"
+const JOB = "var(--box-accent-job)"
 
 export type BusyFacts = {
   busySelf: boolean
   busyDescendant: boolean
   busyHelper?: boolean
+  busyJob?: boolean
 }
 
 // Ordered by which colour a reader should see first when only one is showing:
 // the session's own turn is what they are watching, then a subtask, then a
-// helper. The first entry is the base every overlay fades over.
+// helper, then a job. The first entry is the base every overlay fades over.
 export function busyTints(facts: BusyFacts, agent: string | undefined) {
   const tints: string[] = []
   if (facts.busySelf) tints.push(agent ?? "var(--icon-interactive-base)")
   if (facts.busyDescendant) tints.push(TASK)
   if (facts.busyHelper) tints.push(HELPER)
+  if (facts.busyJob) tints.push(JOB)
   return tints
 }
 
@@ -37,6 +42,15 @@ export function busyTints(facts: BusyFacts, agent: string | undefined) {
 // base falls back rather than leaving the indicator untinted.
 export function busyBase(facts: BusyFacts, agent: string | undefined) {
   return busyTints(facts, agent)[0] ?? TASK
+}
+
+// Whether an indicator shows at all. `busy` covers the turns in the open
+// subtree; a helper owing a report and a running job are work the session is
+// waiting on that no turn is executing, so neither reaches that rollup. An
+// indicator keyed on `busy` alone goes dark while the answer is still coming
+// back, which reads as finished.
+export function busyShown(facts: { busy: boolean } & BusyFacts) {
+  return facts.busy || facts.busyHelper === true || facts.busyJob === true
 }
 
 // The colours that fade OVER the base, which is every contributing colour after
