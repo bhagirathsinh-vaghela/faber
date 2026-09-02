@@ -15,11 +15,23 @@ import { lazy } from "../../util/lazy"
 // over the same record.
 
 // What a list row draws. A row clips its command to one line, so sending the
-// whole thing spends most of the payload on text no reader can see: a command
-// is unbounded (a heredoc, a long pipeline) while every other field is a few
-// bytes, which makes it the entire cost of a list that is re-read while a job
-// runs. The full command is on the detail view, which fetches one record.
-const CLIP = 160
+// whole thing spends the payload on text no reader can see: a command is
+// unbounded (a heredoc, a long pipeline) while every other field is a few
+// bytes. Measured in the browser, a row renders about 76 characters before CSS
+// truncates it, so this is roughly a line's worth and no more. The full
+// command is on the detail view, which fetches one record.
+const CLIP = 96
+
+// How much finished history a list carries. Every RUNNING job is always
+// returned, however many there are, since those are the page's live content;
+// this bounds only the finished tail behind them.
+//
+// A cap rather than a wider clip, because the cost is the number of records
+// and not the size of one: records live for a week, so a busy machine can
+// accumulate hundreds, each a few hundred bytes of fields no truncation
+// touches. An older result is still reachable at its own URL, which the detail
+// route serves without consulting this list.
+const TAIL = 50
 
 const Summary = BackgroundJob.Info.pick({
   id: true,
@@ -50,7 +62,7 @@ export const JobRoutes = lazy(() =>
       describeRoute({
         summary: "List background shell jobs",
         description:
-          "A summary of every background shell job on this machine, newest first. The command a job ran is the largest field in a record and only the detail view shows it, so it is left out here.",
+          "Every running background shell job on this machine, plus the most recent finished ones, newest first. A row's command is clipped to about a line, and its directory omitted; the detail route serves the whole record for one job.",
         operationId: "job.list",
         responses: {
           200: {
@@ -67,7 +79,13 @@ export const JobRoutes = lazy(() =>
         const jobs = await BackgroundJob.list()
         // The id is a time-ordered uuidv7, so it sorts by start time with no
         // separate comparison on the timestamps inside the record.
-        return c.json(jobs.sort((a, b) => (a.id > b.id ? -1 : 1)).map(summarize))
+        const newest = jobs.sort((a, b) => (a.id > b.id ? -1 : 1))
+        return c.json(
+          [
+            ...newest.filter((job) => job.status === "running"),
+            ...newest.filter((job) => job.status !== "running").slice(0, TAIL),
+          ].map(summarize),
+        )
       },
     )
     .get(

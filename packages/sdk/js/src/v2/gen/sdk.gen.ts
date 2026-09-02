@@ -4009,7 +4009,7 @@ export class Job extends HeyApiClient {
   /**
    * List background shell jobs
    *
-   * A summary of every background shell job on this machine, newest first. The command a job ran is the largest field in a record and only the detail view shows it, so it is left out here.
+   * Every running background shell job on this machine, plus the most recent finished ones, newest first. A row's command is clipped to about a line, and its directory omitted; the detail route serves the whole record for one job.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {

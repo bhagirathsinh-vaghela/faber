@@ -113,7 +113,11 @@ export default function Jobs() {
                   <For
                     each={[
                       { title: "Running", items: running() },
-                      { title: "Finished", items: finished() },
+                      // The server sends a bounded tail of finished jobs, so
+                      // this count is what the page HOLDS and not what the
+                      // machine has run. Named "recent" so a reader does not
+                      // take it for a total.
+                      { title: "Recently finished", items: finished() },
                     ]}
                   >
                     {(group) => (
