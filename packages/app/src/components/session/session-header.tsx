@@ -16,6 +16,7 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { Keybind } from "@opencode-ai/ui/keybind"
+import { JobsButton } from "@/components/jobs-button"
 
 export function SessionHeader() {
   const layout = useLayout()
@@ -139,6 +140,9 @@ export function SessionHeader() {
                   />
                 </Tooltip>
               </Show>
+              <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
+                <JobsButton />
+              </Tooltip>
               <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                 <IconButton
                   icon="stop-mobile"
@@ -192,6 +196,9 @@ export function SessionHeader() {
                       />
                     </Tooltip>
                   </Show>
+                  <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
+                    <JobsButton />
+                  </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton
                       icon="stop-mobile"

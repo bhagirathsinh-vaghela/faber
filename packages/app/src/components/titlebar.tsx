@@ -14,6 +14,7 @@ import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLocalOptional } from "@/context/local"
 import { StatusPopover } from "@/components/status-popover"
+import { JobsButton } from "@/components/jobs-button"
 import { createStandalone, useShell } from "@/utils/mobile"
 
 export function Titlebar() {
@@ -58,6 +59,7 @@ export function Titlebar() {
   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
   const zoom = () => platform.webviewZoom?.() ?? 1
+  const inSession = createMemo(() => /\/session(\/|$)/.test(location.pathname))
   // The traffic lights are drawn by the OS at a fixed size, so the bar can never
   // be shorter than the strip they need — but it still grows with the control it
   // seats, which is why this is a floor under the derived height, not a swap for
@@ -249,6 +251,13 @@ export function Titlebar() {
             aria-label={language.t("session.header.searchFiles")}
           />
         </Tooltip>
+        {/* A session renders its own beside Stop, so this covers the routes
+            that have no session header. */}
+        <Show when={!inSession()}>
+          <Tooltip value={language.t("common.jobs")} placement="bottom" gutter={8}>
+            <JobsButton />
+          </Tooltip>
+        </Show>
         <Tooltip value={surfaceLabel()} placement="bottom" gutter={8}>
           <IconButton
             icon={surfaceIcon()}
@@ -367,6 +376,11 @@ export function Titlebar() {
         <div class="min-w-0 flex items-center justify-center gap-2 px-2">
           <StatusPopover />
           <div id="opencode-titlebar-center" class="min-w-0 flex flex-1 justify-center" />
+          <Show when={!inSession()}>
+            <Tooltip placement="bottom" value={language.t("common.jobs")} openDelay={2000}>
+              <JobsButton />
+            </Tooltip>
+          </Show>
           {/* A forced layout is undoable only from here, so this sits outside
               every group the bar is allowed to shed. */}
           <Tooltip placement="bottom" value={surfaceLabel()} openDelay={2000}>

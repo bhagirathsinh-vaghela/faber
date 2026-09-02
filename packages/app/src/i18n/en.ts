@@ -215,6 +215,7 @@ export const dict = {
 
   "common.search.placeholder": "Search",
   "common.home": "Home",
+  "common.jobs": "Jobs",
   "common.goBack": "Back",
   "common.goForward": "Forward",
   "common.reload": "Reload",

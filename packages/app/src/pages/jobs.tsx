@@ -1,4 +1,4 @@
-import { createMemo, createResource, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useServer } from "@/context/server"
@@ -104,8 +104,58 @@ export default function Jobs() {
       ),
   )
 
-  const running = createMemo(() => jobs()?.filter((job) => job.status === "running") ?? [])
-  const finished = createMemo(() => jobs()?.filter((job) => job.status !== "running") ?? [])
+  // Session titles, so a group is named after the work rather than an opaque
+  // id. A job outlives its session's place in the recent list, so a title can
+  // be missing and the group falls back to the id.
+  const [sessions] = createResource(
+    () => [`${server.url}/global/recent`, coarse()] as const,
+    ([url]) =>
+      fetch(url, { cache: "no-store" }).then((r) =>
+        r.ok ? (r.json() as Promise<{ sessionID: string; title?: string }[]>) : [],
+      ),
+  )
+
+  const titles = createMemo(() => new Map((sessions() ?? []).map((row) => [row.sessionID, row.title])))
+
+  // One group per session that started a job. A job belongs to the session
+  // that asked for it, which is the only thing distinguishing two identical
+  // commands, so it is the grouping rather than a field on a flat row.
+  //
+  // A session with anything running sorts first, then by its newest job: what
+  // a reader opens this page for is work still in flight, and the id is
+  // time-ordered so the newest job's id ranks its whole group.
+  const groups = createMemo(() => {
+    const bySession = new Map<string, Job[]>()
+    for (const job of jobs() ?? []) {
+      const held = bySession.get(job.sessionID)
+      if (held) held.push(job)
+      else bySession.set(job.sessionID, [job])
+    }
+    return [...bySession.entries()]
+      .map(([sessionID, items]) => ({
+        sessionID,
+        title: titles().get(sessionID),
+        items,
+        running: items.filter((job) => job.status === "running").length,
+        newest: items.reduce((max, job) => (job.id > max ? job.id : max), ""),
+      }))
+      .sort((a, b) => {
+        if (a.running !== b.running) return b.running - a.running
+        return a.newest > b.newest ? -1 : 1
+      })
+  })
+
+  // Which groups the reader collapsed. Every group starts open: the page is
+  // already bounded, so hiding rows behind a disclosure a reader has to find
+  // would cost more than the vertical space it saves.
+  const [collapsed, setCollapsed] = createSignal(new Set<string>())
+  const toggle = (sessionID: string) =>
+    setCollapsed((held) => {
+      const next = new Set(held)
+      if (next.has(sessionID)) next.delete(sessionID)
+      else next.add(sessionID)
+      return next
+    })
 
   return (
     <div class="size-full min-h-0 flex-1 overflow-y-auto" data-component="jobs-page">
@@ -122,25 +172,42 @@ export default function Jobs() {
 
               <Show when={jobs()} fallback={<p class="text-14-regular text-text-weaker">Loading...</p>}>
                 <Show
-                  when={running().length > 0 || finished().length > 0}
+                  when={groups().length > 0}
                   fallback={<p class="text-14-regular text-text-weaker">No jobs have run recently.</p>}
                 >
-                  <For
-                    each={[
-                      { title: "Running", items: running() },
-                      // The server sends a bounded tail of finished jobs, so
-                      // this count is what the page HOLDS and not what the
-                      // machine has run. Named "recent" so a reader does not
-                      // take it for a total.
-                      { title: "Recently finished", items: finished() },
-                    ]}
-                  >
+                  <For each={groups()}>
                     {(group) => (
                       <Show when={group.items.length > 0}>
-                        <h2 class="text-12-medium text-text-weaker uppercase tracking-wide mt-6 mb-2">
-                          {group.title} ({group.items.length})
-                        </h2>
-                        <ul class="flex flex-col gap-1" data-slot="job-list">
+                        <button
+                          type="button"
+                          data-slot="job-group"
+                          class="mt-6 mb-2 w-full flex items-center gap-2 text-left"
+                          onClick={() => toggle(group.sessionID)}
+                          aria-expanded={!collapsed().has(group.sessionID)}
+                        >
+                          <Icon
+                            name={collapsed().has(group.sessionID) ? "chevron-right" : "chevron-down"}
+                            size="small"
+                            class="shrink-0 text-text-weaker"
+                            aria-hidden="true"
+                          />
+                          <span class="min-w-0 flex-1 truncate text-14-medium text-text-base">
+                            {group.title ?? group.sessionID}
+                          </span>
+                          {/* The running count is the reason to look, so it is
+                              the one thing coloured; the total is context. */}
+                          <Show when={group.running > 0}>
+                            <span class="shrink-0 text-12-regular" style={{ color: "var(--syntax-primitive)" }}>
+                              {group.running} running
+                            </span>
+                          </Show>
+                          <span class="shrink-0 text-12-regular text-text-weaker">{group.items.length}</span>
+                        </button>
+                        <ul
+                          class="flex flex-col gap-1"
+                          data-slot="job-list"
+                          style={{ display: collapsed().has(group.sessionID) ? "none" : undefined }}
+                        >
                           <For each={group.items}>
                             {(job) => (
                               <li>

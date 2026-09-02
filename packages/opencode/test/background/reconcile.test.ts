@@ -365,10 +365,7 @@ describe("BackgroundReconcile concurrency", () => {
     const job = await store({ process })
 
     // Started together, so both observe the record while it is still running.
-    const passes = await Promise.all([
-      BackgroundReconcile.run({ alive }),
-      BackgroundReconcile.run({ alive }),
-    ])
+    const passes = await Promise.all([BackgroundReconcile.run({ alive }), BackgroundReconcile.run({ alive })])
 
     const completed = passes.filter((pass) => actionFor(pass, job.id)?.type === "completed")
     expect(completed.length).toBe(1)
@@ -383,10 +380,7 @@ describe("BackgroundReconcile concurrency", () => {
       time: { created: Date.now() - 60_000, soft: Date.now() - 30_000, hard: Date.now() + 600_000 },
     })
 
-    const passes = await Promise.all([
-      BackgroundReconcile.run({ alive }),
-      BackgroundReconcile.run({ alive }),
-    ])
+    const passes = await Promise.all([BackgroundReconcile.run({ alive }), BackgroundReconcile.run({ alive })])
 
     const notified = passes.filter((pass) => actionFor(pass, job.id)?.type === "notify")
     expect(notified.length).toBe(1)
