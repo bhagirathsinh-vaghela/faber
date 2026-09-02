@@ -527,6 +527,8 @@ export const dict = {
   "home.attention.busy": "Working",
   "home.attention.delegating": "Subtask running",
   "home.attention.busyDelegating": "Working + subtask",
+  "home.attention.job": "Background job running",
+  "home.attention.helper": "Waiting on a helper session",
   "home.attention.unseen": "New",
   "home.attention.error": "Error",
   "home.attention.question": "Waiting on you",

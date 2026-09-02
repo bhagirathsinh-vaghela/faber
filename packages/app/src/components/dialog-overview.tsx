@@ -160,12 +160,20 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
           // every contributing colour, like the dock.
           <span
             data-slot="busy-dot"
+            // A turn describes itself first, then the work no turn accounts
+            // for. Falling through to "subtask running" for a session whose
+            // only work is a job or a waiting helper labels the dot with the
+            // one thing that is not happening.
             title={
               props.row.busySelf
                 ? props.row.busyDescendant
                   ? language.t("home.attention.busyDelegating")
                   : language.t("home.attention.busy")
-                : language.t("home.attention.delegating")
+                : props.row.busyDescendant
+                  ? language.t("home.attention.delegating")
+                  : props.row.busyJob
+                    ? language.t("home.attention.job")
+                    : language.t("home.attention.helper")
             }
             class="relative size-2 rounded-full shrink-0"
             style={{ "--busy-tint": dot().tint }}
