@@ -459,22 +459,7 @@ export namespace SessionPrompt {
       }
 
       if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
-      // The turn is done when the current user message has a terminal response:
-      // a finished assistant that LINKS to it (parentID) with a finish reason
-      // that isn't "tool-calls"/"unknown" (both mean more work is coming). Test
-      // the parentID link, not lastUser.id < lastAssistant.id — the id compare
-      // is a proxy for "the assistant came after this user message" that fails
-      // under clock inversion (a later assistant can carry a smaller id), which
-      // left the loop unable to ever exit. The link is set at creation and can't
-      // invert.
-      const answered = msgs.some(
-        (msg) =>
-          msg.info.role === "assistant" &&
-          msg.info.parentID === lastUser!.id &&
-          msg.info.finish &&
-          !["tool-calls", "unknown"].includes(msg.info.finish),
-      )
-      if (answered) {
+      if (MessageV2.answered(msgs, lastUser.id)) {
         log.info("exiting loop", { sessionID })
         break
       }
@@ -674,14 +659,13 @@ export namespace SessionPrompt {
 
       // pending compaction
       if (task?.type === "compaction") {
-        const result = await SessionCompaction.process({
+        const compaction = await SessionCompaction.process({
           messages: msgs,
           parentID: lastUser.id,
           abort,
           sessionID,
-          auto: task.auto,
         })
-        if (result === "stop") break
+        if (compaction === "stop") break
         continue
       }
 

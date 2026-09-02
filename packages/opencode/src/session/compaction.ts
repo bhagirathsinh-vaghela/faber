@@ -37,7 +37,11 @@ export namespace SessionCompaction {
     const count = input.tokens.input + input.tokens.cache.read + input.tokens.output
     const output = Math.min(input.model.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX
     const usable = input.model.limit.input || context - output
-    return count > usable
+    // The usable window still caps the threshold: a fraction that lands above it
+    // would let the request reach the API and be rejected there instead of
+    // compacting.
+    const threshold = config.compaction?.threshold
+    return count > (threshold ? Math.min(context * threshold, usable) : usable)
   }
 
   export const PRUNE_MINIMUM = 20_000
@@ -91,12 +95,24 @@ export namespace SessionCompaction {
     }
   }
 
+  // Whether real work was in flight when the compaction request landed, which is
+  // what decides if the summary should be followed by a continuation. The
+  // compaction request itself is the last user message, so the question is about
+  // the one BEFORE it: unanswered means a turn was mid-flight and its remaining
+  // work would otherwise be dropped at the summary. Keyed on the work rather
+  // than on who asked, so a manual /compact during a busy turn resumes and any
+  // compaction at idle correctly does nothing.
+  function interrupted(msgs: MessageV2.WithParts[], parentID: string) {
+    const prior = msgs.findLast((msg) => msg.info.role === "user" && msg.info.id !== parentID)
+    if (!prior) return false
+    return !MessageV2.answered(msgs, prior.info.id)
+  }
+
   export async function process(input: {
     parentID: string
     messages: MessageV2.WithParts[]
     sessionID: string
     abort: AbortSignal
-    auto: boolean
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
     const session = await Session.get(input.sessionID)
@@ -218,7 +234,7 @@ export namespace SessionCompaction {
       model,
     })
 
-    if (result === "continue" && input.auto) {
+    if (result === "continue" && interrupted(input.messages, input.parentID)) {
       const continueMsg = await Session.updateMessage({
         id: Identifier.ascending("message"),
         role: "user",

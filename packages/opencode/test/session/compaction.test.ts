@@ -124,6 +124,42 @@ describe("session.compaction.isOverflow", () => {
     })
   })
 
+  test("compacts at the configured fraction of the context window", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "opencode.json"), JSON.stringify({ compaction: { threshold: 0.9 } }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const model = createModel({ context: 1_000_000, output: 128_000 })
+        const under = { input: 899_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        const over = { input: 901_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(await SessionCompaction.isOverflow({ tokens: under, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ tokens: over, model })).toBe(true)
+      },
+    })
+  })
+
+  test("threshold never exceeds the usable window", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "opencode.json"), JSON.stringify({ compaction: { threshold: 1 } }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        // usable is context - min(output, OUTPUT_TOKEN_MAX) = 68_000, well under
+        // the 100_000 that a bare 1.0 threshold would allow.
+        const model = createModel({ context: 100_000, output: 32_000 })
+        const tokens = { input: 75_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
+      },
+    })
+  })
+
   test("returns false when compaction.auto is disabled", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {

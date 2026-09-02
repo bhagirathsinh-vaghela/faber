@@ -835,6 +835,20 @@ export namespace MessageV2 {
     },
   )
 
+  // A user message has its terminal response when a finished assistant LINKS to
+  // it (parentID) with a finish reason that isn't "tool-calls"/"unknown" — both
+  // of those mean more work is coming. The link is set at creation and cannot
+  // change, unlike an id compare, which a backward clock step reorders.
+  export function answered(msgs: MessageV2.WithParts[], messageID: string) {
+    return msgs.some(
+      (msg) =>
+        msg.info.role === "assistant" &&
+        msg.info.parentID === messageID &&
+        msg.info.finish &&
+        !["tool-calls", "unknown"].includes(msg.info.finish),
+    )
+  }
+
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
     // The stream yields newest-first. The compaction boundary is found by the
     // parentID LINK, not by whether the summary happens to sort after its

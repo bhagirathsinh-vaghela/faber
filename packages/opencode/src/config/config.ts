@@ -1263,6 +1263,14 @@ export namespace Config {
         .object({
           auto: z.boolean().optional().describe("Enable automatic compaction when context is full (default: true)"),
           prune: z.boolean().optional().describe("Enable pruning of old tool outputs (default: true)"),
+          threshold: z
+            .number()
+            .gt(0)
+            .lte(1)
+            .optional()
+            .describe(
+              "Fraction of the context window that triggers auto-compaction, e.g. 0.9 compacts a 1M model at 900k. Defaults to the full usable window (context minus the output reservation).",
+            ),
         })
         .optional(),
       undo: z

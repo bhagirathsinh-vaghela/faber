@@ -2308,6 +2308,10 @@ export type Config = {
      * Enable pruning of old tool outputs (default: true)
      */
     prune?: boolean
+    /**
+     * Fraction of the context window that triggers auto-compaction, e.g. 0.9 compacts a 1M model at 900k. Defaults to the full usable window (context minus the output reservation).
+     */
+    threshold?: number
   }
   undo?: {
     /**

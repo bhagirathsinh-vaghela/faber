@@ -15177,6 +15177,12 @@
               "prune": {
                 "description": "Enable pruning of old tool outputs (default: true)",
                 "type": "boolean"
+              },
+              "threshold": {
+                "description": "Fraction of the context window that triggers auto-compaction, e.g. 0.9 compacts a 1M model at 900k. Defaults to the full usable window (context minus the output reservation).",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
               }
             }
           },
