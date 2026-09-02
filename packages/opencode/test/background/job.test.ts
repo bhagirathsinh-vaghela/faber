@@ -161,6 +161,44 @@ describe("BackgroundJob.assess", () => {
   })
 })
 
+describe("BackgroundJob.stop", () => {
+  // The write-before-spawn window: the record exists, the process does not yet.
+  // Settling it here would claim a kill that never happened and push the record
+  // past running, where no later pass reconciles it — so the process that is
+  // about to exist would run on, unreachable, with a record calling it killed.
+  test("refuses a job whose spawn has not returned rather than claiming a kill", async () => {
+    const job = record({ process: undefined })
+    await BackgroundJob.write(job)
+
+    expect((await BackgroundJob.stop(job.id)).type).toBe("unspawned")
+    // Still running, so a later pass still owns it.
+    expect((await BackgroundJob.get(job.id))?.status).toBe("running")
+  })
+
+  test("kills a running job and settles its record", async () => {
+    const proc = spawnJob("sleep 30")
+    const job = record({ process: await identify(proc.pid) })
+    await BackgroundJob.write(job)
+
+    const stopped = await BackgroundJob.stop(job.id)
+    expect(stopped.type === "settled" && stopped.job.status).toBe("killed")
+  }, 20_000)
+
+  test("reports an id nothing knows as unknown", async () => {
+    expect((await BackgroundJob.stop(BackgroundJob.id())).type).toBe("unknown")
+  })
+
+  // A job that finished on its own is described, not re-killed: its exit code
+  // is what the caller wants to hear.
+  test("describes a job that had already finished", async () => {
+    const job = record({ status: "exited", exit: 0, time: { created: 0, hard: 0, completed: Date.now() } })
+    await BackgroundJob.write(job)
+
+    const stopped = await BackgroundJob.stop(job.id)
+    expect(stopped.type === "settled" && stopped.job.exit).toBe(0)
+  })
+})
+
 describe("BackgroundJob.cleanup", () => {
   test("reaps a finished job past the age cap and keeps a recent one", async () => {
     const now = Date.now()

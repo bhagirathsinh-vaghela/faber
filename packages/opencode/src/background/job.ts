@@ -223,23 +223,43 @@ export namespace BackgroundJob {
     await fs.unlink(exitPath(id)).catch(() => {})
   }
 
-  // Stop a running job and settle its record. Returns undefined for an id
-  // nothing knows, so a caller can tell "no such job" from "killed it".
+  // Stop a running job and settle its record.
+  //
+  // Three outcomes a caller must be able to tell apart, since each warrants a
+  // different thing being said to whoever asked for the kill: no such job, a
+  // job that cannot be signalled yet, and the record as it stands after the
+  // attempt.
   //
   // A job whose pid no longer verifies is settled rather than signalled: it is
   // already gone, or the number belongs to something else now.
-  export async function stop(id: string) {
+  export type Stopped = { type: "unknown" } | { type: "unspawned" } | { type: "settled"; job: Info }
+
+  export async function stop(id: string): Promise<Stopped> {
     const job = await get(id)
-    if (!job) return undefined
-    if (job.status !== "running") return job
-    if (job.process) await BackgroundProcess.kill(job.process)
+    if (!job) return { type: "unknown" }
+    if (job.status !== "running") return { type: "settled", job }
+    // A record naming no process is one whose spawn has not returned yet: the
+    // write happens first, deliberately, so a crash in that window leaves
+    // something findable. Nothing can be signalled, and settling it anyway
+    // would report a kill that did not happen AND take the record past
+    // running, where no later pass reconciles it. The process that is about to
+    // exist would then run to completion with a record calling it killed.
+    if (!job.process) return { type: "unspawned" }
+    await BackgroundProcess.kill(job.process)
     const completed = Date.now()
+    // Claimed inside the write lock, the same way a reconcile pass claims one,
+    // so a stop racing a sweep cannot overwrite a verdict the sweep already
+    // reached and is delivering on.
     await update(id, (draft) => {
+      if (draft.status !== "running") return
       draft.status = "killed"
       draft.exit = undefined
       draft.time.completed = completed
     })
-    return get(id)
+    const settled = await get(id)
+    // Removed between the read and the write, which only a concurrent cleanup
+    // does; there is nothing left to describe.
+    return settled ? { type: "settled", job: settled } : { type: "unknown" }
   }
 
   // The exit code the job recorded for itself. Undefined means it has not

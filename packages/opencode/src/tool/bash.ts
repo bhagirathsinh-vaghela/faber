@@ -90,11 +90,17 @@ export const BashTool = Tool.define("bash", async () => {
       // machinery below.
       if (params.kill) {
         const stopped = await BackgroundJob.stop(params.kill)
-        const output = !stopped
-          ? `No job ${params.kill}. It may have finished and been cleaned up.`
-          : stopped.status === "killed"
-            ? `Killed job ${params.kill} and everything it spawned.`
-            : `Job ${params.kill} had already finished (exit ${stopped.exit ?? "unknown"}).`
+        const output =
+          stopped.type === "unknown"
+            ? `No job ${params.kill}. It may have finished and been cleaned up.`
+            : // Its record exists but its spawn has not returned, so there is
+              // no process to signal yet. Saying so beats claiming a kill that
+              // did not happen: the caller can try again in a moment.
+              stopped.type === "unspawned"
+              ? `Job ${params.kill} is still starting and cannot be killed yet. Try again in a moment.`
+              : stopped.job.status === "killed"
+                ? `Killed job ${params.kill} and everything it spawned.`
+                : `Job ${params.kill} had already finished (exit ${stopped.job.exit ?? "unknown"}).`
         return {
           title: params.description,
           metadata: {
