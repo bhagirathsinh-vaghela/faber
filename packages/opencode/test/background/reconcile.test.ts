@@ -213,53 +213,60 @@ describe("BackgroundReconcile.observe (adopted jobs)", () => {
   // unavailable to a non-parent, and the syscalls that do report a non-child's
   // death are per-platform and report no exit code. The job's own exit file
   // answers both, portably.
+  // These drive the watcher against the FILESYSTEM alone, with no stored
+  // record: the watcher's whole job is to turn a file appearing into an id,
+  // and a record here would only be shared state that a concurrent sweep in
+  // another test file can delete mid-assertion.
   test("fires when an adopted job writes its exit file", async () => {
     await BackgroundJob.init()
-    const job = await store({ command: "adopted" })
+    const id = BackgroundJob.id()
 
     const finished: string[] = []
-    BackgroundReconcile.observe((id) => void finished.push(id))
+    BackgroundReconcile.observe((seen) => void finished.push(seen))
 
     // Exactly what the job's last line does.
-    await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
+    await Bun.write(BackgroundJob.exitPath(id), "0\n")
 
     const started = Date.now()
-    while (!finished.includes(job.id) && Date.now() - started < 5_000) await Bun.sleep(50)
+    while (!finished.includes(id) && Date.now() - started < 5_000) await Bun.sleep(50)
 
     BackgroundReconcile.unobserve()
-    expect(finished).toContain(job.id)
+    await BackgroundJob.remove(id)
+    expect(finished).toContain(id)
   }, 15_000)
 
   test("ignores the log file, which is written throughout the run", async () => {
     await BackgroundJob.init()
-    const job = await store()
+    const id = BackgroundJob.id()
 
     const finished: string[] = []
-    BackgroundReconcile.observe((id) => void finished.push(id))
+    BackgroundReconcile.observe((seen) => void finished.push(seen))
 
-    await Bun.write(BackgroundJob.logPath(job.id), "progress output\n")
+    await Bun.write(BackgroundJob.logPath(id), "progress output\n")
     await Bun.sleep(500)
 
     BackgroundReconcile.unobserve()
-    expect(finished).not.toContain(job.id)
+    await BackgroundJob.remove(id)
+    expect(finished).not.toContain(id)
   }, 10_000)
 
-  // The event is a wake-up, so the id must be usable to re-read the record.
-  test("reports the job id, so the handler can re-assess from the record", async () => {
+  // The event is a wake-up carrying an id, so the id it reports must be the
+  // job's own rather than a filename the caller has to parse.
+  test("reports the job id rather than the file it saw", async () => {
     await BackgroundJob.init()
-    const proc = spawnJob("true")
-    const job = await store({ process: await identify(proc.pid) })
-    await proc.exited
+    const id = BackgroundJob.id()
 
     const finished: string[] = []
-    BackgroundReconcile.observe((id) => void finished.push(id))
-    await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
+    BackgroundReconcile.observe((seen) => void finished.push(seen))
+    await Bun.write(BackgroundJob.exitPath(id), "0\n")
 
     const started = Date.now()
-    while (!finished.includes(job.id) && Date.now() - started < 5_000) await Bun.sleep(50)
+    while (!finished.includes(id) && Date.now() - started < 5_000) await Bun.sleep(50)
     BackgroundReconcile.unobserve()
+    await BackgroundJob.remove(id)
 
-    expect(await BackgroundJob.get(finished.find((id) => id === job.id)!)).toBeDefined()
+    expect(finished).toContain(id)
+    expect(finished.some((seen) => seen.endsWith(".exit"))).toBe(false)
   }, 15_000)
 })
 
