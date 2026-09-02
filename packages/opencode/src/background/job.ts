@@ -282,6 +282,11 @@ export namespace BackgroundJob {
     let removed = 0
     for (const job of jobs) {
       if (job.status === "running") continue
+      // A result that never reached a session is the one nobody has had the
+      // chance to come back for, and removing a record takes its log with it.
+      // Ageing it out on the same clock as a delivered result would destroy
+      // both the output and the stamp that says the output is worth reading.
+      if (job.time.lost) continue
       const completed = job.time.completed ?? job.time.created
       if (now - completed < MAX_AGE_MS) continue
       await remove(job.id)

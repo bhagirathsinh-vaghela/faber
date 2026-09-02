@@ -187,6 +187,23 @@ describe("BackgroundJob.cleanup", () => {
 
     expect(await BackgroundJob.get(old.id)).toBeDefined()
   })
+
+  // Removing a record unlinks its log, so ageing out a result that never
+  // reached a session would destroy the output at the same moment as the stamp
+  // saying the output is worth reading. A result nobody has read is the one
+  // nobody has had the chance to come back for.
+  test("keeps a result that was never delivered, whatever its age", async () => {
+    const now = Date.now()
+    const lost = record({
+      status: "exited",
+      time: { created: 0, hard: 0, completed: now - BackgroundJob.MAX_AGE_MS - 1, lost: now },
+    })
+    await BackgroundJob.write(lost)
+
+    await BackgroundJob.cleanup(now)
+
+    expect(await BackgroundJob.get(lost.id)).toBeDefined()
+  })
 })
 
 describe("BackgroundJob.wrap", () => {

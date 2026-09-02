@@ -152,22 +152,39 @@ export namespace BackgroundOrchestrator {
       log.info("holding a result for a session the user stopped", { job: job.id, kind })
       return
     }
-    // A send that finds no session is the one path that loses finished work
-    // for good: the record settles either way, and reconcile returns early on
-    // a settled record, so nothing sends it again. Nothing retries it here
-    // (the lookup that just failed would fail identically on every later
-    // pass), but it is recorded rather than dropped in silence, so a lost
-    // result leaves a trace naming the project it could not be delivered to.
-    if (!(await BackgroundDeliver.send(job, kind))) {
-      log.error("lost a result: no session to deliver it to", {
-        job: job.id,
-        kind,
-        sessionID: job.sessionID,
-        project: BackgroundJob.owner(job),
-      })
-      await BackgroundJob.update(job.id, (draft) => {
-        draft.time.lost = Date.now()
-      })
-    }
+    // A result that does not land is the one path that loses finished work for
+    // good: the record settles either way, and reconcile returns early on a
+    // settled record, so nothing sends it again. Nothing retries it here (the
+    // lookup that just failed would fail identically on every later pass), but
+    // it is recorded rather than dropped in silence.
+    //
+    // Two ways to fail, and only one of them is a return value. A session that
+    // cannot be resolved reports false; anything past that point (building the
+    // message, writing the part, cleaning a revert) THROWS. Both end with a
+    // result nobody will read, so both are caught here.
+    //
+    // Caught HERE rather than around the caller's loop, because the throw is
+    // one job's problem and the loop is every other job's delivery: an
+    // uncaught one abandons the rest of the pass and skips the cleanup that
+    // follows it. The exit watcher is worse off still, since it is invoked
+    // from a floating promise where a throw is an unhandled rejection.
+    const failure = await BackgroundDeliver.send(job, kind).then(
+      (delivered) => (delivered ? undefined : "no session to deliver it to"),
+      (error) => error,
+    )
+    if (!failure) return
+
+    log.error("lost a result", {
+      job: job.id,
+      kind,
+      sessionID: job.sessionID,
+      project: BackgroundJob.owner(job),
+      failure,
+    })
+    // The stamp is the durable half of the record above, so a failure to write
+    // it must not itself throw and take the pass down.
+    await BackgroundJob.update(job.id, (draft) => {
+      draft.time.lost = Date.now()
+    }).catch((error) => log.error("could not stamp a lost result", { job: job.id, error }))
   }
 }

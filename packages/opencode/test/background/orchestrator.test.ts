@@ -199,6 +199,12 @@ describe("BackgroundOrchestrator: a result with nowhere to go", () => {
   // assesses as finished and then delivers. A record already stored as exited
   // is never reconciled at all, so it would pass this whether the guard exists
   // or not.
+  //
+  // Depends on the settle window: a fresh test process is always inside it, so
+  // sweep() defers the ownership verdict and the record reaches delivery rather
+  // than being judged first. True by construction for any fresh process, and
+  // named here because a test that stops reaching the branch it covers still
+  // passes.
   test("stamps a record whose result could not be delivered", async () => {
     const project = await tmpdir({ git: true })
     const proc = spawnJob("true")
@@ -223,6 +229,46 @@ describe("BackgroundOrchestrator: a result with nowhere to go", () => {
     expect(stamped?.status).toBe("exited")
     expect(stamped?.time.lost).toBeGreaterThan(0)
   }, 20_000)
+
+  // A delivery has two ways to fail and only one is a return value: a session
+  // that will not resolve reports false, while anything past that point throws.
+  // An uncaught throw is one job costing every job behind it in the pass its
+  // delivery, plus the cleanup that runs after the loop.
+  test("a record that makes delivery throw does not stop the jobs behind it", async () => {
+    const project = await tmpdir({ git: true })
+    const ids = await Promise.all(
+      // The middle record carries a sessionID that is not a valid identifier,
+      // so resolving it throws inside send rather than returning false.
+      ["ses_orchestrator_ok_first", "not-a-session-id", "ses_orchestrator_ok_last"].map(async (sessionID) => {
+        const proc = spawnJob("true")
+        await proc.exited
+        const id = BackgroundJob.id()
+        created.push(id)
+        await BackgroundJob.write({
+          id,
+          sessionID,
+          directory: project.path,
+          project: project.path,
+          command: "true",
+          description: "sibling job",
+          status: "running",
+          time: { created: Date.now(), hard: Date.now() + 600_000 },
+          process: { pid: proc.pid, start: "gone", pgid: proc.pid },
+        })
+        return id
+      }),
+    )
+
+    await BackgroundOrchestrator.sweep()
+
+    // Every record reached delivery and was stamped, including the two behind
+    // the throwing one.
+    for (const id of ids) {
+      const job = await BackgroundJob.get(id)
+      expect(job?.status).toBe("exited")
+      expect(job?.time.lost).toBeGreaterThan(0)
+    }
+  }, 30_000)
 })
 
 describe("BackgroundOrchestrator settle window", () => {
