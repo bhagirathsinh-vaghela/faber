@@ -350,3 +350,45 @@ describe("BackgroundReconcile: the soft check-in", () => {
     expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)?.type).toBe("kept")
   })
 })
+
+// Nothing serialises two passes: the exit watcher and the abort route both
+// sweep unguarded, and the scheduler's tick is not re-entrant. Two passes that
+// both read a running record and both settle it deliver the same result twice,
+// which reaches the session as two cards for one job.
+describe("BackgroundReconcile concurrency", () => {
+  test("only one of two simultaneous passes may complete a job", async () => {
+    // Identified while alive, then allowed to exit: a pass assesses this as
+    // finished, which is the branch that settles and delivers.
+    const proc = spawnJob("sleep 0.5")
+    const process = await identify(proc.pid)
+    await proc.exited
+    const job = await store({ process })
+
+    // Started together, so both observe the record while it is still running.
+    const passes = await Promise.all([
+      BackgroundReconcile.run({ alive }),
+      BackgroundReconcile.run({ alive }),
+    ])
+
+    const completed = passes.filter((pass) => actionFor(pass, job.id)?.type === "completed")
+    expect(completed.length).toBe(1)
+  }, 20_000)
+
+  // The check-in stamp races identically: read outside the lock, two passes
+  // both find it absent and both deliver.
+  test("only one of two simultaneous passes may deliver a check-in", async () => {
+    const proc = spawnJob("sleep 30")
+    const job = await store({
+      process: await identify(proc.pid),
+      time: { created: Date.now() - 60_000, soft: Date.now() - 30_000, hard: Date.now() + 600_000 },
+    })
+
+    const passes = await Promise.all([
+      BackgroundReconcile.run({ alive }),
+      BackgroundReconcile.run({ alive }),
+    ])
+
+    const notified = passes.filter((pass) => actionFor(pass, job.id)?.type === "notify")
+    expect(notified.length).toBe(1)
+  }, 20_000)
+})

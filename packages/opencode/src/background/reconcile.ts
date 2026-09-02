@@ -70,6 +70,9 @@ export namespace BackgroundReconcile {
     // after a restart. Its output and exit code are already on disk.
     if (verdict.type === "finished") {
       const completed = await settle(job, "exited", verdict.exit, now)
+      // Another pass settled it first and is delivering it, so this one keeps
+      // the record and says nothing rather than delivering it twice.
+      if (!completed) return { type: "kept", job }
       return { type: "completed", job: completed, exit: verdict.exit }
     }
 
@@ -92,28 +95,50 @@ export namespace BackgroundReconcile {
     if (verdict.type === "expired") {
       await BackgroundProcess.kill(verdict.identity)
       const completed = await settle(job, "killed", await BackgroundJob.exit(job.id), now)
+      if (!completed) return { type: "kept", job }
       return { type: "expired", job: completed }
     }
 
     // Alive, owned, inside its bound. The one thing left is the soft deadline,
     // whose check-in is delivered once: the stamp is what stops a pass every
     // few minutes from re-delivering it forever.
+    // Claimed the same way as a settle, and for the same reason: the stamp is
+    // what stops a pass every few minutes re-delivering the check-in forever,
+    // so reading it outside the lock lets two passes both find it absent and
+    // both deliver.
     if (job.time.soft && now >= job.time.soft && !job.time.notified) {
+      let claimed = false
       await BackgroundJob.update(job.id, (draft) => {
+        if (draft.time.notified) return
+        claimed = true
         draft.time.notified = now
       })
-      return { type: "notify", job }
+      if (claimed) return { type: "notify", job }
     }
 
     return { type: "kept", job }
   }
 
+  // Settling is what earns the right to deliver, so exactly one pass may do it
+  // per job. Two passes can read the same running record — the exit watcher and
+  // the abort route both sweep unguarded, and the scheduler's tick is not
+  // re-entrant — and each would otherwise settle it and emit its own action,
+  // putting two cards in the session for one job.
+  //
+  // The claim is made INSIDE the update, which takes a write lock on the
+  // record, so the read and the write cannot be interleaved by a second pass.
+  // Returning undefined means another pass got there first and this one has
+  // nothing to deliver.
   async function settle(job: BackgroundJob.Info, status: BackgroundJob.Status, exit: number | undefined, now: number) {
+    let claimed = false
     await BackgroundJob.update(job.id, (draft) => {
+      if (draft.status !== "running") return
+      claimed = true
       draft.status = status
       draft.exit = exit
       draft.time.completed = now
     })
+    if (!claimed) return undefined
     return { ...job, status, exit, time: { ...job.time, completed: now } }
   }
 
