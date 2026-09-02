@@ -22,7 +22,17 @@ Before executing the command, please follow these steps:
 
 Usage notes:
   - The command argument is required.
-  - You can specify an optional timeout in milliseconds. If not specified, commands will time out after 120000ms (2 minutes).
+  - You never need to decide whether a command is "long-running". Run it. A command that
+    finishes quickly returns its output as usual. One that is still going after ${graceSeconds}
+    seconds keeps running in the background and returns a job_id and a log path instead;
+    its result arrives on its own when it finishes, so do NOT poll for completion and do
+    NOT ask the user to tell you when it is done.
+  - While a background job runs, its log file is being written continuously. Read it with
+    Read or Grep to see progress at any point.
+  - `timeout` (milliseconds) is the point at which a job is killed. It defaults to 30
+    minutes. Raise it for something genuinely long, e.g. a soak or a large build.
+  - Interactive commands do NOT work here: stdin is closed, so anything prompting for a
+    password or confirmation fails immediately. Ask the user to run those in a terminal.
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
   - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Because of this, you do NOT need to use `head`, `tail`, or other truncation commands to limit output - just run the command directly.
 
