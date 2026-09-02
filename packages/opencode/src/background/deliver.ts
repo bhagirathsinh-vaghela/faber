@@ -1,4 +1,5 @@
 import { Session } from "@/session"
+import { Instance } from "@/project/instance"
 import { MessageV2 } from "@/session/message-v2"
 import { Identifier } from "@/id/id"
 import { SessionPrompt } from "@/session/prompt"
@@ -16,7 +17,15 @@ import { BackgroundNotify } from "./notify"
 export namespace BackgroundDeliver {
   const log = Log.create({ service: "background-deliver" })
 
+  // Every session read and write below resolves against an AsyncLocalStorage
+  // context. A job this server spawned inherits one from the tool call, but an
+  // ADOPTED job has none, which is exactly the path a restart takes: the
+  // delivery then found no session and the result was lost silently.
   export async function send(job: BackgroundJob.Info, kind: BackgroundNotify.Kind, wake = true) {
+    return Instance.provide({ directory: job.directory, fn: () => deliver(job, kind, wake) })
+  }
+
+  async function deliver(job: BackgroundJob.Info, kind: BackgroundNotify.Kind, wake: boolean) {
     const session = await Session.get(job.sessionID).catch(() => undefined)
     // The session was deleted while the job ran. Nothing to deliver into, and
     // the reconciler will reap the job on its next pass.

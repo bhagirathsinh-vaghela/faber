@@ -68,13 +68,17 @@ export namespace BackgroundOrchestrator {
   // means "the user let this session go", which REAPS. A lookup that failed
   // knows nothing about the user's intent, and reading it as intent is what
   // turns an infrastructure error into a killed job.
-  async function alive(sessionID: string, directory: string): Promise<boolean | undefined> {
+  export async function aliveFor(sessionID: string, directory: string): Promise<boolean | undefined> {
     return Instance.provide({
       directory,
       fn: async () => {
-        const session = await Session.get(sessionID).catch(() => undefined)
-        // Deleted outright. Nothing to deliver to and nothing to protect.
-        if (!session) return false
+        // A miss is NOT a deletion. `Session.get` reads under
+        // `Instance.project.id`, so a job whose recorded directory maps to a
+        // different project (a `workdir` outside it, a moved checkout, a
+        // cleaned /tmp) finds nothing — and reading that as "the user deleted
+        // this session" reaps a healthy job. Letting it throw carries it to the
+        // outer catch as undefined, which is the honest answer: unknown.
+        const session = await Session.get(sessionID)
         if (session.keepWarm) return true
         const entry = (await SessionRecent.list()).find((row) => row.sessionID === sessionID)
         return entry ? isAlive(entry) : false
@@ -128,7 +132,7 @@ export namespace BackgroundOrchestrator {
     const defer = options.adopting || !settled()
     if (defer) log.info("deferring the ownership verdict", { sinceStart: Date.now() - startedAt })
     const pass = await BackgroundReconcile.run({
-      alive: defer ? () => true : alive,
+      alive: defer ? () => true : aliveFor,
     })
     for (const action of pass.actions) {
       if (action.type === "completed") await deliver(action.job, "completed")
@@ -144,7 +148,7 @@ export namespace BackgroundOrchestrator {
     // unresolved lookup does not. Delivering into a session that turns out to
     // be gone costs a message nobody reads, while withholding on a failed
     // lookup loses the result of work that already ran.
-    if ((await alive(job.sessionID, job.directory)) === false) {
+    if ((await aliveFor(job.sessionID, job.directory)) === false) {
       log.info("holding a result for a session the user stopped", { job: job.id, kind })
       return
     }

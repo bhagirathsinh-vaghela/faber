@@ -481,11 +481,27 @@ function jobResultPart(parts: PartType[]): TextPart | undefined {
 // Machinery the model reads carries `internal`, so it is excluded by the flag
 // the writer set rather than by sniffing its text for a marker. Debug mode
 // drops that exclusion, which is the whole point of the mode.
+//
+// A part carrying the flag is judged by the flag alone. A part without one is
+// recognised by the shape it opens with — a heuristic the flag exists to
+// replace, so it never overrides the flag and applies only in its absence.
+const LEGACY_INTERNAL = ["<!--", "<system-reminder>", "<mcp_tool_catalog>", "<background-", "Called the "]
+
+function legacyInternal(part: TextPart) {
+  if (part.internal !== undefined) return false
+  const text = part.text.trimStart()
+  return LEGACY_INTERNAL.some((prefix) => text.startsWith(prefix))
+}
+
 function noticePart(parts: PartType[], showInternal = false): TextPart | undefined {
   if (taskResultPart(parts) || jobResultPart(parts)) return undefined
-  const text = parts.find(
-    (p) => p.type === "text" && (p as TextPart).synthetic && (showInternal || !(p as TextPart).internal),
-  ) as TextPart | undefined
+  const text = parts.find((p) => {
+    if (p.type !== "text") return false
+    const part = p as TextPart
+    if (!part.synthetic) return false
+    if (showInternal) return true
+    return !part.internal && !legacyInternal(part)
+  }) as TextPart | undefined
   return text?.text.trim() ? text : undefined
 }
 

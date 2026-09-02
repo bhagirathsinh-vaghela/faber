@@ -37,9 +37,13 @@ export const ServeCommand = cmd({
       })
     // Background jobs outlive the server that spawned them, so EVERY start
     // adopts whatever is still on disk, not just a cold one. Unlike session
-    // liveness there is no double-delivery risk to guard against: a result is
-    // delivered once because settling the record is what marks it delivered,
-    // and the killed server cannot have done so for a job that outlived it.
+    // liveness there is no double-delivery risk to guard against: a record is
+    // settled before its result is delivered, and `reconcile` returns early on
+    // a record already past running, so a second pass finds nothing to send.
+    //
+    // The gap that leaves: a delivery that FAILS after its record settled is
+    // not retried, since nothing distinguishes settled-and-sent from
+    // settled-and-lost.
     BackgroundOrchestrator.init()
     // Adopting, not reaping: session liveness is still being rebuilt at this
     // point, so an ownership verdict here would kill healthy jobs whose

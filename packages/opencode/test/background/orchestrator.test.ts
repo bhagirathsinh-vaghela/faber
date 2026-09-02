@@ -43,6 +43,50 @@ afterEach(async () => {
 // Driven through sweep() rather than the reconciler beneath it, because the
 // flag under test lives here — a test against the reconciler passes whether or
 // not this guard exists.
+// A session read is scoped to the project its directory maps to, so a job whose
+// recorded directory belongs to a different one finds nothing. That is a failed
+// lookup, not a deleted session, and reaping on it kills healthy work — the
+// reachable case being any job run with a `workdir` outside the project.
+describe("BackgroundOrchestrator: a job whose directory names another project", () => {
+  // Driven through the reconciler with the ORCHESTRATOR'S OWN predicate rather
+  // than through sweep(): a fresh process is inside its settle window, so
+  // sweep() defers every ownership verdict and would pass whatever the
+  // predicate returns.
+  test("reports unknown rather than gone when the session is not in that project", async () => {
+    const alive = BackgroundOrchestrator.aliveFor
+    expect(await alive("ses_orchestrator_wrong_project", "/tmp")).toBeUndefined()
+  })
+
+  test("resolves a session that IS in the given project", async () => {
+    // Its own directory, where nothing is stored either, so the miss is the
+    // project scoping rather than the id: both must read as unknown, never as
+    // a deletion.
+    const alive = BackgroundOrchestrator.aliveFor
+    expect(await alive("ses_orchestrator_absent", process.cwd())).toBeUndefined()
+  })
+
+  test("a job carrying such a directory survives a pass", async () => {
+    const proc = spawnJob("sleep 30")
+    const live = (await BackgroundProcess.inspect(proc.pid))!
+    const id = BackgroundJob.id()
+    created.push(id)
+    await BackgroundJob.write({
+      id,
+      sessionID: "ses_orchestrator_wrong_project",
+      directory: "/tmp",
+      command: "sleep 30",
+      description: "wrong-project job",
+      status: "running",
+      time: { created: Date.now(), hard: Date.now() + 600_000 },
+      process: { pid: live.pid, start: live.start, pgid: live.pgid },
+    })
+
+    const pass = await BackgroundReconcile.run({ alive: BackgroundOrchestrator.aliveFor })
+    expect(pass.actions.find((entry) => entry.job.id === id)?.type).toBe("kept")
+    expect(await BackgroundJob.get(id)).toBeDefined()
+  }, 20_000)
+})
+
 describe("BackgroundOrchestrator settle window", () => {
   // The window has to outlast the asynchronous rebuild of session liveness
   // (re-arming daemons, resuming interrupted turns) and still end well before
