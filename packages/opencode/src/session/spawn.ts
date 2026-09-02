@@ -98,13 +98,11 @@ export namespace SessionSpawn {
   // the idle event, which would leave the backstop untested.
   export async function reconcile() {
     const keys = await Storage.list(["session"]).catch(() => [])
-    const owed = new Set<string>()
     for (const key of keys) {
       const session = await Storage.read<Session.Info>(key).catch(() => undefined)
       // A discharged record is kept for the resume path to read, so `done` is
       // what retires a debt here; the record's mere presence no longer does.
       if (!session?.spawn || session.spawn.done) continue
-      owed.add(session.spawn.parent)
       // A helper mid-turn is working, and its idle event will discharge it.
       if (SessionBusy.busy(session.id)) continue
       // Under the helper's OWN directory. This runs from a timer, which has no
@@ -117,12 +115,25 @@ export namespace SessionSpawn {
         fn: () => discharge(session.id),
       }).catch((error) => log.error("failed to reconcile a spawned session", { sessionID: session.id, error }))
     }
+
     // The flag is DERIVED from the debts that are actually outstanding, not
     // merely toggled at each end. A parent absent from the recent list when its
     // helper was created (freshly made, or aged past the cap) would otherwise
     // never be flagged at all, since the setter has no entry to write to.
     // Reading it back from disk each pass also means a flag can never outlive
     // the debt that justified it.
+    //
+    // RE-READ, in a second pass over the records, AFTER every discharge above.
+    // A set built during the loop describes the debts as they were before this
+    // pass acted on them, so a debt discharged here would be re-asserted by the
+    // derive at the end — the flag cleared and set again inside one pass, and
+    // the parent left spinning on a report it already has until the next sweep.
+    const owed = new Set<string>()
+    for (const key of await Storage.list(["session"]).catch(() => [])) {
+      const session = await Storage.read<Session.Info>(key).catch(() => undefined)
+      if (!session?.spawn || session.spawn.done) continue
+      owed.add(session.spawn.parent)
+    }
     await SessionRecent.syncBusyHelper(owed)
   }
 

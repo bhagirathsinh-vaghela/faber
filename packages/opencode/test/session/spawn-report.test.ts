@@ -587,4 +587,67 @@ describe("SessionSpawn", () => {
       },
     })
   }, 20_000)
+
+  // The derive at the end of a pass must read the debts AFTER that pass acted
+  // on them. A set built during the loop describes the state before the
+  // discharge, so a debt retired by this pass would be re-asserted by its own
+  // derive: the flag cleared and set again inside one pass, leaving the parent
+  // spinning on a report it already holds until the next sweep.
+  test("one reconcile pass leaves the parent unflagged", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+        await SessionRecent.touch({
+          sessionID: parent.id,
+          directory: tmp.path,
+          title: "waiting peer",
+          updated: Date.now(),
+        })
+        await SessionRecent.setBusyHelper(parent.id, true)
+        await answer(child.id, "the finding")
+
+        await SessionSpawn.reconcile()
+
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(1)
+        const entry = (await SessionRecent.list()).find((row) => row.sessionID === parent.id)
+        expect(entry?.busyHelper).toBe(false)
+      },
+    })
+  }, 20_000)
+
+  // The debt is written once at creation and never re-pointed, so the graph
+  // should be a forest. Nothing enforces that, and a cycle hangs rather than
+  // crashing: every hop awaits, so it is an unbounded async loop re-reading
+  // storage. The walk carries a seen-set the way SessionBusy.chain does.
+  test("a spawn cycle terminates instead of hanging", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const solo = await Session.create({ title: "self-referential" })
+        await Session.update(solo.id, (draft) => {
+          draft.spawn = { parent: solo.id, directory: tmp.path, at: Date.now() }
+        })
+
+        const a = await Session.create({ title: "a" })
+        const b = await Session.create({ title: "b" })
+        await Session.update(a.id, (draft) => {
+          draft.spawn = { parent: b.id, directory: tmp.path, at: Date.now() }
+        })
+        await Session.update(b.id, (draft) => {
+          draft.spawn = { parent: a.id, directory: tmp.path, at: Date.now() }
+        })
+
+        const bounded = <T>(work: Promise<T>) =>
+          Promise.race([work, Bun.sleep(4000).then(() => "TIMEOUT" as const)])
+
+        expect(await bounded(MessageV2.lastVariant(solo.id))).toBeUndefined()
+        expect(await bounded(MessageV2.lastVariant(a.id))).toBeUndefined()
+        expect(await bounded(MessageV2.lastModel(b.id))).toBeUndefined()
+      },
+    })
+  }, 20_000)
 })
