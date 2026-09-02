@@ -2769,14 +2769,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <IconButton
                       type="button"
                       icon="stop"
-                      variant="ghost"
-                      // Red, matching the session stop in the header: the two
-                      // are the same verb at different scopes, and a reader
-                      // should not have to learn two colours for it.
+                      variant="primary"
+                      // The button keeps its filled treatment; only the square
+                      // inside it turns red, so stopping is marked out from
+                      // sending without the control itself changing shape.
                       class={
                         companion()
                           ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : "size-11! [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
+                          : "size-10! any-pointer-coarse:size-11! [&_[data-slot=icon-svg]]:!text-icon-critical-base"
                       }
                       aria-label={language.t("prompt.action.stop")}
                       onClick={abort}
@@ -2806,15 +2806,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       disabled={!submittable()}
                       icon="arrow-up"
                       variant="primary"
-                      // Sized past the shared control height, like Stop beside
-                      // it. Both are pressed mid-thought and often on a phone,
-                      // where the 40px every other control takes sits under the
-                      // 44pt guideline, and the two appear together whenever a
-                      // draft is typed into a running turn.
+                      // Sized with Stop beside it rather than from the shared
+                      // control height: a thumb gets the 44px the guideline
+                      // asks for, a mouse keeps the compact 40. The two appear
+                      // together whenever a draft is typed into a running turn,
+                      // so they take one rule between them.
                       class={
                         companion()
                           ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : "size-11!"
+                          : "size-10! any-pointer-coarse:size-11!"
                       }
                       aria-label={language.t("prompt.action.send")}
                       {...preserveFocus()}

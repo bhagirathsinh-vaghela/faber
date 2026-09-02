@@ -55,9 +55,6 @@ const icons = {
   "house-mobile": `<path d="M2.5 8.5L10 2.5L17.5 8.5V17H12V12H8V17H2.5V8.5Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
   "menu-mobile": `<path d="M3 5.5H17M3 10H17M3 14.5H17" stroke="currentColor" stroke-linecap="square"/>`,
   "stop-mobile": `<rect x="5" y="5" width="10" height="10" rx="1.5" fill="currentColor"/>`,
-  // The same rounded square drawn as an outline. A stop that ends the whole
-  // session reads as the heavier action when it is the one NOT filled in.
-  "stop-outline": `<rect x="5.5" y="5.5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-linecap="square"/>`,
   "speech-bubble": `<path d="M18.3334 10.0003C18.3334 5.57324 15.0927 2.91699 10.0001 2.91699C4.90749 2.91699 1.66675 5.57324 1.66675 10.0003C1.66675 11.1497 2.45578 13.1016 2.5771 13.3949C2.5878 13.4207 2.59839 13.4444 2.60802 13.4706C2.69194 13.6996 3.04282 14.9364 1.66675 16.7684C3.5186 17.6538 5.48526 16.1982 5.48526 16.1982C6.84592 16.9202 8.46491 17.0837 10.0001 17.0837C15.0927 17.0837 18.3334 14.4274 18.3334 10.0003Z" stroke="currentColor" stroke-linecap="square"/>`,
   comment: `<path d="M16.25 3.75H3.75V16.25L6.875 14.4643H16.25V3.75Z" stroke="currentColor" stroke-linecap="square"/>`,
   "folder-add-left": `<path d="M2.08333 9.58268V2.91602H8.33333L10 5.41602H17.9167V16.2493H8.75M3.75 12.0827V14.5827M3.75 14.5827V17.0827M3.75 14.5827H1.25M3.75 14.5827H6.25" stroke="currentColor" stroke-linecap="square"/>`,
