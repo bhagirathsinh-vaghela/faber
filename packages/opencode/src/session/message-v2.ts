@@ -729,13 +729,28 @@ export namespace MessageV2 {
   // message carrying it is the session's current pick — a turn that names none
   // inherits rather than snapping to a default. The one scan every forward-pick
   // reader shares (model, variant).
-  async function lastStamped<T>(sessionID: string, pick: (user: User) => T | undefined) {
+  // A SPAWNED HELPER falls through to the session that spawned it. Its own
+  // history is empty on the first turn, and it is a ROOT session, so nothing in
+  // it reaches the spawner: without this the helper snaps to the configured
+  // defaults and runs as something the user never picked.
+  //
+  // The spawner is read under the directory the debt recorded, since a session
+  // resolves only under its own project and a helper's is not always the
+  // spawner's.
+  async function lastStamped<T>(sessionID: string, pick: (user: User) => T | undefined): Promise<T | undefined> {
     for await (const item of stream(sessionID)) {
       if (item.info.role !== "user") continue
       const value = pick(item.info)
       if (value !== undefined) return value
     }
-    return undefined
+    const { Session } = await import(".")
+    const session = await Session.get(sessionID).catch(() => undefined)
+    if (!session?.spawn) return undefined
+    const { Instance } = await import("@/project/instance")
+    return Instance.provide({
+      directory: session.spawn.directory,
+      fn: () => lastStamped(session.spawn!.parent, pick),
+    }).catch(() => undefined)
   }
 
   export const lastModel = fn(Identifier.schema("session"), (sessionID) => lastStamped(sessionID, (user) => user.model))
