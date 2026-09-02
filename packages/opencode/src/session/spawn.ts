@@ -231,23 +231,27 @@ export namespace SessionSpawn {
         return
       }
 
-      // Past here the report exists, so the helper is finished. The same
-      // teardown the Stop button performs, for the same reason: a session left
-      // warm for a peer that is no longer waiting pings a cache on nobody's
-      // behalf. Not a delete, since the transcript stays readable and the parent
-      // may still have a follow-up.
+      // Past here the report exists, so the helper is finished.
       void SessionRecent.setBusyHelper(debt.parent, false)
-      await here(() => Session.stop({ sessionID }))
       const messageID = await there(() => inject(debt.parent, text))
-      // Stamped BEFORE the debt is retired, so the window a crash can land in is
-      // one where the next pass sees a delivered report and discards its own
-      // attempt rather than writing a second copy.
+      // STAMPED BEFORE THE STOP, and `delivered` before `done`. Two orderings
+      // ride on this. A crash between the stamp and the retire leaves a pass
+      // that sees a delivered report and discards its own attempt rather than
+      // writing a second copy. And `done` is what keeps the daemon off: this
+      // runs on the idle event, which fires while the turn is still unwinding,
+      // so the turn's own tail arms one behind whatever the stop just disarmed.
+      // Stopping first leaves a window where that arm sees no stamp yet.
       await here(async () => {
         await Session.update(sessionID, (draft) => {
           if (draft.spawn) draft.spawn.delivered = messageID
         })
         await clear(sessionID)
       })
+      // The same teardown the Stop button performs, for the same reason: a
+      // session left warm for a peer that is no longer waiting pings a cache on
+      // nobody's behalf. Not a delete, since the transcript stays readable and
+      // the parent may still have a follow-up.
+      await here(() => Session.stop({ sessionID }))
       log.info("reported a spawned session's result", { child: sessionID, parent: debt.parent })
     } finally {
       settling.delete(sessionID)

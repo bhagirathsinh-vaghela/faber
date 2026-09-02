@@ -124,6 +124,35 @@ describe("SessionSpawn", () => {
     })
   }, 20_000)
 
+  // The stop is the LAST act of the discharge. It runs on the idle event, which
+  // fires while the turn is still unwinding, so anything after it races the
+  // turn's own tail: an arm landing behind the stop leaves the helper pinging
+  // for a peer that already has its answer. Ordering is what rules that out,
+  // and the record is where the ordering is visible.
+  test("the report is stamped before the helper is stopped", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+        await Session.update(child.id, (draft) => {
+          draft.keepWarm = true
+        })
+
+        await answer(child.id, "done")
+        SessionStatus.set(child.id, { type: "idle" })
+        await Bun.sleep(200)
+
+        const settled = await Session.get(child.id)
+        expect(settled.spawn?.delivered).toBeString()
+        expect(settled.spawn?.done).toBeNumber()
+        expect(settled.keepWarm).toBeFalsy()
+      },
+    })
+  }, 20_000)
+
   // The debt outlives a failed delivery, because a report lost to a crash is
   // work nobody can recover: the parent never learns the helper finished, and
   // the next pass would find nothing to send.
