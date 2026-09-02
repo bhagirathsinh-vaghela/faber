@@ -107,29 +107,53 @@ export namespace BackgroundJob {
   // foreground command would make the shell replace itself, and the exit
   // write after it would never run.
   //
-  // `set -m` is load-bearing. Job control puts each background job in a
-  // process group of its own, which is what lets the watchdog signal
-  // `-$__oc_cmd` and take the command's whole subtree. Without it the command
-  // shares the wrapper's group, so the watchdog can only signal the direct
-  // child and a `make`'s compilers keep running (verified: a backgrounded
-  // grandchild survives the kill).
+  // The command runs inside a NESTED `sh -c` that turns on job control for
+  // itself. That placement is load-bearing twice over.
+  //
+  // Job control is what puts the command in a process group of its own, which
+  // is what lets the watchdog signal `-$__oc_cmd` and take the whole subtree.
+  // Without it the command shares the wrapper's group, so the watchdog reaches
+  // only the direct child and a `make`'s compilers keep running.
+  //
+  // It has to be a nested `sh` because the OUTER shell is the user's login
+  // shell, and zsh refuses job control when it is not interactive
+  // ("can't change option: -m", exit 1, nothing runs). POSIX sh accepts it, so
+  // the nesting confines the requirement to a shell that can meet it while the
+  // user's own shell still interprets their command.
   //
   // The job learns exactly one thing about the world outside itself: how long
   // it may live. It knows nothing of sessions, injection, or its own record.
-  export function wrap(command: string, id: string, hardMs: number) {
+
+  // POSIX single-quoting: everything inside is literal, and an embedded quote
+  // is closed, escaped, and reopened. The one form that survives a shell
+  // without expanding anything.
+  function quote(text: string) {
+    return `'` + text.replaceAll(`'`, `'\\''`) + `'`
+  }
+
+  export function wrap(command: string, id: string, hardMs: number, shell = "/bin/sh") {
     const seconds = Math.max(1, Math.ceil(hardMs / 1000))
-    const exit = exitPath(id)
-    return [
+    // The command is interpreted by the USER'S shell, launched from inside a
+    // POSIX one. Both halves are required and neither shell can do the other's
+    // job: zsh refuses job control when it is not interactive ("can't change
+    // option: -m"), and running the command under plain `sh` would drop the
+    // user's own login shell.
+    const user = `${shell} -lc ${quote(command)}`
+    // The watchdog lives INSIDE the nested shell, alongside the command.
+    //
+    // Only that shell knows the command's process group: job control assigns
+    // the group there, and the launching shell sees just this shell's pid,
+    // whose own group is its parent's. A watchdog placed outside would signal
+    // that wrong group and never reach the command (verified: the command
+    // outlived its deadline and ran to completion).
+    const inner = [
       `set -m`,
-      `{ ${command} ; } &`,
+      `{ ${user} ; } &`,
       `__oc_cmd=$!`,
-      // Job control is only needed to place the command in its own group.
-      // Leaving it on makes the shell announce the job's death ("Terminated")
-      // into the log the model reads, so it goes off once the pid is captured.
       `set +m`,
       `{ sleep ${seconds}; kill -TERM -$__oc_cmd 2>/dev/null; sleep 2; kill -KILL -$__oc_cmd 2>/dev/null; } &`,
       `__oc_wd=$!`,
-      // The command's own stderr is already in the log; these redirects
+      // The command's own output already reached the log; these redirects
       // silence only the shell's reports ABOUT its jobs, which are noise to a
       // reader. The watchdog's death is announced too, since killing it is
       // what normally ends it.
@@ -137,9 +161,14 @@ export namespace BackgroundJob {
       `__oc_rc=$?`,
       `kill $__oc_wd 2>/dev/null`,
       `wait $__oc_wd 2>/dev/null`,
-      `echo $__oc_rc > ${JSON.stringify(exit)}`,
+      `echo $__oc_rc > ${quote(exitPath(id))}`,
       `exit $__oc_rc`,
     ].join("\n")
+    // Single-quoted, not JSON.stringify'd. Double quotes would let the OUTER
+    // shell expand `$!` and `$?` before the inner shell ever ran, so every job
+    // reported the outer shell's status and a failing command came back as
+    // exit 0.
+    return `sh -c ${quote(inner)}`
   }
 
   export async function write(info: Info) {

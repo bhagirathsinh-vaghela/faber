@@ -18,6 +18,8 @@ import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
 import { Plugin } from "@/plugin"
 import { Server } from "@/server/server"
+import { BackgroundSpawn } from "@/background/spawn"
+import { BackgroundJob } from "@/background/job"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -168,9 +170,23 @@ export const BashTool = Tool.define("bash", async () => {
 
       const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
       const listening = Server.listening()
-      const proc = spawn(params.command, {
+      ctx.metadata({
+        metadata: {
+          output: "",
+          description: params.description,
+        },
+      })
+
+      // One path for every command: a durable record, a detached process, and
+      // output streaming to a file. The runtime decides the SHAPE of the result
+      // by racing the process against the grace window, so nothing here has to
+      // predict how long a command will take.
+      const spawned = await BackgroundSpawn.run({
+        command: params.command,
+        description: params.description,
+        sessionID: ctx.sessionID,
+        directory: cwd,
         shell,
-        cwd,
         env: {
           ...process.env,
           ...shellEnv.env,
@@ -181,100 +197,44 @@ export const BashTool = Tool.define("bash", async () => {
           // reach, and a default origin would name a port nothing is bound to.
           ...(listening ? { OPENCODE_SERVER_URL: listening } : {}),
         },
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: process.platform !== "win32",
+        hard: params.timeout,
       })
 
-      let output = ""
-
-      // Initialize metadata with empty output
-      ctx.metadata({
-        metadata: {
-          output: "",
+      // Past the window. The job keeps running and reports itself when it
+      // finishes, so the turn is free rather than blocked; a caller that wants
+      // progress reads the log, which is already streaming.
+      if (spawned.type === "background") {
+        const output = [
+          `Command still running after ${Math.round(BackgroundSpawn.GRACE_MS / 1000)}s; it continues in the background.`,
+          `job_id: ${spawned.job.id}`,
+          `log: ${BackgroundJob.logPath(spawned.job.id)}`,
+          ``,
+          `The result will arrive on its own when the command finishes. Read the log with tail or grep for progress; do not poll for completion.`,
+        ].join("\n")
+        const metadata = {
+          output,
+          // Undefined rather than absent: the job has not exited, and a reader
+          // must not mistake a missing field for a zero exit.
+          exit: undefined as number | undefined,
           description: params.description,
-        },
-      })
-
-      const append = (chunk: Buffer) => {
-        const text = chunk.toString()
-        output += text
-        ctx.metadata({
-          metadata: {
-            // truncate the metadata to avoid GIANT blobs of data (has nothing to do w/ what agent can access)
-            output: output.length > MAX_METADATA_LENGTH ? output.slice(0, MAX_METADATA_LENGTH) + "\n\n..." : output,
-            description: params.description,
-          },
-          // The web wire blanks the full output and ships only this chunk, which
-          // the client appends. In-process consumers still get the full output.
-          delta: text,
-        })
-      }
-
-      proc.stdout?.on("data", append)
-      proc.stderr?.on("data", append)
-
-      let timedOut = false
-      let aborted = false
-      let exited = false
-
-      const kill = () => Shell.killTree(proc, { exited: () => exited })
-
-      if (ctx.abort.aborted) {
-        aborted = true
-        await kill()
-      }
-
-      const abortHandler = () => {
-        aborted = true
-        void kill()
-      }
-
-      ctx.abort.addEventListener("abort", abortHandler, { once: true })
-
-      const timeoutTimer = setTimeout(() => {
-        timedOut = true
-        void kill()
-      }, timeout + 100)
-
-      await new Promise<void>((resolve, reject) => {
-        const cleanup = () => {
-          clearTimeout(timeoutTimer)
-          ctx.abort.removeEventListener("abort", abortHandler)
+          job: spawned.job.id,
         }
-
-        proc.once("exit", () => {
-          exited = true
-          cleanup()
-          resolve()
-        })
-
-        proc.once("error", (error) => {
-          exited = true
-          cleanup()
-          reject(error)
-        })
-      })
-
-      const resultMetadata: string[] = []
-
-      if (timedOut) {
-        resultMetadata.push(`bash tool terminated command after exceeding timeout ${timeout} ms`)
+        ctx.metadata({ metadata })
+        return { title: params.description, metadata, output }
       }
 
-      if (aborted) {
-        resultMetadata.push("User aborted the command")
-      }
-
-      if (resultMetadata.length > 0) {
-        output += "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>"
+      let output = spawned.output
+      if (ctx.abort.aborted) {
+        output += "\n\n<bash_metadata>\nUser aborted the command\n</bash_metadata>"
       }
 
       return {
         title: params.description,
         metadata: {
           output: output.length > MAX_METADATA_LENGTH ? output.slice(0, MAX_METADATA_LENGTH) + "\n\n..." : output,
-          exit: proc.exitCode,
+          exit: spawned.exit as number | undefined,
           description: params.description,
+          job: spawned.job.id,
         },
         output,
       }

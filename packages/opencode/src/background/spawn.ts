@@ -73,7 +73,9 @@ export namespace BackgroundSpawn {
     // server opens it.
     const handle = await fs.open(BackgroundJob.logPath(id), "a")
     const proc = Bun.spawn({
-      cmd: [input.shell, "-lc", BackgroundJob.wrap(input.command, id, hard)],
+      // Launched under POSIX sh, which the wrapper needs for job control. The
+      // user's own login shell runs one level in and interprets the command.
+      cmd: ["/bin/sh", "-c", BackgroundJob.wrap(input.command, id, hard, input.shell)],
       cwd: input.directory,
       env: input.env as Record<string, string>,
       // stdin closed, not inherited: an interactive command then fails
