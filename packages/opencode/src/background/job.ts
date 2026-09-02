@@ -123,11 +123,20 @@ export namespace BackgroundJob {
       `set -m`,
       `{ ${command} ; } &`,
       `__oc_cmd=$!`,
+      // Job control is only needed to place the command in its own group.
+      // Leaving it on makes the shell announce the job's death ("Terminated")
+      // into the log the model reads, so it goes off once the pid is captured.
+      `set +m`,
       `{ sleep ${seconds}; kill -TERM -$__oc_cmd 2>/dev/null; sleep 2; kill -KILL -$__oc_cmd 2>/dev/null; } &`,
       `__oc_wd=$!`,
-      `wait $__oc_cmd`,
+      // The command's own stderr is already in the log; these redirects
+      // silence only the shell's reports ABOUT its jobs, which are noise to a
+      // reader. The watchdog's death is announced too, since killing it is
+      // what normally ends it.
+      `wait $__oc_cmd 2>/dev/null`,
       `__oc_rc=$?`,
       `kill $__oc_wd 2>/dev/null`,
+      `wait $__oc_wd 2>/dev/null`,
       `echo $__oc_rc > ${JSON.stringify(exit)}`,
       `exit $__oc_rc`,
     ].join("\n")

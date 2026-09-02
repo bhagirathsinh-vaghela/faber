@@ -243,6 +243,21 @@ describe("BackgroundJob.wrap", () => {
     expect(await run("true", job.id, 600_000)).toBe(0)
     expect(Date.now() - started).toBeLessThan(5_000)
   }, 10_000)
+
+  // The log is what the model reads, so the shell's own commentary about the
+  // job ("[1]- Done", "Terminated") must not appear in it.
+  test("keeps job-control chatter out of the log", async () => {
+    const finished = record()
+    await run("echo only-this", finished.id, 60_000)
+    expect((await BackgroundJob.output(finished.id)).trim()).toBe("only-this")
+
+    const killed = record()
+    await run("echo before-kill; sleep 30", killed.id, 1000)
+    const output = await BackgroundJob.output(killed.id)
+    expect(output).toContain("before-kill")
+    expect(output).not.toContain("Terminated")
+    expect(output).not.toContain("Done")
+  }, 20_000)
 })
 
 describe("BackgroundJob paths", () => {
