@@ -44,6 +44,8 @@ export type PluginInput = {
     input: string
     sessionID: string
     model?: { providerID: string; modelID: string }
+    /** Completion budget; the call never thinks, so this bounds the whole reply. */
+    maxOutputTokens?: number
   }) => Promise<string>
 }
 

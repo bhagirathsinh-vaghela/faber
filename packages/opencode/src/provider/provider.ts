@@ -43,6 +43,9 @@ import { Installation } from "../installation"
 export namespace Provider {
   const log = Log.create({ service: "provider" })
 
+  /** Routing-only request header: the fetch wrapper strips it and writes `thinking: disabled` into the body. */
+  export const NO_THINKING_HEADER = "x-opencode-no-thinking"
+
   function isGpt5OrLater(modelID: string): boolean {
     const match = /^gpt-(\d+)/.exec(modelID)
     if (!match) {
@@ -1073,6 +1076,19 @@ export namespace Provider {
           if (!body.thinking && mergedHeaders["anthropic-beta"]?.includes("adaptive-thinking")) {
             body.thinking = { type: "adaptive" }
             mutated = true
+          }
+          // Under the beta headers this provider sends, the server thinks
+          // whenever the body omits `thinking`, and the SDK omits it for
+          // anything but type "enabled". A caller that wants NO thinking (a
+          // judge whose whole reply must fit a small budget) says so on this
+          // routing-only header, which never reaches the API.
+          if (mergedHeaders[NO_THINKING_HEADER] !== undefined) {
+            delete mergedHeaders[NO_THINKING_HEADER]
+            opts.headers = mergedHeaders
+            if (!body.thinking) {
+              body.thinking = { type: "disabled" }
+              mutated = true
+            }
           }
           if (body.temperature === undefined) {
             const cfg = await Config.get()

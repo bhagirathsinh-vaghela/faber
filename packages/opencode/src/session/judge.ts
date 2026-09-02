@@ -18,9 +18,12 @@ export namespace SessionJudge {
     abort?: AbortSignal
     /** Milliseconds before the call is abandoned. Defaults to 30s. */
     timeout?: number
+    /** Completion budget. Defaults to 4096: enough for a verdict with a rewrite, small enough to bound the cost. */
+    maxOutputTokens?: number
   }
 
   const DEFAULT_TIMEOUT = 30_000
+  const DEFAULT_MAX_OUTPUT = 4_096
 
   /**
    * A caller-supplied instruction evaluated against caller-supplied text, with
@@ -74,6 +77,14 @@ export namespace SessionJudge {
         // An explicit model is a deliberate capability choice, so only fall back to
         // the small-model options when the caller left the model unspecified.
         small: !input.model,
+        // A verdict is a few lines. Under the beta headers the Anthropic
+        // provider sends, a sonnet-class model thinks implicitly when the body
+        // omits `thinking`, and measured against real rule checks that thinking
+        // consumed the whole budget on 60 of 100 calls and returned an empty
+        // reply, which the caller reads as an off-contract PASS. Disabling it is
+        // what makes the cap safe.
+        thinking: "disabled",
+        maxOutputTokens: input.maxOutputTokens ?? DEFAULT_MAX_OUTPUT,
         tools: {},
         messages: [{ role: "user" as const, content: input.input }],
         system: { env: [], globalInstructions: [], projectInstructions: [] },
@@ -91,7 +102,9 @@ export namespace SessionJudge {
         chars: verdict.length,
         input: usage.inputTokens,
         output: usage.outputTokens,
+        reasoning: usage.reasoningTokens,
         cacheRead: usage.cachedInputTokens,
+        finish: await stream.finishReason,
       })
       return verdict
     } finally {
