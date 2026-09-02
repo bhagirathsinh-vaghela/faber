@@ -190,6 +190,33 @@
       z-index: 2;
     }
 
+    /* A card whose body scrolls (job/task result, system notice) shows its
+       SUMMARY on the one-liner rather than the top of its output. Without this
+       the clip lands wherever the body's first line happens to sit, so a
+       collapsed job read "line 3 of output" instead of its status and command. */
+    [data-component="job-result"],
+    [data-component="task-result"],
+    [data-component="notice-result"] {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center;
+      min-width: 0;
+
+      > [data-slot$="-result-meta"] {
+        margin-bottom: 0 !important;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+
+      /* The summary stands in for the body while collapsed. */
+      > [data-component="markdown"],
+      > [data-component="notice-body"] {
+        display: none !important;
+      }
+    }
+
     /* Attachment thumbnails shrink to a single inline row so an image-only
        prompt (no text) still shows something on the one-liner. The box-level
        max-height clip keeps it to exactly one line; they return to full size on

@@ -5,6 +5,8 @@
    subtle, consistent bar. */
 [data-component="tool-output"][data-scrollable],
 [data-component="task-result"][data-scrollable],
+[data-component="job-result"][data-scrollable],
+[data-component="notice-body"][data-scrollable],
 [data-component="edit-content"],
 [data-component="write-content"] [data-component="code"],
 [data-component="apply-patch-file-diff"] {
@@ -428,9 +430,26 @@
   }
 }
 
-[data-component="task-result"][data-scrollable] {
-  max-height: 240px;
-  overflow-y: auto;
+/* The meta row stays OUTSIDE the scroller so a collapsed box, which clips to
+   one line, shows the summary rather than the top of a scrolled body. Only the
+   body scrolls. */
+[data-component="task-result"],
+[data-component="job-result"],
+[data-component="notice-result"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
+  > [data-slot$="-result-meta"] {
+    flex: none;
+  }
+
+  > [data-component="markdown"],
+  > [data-component="notice-body"] {
+    min-height: 0;
+    max-height: 240px;
+    overflow-y: auto;
+  }
 }
 
 /* Dispatched badge in the TASK OUTPUT header, pinned right. */

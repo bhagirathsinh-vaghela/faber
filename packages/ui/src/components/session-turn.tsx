@@ -472,12 +472,18 @@ export function SessionTurn(
   // overrides it.
   const boxDefaults = useBoxDefaults()
   const collapsed = () => true
-  // An injected TASK RESULT message is user-role but its own box type, so it
-  // collapses independently of typed user prompts.
-  const boxKey = () =>
-    stickyParts().some((part) => part?.type === "text" && (part as TextPart).backgroundTaskResult)
-      ? "task_result"
-      : "user"
+  // An injected result is user-role but its own box type, so each kind
+  // collapses independently of typed user prompts and of the other.
+  const boxKey = () => {
+    const parts = stickyParts()
+    if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundJobResult)) return "job_result"
+    if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundTaskResult)) return "task_result"
+    // Synthetic text with no result record is a system notice, e.g. the
+    // supervisor's continue prompt after a restart.
+    if (parts.some((part) => part?.type === "text" && (part as TextPart).synthetic && part.text.trim()))
+      return "system_notice"
+    return "user"
+  }
   const configuredOpen = () => (boxDefaults ? !boxDefaults.collapsed(boxKey(), boxDefaults.mode()) : true)
   const [stuckOpen, setStuckOpen] = createBoxOpen({
     sessionID: () => props.sessionID,

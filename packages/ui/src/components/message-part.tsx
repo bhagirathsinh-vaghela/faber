@@ -303,7 +303,10 @@ const TASK_ACCENT = "var(--box-accent-task)"
 const JOB_ACCENT = "var(--box-accent-job)"
 
 function taskAccent(status: string): string {
-  return status === "failed" ? "var(--color-text-error)" : TASK_ACCENT
+  // `--syntax-critical` rather than `--color-text-error`, which is unset in the
+  // shipped themes: an unresolvable accent leaves the box drawing its default
+  // white border, so a failed task read as an ordinary message.
+  return status === "failed" ? "var(--syntax-critical)" : TASK_ACCENT
 }
 
 // `--syntax-critical` rather than a `--color-*-error` token: those are unset in
@@ -469,6 +472,47 @@ function jobResultPart(parts: PartType[]): TextPart | undefined {
   return parts.find((p) => p.type === "text" && (p as TextPart).backgroundJobResult) as TextPart | undefined
 }
 
+// A synthetic user message the system wrote rather than the user: the
+// supervisor's continue prompt after a restart is the one in practice. The
+// user branch renders only non-synthetic text, so without its own branch such
+// a message draws an empty box carrying no indication of what happened.
+function noticePart(parts: PartType[]): TextPart | undefined {
+  if (taskResultPart(parts) || jobResultPart(parts)) return undefined
+  const text = parts.find((p) => p.type === "text" && (p as TextPart).synthetic) as TextPart | undefined
+  return text?.text.trim() ? text : undefined
+}
+
+// One line, so the collapsed box still says what happened. The full text stays
+// in the body for a reader who opens it.
+function noticeSummary(text: string): string {
+  const first = text.trim().split("\n").find((line) => line.trim().length > 0) ?? ""
+  const sentence = first.split(/(?<=[.!?])\s/)[0] ?? first
+  return sentence.length > 120 ? `${sentence.slice(0, 117)}...` : sentence
+}
+
+// The summary line renders BEFORE the body and outside any scroller, so a
+// collapsed box clipped to one line still shows it. A body that scrolls puts
+// its first line inside the scroller, where the clip lands on empty space.
+function NoticeDisplay(props: { part: TextPart }) {
+  const summary = createMemo(() => noticeSummary(props.part.text))
+  return (
+    <div data-component="notice-result">
+      <div
+        data-slot="notice-result-meta"
+        class="mb-2 flex flex-row flex-wrap items-center font-mono"
+        style={{ "font-size": "11px", "line-height": "1.2" }}
+      >
+        <span class="font-medium" style={{ color: "var(--syntax-constant)" }}>
+          ⚙ {summary()}
+        </span>
+      </div>
+      <div data-component="notice-body" data-scrollable>
+        <Markdown text={props.part.text} cacheKey={props.part.id} />
+      </div>
+    </div>
+  )
+}
+
 // A job's header answers what a reader asks of a finished command: what ran,
 // how it ended, and how long it took. The command leads, because it is what
 // identifies the block; the exit code follows the status, since a bare number
@@ -552,6 +596,22 @@ export function Message(props: MessageProps) {
               jumpHint={props.jumpHint}
             >
               <JobResultDisplay part={part()} />
+            </MessageBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "user" && noticePart(props.parts)}>
+        {(part) => (
+          <Show when={props.boxed} fallback={<NoticeDisplay part={part()} />}>
+            <MessageBox
+              message={props.message}
+              label="SYSTEM"
+              accent="var(--box-accent-tool)"
+              action={props.action}
+              onJump={props.onJump}
+              jumpHint={props.jumpHint}
+            >
+              <NoticeDisplay part={part()} />
             </MessageBox>
           </Show>
         )}

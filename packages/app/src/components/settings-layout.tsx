@@ -11,6 +11,8 @@ import { useSettings } from "@/context/settings"
 const BOX_TYPES: { key: string; label: string }[] = [
   { key: "user", label: "User message" },
   { key: "task_result", label: "Task result" },
+  { key: "job_result", label: "Job result" },
+  { key: "system_notice", label: "System notice" },
   { key: "task", label: "Task" },
   { key: "bash", label: "Bash" },
   { key: "edit", label: "Edit" },
