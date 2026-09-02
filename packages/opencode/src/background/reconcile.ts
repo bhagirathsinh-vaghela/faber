@@ -18,7 +18,14 @@ export namespace BackgroundReconcile {
   // Whether the session that owns a job still exists in a form that could read
   // a result. Injected rather than imported so a pass can be driven in a test
   // with no session store, and so the caller decides what liveness means.
-  export type Alive = (sessionID: string) => boolean | Promise<boolean>
+  //
+  // UNDEFINED means the answer could not be established, and is NOT the same as
+  // false. False is a verdict about the user's intent and reaps; undefined is a
+  // failed lookup, which says nothing about intent and must leave the job alone.
+  export type Alive = (
+    sessionID: string,
+    directory: string,
+  ) => boolean | undefined | Promise<boolean | undefined>
 
   export type Action =
     | { type: "kept"; job: BackgroundJob.Info }
@@ -71,7 +78,12 @@ export namespace BackgroundReconcile {
 
     // Still running, so the owner decides whether it may continue. A job whose
     // session was deliberately stopped is work nobody will read.
-    if (!(await alive(job.sessionID))) {
+    //
+    // ONLY an explicit false reaps. An undefined answer means the lookup could
+    // not run, which is a fact about this server rather than about the user's
+    // intent, and killing on it destroys healthy work for an infrastructure
+    // reason the job had nothing to do with.
+    if ((await alive(job.sessionID, job.directory)) === false) {
       await BackgroundProcess.kill(verdict.identity)
       await BackgroundJob.remove(job.id)
       return { type: "reaped", job, reason: "owner-gone" }

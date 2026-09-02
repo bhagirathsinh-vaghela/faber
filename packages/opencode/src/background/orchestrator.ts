@@ -1,5 +1,6 @@
 import { isAlive } from "@opencode-ai/util/session"
 import { Session } from "@/session"
+import { Instance } from "@/project/instance"
 import { SessionRecent } from "@/session/recent"
 import { Scheduler } from "@/scheduler"
 import { Log } from "@/util/log"
@@ -57,13 +58,28 @@ export namespace BackgroundOrchestrator {
   // Both are consulted: live work counts even on a session that was never
   // armed (ping can be disabled entirely), and persisted intent counts while
   // the live view is still being rebuilt.
-  async function alive(sessionID: string) {
-    const session = await Session.get(sessionID).catch(() => undefined)
-    // Deleted outright. Nothing to deliver to and nothing to protect.
-    if (!session) return false
-    if (session.keepWarm) return true
-    const entry = (await SessionRecent.list()).find((row) => row.sessionID === sessionID)
-    return entry ? isAlive(entry) : false
+  //
+  // The lookup runs inside the job's own directory. `Session.get` resolves its
+  // project from an AsyncLocalStorage context, and a sweep reaches here from a
+  // timer and from server start-up, neither of which has one — so without the
+  // provide it throws for every job.
+  //
+  // Undefined, not false, when the answer cannot be established: `false` here
+  // means "the user let this session go", which REAPS. A lookup that failed
+  // knows nothing about the user's intent, and reading it as intent is what
+  // turns an infrastructure error into a killed job.
+  async function alive(sessionID: string, directory: string): Promise<boolean | undefined> {
+    return Instance.provide({
+      directory,
+      fn: async () => {
+        const session = await Session.get(sessionID).catch(() => undefined)
+        // Deleted outright. Nothing to deliver to and nothing to protect.
+        if (!session) return false
+        if (session.keepWarm) return true
+        const entry = (await SessionRecent.list()).find((row) => row.sessionID === sessionID)
+        return entry ? isAlive(entry) : false
+      },
+    }).catch(() => undefined)
   }
 
   export function init() {
@@ -124,11 +140,12 @@ export namespace BackgroundOrchestrator {
   }
 
   async function deliver(job: BackgroundJob.Info, kind: "completed" | "timeout" | "checkin") {
-    // A result whose session is gone has nowhere to go. It stays on disk until
-    // the age-based cleanup takes it, so reopening a session that crashed
-    // still finds the output rather than re-running the work.
-    if (!(await alive(job.sessionID))) {
-      log.info("holding a result for a session that is not alive", { job: job.id, kind })
+    // Only a session the user deliberately let go has its result held; an
+    // unresolved lookup does not. Delivering into a session that turns out to
+    // be gone costs a message nobody reads, while withholding on a failed
+    // lookup loses the result of work that already ran.
+    if ((await alive(job.sessionID, job.directory)) === false) {
+      log.info("holding a result for a session the user stopped", { job: job.id, kind })
       return
     }
     await BackgroundDeliver.send(job, kind)

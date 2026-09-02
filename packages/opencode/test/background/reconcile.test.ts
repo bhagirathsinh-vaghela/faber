@@ -129,6 +129,49 @@ describe("BackgroundReconcile: ownership", () => {
   })
 })
 
+describe("BackgroundReconcile: an unresolved owner", () => {
+  // Only an explicit false is a verdict about the user's intent. A lookup that
+  // could not run says nothing about intent, and reaping on it kills healthy
+  // work for a reason belonging to the server rather than to the job.
+  test("keeps a running job when liveness cannot be established", async () => {
+    const proc = spawnJob("sleep 30")
+    const job = await store({ process: await identify(proc.pid) })
+
+    const action = actionFor(await BackgroundReconcile.run({ alive: () => undefined }), job.id)
+
+    expect(action?.type).toBe("kept")
+    expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
+    expect(await BackgroundJob.get(job.id)).toBeDefined()
+  })
+
+  test("still reaps when the owner is explicitly gone", async () => {
+    const proc = spawnJob("sleep 30")
+    const job = await store({ process: await identify(proc.pid) })
+
+    const action = actionFor(await BackgroundReconcile.run({ alive: () => false }), job.id)
+
+    expect(action?.type).toBe("reaped")
+    expect(await BackgroundJob.get(job.id)).toBeUndefined()
+  })
+
+  // The predicate needs the job's directory, since a session resolves inside
+  // its own project and a sweep runs with no ambient context.
+  test("passes the job's directory alongside the session id", async () => {
+    const proc = spawnJob("sleep 30")
+    const job = await store({ process: await identify(proc.pid), directory: "/tmp/some-project" })
+
+    const seen: Array<{ id: string; dir: string }> = []
+    await BackgroundReconcile.run({
+      alive: (id, dir) => {
+        seen.push({ id, dir })
+        return true
+      },
+    })
+
+    expect(seen).toContainEqual({ id: job.sessionID, dir: "/tmp/some-project" })
+  })
+})
+
 describe("BackgroundReconcile: the boot window", () => {
   // A pass that runs before session liveness has been rebuilt sees every
   // session as not alive, including ones whose turns are about to resume.
