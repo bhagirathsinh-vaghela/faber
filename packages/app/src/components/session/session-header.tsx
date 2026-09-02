@@ -145,7 +145,7 @@ export function SessionHeader() {
               </Tooltip>
               <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                 <IconButton
-                  icon="stop-mobile"
+                  icon="stop-outline"
                   iconSize="medium"
                   variant="ghost"
                   onClick={stopSession}
@@ -201,7 +201,7 @@ export function SessionHeader() {
                   </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton
-                      icon="stop-mobile"
+                      icon="stop-outline"
                       iconSize="medium"
                       variant="ghost"
                       onClick={stopSession}

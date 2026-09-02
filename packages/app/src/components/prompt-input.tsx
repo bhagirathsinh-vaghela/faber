@@ -2769,11 +2769,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <IconButton
                       type="button"
                       icon="stop"
-                      variant="primary"
+                      variant="ghost"
+                      // Red, matching the session stop in the header: the two
+                      // are the same verb at different scopes, and a reader
+                      // should not have to learn two colours for it.
                       class={
                         companion()
                           ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : ""
+                          : "size-11! [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
                       }
                       aria-label={language.t("prompt.action.stop")}
                       onClick={abort}
@@ -2803,10 +2806,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       disabled={!submittable()}
                       icon="arrow-up"
                       variant="primary"
+                      // Sized past the shared control height, like Stop beside
+                      // it. Both are pressed mid-thought and often on a phone,
+                      // where the 40px every other control takes sits under the
+                      // 44pt guideline, and the two appear together whenever a
+                      // draft is typed into a running turn.
                       class={
                         companion()
                           ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : ""
+                          : "size-11!"
                       }
                       aria-label={language.t("prompt.action.send")}
                       {...preserveFocus()}
