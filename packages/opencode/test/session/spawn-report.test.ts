@@ -6,6 +6,7 @@ import { SessionStatus } from "../../src/session/status"
 import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Identifier } from "../../src/id/id"
+import { SessionRecent } from "../../src/session/recent"
 import { tmpdir } from "../fixture/fixture"
 
 // A helper session's result reaching the peer that asked for it cannot depend
@@ -233,6 +234,112 @@ describe("SessionSpawn", () => {
         expect(delivered.length).toBe(1)
         const text = delivered[0].parts.find((part) => part.type === "text")
         expect(text?.type === "text" && text.text).toContain("the finding")
+      },
+    })
+  }, 20_000)
+
+  // The backstop, driven directly rather than through the idle event. Every
+  // other test here reaches discharge from an idle, so stubbing the pass out
+  // leaves them all green while the failures it exists to heal go unhealed.
+  describe("the reconcile pass", () => {
+    test("delivers for a helper that never emits an idle event", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const ids = await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const parent = await Session.create({ title: "waiting peer" })
+          const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+          await answer(child.id, "found it")
+          return { parent: parent.id, child: child.id }
+        },
+      })
+
+      // No idle is set: this is the helper that was killed, crashed, or was
+      // never prompted, so nothing will ever announce it.
+      await SessionSpawn.reconcile()
+
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          expect((await Session.get(ids.child)).spawn).toBeUndefined()
+          expect(userTurns(await Session.messages({ sessionID: ids.parent })).length).toBe(1)
+        },
+      })
+    }, 20_000)
+
+    // A flag with no debt behind it is what a permanently spinning session
+    // looks like, so the pass derives the set rather than trusting each edge.
+    test("clears a helper flag that no outstanding debt justifies", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const parentID = await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const parent = await Session.create({ title: "flagged peer" })
+          await answer(parent.id, "a turn, so it reaches the recent list")
+          await SessionRecent.setBusyHelper(parent.id, true)
+          return parent.id
+        },
+      })
+
+      await SessionSpawn.reconcile()
+
+      const entry = (await SessionRecent.list()).find((row) => row.sessionID === parentID)
+      expect(entry?.busyHelper).toBeFalsy()
+    }, 20_000)
+  })
+
+  // `settling` is a module-level set, so it guards one process. Two servers
+  // share the store during a staged cutover, and the claim on the record is
+  // what stops each of them delivering its own copy of one report.
+  test("a debt already claimed by another pass is left alone", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+        await answer(child.id, "the finding")
+
+        // What another server mid-delivery looks like from here.
+        await Session.update(child.id, (draft) => {
+          if (draft.spawn) draft.spawn.claimed = Date.now()
+        })
+
+        await SessionSpawn.reconcile()
+
+        // Its delivery is the other server's to make, so this pass wrote
+        // nothing and left the debt for it.
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(0)
+        expect((await Session.get(child.id)).spawn?.claimed).toBeGreaterThan(0)
+      },
+    })
+  }, 20_000)
+
+  // A claim outliving the process that took it would strand the debt for good,
+  // which is worse than the duplicate the claim prevents.
+  test("a stale claim is taken over rather than trusted", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const ids = await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+        await answer(child.id, "the finding")
+        await Session.update(child.id, (draft) => {
+          if (draft.spawn) draft.spawn.claimed = Date.now() - 60 * 60 * 1000
+        })
+        return { parent: parent.id, child: child.id }
+      },
+    })
+
+    await SessionSpawn.reconcile()
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        expect(userTurns(await Session.messages({ sessionID: ids.parent })).length).toBe(1)
+        expect((await Session.get(ids.child)).spawn).toBeUndefined()
       },
     })
   }, 20_000)

@@ -983,6 +983,7 @@ export type Session = {
     parent: string
     directory: string
     at: number
+    claimed?: number
     delivered?: string
   }
   summary?: {

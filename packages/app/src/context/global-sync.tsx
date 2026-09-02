@@ -96,7 +96,7 @@ type State = {
   // this — no more recent_hub-vs-session_status split. recent_hub still carries
   // busy for the durable list, but the live flip everyone animates off is here.
   session_busy: {
-    [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }
+    [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean; busyHelper?: boolean }
   }
   // Session IDs whose ping daemon is armed on this server instance. The hub's
   // will-ping countdown is gated on this, never on the persisted cache anchor
@@ -986,10 +986,15 @@ function createGlobalSync() {
               prev.busyDescendant === facts.busyDescendant
             )
               continue
+            // busyHelper is CARRIED, not rewritten. This tick is authoritative
+            // about turns in the open subtree and knows nothing about a helper
+            // session owing a report, so writing the whole record would blank
+            // that flag every five seconds and leave the spinner strobing.
             set("session_busy", id, {
               busy: facts.busy,
               busySelf: facts.busySelf,
               busyDescendant: facts.busyDescendant,
+              busyHelper: prev?.busyHelper,
             })
           }
           return
@@ -1635,13 +1640,15 @@ function createGlobalSync() {
         prev &&
         prev.busy === entry.busy &&
         prev.busySelf === entry.busySelf &&
-        prev.busyDescendant === entry.busyDescendant
+        prev.busyDescendant === entry.busyDescendant &&
+        prev.busyHelper === entry.busyHelper
       )
         continue
       setStore("session_busy", entry.sessionID, {
         busy: entry.busy,
         busySelf: entry.busySelf,
         busyDescendant: entry.busyDescendant,
+        busyHelper: entry.busyHelper,
       })
     }
   }
@@ -1656,8 +1663,16 @@ function createGlobalSync() {
   // it. A failed abort is healed by that push like any other drift.
   function clearLiveness(sessionID: string, directory: string) {
     const [store, setStore] = ensureChild(directory)
+    // busyHelper goes with them: this runs when the user stops the session, and
+    // a stopped session is no longer waiting on anything. The server's own pass
+    // is what restores the flag if a helper is somehow still owed.
     if (store.session_busy[sessionID])
-      setStore("session_busy", sessionID, { busy: false, busySelf: false, busyDescendant: false })
+      setStore("session_busy", sessionID, {
+        busy: false,
+        busySelf: false,
+        busyDescendant: false,
+        busyHelper: false,
+      })
     const index = globalStore.recent_hub.findIndex((entry) => entry.sessionID === sessionID)
     if (index === -1) return
     setGlobalStore("recent_hub", index, { busy: false, pingAt: undefined })

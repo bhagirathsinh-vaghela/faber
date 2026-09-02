@@ -1772,9 +1772,14 @@ export default function Layout(props: ParentProps) {
     const busyFacts = createMemo(
       () => sessionStore.session_busy[props.session.id] ?? { busy: false, busySelf: false, busyDescendant: false },
     )
+    // A helper session owes this one a report. Not a turn in this session and
+    // not a subtask under it, so it spins in its own colour: a reader deciding
+    // whether to stop the session needs to see that work is still coming back
+    // to it, and either of the other two colours would say something untrue.
+    const helperWorking = createMemo(() => busyFacts().busyHelper === true)
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
-      return busyFacts().busy
+      return busyFacts().busy || helperWorking()
     })
     // Task-accent cross-fade shows only when BOTH own turn and a subtask run.
     const mixing = createMemo(() => busyFacts().busySelf && busyFacts().busyDescendant)
@@ -1872,7 +1877,9 @@ export default function Layout(props: ParentProps) {
                     style={{
                       color: busyFacts().busySelf
                         ? (tint() ?? "var(--icon-interactive-base)")
-                        : "var(--box-accent-task)",
+                        : busyFacts().busyDescendant
+                          ? "var(--box-accent-task)"
+                          : "var(--box-accent-helper)",
                     }}
                   />
                   <Show when={mixing()}>

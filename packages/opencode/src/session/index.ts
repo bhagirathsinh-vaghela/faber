@@ -116,6 +116,16 @@ export namespace Session {
           parent: Identifier.schema("session"),
           directory: z.string(),
           at: z.number(),
+          // When a server took the right to deliver this report.
+          //
+          // Two servers share the store during a staged cutover, and each would
+          // otherwise read an unstamped debt and deliver its own copy. The
+          // claim is taken inside the write lock, so only one wins.
+          //
+          // It EXPIRES, because a claim that outlives the process holding it
+          // would strand the debt forever, which is worse than the duplicate it
+          // prevents: a stale claim is retried rather than trusted.
+          claimed: z.number().optional(),
           // The message the report was written as, stamped once it exists.
           //
           // What makes delivery exactly-once rather than at-least-once. The

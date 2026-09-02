@@ -52,6 +52,11 @@ export namespace SessionSpawn {
   // path; this is what makes a missed one survivable.
   const SWEEP_MS = 60 * 1000
 
+  // How long a delivery claim is honoured before another pass may take it over.
+  // Long enough that a delivery in progress is never stolen, short enough that
+  // a debt whose claimant died is picked up on the next sweep or two.
+  const CLAIM_MS = 5 * 60 * 1000
+
   export function init() {
     if (watching) return
     watching = true
@@ -89,17 +94,34 @@ export namespace SessionSpawn {
   // context, and a debt can belong to any project. Every verdict here ends the
   // same way for the parent: either the result is delivered or the flag is
   // cleared, so no pass can leave a bar with nothing behind it.
-  async function reconcile() {
+  // Exported so a test can drive the timer path directly without relying on
+  // the idle event, which would leave the backstop untested.
+  export async function reconcile() {
     const keys = await Storage.list(["session"]).catch(() => [])
+    const owed = new Set<string>()
     for (const key of keys) {
       const session = await Storage.read<Session.Info>(key).catch(() => undefined)
       if (!session?.spawn) continue
+      owed.add(session.spawn.parent)
       // A helper mid-turn is working, and its idle event will discharge it.
       if (SessionBusy.busy(session.id)) continue
-      await discharge(session.id).catch((error) =>
-        log.error("failed to reconcile a spawned session", { sessionID: session.id, error }),
-      )
+      // Under the helper's OWN directory. This runs from a timer, which has no
+      // AsyncLocalStorage context, and `discharge` reads the session through
+      // one: without this it throws, the throw is swallowed by the catch that
+      // treats a missing session as nothing to do, and the pass silently heals
+      // nothing at all.
+      await Instance.provide({
+        directory: session.directory,
+        fn: () => discharge(session.id),
+      }).catch((error) => log.error("failed to reconcile a spawned session", { sessionID: session.id, error }))
     }
+    // The flag is DERIVED from the debts that are actually outstanding, not
+    // merely toggled at each end. A parent absent from the recent list when its
+    // helper was created (freshly made, or aged past the cap) would otherwise
+    // never be flagged at all, since the setter has no entry to write to.
+    // Reading it back from disk each pass also means a flag can never outlive
+    // the debt that justified it.
+    await SessionRecent.syncBusyHelper(owed)
   }
 
   function clear(sessionID: string) {
@@ -129,47 +151,71 @@ export namespace SessionSpawn {
     // The debt OUTLIVES the delivery attempt and is cleared only once the
     // report has landed. A crash between the two would otherwise lose a result
     // for good: the next pass would find no debt and conclude there was nothing
-    // to send. Delivery is therefore at-least-once, and the duplicate that
-    // ordering admits is what `settling` and the busy check below rule out
-    // within a process.
+    // to send.
+    //
+    // The right to deliver is CLAIMED inside the write lock, the way a
+    // reconcile pass claims a job. `settling` is a module-level set, so it
+    // guards one process; two servers sharing the store (a staged cutover runs
+    // both) would otherwise each read an unstamped debt, each deliver, and each
+    // stamp, putting two reports in one transcript. Reading and writing under
+    // one lock is what makes the check and the claim indivisible.
     settling.add(sessionID)
+    let claimed = false
+    const now = Date.now()
+    await Session.update(sessionID, (draft) => {
+      if (!draft.spawn) return
+      // A claim older than the window belonged to a process that died holding
+      // it. Taking it over is the only thing that keeps a crash from stranding
+      // the debt for good.
+      if (draft.spawn.claimed && now - draft.spawn.claimed < CLAIM_MS) return
+      claimed = true
+      draft.spawn.claimed = now
+    })
+    if (!claimed) {
+      settling.delete(sessionID)
+      return
+    }
     const debt = child.spawn
 
     try {
       await Instance.provide({
         directory: debt.directory,
         fn: async () => {
-          // Cleared on EVERY path out of here, including the ones that deliver
-          // nothing: a parent left flagged for a helper that will never report
-          // shows a busy bar forever, and a signal that cannot clear is one a
-          // reader learns to ignore.
-          void SessionRecent.setBusyHelper(debt.parent, false)
-
-          // The same teardown the Stop button performs, for the same reason: a
-          // helper whose result has been delivered is finished, and a session
-          // left warm for a peer that is no longer waiting pings a cache on
-          // nobody's behalf. Not a delete — the transcript stays readable, and
-          // the parent may still have a follow-up for it.
-          //
-          // Stopping is the parent's call rather than the child's, which is the
-          // close policy a Temporal parent applies to a completed child: a
-          // child that shut itself down could not answer that follow-up.
-          await Session.stop({ sessionID })
-
           const parent = await Session.get(debt.parent).catch(() => undefined)
           if (!parent) {
             // Nothing will ever receive this, so the debt is retired rather
-            // than retried on every pass forever.
+            // than retried on every pass forever, and the helper is closed
+            // down along with it.
             log.error("no session to report to", { child: sessionID, parent: debt.parent })
+            void SessionRecent.setBusyHelper(debt.parent, false)
+            await Session.stop({ sessionID })
             await clear(sessionID)
             return
           }
           const text = await summarize(sessionID, child.title)
           // No answer YET is not the same as never: a helper that has been
           // created but has not replied, or is between turns, still owes its
-          // report. The debt stays, and a later pass delivers once there is
-          // something to deliver.
-          if (!text) return
+          // report. Nothing is torn down on this path, because the parent IS
+          // still waiting and the helper still has work to do: clearing the
+          // flag here would say otherwise, and stopping the helper would end
+          // the turn that was about to produce the answer.
+          if (!text) {
+            // The claim is RELEASED, not held: this pass delivered nothing, and
+            // holding it would block every retry until the claim expired, which
+            // is the stall the window exists to bound rather than to cause.
+            await Session.update(sessionID, (draft) => {
+              if (draft.spawn) draft.spawn.claimed = undefined
+            })
+            return
+          }
+
+          // Past here the report exists, so the helper is finished. The same
+          // teardown the Stop button performs, for the same reason: a session
+          // left warm for a peer that is no longer waiting pings a cache on
+          // nobody's behalf. Not a delete, since the transcript stays readable
+          // and the parent may still have a follow-up.
+          void SessionRecent.setBusyHelper(debt.parent, false)
+          await Session.stop({ sessionID })
           const messageID = await inject(debt.parent, text)
           // Stamped BEFORE the debt is retired, so the window a crash can land
           // in is one where the next pass sees a delivered report and discards
