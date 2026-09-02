@@ -47,6 +47,11 @@ export namespace BackgroundDeliver {
       type: "text",
       text,
       synthetic: true,
+      // What turns the envelope into a card rather than a wall of text: the
+      // client renders a labelled block from this and strips the header lines
+      // out of the body, so the reader sees the command, the outcome and the
+      // duration as fields.
+      backgroundJobResult: BackgroundNotify.meta(job, kind),
     })
 
     log.info("delivered", { job: job.id, sessionID: job.sessionID, kind })

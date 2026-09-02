@@ -298,9 +298,39 @@ function taskResultPart(parts: PartType[]): TextPart | undefined {
 }
 
 const TASK_ACCENT = "var(--box-accent-task)"
+// A shell job carries its own accent so it is not read as a subagent task at a
+// glance: one ran a command, the other reasoned.
+const JOB_ACCENT = "var(--box-accent-job)"
 
 function taskAccent(status: string): string {
   return status === "failed" ? "var(--color-text-error)" : TASK_ACCENT
+}
+
+// `--syntax-critical` rather than a `--color-*-error` token: those are unset in
+// the shipped themes, and an unresolvable accent leaves the box drawing its
+// default white border, which reads as an ordinary message.
+function jobAccent(status: string): string {
+  if (status === "failed" || status === "timeout") return "var(--syntax-critical)"
+  if (status === "running") return "var(--syntax-constant)"
+  return JOB_ACCENT
+}
+
+// Icon and word together, since colour alone excludes a reader who cannot
+// distinguish it. Each status keeps one glyph everywhere it appears.
+function jobGlyph(status: string): string {
+  if (status === "failed") return "✗"
+  if (status === "timeout") return "⏱"
+  if (status === "running") return "◐"
+  return "✓"
+}
+
+// A timeout is a distinct outcome from a command that failed on its own, and a
+// reader acts differently on each, so it is named rather than folded in.
+function jobLabel(status: string): string {
+  if (status === "timeout") return "JOB TIMED OUT"
+  if (status === "running") return "JOB RUNNING"
+  if (status === "failed") return "JOB FAILED"
+  return "JOB DONE"
 }
 
 function stripTaskMeta(text: string): string {
@@ -332,6 +362,26 @@ function stripTaskResult(text: string): string {
   return stripTaskMeta(match ? match[1] : text)
 }
 
+// A job's header lines, every one of which the card shows as a styled field.
+// Leaving them in the body would print each twice.
+function stripJobResult(text: string): string {
+  const match = text.match(/<background-job-result>([\s\S]*?)<\/background-job-result>/)
+  return (match ? match[1] : text)
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith("job_id:")) return false
+      if (trimmed.startsWith("command:")) return false
+      if (trimmed.startsWith("status:")) return false
+      if (trimmed.startsWith("exit:")) return false
+      if (trimmed.startsWith("duration:")) return false
+      if (trimmed.startsWith("log:")) return false
+      return true
+    })
+    .join("\n")
+    .trim()
+}
+
 function stripTaskOutput(text: string): string {
   const cleaned = text
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
@@ -356,6 +406,14 @@ function taskStatusColor(status: string): string {
   return "var(--syntax-string)"
 }
 
+function jobStatusColor(status: string): string {
+  if (status === "failed" || status === "timeout") return "var(--syntax-critical)"
+  // A check-in reports a job still going, so it must not wear the colour that
+  // means finished.
+  if (status === "running") return "var(--syntax-constant)"
+  return "var(--syntax-string)"
+}
+
 function taskDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
@@ -370,7 +428,7 @@ function TaskResultDisplay(props: { part: TextPart }) {
   const content = createMemo(() => stripTaskResult(props.part.text))
   const fields = createMemo(() => {
     const m = meta()
-    const result: { color: string; text: string }[] = []
+    const result: { color: string; text: string; mono?: boolean }[] = []
     if (m.agent) result.push({ color: "var(--syntax-type)", text: m.agent })
     result.push({ color: "var(--syntax-constant)", text: m.type })
     result.push({ color: taskStatusColor(m.status), text: m.status })
@@ -390,7 +448,68 @@ function TaskResultDisplay(props: { part: TextPart }) {
               <Show when={i() > 0}>
                 <TaskDot />
               </Show>
-              <span class="font-medium" style={{ color: field.color }}>
+              <span
+                class="font-medium"
+                classList={{ "max-w-[28ch] truncate": field.mono }}
+                style={{ color: field.color }}
+                title={field.mono ? field.text : undefined}
+              >
+                {field.text}
+              </span>
+            </>
+          )}
+        </For>
+      </div>
+      <Markdown text={content()} cacheKey={props.part.id} />
+    </div>
+  )
+}
+
+function jobResultPart(parts: PartType[]): TextPart | undefined {
+  return parts.find((p) => p.type === "text" && (p as TextPart).backgroundJobResult) as TextPart | undefined
+}
+
+// A job's header answers what a reader asks of a finished command: what ran,
+// how it ended, and how long it took. The command leads, because it is what
+// identifies the block; the exit code follows the status, since a bare number
+// means nothing without it.
+function JobResultDisplay(props: { part: TextPart }) {
+  const meta = () => props.part.backgroundJobResult!
+  const content = createMemo(() => stripJobResult(props.part.text))
+  const fields = createMemo(() => {
+    const m = meta()
+    // Outcome first, because that is the glance. The command follows as the
+    // thing being identified, then the numbers a reader only wants once the
+    // outcome has their attention.
+    const result: { color: string; text: string; mono?: boolean }[] = [
+      { color: jobStatusColor(m.status), text: `${jobGlyph(m.status)} ${m.status}` },
+      { color: "var(--syntax-type)", text: m.command, mono: true },
+    ]
+    // Absent while a job runs, and absent for a watchdog kill, which never
+    // reaches the job's own exit write.
+    if (m.exit !== undefined) result.push({ color: "var(--text-weak)", text: `exit ${m.exit}` })
+    result.push({ color: "var(--text-weak)", text: taskDuration(m.duration) })
+    return result
+  })
+  return (
+    <div data-component="job-result" data-scrollable>
+      <div
+        data-slot="job-result-meta"
+        class="mb-2 flex flex-row flex-wrap items-center font-mono"
+        style={{ "font-size": "11px", "line-height": "1.2" }}
+      >
+        <For each={fields()}>
+          {(field, i) => (
+            <>
+              <Show when={i() > 0}>
+                <TaskDot />
+              </Show>
+              <span
+                class="font-medium"
+                classList={{ "max-w-[40ch] truncate": field.mono }}
+                style={{ color: field.color }}
+                title={field.mono ? field.text : undefined}
+              >
                 {field.text}
               </span>
             </>
@@ -417,6 +536,22 @@ export function Message(props: MessageProps) {
               jumpHint={props.jumpHint}
             >
               <TaskResultDisplay part={part()} />
+            </MessageBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "user" && jobResultPart(props.parts)}>
+        {(part) => (
+          <Show when={props.boxed} fallback={<JobResultDisplay part={part()} />}>
+            <MessageBox
+              message={props.message}
+              label={jobLabel(part().backgroundJobResult!.status)}
+              accent={jobAccent(part().backgroundJobResult!.status)}
+              action={props.action}
+              onJump={props.onJump}
+              jumpHint={props.jumpHint}
+            >
+              <JobResultDisplay part={part()} />
             </MessageBox>
           </Show>
         )}

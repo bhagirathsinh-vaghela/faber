@@ -46,6 +46,44 @@ describe("BackgroundNotify header", () => {
   })
 })
 
+describe("BackgroundNotify card metadata", () => {
+  // The envelope and the metadata are read by the same renderer, and it only
+  // draws a card when both agree. Text alone renders as a wall of output.
+  test("wraps the result in its own tag, distinct from a subagent task's", () => {
+    const text = BackgroundNotify.render(job(), "ok\n", "completed")
+    expect(text).toStartWith("<background-job-result>")
+    expect(text).toEndWith("</background-job-result>")
+    expect(text).not.toContain("background-task-result")
+  })
+
+  test("carries what identifies a job: its command, log and exit code", () => {
+    const meta = BackgroundNotify.meta(job(), "completed")
+    expect(meta.jobId).toBe(job().id)
+    expect(meta.command).toBe("go test ./...")
+    expect(meta.exit).toBe(0)
+    expect(meta.log).toContain(job().id)
+    expect(meta.description).toBe("run tests")
+    expect(meta.duration).toBe(12_000)
+  })
+
+  test("reports a failing command as failed", () => {
+    expect(BackgroundNotify.meta(job({ exit: 1 }), "completed").status).toBe("failed")
+  })
+
+  // A watchdog kill is not the command failing on its own, and a reader acts
+  // differently on each.
+  test("names a timeout rather than folding it into failed", () => {
+    expect(BackgroundNotify.meta(job({ status: "killed", exit: undefined }), "timeout").status).toBe("timeout")
+  })
+
+  // A check-in is delivered while the job is still going, so a finished status
+  // would be a lie.
+  test("reports a check-in as running", () => {
+    const running = job({ status: "running", exit: undefined, time: { created: Date.now() - 60_000, hard: Date.now() } })
+    expect(BackgroundNotify.meta(running, "checkin").status).toBe("running")
+  })
+})
+
 describe("BackgroundNotify body", () => {
   test("inlines a small result whole", () => {
     const text = BackgroundNotify.render(job(), "line one\nline two\n", "completed")
@@ -83,14 +121,15 @@ describe("BackgroundNotify body", () => {
 
 describe("BackgroundNotify check-in", () => {
   // The soft deadline reports progress; it must not read as a finished job.
+  // It shares the result envelope so it renders as a card, and the running
+  // status plus the absent exit code are what distinguish it.
   test("reports elapsed time and no exit code", () => {
     const running = job({ status: "running", exit: undefined, time: { created: Date.now() - 300_000, hard: Date.now() + 300_000 } })
     const text = BackgroundNotify.render(running, "compiling\n", "checkin")
 
-    expect(text).toContain("<background-job-progress>")
+    expect(text).toContain("<background-job-result>")
     expect(text).toContain("still running after 300s")
     expect(text).not.toContain("exit:")
-    expect(text).not.toContain("<background-job-result>")
   })
 
   // Progress is about where a job has GOT to, so a check-in always tails.

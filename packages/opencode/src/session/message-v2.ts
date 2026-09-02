@@ -69,12 +69,29 @@ export namespace MessageV2 {
   })
   export type BackgroundTaskResult = z.infer<typeof BackgroundTaskResult>
 
+  // A shell job's result, kept apart from a subagent task's. They share a
+  // shape and nothing else: a task has an agent and a session it reasoned in,
+  // a job has a command, an exit code and a log. The states differ too, since
+  // only a job can be mid-run at delivery (a soft check-in) or killed by its
+  // own watchdog.
+  export const BackgroundJobResult = z.object({
+    jobId: z.string(),
+    command: z.string(),
+    description: z.string(),
+    status: z.enum(["completed", "failed", "timeout", "running"]),
+    exit: z.number().optional(),
+    log: z.string(),
+    duration: z.number(),
+  })
+  export type BackgroundJobResult = z.infer<typeof BackgroundJobResult>
+
   export const TextPart = PartBase.extend({
     type: z.literal("text"),
     text: z.string(),
     synthetic: z.boolean().optional(),
     ignored: z.boolean().optional(),
     backgroundTaskResult: BackgroundTaskResult.optional(),
+    backgroundJobResult: BackgroundJobResult.optional(),
     time: z
       .object({
         start: z.number(),

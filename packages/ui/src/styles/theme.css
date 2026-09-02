@@ -41,6 +41,13 @@
      nothing changes until customized. */
   --box-accent-assistant: var(--color-text-success, #22dd22);
   --box-accent-task: var(--color-icon-warning-base);
+  /* A shell job is a different kind of block from a subagent task: it ran a
+     command rather than reasoned, so it carries its own colour instead of
+     borrowing the task amber and reading as the same thing. Blue, which is
+     unclaimed here: user is purple, assistant green, task amber. The `info`
+     token is NOT it, despite the name, since it resolves to a brown a shade
+     off the task amber. */
+  --box-accent-job: var(--syntax-primitive, #79c0ff);
   --box-accent-tool: var(--ink-dark-11, #b1b7b7);
 
   /* Explicit per-box border + fill tokens. Defaults reproduce the derived
@@ -56,6 +63,8 @@
   --box-bg-assistant: color-mix(in srgb, var(--box-accent-assistant) 7%, var(--box-backdrop));
   --box-border-task: color-mix(in srgb, var(--box-accent-task) 80%, var(--box-backdrop));
   --box-bg-task: color-mix(in srgb, var(--box-accent-task) 7%, var(--box-backdrop));
+  --box-border-job: color-mix(in srgb, var(--box-accent-job) 80%, var(--box-backdrop));
+  --box-bg-job: color-mix(in srgb, var(--box-accent-job) 7%, var(--box-backdrop));
   --box-border-tool: color-mix(in srgb, var(--box-accent-tool) 80%, var(--box-backdrop));
   --box-bg-tool: color-mix(in srgb, var(--box-accent-tool) 7%, var(--box-backdrop));
 

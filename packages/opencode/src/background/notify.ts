@@ -15,10 +15,12 @@ export namespace BackgroundNotify {
 
   export type Kind = "completed" | "timeout" | "checkin"
 
+  // The envelope the model reads. Its own tag, distinct from a subagent
+  // task's, so a client can tell the two apart without inspecting the fields.
   export function render(job: BackgroundJob.Info, output: string, kind: Kind, now = Date.now()) {
     const elapsed = Math.round(((job.time.completed ?? now) - job.time.created) / 1000)
     const head = [
-      `<background-job-${kind === "checkin" ? "progress" : "result"}>`,
+      `<background-job-result>`,
       `job_id: ${job.id}`,
       `command: ${job.command}`,
       kind === "checkin" ? `status: still running after ${elapsed}s` : `status: ${status(job, kind)}`,
@@ -27,8 +29,27 @@ export namespace BackgroundNotify {
       `log: ${BackgroundJob.logPath(job.id)}`,
     ].filter((line): line is string => line !== undefined)
 
-    const tail = [``, ...body(output, kind), `</background-job-${kind === "checkin" ? "progress" : "result"}>`]
+    const tail = [``, ...body(output, kind), `</background-job-result>`]
     return [...head, ...tail].join("\n")
+  }
+
+  // What the card's styled header shows. The status is the reader's headline:
+  // a check-in reads as running rather than borrowing a finished job's word,
+  // and a watchdog kill is named rather than shown as the command failing.
+  export function meta(job: BackgroundJob.Info, kind: Kind, now = Date.now()) {
+    return {
+      jobId: job.id,
+      command: job.command,
+      description: job.description,
+      status: kind === "checkin" ? ("running" as const) : kind === "timeout" ? ("timeout" as const) : statusWord(job),
+      exit: job.exit,
+      log: BackgroundJob.logPath(job.id),
+      duration: (job.time.completed ?? now) - job.time.created,
+    }
+  }
+
+  function statusWord(job: BackgroundJob.Info) {
+    return job.exit === 0 ? ("completed" as const) : ("failed" as const)
   }
 
   function status(job: BackgroundJob.Info, kind: Kind) {

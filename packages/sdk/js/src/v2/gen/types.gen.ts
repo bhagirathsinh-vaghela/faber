@@ -289,6 +289,15 @@ export type TextPart = {
     agent?: string
     duration: number
   }
+  backgroundJobResult?: {
+    jobId: string
+    command: string
+    description: string
+    status: "completed" | "failed" | "timeout" | "running"
+    exit?: number
+    log: string
+    duration: number
+  }
   time?: {
     start: number
     end?: number
@@ -2612,6 +2621,15 @@ export type TextPartInput = {
     description: string
     status: "completed" | "failed" | "cancelled"
     agent?: string
+    duration: number
+  }
+  backgroundJobResult?: {
+    jobId: string
+    command: string
+    description: string
+    status: "completed" | "failed" | "timeout" | "running"
+    exit?: number
+    log: string
     duration: number
   }
   time?: {
