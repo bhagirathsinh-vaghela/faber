@@ -32,6 +32,16 @@ export namespace BackgroundSpawn {
     | { type: "inline"; job: BackgroundJob.Info; output: string; exit: number }
     | { type: "background"; job: BackgroundJob.Info }
 
+  // Called the moment a backgrounded job exits under a server that stayed up.
+  // The reconcile pass calls the same thing for a job that finished while the
+  // server was down, so a result looks identical either way.
+  export type OnExit = (job: BackgroundJob.Info) => void | Promise<void>
+
+  let onExit: OnExit | undefined
+  export function watch(handler: OnExit) {
+    onExit = handler
+  }
+
   export async function run(input: Input): Promise<Result> {
     await BackgroundJob.init()
     const id = BackgroundJob.id()
@@ -92,19 +102,41 @@ export namespace BackgroundSpawn {
 
     if (!finished) {
       log.info("job passed the grace window", { id, command: input.description })
+      // The handle is still live in THIS process, so its exit needs no polling
+      // and no worker: awaiting the promise we already hold is what makes a
+      // result arrive the instant the job ends rather than at the next
+      // reconcile pass, which could be half an hour later. That pass remains
+      // the recovery path for a job whose handle died with its server.
+      void proc.exited.then(async () => {
+        await handle.close().catch(() => {})
+        const settled = await settle(id)
+        if (settled && onExit) await onExit(settled)
+      })
       return { type: "background", job: (await BackgroundJob.get(id)) ?? job }
     }
 
     await handle.close()
-    const exit = (await BackgroundJob.exit(id)) ?? proc.exitCode ?? 0
-    const output = await BackgroundJob.output(id)
+    const settled = await settle(id)
+    return {
+      type: "inline",
+      job: settled ?? job,
+      output: await BackgroundJob.output(id),
+      exit: settled?.exit ?? proc.exitCode ?? 0,
+    }
+  }
+
+  // Move a record from running to finished, reading the exit code the job
+  // wrote for itself. Shared by the inline return and the exit watcher so both
+  // leave the record in the same shape.
+  async function settle(id: string) {
+    const exit = await BackgroundJob.exit(id)
     const completed = Date.now()
     await BackgroundJob.update(id, (draft) => {
+      if (draft.status !== "running") return
       draft.status = "exited"
       draft.exit = exit
       draft.time.completed = completed
     })
-
-    return { type: "inline", job: (await BackgroundJob.get(id))!, output, exit }
+    return BackgroundJob.get(id)
   }
 }

@@ -6,7 +6,7 @@ import { BackgroundSpawn } from "../../src/background/spawn"
 const spawned: string[] = []
 
 async function run(command: string, options: Partial<BackgroundSpawn.Input> = {}) {
-  const result = await BackgroundSpawn.run({
+  const spawn = await BackgroundSpawn.run({
     command,
     description: "test",
     sessionID: "ses_spawn_test",
@@ -16,8 +16,8 @@ async function run(command: string, options: Partial<BackgroundSpawn.Input> = {}
     hard: 60_000,
     ...options,
   })
-  spawned.push(result.job.id)
-  return result
+  spawned.push(spawn.job.id)
+  return spawn
 }
 
 afterEach(async () => {
@@ -32,26 +32,26 @@ describe("BackgroundSpawn inline path", () => {
   // The property that keeps sequential read-decide-act chains in one turn.
   test("a fast command returns inline, well inside the grace window", async () => {
     const started = Date.now()
-    const result = await run("echo hello")
+    const spawn = await run("echo hello")
 
-    expect(result.type).toBe("inline")
+    expect(spawn.type).toBe("inline")
     expect(Date.now() - started).toBeLessThan(BackgroundSpawn.GRACE_MS)
-    if (result.type !== "inline") throw new Error("expected inline")
-    expect(result.output).toContain("hello")
-    expect(result.exit).toBe(0)
+    if (spawn.type !== "inline") throw new Error("expected inline")
+    expect(spawn.output).toContain("hello")
+    expect(spawn.exit).toBe(0)
   })
 
   test("carries a failing command's exit code", async () => {
-    const result = await run("echo nope >&2; exit 3")
-    expect(result.type).toBe("inline")
-    if (result.type !== "inline") throw new Error("expected inline")
-    expect(result.exit).toBe(3)
-    expect(result.output).toContain("nope")
+    const spawn = await run("echo nope >&2; exit 3")
+    expect(spawn.type).toBe("inline")
+    if (spawn.type !== "inline") throw new Error("expected inline")
+    expect(spawn.exit).toBe(3)
+    expect(spawn.output).toContain("nope")
   })
 
   test("marks the record exited so a later sweep leaves it alone", async () => {
-    const result = await run("true")
-    const job = await BackgroundJob.get(result.job.id)
+    const spawn = await run("true")
+    const job = await BackgroundJob.get(spawn.job.id)
     expect(job?.status).toBe("exited")
     expect(job?.time.completed).toBeDefined()
   })
@@ -60,18 +60,18 @@ describe("BackgroundSpawn inline path", () => {
 describe("BackgroundSpawn background path", () => {
   test("a slow command hands back a task id at the grace window", async () => {
     const started = Date.now()
-    const result = await run("sleep 30")
+    const spawn = await run("sleep 30")
     const elapsed = Date.now() - started
 
-    expect(result.type).toBe("background")
+    expect(spawn.type).toBe("background")
     expect(elapsed).toBeGreaterThanOrEqual(BackgroundSpawn.GRACE_MS - 500)
     expect(elapsed).toBeLessThan(BackgroundSpawn.GRACE_MS + 5_000)
-    expect(result.job.status).toBe("running")
+    expect(spawn.job.status).toBe("running")
   }, 20_000)
 
   test("the job keeps running and its identity is recorded", async () => {
-    const result = await run("sleep 30")
-    const job = (await BackgroundJob.get(result.job.id))!
+    const spawn = await run("sleep 30")
+    const job = (await BackgroundJob.get(spawn.job.id))!
 
     expect(job.process).toBeDefined()
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
@@ -82,20 +82,67 @@ describe("BackgroundSpawn background path", () => {
   // Output must be readable WHILE the job runs, which is what makes progress
   // a plain `tail` rather than a new tool.
   test("output is on disk and growing before the job finishes", async () => {
-    const result = await run("echo first; sleep 30")
-    expect(result.type).toBe("background")
-    expect(await BackgroundJob.output(result.job.id)).toContain("first")
+    const spawn = await run("echo first; sleep 30")
+    expect(spawn.type).toBe("background")
+    expect(await BackgroundJob.output(spawn.job.id)).toContain("first")
   }, 20_000)
+})
+
+describe("BackgroundSpawn exit watcher", () => {
+  // Without this the result of a job finishing just past the window would wait
+  // for the next reconcile pass, which can be half an hour away. The handle is
+  // already held in this process, so its exit costs no poller and no worker.
+  test("fires the moment a backgrounded job exits", async () => {
+    const seen: string[] = []
+    BackgroundSpawn.watch((job) => void seen.push(job.id))
+
+    // Must outlive the grace window, or it returns inline and the watcher is
+    // correctly never involved.
+    const spawn = await run("echo done-late; sleep 7")
+    expect(spawn.type).toBe("background")
+
+    const started = Date.now()
+    while (!seen.includes(spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
+
+    expect(seen).toContain(spawn.job.id)
+    BackgroundSpawn.watch(() => {})
+  }, 35_000)
+
+  test("hands the watcher a settled record carrying the exit code", async () => {
+    const settled: Array<{ id: string; exit: number | undefined; status: string }> = []
+    BackgroundSpawn.watch((job) => void settled.push({ id: job.id, exit: job.exit, status: job.status }))
+
+    const spawn = await run("sleep 7; exit 5")
+    const started = Date.now()
+    while (!settled.some((j) => j.id === spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
+
+    const match = settled.find((j) => j.id === spawn.job.id)
+    expect(match?.status).toBe("exited")
+    expect(match?.exit).toBe(5)
+    BackgroundSpawn.watch(() => {})
+  }, 35_000)
+
+  test("does not fire for a job that returned inline", async () => {
+    const seen: string[] = []
+    BackgroundSpawn.watch((job) => void seen.push(job.id))
+
+    const spawn = await run("echo quick")
+    await Bun.sleep(500)
+
+    expect(seen).not.toContain(spawn.job.id)
+    expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("exited")
+    BackgroundSpawn.watch(() => {})
+  })
 })
 
 describe("BackgroundSpawn durability", () => {
   // Written before the spawn, so a crash in between leaves a findable record
   // rather than an unfindable process.
   test("the record exists with its log path derivable from the id alone", async () => {
-    const result = await run("sleep 30")
-    const job = (await BackgroundJob.get(result.job.id))!
+    const spawn = await run("sleep 30")
+    const job = (await BackgroundJob.get(spawn.job.id))!
 
-    expect(job.id).toBe(result.job.id)
+    expect(job.id).toBe(spawn.job.id)
     expect(BackgroundJob.logPath(job.id)).toContain(job.id)
     expect(await Bun.file(BackgroundJob.logPath(job.id)).exists()).toBe(true)
   }, 20_000)
@@ -103,8 +150,8 @@ describe("BackgroundSpawn durability", () => {
   // The bound is an instant on disk, so it survives the process that set it.
   test("stores the hard deadline as an absolute instant, not a timer", async () => {
     const before = Date.now()
-    const result = await run("sleep 30", { hard: 60_000 })
-    const job = (await BackgroundJob.get(result.job.id))!
+    const spawn = await run("sleep 30", { hard: 60_000 })
+    const job = (await BackgroundJob.get(spawn.job.id))!
 
     expect(job.time.hard).toBeGreaterThanOrEqual(before + 60_000)
     expect(job.time.hard).toBeLessThan(before + 70_000)
@@ -125,11 +172,11 @@ describe("BackgroundSpawn stdin", () => {
   // arrive" into an immediate EOF.
   test("stdin is closed, so a command reading it finishes instead of hanging", async () => {
     const started = Date.now()
-    const result = await run("read line; echo \"got:$line\"")
+    const spawn = await run("read line; echo \"got:$line\"")
 
-    expect(result.type).toBe("inline")
+    expect(spawn.type).toBe("inline")
     expect(Date.now() - started).toBeLessThan(BackgroundSpawn.GRACE_MS)
-    if (result.type !== "inline") throw new Error("expected inline")
-    expect(result.output).toContain("got:")
+    if (spawn.type !== "inline") throw new Error("expected inline")
+    expect(spawn.output).toContain("got:")
   })
 })
