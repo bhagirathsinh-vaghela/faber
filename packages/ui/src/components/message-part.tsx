@@ -26,7 +26,7 @@ import {
   QuestionAnswer,
   QuestionInfo,
 } from "@opencode-ai/sdk/v2"
-import { legacyInternal } from "../util/internal"
+import { legacyInternal, typed } from "../util/internal"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
@@ -486,10 +486,14 @@ function jobResultPart(parts: PartType[]): TextPart | undefined {
 // `legacyInternal` decides the same question for a part carrying no flag, and
 // lives in its own module so this renderer and the box classifier cannot
 // disagree. Re-exported for the classifier, which imports it from here.
-export { legacyInternal }
+export { legacyInternal, typed }
 
 function noticePart(parts: PartType[], showInternal = false): TextPart | undefined {
   if (taskResultPart(parts) || jobResultPart(parts)) return undefined
+  // A message the user typed into draws as their message, whatever synthetic
+  // parts an attachment added beside it. This branch is for a message with no
+  // typed text at all, which is the case the empty box was about.
+  if (!showInternal && typed(parts)) return undefined
   const text = parts.find((p) => {
     if (p.type !== "text") return false
     const part = p as TextPart

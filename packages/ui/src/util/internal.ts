@@ -29,3 +29,20 @@ export function legacyInternal(part: { text: string; internal?: boolean }) {
   const text = part.text.trimStart()
   return LEGACY_INTERNAL.some((prefix) => text.startsWith(prefix))
 }
+
+// Whether a message carries text the USER typed.
+//
+// The notice branch exists for a message with nothing else to draw, so it is
+// gated on this rather than on failing to recognise every synthetic part. An
+// attachment writes SEVERAL synthetic parts (the tool echo, then the file body,
+// the directory listing, the resource, the review-comment note), and a scan
+// looking for one it does not recognise walks past the echo it knows to the
+// payload beside it. The notice branch is tested first, so what that scan finds
+// is drawn INSTEAD of the prompt, and the typed text is unreachable.
+//
+// A list of shapes to exclude covers only the writers someone enumerated, and
+// the next one defeats it silently. Typed text is the property that decides the
+// question, and no writer adds it by accident.
+export function typed(parts: { type: string; synthetic?: boolean; text?: string }[]) {
+  return parts.some((part) => part.type === "text" && !part.synthetic && (part.text ?? "").trim().length > 0)
+}

@@ -31,7 +31,7 @@ import {
   Switch,
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
-import { legacyInternal, Message, Part } from "./message-part"
+import { legacyInternal, typed, Message, Part } from "./message-part"
 import { busyBase, busyDelay, busyOverlays, busyShown } from "../util/busy-tint"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
@@ -489,6 +489,11 @@ export function SessionTurn(
     // and is recognised by `legacyInternal`, the renderer's own predicate, so a
     // box's key and its visibility cannot disagree.
     const debug = boxDefaults?.showInternal?.() ?? false
+    // Keyed on the same predicate the renderer gates its notice branch with: a
+    // message the user typed into is theirs, whatever an attachment wrote
+    // alongside it. Deciding this any other way here would key a box one way
+    // and draw it the other.
+    if (!debug && typed(parts.filter((part) => part !== undefined))) return "user"
     const notice = parts.find((part) => {
       if (part?.type !== "text") return false
       const text = part as TextPart
