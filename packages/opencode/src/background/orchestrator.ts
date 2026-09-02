@@ -19,6 +19,28 @@ export namespace BackgroundOrchestrator {
   // both faster paths missed is not stranded for an hour.
   export const SWEEP_MS = 5 * 60 * 1000
 
+  // How long after start-up ownership stops being deferred.
+  //
+  // Session liveness is rebuilt asynchronously after the server binds: the
+  // supervisor re-arms daemons and resumes interrupted turns over the seconds
+  // that follow. Until that has happened every session reads as not alive, and
+  // an ownership verdict taken then kills healthy jobs (observed: a running job
+  // reaped with reason=owner-gone while its owner was mid-restart).
+  //
+  // A window rather than a flag, because a sweep can be triggered by the abort
+  // route or the exit watcher at any moment, including inside this window. A
+  // flag set by the boot path would not cover those.
+  export const SETTLE_MS = 60 * 1000
+
+  const startedAt = Date.now()
+
+  // Ownership is judged only once the view it depends on is real. Everything
+  // else a sweep decides comes off disk and is correct immediately, so the
+  // window delays one verdict rather than the whole pass.
+  function settled(now = Date.now()) {
+    return now - startedAt >= SETTLE_MS
+  }
+
   // Whether a session could still read a result.
   //
   // `isAlive` is the overview's predicate and answers "is this session working
@@ -64,35 +86,33 @@ export namespace BackgroundOrchestrator {
     //    that passed while the server was down, a record whose spawn never
     //    landed, a job whose owner has since been stopped.
     //
-    //    register() runs its task immediately as well as on the interval, and
-    //    that first run lands in the same boot window where liveness is not yet
-    //    rebuilt, so it adopts too. Only the interval runs judge ownership.
-    let booted = false
+    //    register() runs its task immediately as well as on the interval. That
+    //    first run lands inside the settle window and defers ownership on its
+    //    own, so it needs no special casing here.
     Scheduler.register({
       id: "background.reconcile",
       interval: SWEEP_MS,
       scope: "global",
-      run: async () => {
-        const adopting = !booted
-        booted = true
-        await sweep({ adopting })
-      },
+      run: () => sweep(),
     })
   }
 
   // One pass, acting on each verdict.
   //
-  // `adopting` is for the pass that runs at boot, before session liveness has
-  // been rebuilt. Everything derived from the JOB (it finished, it passed its
-  // deadline, its record names no process) is decided from disk and is correct
-  // immediately. Ownership is not: it is the one verdict that reads live
-  // session state, and at boot every session reads as not alive because the
-  // in-memory view is still empty. A boot pass therefore adopts rather than
-  // reaps, and the first timer pass makes the ownership call once the view is
-  // real.
+  // Ownership is deferred for the first SETTLE_MS after start-up, whatever
+  // triggered the pass. Everything derived from the JOB (it finished, it passed
+  // its deadline, its record names no process) is decided from disk and is
+  // correct immediately; ownership is the one verdict that reads live session
+  // state, which is still being rebuilt.
+  //
+  // `adopting` forces that deferral for a caller that knows it is early, and
+  // the window catches every other caller — including a sweep the abort route
+  // or the exit watcher fires seconds into the window.
   export async function sweep(options: { adopting?: boolean } = {}) {
+    const defer = options.adopting || !settled()
+    if (defer) log.info("deferring the ownership verdict", { sinceStart: Date.now() - startedAt })
     const pass = await BackgroundReconcile.run({
-      alive: options.adopting ? () => true : alive,
+      alive: defer ? () => true : alive,
     })
     for (const action of pass.actions) {
       if (action.type === "completed") await deliver(action.job, "completed")
