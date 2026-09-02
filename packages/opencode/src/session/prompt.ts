@@ -306,6 +306,39 @@ export namespace SessionPrompt {
     return parts
   }
 
+  // Post-op file stamps a completed tool part contributes to FileTime.seed.
+  // Two shapes exist because one filePath cannot describe a patch: single-file
+  // tools stamp their own input path, while apply_patch persists a `stamps` list
+  // covering every file it touched. A tool that writes files without emitting
+  // one of these shapes is invisible to seed, so the next turn asks the model to
+  // re-read a file it just wrote.
+  export function fileStamps(part: MessageV2.Part) {
+    if (part.type !== "tool" || part.state.status !== "completed") return []
+    const meta = part.state.metadata
+    if (Array.isArray(meta?.stamps))
+      return meta.stamps.flatMap((stamp: { file?: unknown; mtime?: unknown; hash?: unknown }) =>
+        typeof stamp?.file === "string" && typeof stamp.mtime === "number"
+          ? [
+              {
+                file: Filesystem.resolve(Instance.directory, stamp.file),
+                mtime: stamp.mtime,
+                hash: typeof stamp.hash === "string" ? stamp.hash : undefined,
+              },
+            ]
+          : [],
+      )
+    if (typeof part.state.input?.filePath !== "string" || typeof meta?.mtime !== "number") return []
+    return [
+      {
+        file: Filesystem.resolve(Instance.directory, part.state.input.filePath),
+        mtime: meta.mtime,
+        hash: typeof meta.hash === "string" ? meta.hash : undefined,
+        offset: typeof meta.offset === "number" ? meta.offset : undefined,
+        limit: typeof meta.limit === "number" ? meta.limit : undefined,
+      },
+    ]
+  }
+
   function start(sessionID: string) {
     const s = state()
     if (s[sessionID]) return
@@ -388,37 +421,15 @@ export namespace SessionPrompt {
       // those survive an existing inversion, this prevents new ones.
       for (const msg of msgs) Identifier.seed(msg.info.id)
 
-      // Rebuild the read-time map from durable history. read, edit, and write
-      // parts all persist their post-op mtime+hash, and seeding walks them in
-      // stream order (last write per file wins), so a file's entry reflects the
-      // most recent access. That means a server restart restores prior reads (no
-      // false "read it first" on edit), a compacted-away read is dropped so the
-      // next Read returns real content instead of an unchanged stub, AND an edit
-      // in a prior turn carries its post-write mtime+hash forward instead of the
-      // stale pre-edit read state (which would make the guard fire on the file
-      // this session just edited).
-      FileTime.seed(
-        sessionID,
-        msgs.flatMap((msg) =>
-          msg.parts.flatMap((part) =>
-            part.type === "tool" &&
-            (part.tool === "read" || part.tool === "edit" || part.tool === "write") &&
-            part.state.status === "completed" &&
-            typeof part.state.input?.filePath === "string" &&
-            typeof part.state.metadata?.mtime === "number"
-              ? [
-                  {
-                    file: Filesystem.resolve(Instance.directory, part.state.input.filePath),
-                    mtime: part.state.metadata.mtime,
-                    hash: typeof part.state.metadata.hash === "string" ? part.state.metadata.hash : undefined,
-                    offset: typeof part.state.metadata.offset === "number" ? part.state.metadata.offset : undefined,
-                    limit: typeof part.state.metadata.limit === "number" ? part.state.metadata.limit : undefined,
-                  },
-                ]
-              : [],
-          ),
-        ),
-      )
+      // Rebuild the read-time map from durable history. Every tool that reads or
+      // writes a file persists its post-op mtime+hash, so a file's entry reflects
+      // the most recent access. That means a server restart restores prior reads
+      // (no false "read it first" on edit), a compacted-away read is dropped so
+      // the next Read returns real content instead of an unchanged stub, AND a
+      // write in a prior turn carries its post-write mtime+hash forward instead
+      // of the stale pre-write read state (which would make the guard fire on the
+      // file this session just wrote).
+      FileTime.seed(sessionID, msgs.flatMap((msg) => msg.parts.flatMap(fileStamps)))
 
       // A compaction or subtask part is satisfied when a finished assistant
       // message links back to the message that holds it (both branches set the

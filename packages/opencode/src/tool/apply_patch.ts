@@ -193,6 +193,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
     // Apply the changes
     const updates: Array<{ file: string; event: "add" | "change" | "unlink" }> = []
+    const stamps: Array<{ file: string; mtime: number; hash?: string }> = []
 
     for (const change of fileChanges) {
       const edited = change.type === "delete" ? undefined : (change.movePath ?? change.filePath)
@@ -205,13 +206,11 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
             // Create parent directories (recursive: true is safe on existing/root dirs)
             await fs.mkdir(path.dirname(change.filePath), { recursive: true })
             await fs.writeFile(change.filePath, change.newContent, "utf-8")
-            await FileTime.restamp(ctx.sessionID, change.filePath)
             updates.push({ file: change.filePath, event: "add" })
             break
 
           case "update":
             await fs.writeFile(change.filePath, change.newContent, "utf-8")
-            await FileTime.restamp(ctx.sessionID, change.filePath)
             updates.push({ file: change.filePath, event: "change" })
             break
 
@@ -221,7 +220,6 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
               await fs.mkdir(path.dirname(change.movePath), { recursive: true })
               await fs.writeFile(change.movePath, change.newContent, "utf-8")
               await fs.unlink(change.filePath)
-              await FileTime.restamp(ctx.sessionID, change.movePath)
               updates.push({ file: change.filePath, event: "unlink" })
               updates.push({ file: change.movePath, event: "add" })
             }
@@ -232,13 +230,17 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
             updates.push({ file: change.filePath, event: "unlink" })
             break
         }
-      })
 
-      if (edited) {
+        if (!edited) return
+        // Edited is awaited here, inside the lock and BEFORE the stamp, because
+        // a formatter subscribes to it and rewrites the file in place. Stamping
+        // first would record the pre-format bytes and leave the next edit facing
+        // a file newer than its own stamp.
         await Bus.publish(File.Event.Edited, {
           file: edited,
         })
-      }
+        stamps.push({ file: edited, ...(await FileTime.restamp(ctx.sessionID, edited)) })
+      })
     }
 
     // Publish file change events
@@ -303,6 +305,10 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
         diff: Truncate.diff(totalDiff),
         files: resultFiles,
         diagnostics: changed,
+        // Post-write mtime+hash per file, so seed() can carry these writes across
+        // turns. A single filePath/mtime pair cannot express a patch, which
+        // touches many files, so this tool persists a list and seed() reads it.
+        stamps,
       },
       output,
     }

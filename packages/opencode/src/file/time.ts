@@ -86,6 +86,13 @@ export namespace FileTime {
     const { read } = state()
     const next: { [path: string]: { mtime: number; hash?: string; offset?: number; limit?: number } | undefined } = {}
     for (const entry of entries) {
+      // Per file the greatest mtime wins, not the last entry in stream order.
+      // Stream order is the order the model *called* the tools; concurrent calls
+      // on one file complete out of that order, so the call that wrote last can
+      // sort first and leave a pre-write stamp behind. mtime is the observed
+      // filesystem timestamp, so the largest is the most recent observation.
+      const seen = next[entry.file]
+      if (seen && entry.mtime < seen.mtime) continue
       next[entry.file] = { mtime: entry.mtime, hash: entry.hash, offset: entry.offset, limit: entry.limit }
     }
     read[sessionID] = next
