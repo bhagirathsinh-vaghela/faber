@@ -9726,6 +9726,9 @@
           "ignored": {
             "type": "boolean"
           },
+          "internal": {
+            "type": "boolean"
+          },
           "backgroundTaskResult": {
             "type": "object",
             "properties": {
@@ -9764,6 +9767,34 @@
               "status",
               "duration"
             ]
+          },
+          "backgroundJobResult": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["completed", "failed", "timeout", "running"]
+              },
+              "exit": {
+                "type": "number"
+              },
+              "log": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              }
+            },
+            "required": ["jobId", "command", "description", "status", "log", "duration"]
           },
           "time": {
             "type": "object",
@@ -15759,6 +15790,9 @@
           "ignored": {
             "type": "boolean"
           },
+          "internal": {
+            "type": "boolean"
+          },
           "backgroundTaskResult": {
             "type": "object",
             "properties": {
@@ -15797,6 +15831,34 @@
               "status",
               "duration"
             ]
+          },
+          "backgroundJobResult": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["completed", "failed", "timeout", "running"]
+              },
+              "exit": {
+                "type": "number"
+              },
+              "log": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              }
+            },
+            "required": ["jobId", "command", "description", "status", "log", "duration"]
           },
           "time": {
             "type": "object",

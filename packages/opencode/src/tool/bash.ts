@@ -68,10 +68,7 @@ export const BashTool = Tool.define("bash", async () => {
           .string()
           .describe("A job_id to stop. The only way to end a background job before its timeout.")
           .optional(),
-        timeout: z
-          .number()
-          .describe("Milliseconds after which the job is killed. Defaults to 30 minutes.")
-          .optional(),
+        timeout: z.number().describe("Milliseconds after which the job is killed. Defaults to 30 minutes.").optional(),
         workdir: z
           .string()
           .describe(
@@ -100,7 +97,12 @@ export const BashTool = Tool.define("bash", async () => {
             : `Job ${params.kill} had already finished (exit ${stopped.exit ?? "unknown"}).`
         return {
           title: params.description,
-          metadata: { output, exit: undefined as number | undefined, description: params.description, job: params.kill },
+          metadata: {
+            output,
+            exit: undefined as number | undefined,
+            description: params.description,
+            job: params.kill,
+          },
           output,
         }
       }
@@ -210,6 +212,9 @@ export const BashTool = Tool.define("bash", async () => {
         description: params.description,
         sessionID: ctx.sessionID,
         directory: cwd,
+        // Not `cwd`: a workdir argument can name anywhere, and the session is
+        // only findable under the project the tool call is running in.
+        project: Instance.directory,
         shell,
         env: {
           ...process.env,

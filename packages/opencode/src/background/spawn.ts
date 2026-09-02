@@ -22,6 +22,9 @@ export namespace BackgroundSpawn {
     description: string
     sessionID: string
     directory: string
+    // The project the session belongs to, which `directory` does not name when
+    // the caller passed a workdir outside it.
+    project: string
     shell: string
     env: Record<string, string | undefined>
     hard?: number
@@ -56,6 +59,7 @@ export namespace BackgroundSpawn {
       id,
       sessionID: input.sessionID,
       directory: input.directory,
+      project: input.project,
       command: input.command,
       description: input.description,
       status: "running",
@@ -97,10 +101,7 @@ export namespace BackgroundSpawn {
 
     // The race. Whichever settles first decides the shape of the result; the
     // job is identical either way, and so is everything on disk.
-    const finished = await Promise.race([
-      proc.exited.then(() => true),
-      Bun.sleep(GRACE_MS).then(() => false),
-    ])
+    const finished = await Promise.race([proc.exited.then(() => true), Bun.sleep(GRACE_MS).then(() => false)])
 
     if (!finished) {
       log.info("job passed the grace window", { id, command: input.description })

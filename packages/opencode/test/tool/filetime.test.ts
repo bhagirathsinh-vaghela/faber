@@ -310,7 +310,9 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
         const file = path.join(workspace.path, "added.txt")
         const patchText = `*** Begin Patch\n*** Add File: ${file}\n+one\n+two\n*** End Patch`
         const patched = await (await ApplyPatchTool.init()).execute({ patchText }, ctx)
-        expect(reseed(ctx.sessionID, [{ tool: "apply_patch", input: { patchText }, metadata: patched.metadata }])).toHaveLength(1)
+        expect(
+          reseed(ctx.sessionID, [{ tool: "apply_patch", input: { patchText }, metadata: patched.metadata }]),
+        ).toHaveLength(1)
 
         const edited = await (await EditTool.init()).execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         expect(edited.output).toContain("updated successfully")
@@ -335,10 +337,9 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
 
         // The stamp must follow the file to its destination: the source path no
         // longer exists, so a stamp left on it would strand the moved file.
-        const edited = await (await EditTool.init()).execute(
-          { filePath: destination, oldString: "two", newString: "2" },
-          ctx,
-        )
+        const edited = await (
+          await EditTool.init()
+        ).execute({ filePath: destination, oldString: "two", newString: "2" }, ctx)
         expect(edited.output).toContain("updated successfully")
       },
     })
@@ -364,7 +365,9 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
         const patched = await (await ApplyPatchTool.init()).execute({ patchText }, ctx)
         // One filePath cannot describe a multi-file patch, so a per-file stamp
         // list is the only shape that survives the rebuild.
-        expect(reseed(ctx.sessionID, [{ tool: "apply_patch", input: { patchText }, metadata: patched.metadata }])).toHaveLength(2)
+        expect(
+          reseed(ctx.sessionID, [{ tool: "apply_patch", input: { patchText }, metadata: patched.metadata }]),
+        ).toHaveLength(2)
 
         const edit = await EditTool.init()
         expect((await edit.execute({ filePath: first, oldString: "two", newString: "2" }, ctx)).output).toContain(

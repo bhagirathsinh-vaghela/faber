@@ -429,7 +429,10 @@ export namespace SessionPrompt {
       // write in a prior turn carries its post-write mtime+hash forward instead
       // of the stale pre-write read state (which would make the guard fire on the
       // file this session just wrote).
-      FileTime.seed(sessionID, msgs.flatMap((msg) => msg.parts.flatMap(fileStamps)))
+      FileTime.seed(
+        sessionID,
+        msgs.flatMap((msg) => msg.parts.flatMap(fileStamps)),
+      )
 
       // A compaction or subtask part is satisfied when a finished assistant
       // message links back to the message that holds it (both branches set the
@@ -1176,10 +1179,7 @@ export namespace SessionPrompt {
     return tools
   }
 
-  async function createUserMessage(
-    input: PromptInput,
-    joined?: Promise<ReturnType<typeof MessageV2.inherit>>,
-  ) {
+  async function createUserMessage(input: PromptInput, joined?: Promise<ReturnType<typeof MessageV2.inherit>>) {
     const snapshot = await SessionPin.get(input.sessionID)
     const agent =
       snapshot.agents[input.agent ?? snapshot.defaultAgent ?? ""] ??

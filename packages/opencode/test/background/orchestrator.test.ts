@@ -1,8 +1,11 @@
 import { describe, expect, test, afterEach } from "bun:test"
+import { Instance } from "../../src/project/instance"
+import { Session } from "../../src/session"
 import { BackgroundJob } from "../../src/background/job"
 import { BackgroundProcess } from "../../src/background/process"
 import { BackgroundOrchestrator } from "../../src/background/orchestrator"
 import { BackgroundReconcile } from "../../src/background/reconcile"
+import { tmpdir } from "../fixture/fixture"
 
 const created: string[] = []
 
@@ -10,14 +13,28 @@ function spawnJob(script: string) {
   return Bun.spawn({ cmd: ["sh", "-c", script], detached: true, stdio: ["ignore", "ignore", "ignore"] })
 }
 
-async function store(pid: number) {
+// A session the predicate REAPS: it resolves (so the answer is knowable), was
+// never armed, and is not in the recent list, which is `false` — the user let
+// it go. An id that does not resolve reads as undefined and is kept whatever
+// the window does, so a job stored under one cannot show the window working.
+async function reapable() {
+  const tmp = await tmpdir({ git: true })
+  const id = await Instance.provide({
+    directory: tmp.path,
+    fn: async () => (await Session.createNext({ directory: tmp.path, title: "orchestrator test" })).id,
+  })
+  expect(await BackgroundOrchestrator.aliveFor(id, tmp.path)).toBe(false)
+  return { id, directory: tmp.path }
+}
+
+async function store(pid: number, owner: { id: string; directory: string }) {
   const live = (await BackgroundProcess.inspect(pid))!
   const id = BackgroundJob.id()
   created.push(id)
   const job: BackgroundJob.Info = {
     id,
-    sessionID: "ses_orchestrator_test_absent",
-    directory: "/tmp",
+    sessionID: owner.id,
+    directory: owner.directory,
     command: "sleep 30",
     description: "orchestrator test",
     status: "running",
@@ -87,6 +104,66 @@ describe("BackgroundOrchestrator: a job whose directory names another project", 
   }, 20_000)
 })
 
+// Surviving the ownership verdict is only half the job: a record that is kept
+// but never resolvable runs to completion and is dropped at delivery, which is
+// strictly worse than being reaped early. The command's cwd and the owner's
+// project are therefore separate fields, and every session read uses the owner.
+describe("BackgroundJob.owner", () => {
+  test("resolves under the project rather than where the command ran", async () => {
+    const elsewhere = await tmpdir({ git: true })
+    const owner = await reapable()
+    expect(
+      BackgroundJob.owner({
+        id: BackgroundJob.id(),
+        sessionID: owner.id,
+        directory: elsewhere.path,
+        project: owner.directory,
+        command: "sleep 30",
+        description: "workdir job",
+        status: "running",
+        time: { created: Date.now(), hard: Date.now() + 600_000 },
+      }),
+    ).toBe(owner.directory)
+  })
+
+  // With no `project` field the record's `directory` doubles as the owner path,
+  // so the session stays resolvable.
+  test("falls back to the recorded directory when no project was stored", () => {
+    expect(
+      BackgroundJob.owner({
+        id: BackgroundJob.id(),
+        sessionID: "ses_legacy",
+        directory: "/legacy/project",
+        command: "sleep 30",
+        description: "legacy job",
+        status: "running",
+        time: { created: Date.now(), hard: Date.now() + 600_000 },
+      }),
+    ).toBe("/legacy/project")
+  })
+
+  // The whole point of the split: a session stays findable when the command
+  // ran somewhere that maps to a different project entirely.
+  test("a job whose cwd is outside the project still resolves its session", async () => {
+    const elsewhere = await tmpdir({ git: true })
+    const owner = await reapable()
+    const job: BackgroundJob.Info = {
+      id: BackgroundJob.id(),
+      sessionID: owner.id,
+      directory: elsewhere.path,
+      project: owner.directory,
+      command: "sleep 30",
+      description: "workdir job",
+      status: "running",
+      time: { created: Date.now(), hard: Date.now() + 600_000 },
+    }
+
+    // Resolvable (a real verdict) under the owner, unknowable under the cwd.
+    expect(await BackgroundOrchestrator.aliveFor(job.sessionID, BackgroundJob.owner(job))).toBe(false)
+    expect(await BackgroundOrchestrator.aliveFor(job.sessionID, job.directory)).toBeUndefined()
+  })
+})
+
 describe("BackgroundOrchestrator settle window", () => {
   // The window has to outlast the asynchronous rebuild of session liveness
   // (re-arming daemons, resuming interrupted turns) and still end well before
@@ -105,7 +182,7 @@ describe("BackgroundOrchestrator settle window", () => {
   // than a flag the boot path sets.
   test("defers ownership for any caller inside the window, not just the boot one", async () => {
     const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid)
+    const job = await store(proc.pid, await reapable())
 
     // No adopting flag: this is what the abort route's sweep looks like.
     await BackgroundOrchestrator.sweep()
@@ -118,7 +195,7 @@ describe("BackgroundOrchestrator settle window", () => {
 describe("BackgroundOrchestrator.sweep at boot", () => {
   test("adopts a job whose session cannot be resolved yet", async () => {
     const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid)
+    const job = await store(proc.pid, await reapable())
 
     await BackgroundOrchestrator.sweep({ adopting: true })
 
@@ -126,16 +203,18 @@ describe("BackgroundOrchestrator.sweep at boot", () => {
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
   }, 20_000)
 
-  // The same record IS reaped once ownership is judged. Without this the
-  // adoption tests would pass for the wrong reason, e.g. if nothing swept at
-  // all. Driven through the reconciler with the resolved predicate, because
-  // sweep() defers ownership for the whole settle window and this process has
-  // not been up that long.
+  // The same record IS reaped once ownership is judged, which is what makes the
+  // two tests above say something: a fixture that survives every verdict would
+  // pass them whether or not the window defers anything.
+  //
+  // Driven through the reconciler with the ORCHESTRATOR'S OWN predicate rather
+  // than an injected `() => false`: the pair only holds if the same predicate
+  // that reaps here is the one the window is suppressing there.
   test("reaps that same job once ownership is judged", async () => {
     const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid)
+    const job = await store(proc.pid, await reapable())
 
-    const pass = await BackgroundReconcile.run({ alive: () => false })
+    const pass = await BackgroundReconcile.run({ alive: BackgroundOrchestrator.aliveFor })
     const action = pass.actions.find((entry) => entry.job.id === job.id)
 
     expect(action?.type).toBe("reaped")

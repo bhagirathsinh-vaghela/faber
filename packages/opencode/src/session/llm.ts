@@ -275,12 +275,12 @@ export namespace LLM {
           : anthropicOverride?.maxTokens !== undefined
             ? anthropicOverride.maxTokens
             : ProviderTransform.maxOutputTokens(
-              input.model.api.npm,
-              params.options,
-              input.model.limit.output,
-              OUTPUT_TOKEN_MAX,
-              input.model.id,
-            )
+                input.model.api.npm,
+                params.options,
+                input.model.limit.output,
+                OUTPUT_TOKEN_MAX,
+                input.model.id,
+              )
 
     const tools = await resolveTools(input)
 

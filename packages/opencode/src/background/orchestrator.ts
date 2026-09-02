@@ -148,7 +148,7 @@ export namespace BackgroundOrchestrator {
     // unresolved lookup does not. Delivering into a session that turns out to
     // be gone costs a message nobody reads, while withholding on a failed
     // lookup loses the result of work that already ran.
-    if ((await aliveFor(job.sessionID, job.directory)) === false) {
+    if ((await aliveFor(job.sessionID, BackgroundJob.owner(job))) === false) {
       log.info("holding a result for a session the user stopped", { job: job.id, kind })
       return
     }

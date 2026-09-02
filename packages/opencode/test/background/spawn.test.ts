@@ -11,6 +11,7 @@ async function run(command: string, options: Partial<BackgroundSpawn.Input> = {}
     description: "test",
     sessionID: "ses_spawn_test",
     directory: "/tmp",
+    project: "/tmp",
     shell: "/bin/sh",
     env: {},
     hard: 60_000,
@@ -172,7 +173,7 @@ describe("BackgroundSpawn stdin", () => {
   // arrive" into an immediate EOF.
   test("stdin is closed, so a command reading it finishes instead of hanging", async () => {
     const started = Date.now()
-    const spawn = await run("read line; echo \"got:$line\"")
+    const spawn = await run('read line; echo "got:$line"')
 
     expect(spawn.type).toBe("inline")
     expect(Date.now() - started).toBeLessThan(BackgroundSpawn.GRACE_MS)

@@ -79,7 +79,11 @@ describe("BackgroundNotify card metadata", () => {
   // A check-in is delivered while the job is still going, so a finished status
   // would be a lie.
   test("reports a check-in as running", () => {
-    const running = job({ status: "running", exit: undefined, time: { created: Date.now() - 60_000, hard: Date.now() } })
+    const running = job({
+      status: "running",
+      exit: undefined,
+      time: { created: Date.now() - 60_000, hard: Date.now() },
+    })
     expect(BackgroundNotify.meta(running, "checkin").status).toBe("running")
   })
 })
@@ -124,7 +128,11 @@ describe("BackgroundNotify check-in", () => {
   // It shares the result envelope so it renders as a card, and the running
   // status plus the absent exit code are what distinguish it.
   test("reports elapsed time and no exit code", () => {
-    const running = job({ status: "running", exit: undefined, time: { created: Date.now() - 300_000, hard: Date.now() + 300_000 } })
+    const running = job({
+      status: "running",
+      exit: undefined,
+      time: { created: Date.now() - 300_000, hard: Date.now() + 300_000 },
+    })
     const text = BackgroundNotify.render(running, "compiling\n", "checkin")
 
     expect(text).toContain("<background-job-result>")

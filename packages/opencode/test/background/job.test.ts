@@ -46,7 +46,11 @@ describe("BackgroundJob record", () => {
   // The property the whole design rests on: a record written by one server is
   // readable by the next one, since it lives on disk and not in Instance.state.
   test("a record written earlier is readable with no in-memory state", async () => {
-    const job = record({ status: "exited", exit: 0, time: { created: Date.now(), hard: Date.now(), completed: Date.now() } })
+    const job = record({
+      status: "exited",
+      exit: 0,
+      time: { created: Date.now(), hard: Date.now(), completed: Date.now() },
+    })
     await BackgroundJob.write(job)
 
     const fresh = await BackgroundJob.get(job.id)
@@ -160,7 +164,10 @@ describe("BackgroundJob.assess", () => {
 describe("BackgroundJob.cleanup", () => {
   test("reaps a finished job past the age cap and keeps a recent one", async () => {
     const now = Date.now()
-    const stale = record({ status: "exited", time: { created: 0, hard: 0, completed: now - BackgroundJob.MAX_AGE_MS - 1 } })
+    const stale = record({
+      status: "exited",
+      time: { created: 0, hard: 0, completed: now - BackgroundJob.MAX_AGE_MS - 1 },
+    })
     const fresh = record({ status: "exited", time: { created: 0, hard: 0, completed: now } })
     await BackgroundJob.write(stale)
     await BackgroundJob.write(fresh)

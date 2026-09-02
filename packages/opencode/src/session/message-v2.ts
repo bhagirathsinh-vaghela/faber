@@ -738,9 +738,7 @@ export namespace MessageV2 {
     return undefined
   }
 
-  export const lastModel = fn(Identifier.schema("session"), (sessionID) =>
-    lastStamped(sessionID, (user) => user.model),
-  )
+  export const lastModel = fn(Identifier.schema("session"), (sessionID) => lastStamped(sessionID, (user) => user.model))
 
   export const lastVariant = fn(Identifier.schema("session"), (sessionID) =>
     lastStamped(sessionID, (user) => user.variant),

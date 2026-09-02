@@ -21,8 +21,12 @@ export namespace BackgroundDeliver {
   // context. A job this server spawned inherits one from the tool call, but an
   // ADOPTED job has none, which is exactly the path a restart takes: the
   // delivery then found no session and the result was lost silently.
+  //
+  // The context is the OWNER's directory, never where the command ran: a job
+  // given a workdir outside the project runs somewhere that resolves to a
+  // different project, and the session it belongs to is not there.
   export async function send(job: BackgroundJob.Info, kind: BackgroundNotify.Kind, wake = true) {
-    return Instance.provide({ directory: job.directory, fn: () => deliver(job, kind, wake) })
+    return Instance.provide({ directory: BackgroundJob.owner(job), fn: () => deliver(job, kind, wake) })
   }
 
   async function deliver(job: BackgroundJob.Info, kind: BackgroundNotify.Kind, wake: boolean) {

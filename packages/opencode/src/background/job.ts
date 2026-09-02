@@ -30,7 +30,14 @@ export namespace BackgroundJob {
     .object({
       id: z.string(),
       sessionID: z.string(),
+      // Where the command RUNS, which a `workdir` argument can point anywhere.
       directory: z.string(),
+      // Which project the owning session belongs to, and the only directory a
+      // session lookup may use. `directory` can name somewhere outside the
+      // project entirely, where the session resolves to nothing and its result
+      // has nowhere to land. Absent on a record written before the split, whose
+      // `directory` is the session's own.
+      project: z.string().optional(),
       command: z.string(),
       description: z.string(),
       status: Status,
@@ -83,6 +90,13 @@ export namespace BackgroundJob {
 
   export async function init() {
     await fs.mkdir(dir, { recursive: true })
+  }
+
+  // Where this job's session resolves. Every session read goes through here so
+  // no caller has to remember which of the two directories a record carries is
+  // the one a lookup may use.
+  export function owner(job: Info) {
+    return job.project ?? job.directory
   }
 
   // v7 is time-ordered, so listing sorts oldest-first for free and the
