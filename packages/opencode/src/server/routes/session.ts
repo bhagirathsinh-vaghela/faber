@@ -8,6 +8,7 @@ import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
 import { SessionPing } from "../../session/ping"
+import { BackgroundOrchestrator } from "../../background/orchestrator"
 import { Instance } from "../../project/instance"
 import { OpenProjects } from "../../project/open"
 import { SessionPin } from "../../session/pin"
@@ -473,6 +474,12 @@ export const SessionRoutes = lazy(() =>
         SessionPing.stop(sessionID)
         SessionPin.drop(sessionID)
         SessionPrompt.cancel(sessionID)
+        // The stop just made this session read as not alive, which is the
+        // signal the sweep reaps a background job on. Running it now rather
+        // than waiting for the timer is only about latency: the verdict is the
+        // same either way, since it is derived from the record and the session,
+        // never from the fact that a stop happened.
+        void BackgroundOrchestrator.sweep()
         return c.json(true)
       },
     )

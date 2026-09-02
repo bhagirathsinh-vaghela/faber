@@ -4,6 +4,7 @@ import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "../../flag/flag"
 import { SessionPing } from "../../session/ping"
 import { SessionPrompt } from "../../session/prompt"
+import { BackgroundOrchestrator } from "../../background/orchestrator"
 
 export const ServeCommand = cmd({
   command: "serve",
@@ -34,6 +35,13 @@ export const ServeCommand = cmd({
           parts: [{ type: "text", text: SessionPing.CONTINUE_TEXT, synthetic: true }],
         }).catch(() => {})
       })
+    // Background jobs outlive the server that spawned them, so EVERY start
+    // adopts whatever is still on disk, not just a cold one. Unlike session
+    // liveness there is no double-delivery risk to guard against: a result is
+    // delivered once because settling the record is what marks it delivered,
+    // and the killed server cannot have done so for a job that outlived it.
+    BackgroundOrchestrator.init()
+    void BackgroundOrchestrator.sweep()
     await new Promise(() => {})
     await server.stop()
   },
