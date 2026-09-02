@@ -335,6 +335,26 @@
       pointer-events: auto;
     }
 
+    /* Expanding does not remove [data-stuck="true"] — both attributes sit on
+       this element at once — so the one-liner card rules above still match and
+       each !important they set must be un-set here for the body to return. */
+    [data-component="job-result"],
+    [data-component="task-result"],
+    [data-component="notice-result"] {
+      display: block !important;
+
+      > [data-slot$="-result-meta"] {
+        margin-bottom: 0.5rem !important;
+        white-space: normal;
+        overflow: visible;
+      }
+
+      > [data-component="markdown"],
+      > [data-component="notice-body"] {
+        display: block !important;
+      }
+    }
+
     /* Back to the natural stacked layout (attachments above text). */
     [data-component="user-message"] {
       display: flex !important;

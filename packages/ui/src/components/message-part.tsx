@@ -487,7 +487,10 @@ function jobResultPart(parts: PartType[]): TextPart | undefined {
 // replace, so it never overrides the flag and applies only in its absence.
 const LEGACY_INTERNAL = ["<!--", "<system-reminder>", "<mcp_tool_catalog>", "<background-", "Called the "]
 
-function legacyInternal(part: TextPart) {
+// The box classifier in session-turn.tsx imports this so a part's key and its
+// visibility are decided by one predicate: a part hidden here but keyed as a
+// visible box there draws an empty box.
+export function legacyInternal(part: TextPart) {
   if (part.internal !== undefined) return false
   const text = part.text.trimStart()
   return LEGACY_INTERNAL.some((prefix) => text.startsWith(prefix))
@@ -508,7 +511,11 @@ function noticePart(parts: PartType[], showInternal = false): TextPart | undefin
 // One line, so the collapsed box still says what happened. The full text stays
 // in the body for a reader who opens it.
 function noticeSummary(text: string): string {
-  const first = text.trim().split("\n").find((line) => line.trim().length > 0) ?? ""
+  const first =
+    text
+      .trim()
+      .split("\n")
+      .find((line) => line.trim().length > 0) ?? ""
   const sentence = first.split(/(?<=[.!?])\s/)[0] ?? first
   return sentence.length > 120 ? `${sentence.slice(0, 117)}...` : sentence
 }

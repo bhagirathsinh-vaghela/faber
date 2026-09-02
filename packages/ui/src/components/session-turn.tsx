@@ -31,7 +31,7 @@ import {
   Switch,
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
-import { Message, Part } from "./message-part"
+import { legacyInternal, Message, Part } from "./message-part"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
@@ -486,19 +486,14 @@ export function SessionTurn(
     // renders as its own box while being keyed "user", so its collapse
     // behaviour follows the typed-prompt setting rather than its own.
     // A part carrying the flag is judged by it; one without predates the flag
-    // and is recognised by the shape it opens with, matching what the renderer
-    // hides so a box's key and its visibility cannot disagree.
+    // and is recognised by `legacyInternal`, the renderer's own predicate, so a
+    // box's key and its visibility cannot disagree.
     const debug = boxDefaults?.showInternal?.() ?? false
-    const legacy = (part: TextPart) =>
-      part.internal === undefined &&
-      ["<!--", "<system-reminder>", "<mcp_tool_catalog>", "<background-", "Called the "].some((prefix) =>
-        part.text.trimStart().startsWith(prefix),
-      )
     const notice = parts.find((part) => {
       if (part?.type !== "text") return false
       const text = part as TextPart
       if (!text.synthetic || !text.text.trim()) return false
-      return debug || (!text.internal && !legacy(text))
+      return debug || (!text.internal && !legacyInternal(text))
     })
     if (notice) return "system_notice"
     return "user"
