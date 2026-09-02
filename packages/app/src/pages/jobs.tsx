@@ -8,7 +8,8 @@ import { ReaderPill } from "@/components/reader-pill"
 type Job = {
   id: string
   sessionID: string
-  directory: string
+  // Absent from a list row: only the detail view fetches a whole record.
+  directory?: string
   project?: string
   command: string
   description: string
@@ -16,6 +17,12 @@ type Job = {
   exit?: number
   time: { created: number; soft?: number; hard: number; completed?: number; notified?: number }
 }
+
+// How often the LIST is re-read. A row only changes when a job starts or ends,
+// and the elapsed time it shows is counted client-side off the shared tick, so
+// polling this every second re-reads every record on disk to redraw a number
+// the page already knows how to advance on its own.
+const LIST_MS = 5_000
 
 function elapsed(job: Job, now: number) {
   const end = job.time.completed ?? now
@@ -47,18 +54,32 @@ export default function Jobs() {
   const server = useServer()
   const ticker = useTicker()
 
-  // Both resources re-fetch off the shared second, which is also what the
-  // elapsed times count. A page-local interval would drift against it and show
-  // a job's age advancing out of step with its own log.
+  // The list is coarse and the log is not. A log is the thing that actually
+  // moves while a reader watches, so it follows the shared second; the list is
+  // re-read on its own slower key, since a row only changes when a job starts
+  // or ends. Both derive from the same tick, so nothing drifts against the
+  // elapsed times counted from it.
   //
   // No cache: a record is written by whichever server owns the job, and a
   // reader watching a build wants what is on disk right now.
+  const coarse = createMemo(() => Math.floor(ticker.now() / LIST_MS))
+
   const [jobs] = createResource(
-    () => [`${server.url}/job`, ticker.now()] as const,
+    () => [`${server.url}/job`, coarse()] as const,
     ([url]) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? (r.json() as Promise<Job[]>) : [])),
   )
 
-  const selected = createMemo(() => jobs()?.find((job) => job.id === params.id))
+  // Fetched whole rather than picked out of the list: a list row carries a
+  // clipped command and no directory, which are two of the four fields this
+  // view exists to show. Keyed on the coarse tick, since only the status can
+  // change and the log beside it is what moves.
+  const [detail] = createResource(
+    () => (params.id ? ([`${server.url}/job/${params.id}`, coarse()] as const) : undefined),
+    ([url]) =>
+      fetch(url, { cache: "no-store" }).then((r) =>
+        r.ok ? (r.json() as Promise<{ job: Job }>).then((body) => body.job) : undefined,
+      ),
+  )
 
   const [log] = createResource(
     () => (params.id ? ([`${server.url}/job/${params.id}/log`, ticker.now()] as const) : undefined),
@@ -151,7 +172,7 @@ export default function Jobs() {
             Jobs
           </button>
 
-          <Show when={selected()} fallback={<p class="text-14-regular text-text-weaker">Loading...</p>}>
+          <Show when={detail()} fallback={<p class="text-14-regular text-text-weaker">Loading...</p>}>
             {(job) => (
               <>
                 <h1 class="text-20-medium text-text-strong">{job().description}</h1>

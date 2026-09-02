@@ -2759,6 +2759,23 @@ export type McpStatus =
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
 
+export type BackgroundJobSummary = {
+  id: string
+  sessionID: string
+  command: string
+  description: string
+  status: "running" | "exited" | "killed" | "lost"
+  exit?: number
+  time: {
+    created: number
+    soft?: number
+    hard: number
+    completed?: number
+    notified?: number
+    lost?: number
+  }
+}
+
 export type BackgroundJob = {
   id: string
   sessionID: string
@@ -2778,6 +2795,7 @@ export type BackgroundJob = {
     hard: number
     completed?: number
     notified?: number
+    lost?: number
   }
   exit?: number
 }
@@ -6392,7 +6410,7 @@ export type JobListResponses = {
   /**
    * List of jobs
    */
-  200: Array<BackgroundJob>
+  200: Array<BackgroundJobSummary>
 }
 
 export type JobListResponse = JobListResponses[keyof JobListResponses]

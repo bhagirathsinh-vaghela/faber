@@ -7535,7 +7535,7 @@
           }
         ],
         "summary": "List background shell jobs",
-        "description": "Every background shell job on this machine, newest first.",
+        "description": "A summary of every background shell job on this machine, newest first. The command a job ran is the largest field in a record and only the detail view shows it, so it is left out here.",
         "responses": {
           "200": {
             "description": "List of jobs",
@@ -7544,7 +7544,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/BackgroundJob"
+                    "$ref": "#/components/schemas/BackgroundJobSummary"
                   }
                 }
               }
@@ -16498,6 +16498,55 @@
           }
         ]
       },
+      "BackgroundJobSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "exited", "killed", "lost"]
+          },
+          "exit": {
+            "type": "number"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "soft": {
+                "type": "number"
+              },
+              "hard": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              },
+              "notified": {
+                "type": "number"
+              },
+              "lost": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "hard"]
+          }
+        },
+        "required": ["id", "sessionID", "command", "description", "status", "time"]
+      },
       "BackgroundJob": {
         "type": "object",
         "properties": {
@@ -16563,6 +16612,9 @@
                 "type": "number"
               },
               "notified": {
+                "type": "number"
+              },
+              "lost": {
                 "type": "number"
               }
             },
