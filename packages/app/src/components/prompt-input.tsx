@@ -2770,13 +2770,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       type="button"
                       icon="stop"
                       variant="primary"
-                      // The button keeps its filled treatment; only the square
-                      // inside it turns red, so stopping is marked out from
-                      // sending without the control itself changing shape.
+                      // Icon sizes are fixed pixel steps, so a button grown past
+                      // the shared control height keeps a glyph scaled for the
+                      // smaller one and the square looks lost inside it. These
+                      // two size their icon from the button instead, at the same
+                      // fraction every other control paints.
                       class={
                         companion()
                           ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : "size-10! any-pointer-coarse:size-11! [&_[data-slot=icon-svg]]:!text-icon-critical-base"
+                          : "size-10! any-pointer-coarse:size-11! [&>[data-component=icon]]:!size-6 any-pointer-coarse:[&>[data-component=icon]]:!size-7"
                       }
                       aria-label={language.t("prompt.action.stop")}
                       onClick={abort}
@@ -2814,7 +2816,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       class={
                         companion()
                           ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : "size-10! any-pointer-coarse:size-11!"
+                          : "size-10! any-pointer-coarse:size-11! [&>[data-component=icon]]:!size-6 any-pointer-coarse:[&>[data-component=icon]]:!size-7"
                       }
                       aria-label={language.t("prompt.action.send")}
                       {...preserveFocus()}
