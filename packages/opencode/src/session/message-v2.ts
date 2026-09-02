@@ -737,7 +737,19 @@ export namespace MessageV2 {
   // The spawner is read under the directory the debt recorded, since a session
   // resolves only under its own project and a helper's is not always the
   // spawner's.
-  async function lastStamped<T>(sessionID: string, pick: (user: User) => T | undefined): Promise<T | undefined> {
+  //
+  // Bounded by a seen-set, the way `SessionBusy.chain` bounds its own walk. The
+  // debt is written once at creation and never re-pointed, so the graph should
+  // be a forest — but nothing enforces that, and a record naming itself makes
+  // this hang rather than crash: every hop awaits, so a cycle is an unbounded
+  // async loop re-reading storage, not unbounded recursion.
+  async function lastStamped<T>(
+    sessionID: string,
+    pick: (user: User) => T | undefined,
+    seen: Set<string> = new Set(),
+  ): Promise<T | undefined> {
+    if (seen.has(sessionID)) return undefined
+    seen.add(sessionID)
     for await (const item of stream(sessionID)) {
       if (item.info.role !== "user") continue
       const value = pick(item.info)
@@ -749,7 +761,7 @@ export namespace MessageV2 {
     const { Instance } = await import("@/project/instance")
     return Instance.provide({
       directory: session.spawn.directory,
-      fn: () => lastStamped(session.spawn!.parent, pick),
+      fn: () => lastStamped(session.spawn!.parent, pick, seen),
     }).catch(() => undefined)
   }
 
