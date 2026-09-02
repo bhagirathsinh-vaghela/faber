@@ -128,18 +128,28 @@ export namespace BackgroundSpawn {
     }
   }
 
-  // Move a record from running to finished, reading the exit code the job
-  // wrote for itself. Shared by the inline return and the exit watcher so both
-  // leave the record in the same shape.
+  // Move a record from running to finished, reading the exit code the job wrote
+  // for itself. Shared by the inline return and the exit watcher so both leave
+  // the record in the same shape.
+  //
+  // Returns the record ONLY to the caller that made the transition. Settling is
+  // what earns the right to deliver, so the guarded write and the answer have to
+  // agree: returning the record regardless lets a caller that lost the race
+  // deliver a result someone else already delivered. The exit watcher and a
+  // reconcile sweep are woken by the same event — the job ending — so both reach
+  // here for one job as a matter of course, not as a rare race.
   async function settle(id: string) {
     const exit = await BackgroundJob.exit(id)
     const completed = Date.now()
+    let claimed = false
     await BackgroundJob.update(id, (draft) => {
       if (draft.status !== "running") return
+      claimed = true
       draft.status = "exited"
       draft.exit = exit
       draft.time.completed = completed
     })
+    if (!claimed) return undefined
     return BackgroundJob.get(id)
   }
 }

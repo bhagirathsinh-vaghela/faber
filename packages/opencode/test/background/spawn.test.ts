@@ -181,3 +181,37 @@ describe("BackgroundSpawn stdin", () => {
     expect(spawn.output).toContain("got:")
   })
 })
+
+// Settling is what earns the right to deliver, so the guarded write and the
+// answer have to agree. The exit watcher and a reconcile sweep are woken by the
+// same event — the job ending — so both reach the settle for one job as a matter
+// of course, and a settle that answers regardless of its own claim puts two
+// results in the session for one job.
+describe("BackgroundSpawn: one job settles once", () => {
+  test("the exit watcher stays silent for a job another pass already settled", async () => {
+    const fired: string[] = []
+    BackgroundSpawn.watch(async (job) => {
+      fired.push(job.id)
+    })
+
+    const spawn = await run(`sleep ${BackgroundSpawn.GRACE_MS / 1000 + 1}`)
+    expect(spawn.type).toBe("background")
+
+    // Exactly what a sweep does when it finds the process gone: take the record
+    // out of `running` before the exit handle wakes.
+    await BackgroundJob.update(spawn.job.id, (draft) => {
+      draft.status = "exited"
+      draft.exit = 0
+      draft.time.completed = Date.now()
+    })
+
+    const started = Date.now()
+    while (Date.now() - started < 4_000) {
+      if (fired.includes(spawn.job.id)) break
+      await Bun.sleep(50)
+    }
+
+    expect(fired.filter((id) => id === spawn.job.id).length).toBe(0)
+    BackgroundSpawn.watch(() => {})
+  }, 25_000)
+})
