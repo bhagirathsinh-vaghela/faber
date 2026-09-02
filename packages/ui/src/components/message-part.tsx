@@ -485,7 +485,19 @@ function jobResultPart(parts: PartType[]): TextPart | undefined {
 // A part carrying the flag is judged by the flag alone. A part without one is
 // recognised by the shape it opens with — a heuristic the flag exists to
 // replace, so it never overrides the flag and applies only in its absence.
-const LEGACY_INTERNAL = ["<!--", "<system-reminder>", "<mcp_tool_catalog>", "<background-", "Called the "]
+const LEGACY_INTERNAL = [
+  "<!--",
+  "<system-reminder>",
+  "<mcp_tool_catalog>",
+  "<background-",
+  "Called the ",
+  // These two land on the USER'S OWN message rather than a message of their
+  // own, so an unflagged one is not merely an extra box: the transcript draws
+  // it INSTEAD of the prompt the user typed, and the typed text becomes
+  // unreachable. Both writers set the flag now; these cover what is on disk.
+  "<session_context_update>",
+  "<project_subagents>",
+]
 
 // The box classifier in session-turn.tsx imports this so a part's key and its
 // visibility are decided by one predicate: a part hidden here but keyed as a

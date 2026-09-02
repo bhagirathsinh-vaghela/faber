@@ -1736,6 +1736,10 @@ export namespace SessionPrompt {
       sessionID: userInfo.sessionID,
       type: "text",
       text: catalog,
+      // Written for the model and appended to the USER'S OWN message, so
+      // without this the transcript draws the catalog where the typed prompt
+      // should be.
+      internal: true,
       synthetic: true,
     }
     await Session.updatePart(part)
@@ -1777,6 +1781,11 @@ export namespace SessionPrompt {
       sessionID: userInfo.sessionID,
       type: "text",
       text,
+      // Machinery, and it lands on the USER'S OWN message rather than a
+      // message of its own. The transcript picks one part to draw per message,
+      // so without this flag a block written for the model is chosen over the
+      // prompt the user typed, and the typed text becomes unreachable.
+      internal: true,
       synthetic: true,
     }
     await Session.updatePart(part)
