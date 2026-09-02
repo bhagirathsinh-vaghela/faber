@@ -100,6 +100,24 @@ export namespace Session {
       projectID: z.string(),
       directory: z.string(),
       parentID: Identifier.schema("session").optional(),
+      // A peer that spawned this session and is owed its result.
+      //
+      // Reporting back cannot be left to the child remembering to do it: a
+      // helper that ends its turn without reporting strands the session that
+      // is waiting, and nothing notices. So the debt is recorded HERE, on
+      // disk, and the runtime discharges it when the child goes idle — the
+      // supervisor watching the child terminate, rather than the child being
+      // asked to announce itself.
+      //
+      // Cleared once discharged, which is what stops a child that goes idle
+      // repeatedly from reporting more than once.
+      spawn: z
+        .object({
+          parent: Identifier.schema("session"),
+          directory: z.string(),
+          at: z.number(),
+        })
+        .optional(),
       summary: z
         .object({
           additions: z.number(),
@@ -290,6 +308,11 @@ export namespace Session {
         parentID: Identifier.schema("session").optional(),
         title: z.string().optional(),
         permission: Info.shape.permission,
+        // The peer this session is being created FOR, which is owed its
+        // result. Taken at creation rather than stamped afterwards, so a
+        // helper cannot exist for even one turn without the link that gets its
+        // answer home.
+        spawnedBy: Identifier.schema("session").optional(),
       })
       .optional(),
     async (input) => {
@@ -298,6 +321,7 @@ export namespace Session {
         directory: Instance.directory,
         title: input?.title,
         permission: input?.permission,
+        spawnedBy: input?.spawnedBy,
       })
     },
   )
@@ -356,6 +380,7 @@ export namespace Session {
     parentID?: string
     directory: string
     permission?: PermissionNext.Ruleset
+    spawnedBy?: string
   }) {
     const branch = Instance.project.vcs === "git" ? await Vcs.branch() : undefined
     const result: Info = {
@@ -367,6 +392,12 @@ export namespace Session {
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
+      // Written with the record, so the debt is durable from the instant the
+      // session exists: a crash before its first turn still leaves something
+      // that knows who is waiting.
+      ...(input.spawnedBy && {
+        spawn: { parent: input.spawnedBy, directory: input.directory, at: Date.now() },
+      }),
       branch,
       time: {
         created: Date.now(),
@@ -551,6 +582,39 @@ export namespace Session {
     const entries = await load()
     return [...entries.values()].filter((session) => session.parentID === parentID)
   })
+
+  // Stopping a session: the one implementation, used by the Stop button, by the
+  // ping-stop route, ahead of a delete, and by the runtime when a spawned
+  // helper's result has been delivered.
+  //
+  // It is three things that only make sense together — disarm the keep-warm
+  // daemon (which clears the persisted intent), drop the prompt pin, and cancel
+  // whatever turn is in flight — and assembling them per caller is how one site
+  // ends up doing two of the three. A caller that wants the turn to survive
+  // (the dock's turn-only stop) passes `turn: false`; nothing else varies.
+  //
+  // Children first, because a subtask outliving the session that owns it keeps
+  // pinging a record nobody reads.
+  export const stop = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      turn: z.boolean().optional(),
+    }),
+    async (input) => {
+      const { SessionPing } = await import("./ping")
+      const { SessionPin } = await import("./pin")
+      for (const child of await children(input.sessionID)) {
+        await SessionPing.stop(child.id)
+        SessionPin.drop(child.id)
+      }
+      await SessionPing.stop(input.sessionID)
+      SessionPin.drop(input.sessionID)
+      // After the disarm, never before: cancel() runs on every normal loop exit
+      // too, so it must not be what disarms, or an ordinary turn ending would
+      // silently stop the session.
+      if (input.turn !== false) SessionPrompt.cancel(input.sessionID)
+    },
+  )
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
     const project = Instance.project

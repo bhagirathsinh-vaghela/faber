@@ -273,6 +273,8 @@ export const SessionRoutes = lazy(() =>
           },
         },
       }),
+      // spawnedBy rides Session.create's own schema, so a helper session is
+      // linked to the peer waiting on it by the same call that creates it.
       validator("json", Session.create.schema.optional()),
       async (c) => {
         const body = c.req.valid("json") ?? {}
@@ -306,16 +308,14 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
-        // Disarm BEFORE removing: the daemon outlives its session otherwise,
+        // Stop BEFORE removing: the daemon outlives its session otherwise,
         // pinging a record that no longer exists until the process dies. Order
-        // matters — stop() disarms through Session.update, which writes storage
-        // and re-indexes, so running it after remove() would resurrect the
-        // session it just deleted. Children first: remove() recurses into them,
-        // and a subtask that somehow armed would be orphaned the same way.
-        for (const child of await Session.children(sessionID)) await SessionPing.stop(child.id)
-        await SessionPing.stop(sessionID)
+        // matters — the disarm writes through Session.update, which re-indexes,
+        // so running it after remove() would resurrect the session it just
+        // deleted. Session.stop recurses into children for the same reason
+        // remove() does.
+        await Session.stop({ sessionID })
         await Session.remove(sessionID)
-        SessionPin.drop(sessionID)
         return c.json(true)
       },
     )
@@ -466,14 +466,10 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
-        // Abort is the user Stop — the intended disarm action. Stop the daemon
-        // (which clears keepWarm as its shadow) THEN cancel the in-flight turn.
-        // Ordering matters: cancel() also runs on every normal loop exit via
-        // defer, so it must never disarm on its own — only this explicit route
-        // does. One lever: stop() disarms + shadows keepWarm=false.
-        SessionPing.stop(sessionID)
-        SessionPin.drop(sessionID)
-        SessionPrompt.cancel(sessionID)
+        // The user Stop, and the one implementation of it. Session.stop owns
+        // the ordering (disarm, then cancel) that the alternative — cancelling
+        // first — gets wrong.
+        await Session.stop({ sessionID })
         // The stop just made this session read as not alive, which is the
         // signal the sweep reaps a background job on. Running it now rather
         // than waiting for the timer is only about latency: the verdict is the
@@ -1162,9 +1158,9 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
-        // stop() disarms the daemon and clears keepWarm as its shadow.
-        SessionPing.stop(sessionID)
-        SessionPin.drop(sessionID)
+        // Stopping the daemon without touching the turn: this route means "let
+        // this session go cold", not "abandon what it is doing".
+        await Session.stop({ sessionID, turn: false })
         return c.json({ ok: true })
       },
     )

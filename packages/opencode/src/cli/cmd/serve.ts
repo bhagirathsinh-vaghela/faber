@@ -4,6 +4,7 @@ import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "../../flag/flag"
 import { SessionPing } from "../../session/ping"
 import { SessionPrompt } from "../../session/prompt"
+import { SessionSpawn } from "../../session/spawn"
 import { BackgroundOrchestrator } from "../../background/orchestrator"
 
 export const ServeCommand = cmd({
@@ -45,6 +46,11 @@ export const ServeCommand = cmd({
     // not retried, since nothing distinguishes settled-and-sent from
     // settled-and-lost.
     BackgroundOrchestrator.init()
+    // Watches spawned helper sessions terminate, so the peer waiting on one
+    // is answered by the runtime rather than by the helper remembering to
+    // answer. The debt lives on the child's record, so a restart mid-flight
+    // still discharges it the next time that child goes idle.
+    SessionSpawn.init()
     // Adopting, not reaping: session liveness is still being rebuilt at this
     // point, so an ownership verdict here would kill healthy jobs whose
     // sessions are about to come back. The first timer pass makes that call.

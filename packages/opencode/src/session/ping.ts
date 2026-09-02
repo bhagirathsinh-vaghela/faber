@@ -237,11 +237,20 @@ export namespace SessionPing {
     })
   }
 
-  export function stop(sessionID: string) {
+  // Stopping is about the session's persisted INTENT, not about this process
+  // holding a loop for it. `keepWarm` survives a restart while the daemon does
+  // not, so returning early on a missing entry leaves a session flagged warm
+  // with nothing running — and that flag is what the background reconciler
+  // reads as "someone is still waiting on this", so it keeps jobs alive too.
+  export async function stop(sessionID: string) {
     const entry = active.get(sessionID)
-    if (!entry) return
-    entry.abort.abort()
-    return disarm(sessionID)
+    if (entry) {
+      entry.abort.abort()
+      return disarm(sessionID)
+    }
+    await Session.update(sessionID, (draft) => {
+      draft.keepWarm = false
+    }).catch(() => {})
   }
 
   // Re-publish the ping deadline for an armed session after its cache re-anchors.
