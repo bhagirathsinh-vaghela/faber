@@ -1,5 +1,5 @@
 import { agentColor } from "./agent"
-import { busyBase, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
+import { busyBase, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
 
 export type Attention =
   | { kind: "error" }
@@ -37,13 +37,19 @@ export function attention(input: AttentionInput, custom?: string): Attention | u
   if (input.error) return { kind: "error" }
   if (input.question) return { kind: "question", tint: agentTint(input.agent, custom) }
   if (input.permission) return { kind: "permission" }
-  if (input.busy) {
-    const facts = {
-      busySelf: !!input.busySelf,
-      busyDescendant: !!input.busyDescendant,
-      busyHelper: !!input.busyHelper,
-      busyJob: !!input.busyJob,
-    }
+  // Gated on busyShown, not on `busy` alone. `busy` covers only the turns in
+  // the open subtree, so a session whose sole live work is a background job or
+  // a helper owing a report would show no dot while the spinners elsewhere show
+  // one. The dot and the spinners read the same facts through the same table, so
+  // they cannot disagree about whether to show or about which colour.
+  const facts = {
+    busy: !!input.busy,
+    busySelf: !!input.busySelf,
+    busyDescendant: !!input.busyDescendant,
+    busyHelper: !!input.busyHelper,
+    busyJob: !!input.busyJob,
+  }
+  if (busyShown(facts)) {
     const agent = input.busySelf ? agentTint(input.agent, custom) : undefined
     return { kind: "busy", tint: busyBase(facts, agent), overlays: busyOverlays(facts, agent) }
   }
