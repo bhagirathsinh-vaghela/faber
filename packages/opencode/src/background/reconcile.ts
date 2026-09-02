@@ -139,6 +139,7 @@ export namespace BackgroundReconcile {
       draft.time.completed = now
     })
     if (!claimed) return undefined
+    await BackgroundJob.settled(job.sessionID)
     return { ...job, status, exit, time: { ...job.time, completed: now } }
   }
 

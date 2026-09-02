@@ -158,15 +158,8 @@ export namespace BackgroundSpawn {
     })
     if (!claimed) return undefined
     const settled = await BackgroundJob.get(id)
-    // Only the caller that settled clears the flag, and only when the session
-    // has nothing else running. A session with two jobs would otherwise stop
-    // showing one of them the moment the first finished.
-    if (settled) {
-      const running = await BackgroundJob.list().then((jobs) =>
-        jobs.some((job) => job.sessionID === settled.sessionID && job.status === "running"),
-      )
-      if (!running) void SessionRecent.setBusyJob(settled.sessionID, false)
-    }
+    // Only the caller that made the transition clears the flag.
+    if (settled) await BackgroundJob.settled(settled.sessionID)
     return settled
   }
 }

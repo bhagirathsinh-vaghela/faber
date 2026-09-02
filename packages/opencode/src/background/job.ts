@@ -113,6 +113,22 @@ export namespace BackgroundJob {
     return job.project ?? job.directory
   }
 
+  // The session stops showing a running job once it has none left. Called by
+  // every path that takes a record out of `running`, since a session with two
+  // jobs must keep the flag while the second one runs.
+  //
+  // Shared rather than repeated: three paths settle a record (the exit watcher,
+  // a reconcile pass, and a kill), and one predicate answering to three copies
+  // is a predicate that holds in two of them.
+  export async function settled(sessionID: string) {
+    const running = await list().then((jobs) =>
+      jobs.some((job) => job.sessionID === sessionID && job.status === "running"),
+    )
+    if (running) return
+    const { SessionRecent } = await import("@/session/recent")
+    void SessionRecent.setBusyJob(sessionID, false)
+  }
+
   // v7 is time-ordered, so listing sorts oldest-first for free and the
   // age-based cleanup needs no stat call to decide what is oldest.
   export function id() {
@@ -256,10 +272,12 @@ export namespace BackgroundJob {
       draft.exit = undefined
       draft.time.completed = completed
     })
-    const settled = await get(id)
+    const stopped = await get(id)
     // Removed between the read and the write, which only a concurrent cleanup
     // does; there is nothing left to describe.
-    return settled ? { type: "settled", job: settled } : { type: "unknown" }
+    if (!stopped) return { type: "unknown" }
+    await settled(stopped.sessionID)
+    return { type: "settled", job: stopped }
   }
 
   // The exit code the job recorded for itself. Undefined means it has not

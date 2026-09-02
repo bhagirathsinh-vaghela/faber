@@ -1,6 +1,7 @@
 import { describe, expect, test, afterEach } from "bun:test"
 import fs from "fs/promises"
 import { BackgroundJob } from "../../src/background/job"
+import { BackgroundProcess } from "../../src/background/process"
 
 const created: string[] = []
 
@@ -330,4 +331,43 @@ describe("BackgroundJob paths", () => {
     expect(BackgroundJob.exitPath(id)).toBe(`${BackgroundJob.dir}/${id}.exit`)
     expect((await fs.stat(BackgroundJob.dir)).isDirectory()).toBe(true)
   })
+})
+
+// Three paths take a record out of `running`: the exit watcher, a reconcile
+// pass, and a kill. Each must leave the session's job flag agreeing with the
+// records, and a kill is the one with no process handle behind it — the job it
+// stops may have been adopted from a server that is gone.
+describe("BackgroundJob.stop settles the session's flag", () => {
+  test("a killed job stops showing on its session", async () => {
+    const { SessionRecent } = await import("../../src/session/recent")
+    const proc = Bun.spawn({ cmd: ["sh", "-c", "sleep 30"], detached: true, stdio: ["ignore", "ignore", "ignore"] })
+    const live = (await BackgroundProcess.inspect(proc.pid))!
+    const id = BackgroundJob.id()
+    created.push(id)
+
+    await BackgroundJob.write({
+      id,
+      sessionID: "ses_job_stop_flag",
+      directory: "/tmp",
+      project: "/tmp",
+      command: "sleep 30",
+      description: "kill flag test",
+      status: "running",
+      time: { created: Date.now(), hard: Date.now() + 600_000 },
+      process: { pid: live.pid, start: live.start, pgid: live.pgid },
+    })
+    await SessionRecent.touch({
+      sessionID: "ses_job_stop_flag",
+      directory: "/tmp",
+      title: "job owner",
+      updated: Date.now(),
+    })
+    await SessionRecent.setBusyJob("ses_job_stop_flag", true)
+
+    const stopped = await BackgroundJob.stop(id)
+    expect(stopped.type).toBe("settled")
+
+    const entry = (await SessionRecent.list()).find((row) => row.sessionID === "ses_job_stop_flag")
+    expect(entry?.busyJob).toBe(false)
+  }, 20_000)
 })
