@@ -195,6 +195,23 @@ export namespace BackgroundJob {
       `{ ${user} ; } &`,
       `__oc_cmd=$!`,
       `set +m`,
+      // A signal aimed at this wrapper is FORWARDED to the group the line above
+      // created. An outside killer can only ever reach this process: it records
+      // the identity it got from spawning, which is this shell, while `set -m`
+      // puts the command in a group of its own that nothing out there can name.
+      // Without the trap, killing the job kills the wrapper and its watchdog and
+      // leaves the command running with nothing left that knows about it.
+      //
+      // The wrapper stays alive through the forward so it still reaches its exit
+      // line below, which is what turns a kill into a recorded status rather
+      // than a missing exit file.
+      //
+      // It escalates on its own rather than waiting for the killer's SIGKILL:
+      // that second signal reaches this shell too, and a shell cannot trap it,
+      // so a command ignoring TERM would be orphaned by the very escalation
+      // meant to end it. Escalating here happens while the wrapper is still
+      // alive to do it.
+      `trap '{ kill -TERM -$__oc_cmd 2>/dev/null; sleep 2; kill -KILL -$__oc_cmd 2>/dev/null; } &' TERM INT HUP`,
       `{ sleep ${seconds}; kill -TERM -$__oc_cmd 2>/dev/null; sleep 2; kill -KILL -$__oc_cmd 2>/dev/null; } &`,
       `__oc_wd=$!`,
       // The command's own output already reached the log; these redirects

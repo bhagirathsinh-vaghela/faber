@@ -215,3 +215,31 @@ describe("BackgroundSpawn: one job settles once", () => {
     BackgroundSpawn.watch(() => {})
   }, 25_000)
 })
+
+// The recorded identity is the WRAPPER's, because that is what spawning
+// returns. `set -m` puts the user's command in a group of its own that nothing
+// outside can name, so a kill aimed at the record reaches the wrapper and its
+// watchdog and leaves the command running with nothing left that knows about
+// it. The wrapper forwards the signal to the group it created.
+describe("BackgroundSpawn: a kill reaches the command, not just the wrapper", () => {
+  test("stopping a wrapped job ends the command it launched", async () => {
+    const spawn = await run(`echo "CMDPID=$$"; sleep ${BackgroundSpawn.GRACE_MS / 1000 + 40}`)
+    expect(spawn.type).toBe("background")
+
+    await Bun.sleep(600)
+    const output = await BackgroundJob.output(spawn.job.id)
+    const cmdpid = Number(/CMDPID=(\d+)/.exec(output ?? "")?.[1])
+    expect(cmdpid).toBeGreaterThan(0)
+
+    // The two groups differ by construction, which is the whole point: the
+    // record cannot name the group the command is in.
+    const record = await BackgroundJob.get(spawn.job.id)
+    expect(record?.process?.pgid).not.toBe(cmdpid)
+
+    await BackgroundJob.stop(spawn.job.id)
+    await Bun.sleep(1200)
+
+    const alive = await Bun.$`ps -p ${cmdpid} -o pid=`.quiet().nothrow()
+    expect(alive.stdout.toString().trim()).toBe("")
+  }, 30_000)
+})
