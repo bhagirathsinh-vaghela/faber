@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { attention, busy } from "./attention"
+import { isAlive } from "@opencode-ai/util/session"
 
 // The overview dot and the spinners elsewhere read the same facts through the
 // same table. A dot that appears on a narrower condition than the spinner
@@ -30,5 +31,27 @@ describe("attention — work that no turn is executing", () => {
   // what a session is doing, whatever is running underneath them.
   test("a question outranks a running job", () => {
     expect(attention({ busy: false, busyJob: true, question: true })?.kind).toBe("question")
+  })
+})
+
+// isAlive governs SSE subscription scope and transcript eviction, so a session
+// it calls dead loses the transcript its pending result would land in. A job
+// and a waiting helper are both work the server is doing, and neither reaches
+// `busy`, which covers only the turns in the open subtree.
+describe("isAlive — work the session waits on", () => {
+  test("a running job keeps a session live", () => {
+    expect(isAlive({ busy: false, busyJob: true })).toBe(true)
+  })
+
+  test("a helper owing a report keeps a session live", () => {
+    expect(isAlive({ busy: false, busyHelper: true })).toBe(true)
+  })
+
+  test("an armed ping daemon still counts", () => {
+    expect(isAlive({ busy: false, pingAt: Date.now() })).toBe(true)
+  })
+
+  test("a session with none of them is not live", () => {
+    expect(isAlive({ busy: false })).toBe(false)
   })
 })

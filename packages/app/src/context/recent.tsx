@@ -20,6 +20,11 @@ export type OverviewRow = {
   busy: boolean
   busySelf: boolean
   busyDescendant: boolean
+  // Work the session waits on rather than executes: a spawned helper owing it a
+  // report, and a background job still running. Neither reaches `busy`, which
+  // covers only the turns in the open subtree.
+  busyHelper: boolean
+  busyJob: boolean
   unseen: boolean
   question: boolean
   permission: boolean
@@ -72,6 +77,16 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           },
           get busyDescendant() {
             return globalSync.busy(entry.directory, entry.sessionID).busyDescendant
+          },
+          // The two facts no turn accounts for. Both are work the session is
+          // waiting on rather than executing, so `busy` is false while they
+          // hold, and a row that omits them leaves the overview dot dark on a
+          // session every other indicator shows as working.
+          get busyHelper() {
+            return globalSync.busy(entry.directory, entry.sessionID).busyHelper === true
+          },
+          get busyJob() {
+            return globalSync.busy(entry.directory, entry.sessionID).busyJob === true
           },
           get unseen() {
             return entry.unseen
