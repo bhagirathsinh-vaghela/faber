@@ -129,6 +129,50 @@ describe("BackgroundReconcile: ownership", () => {
   })
 })
 
+describe("BackgroundReconcile: the boot window", () => {
+  // A pass that runs before session liveness has been rebuilt sees every
+  // session as not alive, including ones whose turns are about to resume.
+  // Reaping on that reading kills healthy jobs, so a boot pass adopts instead
+  // and leaves the ownership call to a later one.
+  test("adopts a running job instead of reaping it when ownership is deferred", async () => {
+    const proc = spawnJob("sleep 30")
+    const job = await store({ process: await identify(proc.pid) })
+
+    // What the boot pass passes: ownership not yet knowable, so not judged.
+    const action = actionFor(await BackgroundReconcile.run({ alive: () => true }), job.id)
+
+    expect(action?.type).toBe("kept")
+    expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
+    expect(await BackgroundJob.get(job.id)).toBeDefined()
+  })
+
+  // Deferring ownership must not defer anything derived from the job itself:
+  // those verdicts come off disk and are correct immediately.
+  test("still collects a finished job while ownership is deferred", async () => {
+    const proc = spawnJob("true")
+    const job = await store({ process: await identify(proc.pid) })
+    await proc.exited
+    await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
+
+    const action = actionFor(await BackgroundReconcile.run({ alive: () => true }), job.id)
+
+    expect(action?.type).toBe("completed")
+  })
+
+  test("still kills a job past its deadline while ownership is deferred", async () => {
+    const proc = spawnJob("sleep 30")
+    const job = await store({
+      process: await identify(proc.pid),
+      time: { created: Date.now() - 7200_000, hard: Date.now() - 3600_000 },
+    })
+
+    const action = actionFor(await BackgroundReconcile.run({ alive: () => true }), job.id)
+
+    expect(action?.type).toBe("expired")
+    expect(await BackgroundProcess.verify(job.process!)).not.toBe("alive")
+  })
+})
+
 describe("BackgroundReconcile: records with nothing behind them", () => {
   // The server died between writing the record and the spawn returning.
   test("discards a record whose spawn never landed", async () => {

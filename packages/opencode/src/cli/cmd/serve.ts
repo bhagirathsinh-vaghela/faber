@@ -41,7 +41,10 @@ export const ServeCommand = cmd({
     // delivered once because settling the record is what marks it delivered,
     // and the killed server cannot have done so for a job that outlived it.
     BackgroundOrchestrator.init()
-    void BackgroundOrchestrator.sweep()
+    // Adopting, not reaping: session liveness is still being rebuilt at this
+    // point, so an ownership verdict here would kill healthy jobs whose
+    // sessions are about to come back. The first timer pass makes that call.
+    void BackgroundOrchestrator.sweep({ adopting: true })
     await new Promise(() => {})
     await server.stop()
   },

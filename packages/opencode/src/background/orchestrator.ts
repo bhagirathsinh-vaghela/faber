@@ -1,4 +1,5 @@
 import { isAlive } from "@opencode-ai/util/session"
+import { Session } from "@/session"
 import { SessionRecent } from "@/session/recent"
 import { Scheduler } from "@/scheduler"
 import { Log } from "@/util/log"
@@ -18,16 +19,29 @@ export namespace BackgroundOrchestrator {
   // both faster paths missed is not stranded for an hour.
   export const SWEEP_MS = 5 * 60 * 1000
 
-  // Whether a session could still read a result, using the same predicate the
-  // home overview classifies rows with: a turn in flight, or an armed
-  // keepalive daemon. A deliberate Stop clears both and persists that, so a
-  // stopped session reads as not alive here for the same reason it drops out
-  // of the overview's live list.
+  // Whether a session could still read a result.
+  //
+  // `isAlive` is the overview's predicate and answers "is this session working
+  // RIGHT NOW", which is not the same question. Its terms live in memory and
+  // are rebuilt after a restart, so during boot every session reads as not
+  // alive — including one whose turn is about to be resumed.
+  //
+  // What survives a restart is `keepWarm`, the persisted shadow of the user's
+  // intent. arm() writes it true, and it is cleared ONLY by a deliberate Stop
+  // (via SessionPing.stop, which the abort route alone calls). So it is exactly
+  // "has the user let this session go", which is the question a job's fate
+  // turns on.
+  //
+  // Both are consulted: live work counts even on a session that was never
+  // armed (ping can be disabled entirely), and persisted intent counts while
+  // the live view is still being rebuilt.
   async function alive(sessionID: string) {
+    const session = await Session.get(sessionID).catch(() => undefined)
+    // Deleted outright. Nothing to deliver to and nothing to protect.
+    if (!session) return false
+    if (session.keepWarm) return true
     const entry = (await SessionRecent.list()).find((row) => row.sessionID === sessionID)
-    // A session too old to be in the recent hub cannot be waiting on anything.
-    if (!entry) return false
-    return isAlive(entry)
+    return entry ? isAlive(entry) : false
   }
 
   export function init() {
@@ -49,19 +63,37 @@ export namespace BackgroundOrchestrator {
     // 3. The backstop. Catches anything both fast paths missed: a deadline
     //    that passed while the server was down, a record whose spawn never
     //    landed, a job whose owner has since been stopped.
+    //
+    //    register() runs its task immediately as well as on the interval, and
+    //    that first run lands in the same boot window where liveness is not yet
+    //    rebuilt, so it adopts too. Only the interval runs judge ownership.
+    let booted = false
     Scheduler.register({
       id: "background.reconcile",
       interval: SWEEP_MS,
       scope: "global",
-      run: sweep,
+      run: async () => {
+        const adopting = !booted
+        booted = true
+        await sweep({ adopting })
+      },
     })
   }
 
-  // One pass, acting on each verdict. Safe to run at boot, on the timer, or
-  // straight after a stop, because a record's fate depends only on its own
-  // state.
-  export async function sweep() {
-    const pass = await BackgroundReconcile.run({ alive })
+  // One pass, acting on each verdict.
+  //
+  // `adopting` is for the pass that runs at boot, before session liveness has
+  // been rebuilt. Everything derived from the JOB (it finished, it passed its
+  // deadline, its record names no process) is decided from disk and is correct
+  // immediately. Ownership is not: it is the one verdict that reads live
+  // session state, and at boot every session reads as not alive because the
+  // in-memory view is still empty. A boot pass therefore adopts rather than
+  // reaps, and the first timer pass makes the ownership call once the view is
+  // real.
+  export async function sweep(options: { adopting?: boolean } = {}) {
+    const pass = await BackgroundReconcile.run({
+      alive: options.adopting ? () => true : alive,
+    })
     for (const action of pass.actions) {
       if (action.type === "completed") await deliver(action.job, "completed")
       if (action.type === "expired") await deliver(action.job, "timeout")
