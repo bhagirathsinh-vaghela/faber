@@ -1,0 +1,203 @@
+import { createMemo, createResource, For, Match, Show, Switch } from "solid-js"
+import { useNavigate, useParams } from "@solidjs/router"
+import { Icon } from "@opencode-ai/ui/icon"
+import { useServer } from "@/context/server"
+import { useTicker } from "@/context/ticker"
+import { ReaderPill } from "@/components/reader-pill"
+
+type Job = {
+  id: string
+  sessionID: string
+  directory: string
+  project?: string
+  command: string
+  description: string
+  status: "running" | "exited" | "killed" | "lost"
+  exit?: number
+  time: { created: number; soft?: number; hard: number; completed?: number; notified?: number }
+}
+
+function elapsed(job: Job, now: number) {
+  const end = job.time.completed ?? now
+  const seconds = Math.max(0, Math.round((end - job.time.created) / 1000))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+// Green reads as "this went well", which a job that is merely still running has
+// not earned yet. Blue is the neutral in-progress colour used elsewhere.
+function tone(job: Job) {
+  if (job.status === "running") return "var(--syntax-primitive)"
+  if (job.status === "killed" || job.status === "lost") return "var(--syntax-critical)"
+  return job.exit === 0 ? "var(--syntax-string)" : "var(--syntax-critical)"
+}
+
+function label(job: Job) {
+  if (job.status === "running") return "running"
+  if (job.status === "killed") return "timed out"
+  if (job.status === "lost") return "lost"
+  return job.exit === 0 ? "completed" : `failed (exit ${job.exit})`
+}
+
+export default function Jobs() {
+  const params = useParams()
+  const navigate = useNavigate()
+  const server = useServer()
+  const ticker = useTicker()
+
+  // Both resources re-fetch off the shared second, which is also what the
+  // elapsed times count. A page-local interval would drift against it and show
+  // a job's age advancing out of step with its own log.
+  //
+  // No cache: a record is written by whichever server owns the job, and a
+  // reader watching a build wants what is on disk right now.
+  const [jobs] = createResource(
+    () => [`${server.url}/job`, ticker.now()] as const,
+    ([url]) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? (r.json() as Promise<Job[]>) : [])),
+  )
+
+  const selected = createMemo(() => jobs()?.find((job) => job.id === params.id))
+
+  const [log] = createResource(
+    () => (params.id ? ([`${server.url}/job/${params.id}/log`, ticker.now()] as const) : undefined),
+    ([url]) =>
+      fetch(url, { cache: "no-store" }).then((r) =>
+        r.ok ? (r.json() as Promise<{ output: string; size: number }>) : { output: "", size: 0 },
+      ),
+  )
+
+  const running = createMemo(() => jobs()?.filter((job) => job.status === "running") ?? [])
+  const finished = createMemo(() => jobs()?.filter((job) => job.status !== "running") ?? [])
+
+  return (
+    <div class="size-full min-h-0 flex-1 overflow-y-auto" data-component="jobs-page">
+      <ReaderPill />
+      <div class="mx-auto w-full max-w-3xl px-6 py-8">
+        <Show
+          when={params.id}
+          fallback={
+            <>
+              <h1 class="text-20-medium text-text-strong mb-1">Jobs</h1>
+              <p class="text-12-regular text-text-weaker mb-5">
+                Background shell commands on this machine. Read only: a job is stopped by the session that started it.
+              </p>
+
+              <Show when={jobs()} fallback={<p class="text-14-regular text-text-weaker">Loading...</p>}>
+                <Show
+                  when={running().length > 0 || finished().length > 0}
+                  fallback={<p class="text-14-regular text-text-weaker">No jobs have run recently.</p>}
+                >
+                  <For
+                    each={[
+                      { title: "Running", items: running() },
+                      { title: "Finished", items: finished() },
+                    ]}
+                  >
+                    {(group) => (
+                      <Show when={group.items.length > 0}>
+                        <h2 class="text-12-medium text-text-weaker uppercase tracking-wide mt-6 mb-2">
+                          {group.title} ({group.items.length})
+                        </h2>
+                        <ul class="flex flex-col gap-1" data-slot="job-list">
+                          <For each={group.items}>
+                            {(job) => (
+                              <li>
+                                <button
+                                  type="button"
+                                  data-slot="job-row"
+                                  class="w-full flex items-start gap-3 rounded-md px-3 py-2.5 text-left hover:bg-surface-raised-base-hover"
+                                  onClick={() => navigate(`/jobs/${job.id}`)}
+                                >
+                                  <span
+                                    class="mt-1.5 size-2 shrink-0 rounded-full"
+                                    style={{ background: tone(job) }}
+                                    aria-hidden="true"
+                                  />
+                                  <span class="min-w-0 flex-1">
+                                    <span class="block text-14-medium text-text-base truncate">{job.description}</span>
+                                    <span class="block font-mono text-12-regular text-text-weaker truncate">
+                                      {job.command}
+                                    </span>
+                                  </span>
+                                  <span class="shrink-0 text-right">
+                                    <span class="block text-12-regular" style={{ color: tone(job) }}>
+                                      {label(job)}
+                                    </span>
+                                    <span class="block text-12-regular text-text-weaker">
+                                      {elapsed(job, ticker.now())}
+                                    </span>
+                                  </span>
+                                </button>
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    )}
+                  </For>
+                </Show>
+              </Show>
+            </>
+          }
+        >
+          <button
+            type="button"
+            class="mb-5 flex items-center gap-1.5 text-12-regular text-text-weak hover:text-text-strong"
+            onClick={() => navigate("/jobs")}
+          >
+            <Icon name="arrow-left" size="small" aria-hidden="true" />
+            Jobs
+          </button>
+
+          <Show when={selected()} fallback={<p class="text-14-regular text-text-weaker">Loading...</p>}>
+            {(job) => (
+              <>
+                <h1 class="text-20-medium text-text-strong">{job().description}</h1>
+                <p class="font-mono text-12-regular text-text-weaker mt-1 break-all">{job().command}</p>
+
+                <dl class="grid grid-cols-2 gap-x-6 gap-y-2 mt-5 mb-6 text-12-regular" data-slot="job-meta">
+                  <For
+                    each={[
+                      { term: "Status", value: label(job()), color: tone(job()) },
+                      { term: "Elapsed", value: elapsed(job(), ticker.now()) },
+                      { term: "Directory", value: job().directory },
+                      { term: "Session", value: job().sessionID },
+                    ]}
+                  >
+                    {(field) => (
+                      <div class="min-w-0">
+                        <dt class="text-text-weaker">{field.term}</dt>
+                        <dd class="truncate font-mono" style={{ color: field.color ?? "var(--text-base)" }}>
+                          {field.value}
+                        </dd>
+                      </div>
+                    )}
+                  </For>
+                </dl>
+
+                <h2 class="text-12-medium text-text-weaker uppercase tracking-wide mb-2">Output</h2>
+                <Switch>
+                  <Match when={log()?.output}>
+                    <pre
+                      data-slot="job-log"
+                      class="max-h-[60vh] overflow-auto rounded-md bg-surface-inset-base p-3 font-mono text-12-regular whitespace-pre-wrap break-all"
+                    >
+                      {log()!.output}
+                    </pre>
+                  </Match>
+                  <Match when={true}>
+                    <p class="text-14-regular text-text-weaker">
+                      {job().status === "running" ? "Nothing written yet." : "This job produced no output."}
+                    </p>
+                  </Match>
+                </Switch>
+              </>
+            )}
+          </Show>
+        </Show>
+      </div>
+    </div>
+  )
+}

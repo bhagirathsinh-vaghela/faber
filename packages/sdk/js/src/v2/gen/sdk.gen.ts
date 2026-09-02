@@ -73,6 +73,10 @@ import type {
   GlobalSubscribeResponses,
   GlobalWebReloadResponses,
   InstanceDisposeResponses,
+  JobGetErrors,
+  JobGetResponses,
+  JobListResponses,
+  JobLogResponses,
   LspStatusResponses,
   McpAddErrors,
   McpAddResponses,
@@ -4001,6 +4005,89 @@ export class Background extends HeyApiClient {
   }
 }
 
+export class Job extends HeyApiClient {
+  /**
+   * List background shell jobs
+   *
+   * Every background shell job on this machine, newest first.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<JobListResponses, unknown, ThrowOnError>({
+      url: "/job",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get a background shell job
+   *
+   * One job's record, with its output.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<JobGetResponses, JobGetErrors, ThrowOnError>({
+      url: "/job/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a job's output
+   *
+   * The tail of a job's log. The file is appended to while the job runs, so a viewer polls this for progress.
+   */
+  public log<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<JobLogResponses, unknown, ThrowOnError>({
+      url: "/job/{id}/log",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Control extends HeyApiClient {
   /**
    * Get next TUI request
@@ -4800,6 +4887,11 @@ export class OpencodeClient extends HeyApiClient {
   private _background?: Background
   get background(): Background {
     return (this._background ??= new Background({ client: this.client }))
+  }
+
+  private _job?: Job
+  get job(): Job {
+    return (this._job ??= new Job({ client: this.client }))
   }
 
   private _tui?: Tui

@@ -44,6 +44,7 @@ import { PermissionRoutes } from "./routes/permission"
 import { PreferenceRoutes } from "./routes/preference"
 import { GlobalRoutes } from "./routes/global"
 import { BackgroundRoutes } from "./routes/background"
+import { JobRoutes } from "./routes/job"
 import { DictationRoutes } from "./routes/dictation"
 import { TtsRoutes } from "./routes/tts"
 import { MDNS } from "./mdns"
@@ -288,6 +289,7 @@ export namespace Server {
         .route("/", FileRoutes())
         .route("/mcp", McpRoutes())
         .route("/background", BackgroundRoutes())
+        .route("/job", JobRoutes())
         .route("/tui", TuiRoutes())
         .post(
           "/instance/dispose",

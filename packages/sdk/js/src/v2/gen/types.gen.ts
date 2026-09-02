@@ -2759,6 +2759,29 @@ export type McpStatus =
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
 
+export type BackgroundJob = {
+  id: string
+  sessionID: string
+  directory: string
+  project?: string
+  command: string
+  description: string
+  status: "running" | "exited" | "killed" | "lost"
+  process?: {
+    pid: number
+    start: string
+    pgid: number
+  }
+  time: {
+    created: number
+    soft?: number
+    hard: number
+    completed?: number
+    notified?: number
+  }
+  exit?: number
+}
+
 export type Path = {
   home: string
   state: string
@@ -6355,6 +6378,87 @@ export type BackgroundToggleAutoInjectDefaultResponses = {
 
 export type BackgroundToggleAutoInjectDefaultResponse =
   BackgroundToggleAutoInjectDefaultResponses[keyof BackgroundToggleAutoInjectDefaultResponses]
+
+export type JobListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/job"
+}
+
+export type JobListResponses = {
+  /**
+   * List of jobs
+   */
+  200: Array<BackgroundJob>
+}
+
+export type JobListResponse = JobListResponses[keyof JobListResponses]
+
+export type JobGetData = {
+  body?: never
+  path: {
+    /**
+     * Job ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/job/{id}"
+}
+
+export type JobGetErrors = {
+  /**
+   * Job not found
+   */
+  404: unknown
+}
+
+export type JobGetResponses = {
+  /**
+   * Job and its output
+   */
+  200: {
+    job: BackgroundJob
+    output: string
+  }
+}
+
+export type JobGetResponse = JobGetResponses[keyof JobGetResponses]
+
+export type JobLogData = {
+  body?: never
+  path: {
+    /**
+     * Job ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    /**
+     * Return only the last N bytes, for a log that has grown large
+     */
+    limit?: number
+  }
+  url: "/job/{id}/log"
+}
+
+export type JobLogResponses = {
+  /**
+   * Log tail
+   */
+  200: {
+    output: string
+    size: number
+  }
+}
+
+export type JobLogResponse = JobLogResponses[keyof JobLogResponses]
 
 export type TuiAppendPromptData = {
   body?: {

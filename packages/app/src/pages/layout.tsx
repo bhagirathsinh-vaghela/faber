@@ -15,7 +15,7 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js"
-import { A, useNavigate, useParams } from "@solidjs/router"
+import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout, getAvatarColors, LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { Persist, persisted } from "@/utils/persist"
@@ -103,6 +103,7 @@ export default function Layout(props: ParentProps) {
   const recent = useRecent()
   const permission = usePermission()
   const navigate = useNavigate()
+  const routerLocation = useLocation()
   const providers = useProviders()
   const dialog = useDialog()
   const command = useCommand()
@@ -1112,6 +1113,13 @@ export default function Layout(props: ParentProps) {
     // route: a page that is not a session still needs a way back out of it.
     commands.push(
       {
+        id: "jobs.open",
+        title: language.t("command.jobs.open"),
+        category: language.t("command.category.view"),
+        keybind: "alt+j",
+        onSelect: () => toggleJobs(),
+      },
+      {
         id: "home.open",
         title: language.t("command.home.open"),
         category: language.t("command.category.session"),
@@ -1182,6 +1190,20 @@ export default function Layout(props: ParentProps) {
 
   function openSettings() {
     dialog.show(() => <DialogSettings />)
+  }
+
+  // A machine-scoped reading page a reader steps into from a session and
+  // expects to come back out of.
+  let jobsOrigin: string | undefined
+  function toggleJobs() {
+    if (routerLocation.pathname.startsWith("/jobs")) {
+      const back = jobsOrigin
+      jobsOrigin = undefined
+      navigate(back ?? "/")
+      return
+    }
+    jobsOrigin = `${routerLocation.pathname}${routerLocation.search}`
+    navigate("/jobs")
   }
 
   function navigateToProject(directory: string | undefined) {

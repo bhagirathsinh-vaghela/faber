@@ -7522,6 +7522,164 @@
         ]
       }
     },
+    "/job": {
+      "get": {
+        "operationId": "job.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List background shell jobs",
+        "description": "Every background shell job on this machine, newest first.",
+        "responses": {
+          "200": {
+            "description": "List of jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BackgroundJob"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.job.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/job/{id}": {
+      "get": {
+        "operationId": "job.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Job ID"
+          }
+        ],
+        "summary": "Get a background shell job",
+        "description": "One job's record, with its output.",
+        "responses": {
+          "200": {
+            "description": "Job and its output",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "$ref": "#/components/schemas/BackgroundJob"
+                    },
+                    "output": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "job",
+                    "output"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.job.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/job/{id}/log": {
+      "get": {
+        "operationId": "job.log",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Job ID"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Return only the last N bytes, for a log that has grown large"
+          }
+        ],
+        "summary": "Read a job's output",
+        "description": "The tail of a job's log. The file is appended to while the job runs, so a viewer polls this for progress.",
+        "responses": {
+          "200": {
+            "description": "Log tail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "output": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "output",
+                    "size"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.job.log({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/tui/append-prompt": {
       "post": {
         "operationId": "tui.appendPrompt",
@@ -9782,7 +9940,12 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["completed", "failed", "timeout", "running"]
+                "enum": [
+                  "completed",
+                  "failed",
+                  "timeout",
+                  "running"
+                ]
               },
               "exit": {
                 "type": "number"
@@ -9794,7 +9957,14 @@
                 "type": "number"
               }
             },
-            "required": ["jobId", "command", "description", "status", "log", "duration"]
+            "required": [
+              "jobId",
+              "command",
+              "description",
+              "status",
+              "log",
+              "duration"
+            ]
           },
           "time": {
             "type": "object",
@@ -15846,7 +16016,12 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["completed", "failed", "timeout", "running"]
+                "enum": [
+                  "completed",
+                  "failed",
+                  "timeout",
+                  "running"
+                ]
               },
               "exit": {
                 "type": "number"
@@ -15858,7 +16033,14 @@
                 "type": "number"
               }
             },
-            "required": ["jobId", "command", "description", "status", "log", "duration"]
+            "required": [
+              "jobId",
+              "command",
+              "description",
+              "status",
+              "log",
+              "duration"
+            ]
           },
           "time": {
             "type": "object",
@@ -16314,6 +16496,93 @@
           {
             "$ref": "#/components/schemas/MCPStatusNeedsClientRegistration"
           }
+        ]
+      },
+      "BackgroundJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "exited",
+              "killed",
+              "lost"
+            ]
+          },
+          "process": {
+            "type": "object",
+            "properties": {
+              "pid": {
+                "type": "number"
+              },
+              "start": {
+                "type": "string"
+              },
+              "pgid": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "pid",
+              "start",
+              "pgid"
+            ]
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "soft": {
+                "type": "number"
+              },
+              "hard": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              },
+              "notified": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "created",
+              "hard"
+            ]
+          },
+          "exit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "directory",
+          "command",
+          "description",
+          "status",
+          "time"
         ]
       },
       "Path": {

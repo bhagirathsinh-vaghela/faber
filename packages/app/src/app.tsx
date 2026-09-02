@@ -45,6 +45,7 @@ import { Suspense } from "solid-js"
 const sessionChunk = () => import("@/pages/session")
 const Home = lazy(() => import("@/pages/home"))
 const Session = lazy(sessionChunk)
+const Jobs = lazy(() => import("@/pages/jobs"))
 // The boot-time warm fetch is the request most likely to meet a flaky link, and
 // an unhandled rejection here would surface as a console error for a failure the
 // route load already retries on its own.
@@ -192,6 +193,16 @@ export function AppInterface(props: { defaultUrl?: string }) {
                 component={() => (
                   <Suspense fallback={<Loading />}>
                     <Home />
+                  </Suspense>
+                )}
+              />
+              {/* Jobs run on the machine, not inside a project: one page lists
+                  every one of them, whichever session started it. */}
+              <Route
+                path="/jobs/:id?"
+                component={() => (
+                  <Suspense fallback={<Loading />}>
+                    <Jobs />
                   </Suspense>
                 )}
               />
