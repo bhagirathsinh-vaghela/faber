@@ -2764,7 +2764,7 @@ export type BackgroundJobSummary = {
   sessionID: string
   command: string
   description: string
-  status: "running" | "exited" | "killed" | "lost"
+  status: "running" | "exited" | "killed"
   exit?: number
   time: {
     created: number
@@ -2783,7 +2783,7 @@ export type BackgroundJob = {
   project?: string
   command: string
   description: string
-  status: "running" | "exited" | "killed" | "lost"
+  status: "running" | "exited" | "killed"
   process?: {
     pid: number
     start: string

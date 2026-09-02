@@ -16515,7 +16515,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["running", "exited", "killed", "lost"]
+            "enum": [
+              "running",
+              "exited",
+              "killed"
+            ]
           },
           "exit": {
             "type": "number"
@@ -16542,10 +16546,20 @@
                 "type": "number"
               }
             },
-            "required": ["created", "hard"]
+            "required": [
+              "created",
+              "hard"
+            ]
           }
         },
-        "required": ["id", "sessionID", "command", "description", "status", "time"]
+        "required": [
+          "id",
+          "sessionID",
+          "command",
+          "description",
+          "status",
+          "time"
+        ]
       },
       "BackgroundJob": {
         "type": "object",
@@ -16573,8 +16587,7 @@
             "enum": [
               "running",
               "exited",
-              "killed",
-              "lost"
+              "killed"
             ]
           },
           "process": {

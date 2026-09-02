@@ -80,10 +80,18 @@ export const JobRoutes = lazy(() =>
         // The id is a time-ordered uuidv7, so it sorts by start time with no
         // separate comparison on the timestamps inside the record.
         const newest = jobs.sort((a, b) => (a.id > b.id ? -1 : 1))
+        // A result nobody received outlives the cap. It is kept on disk
+        // forever precisely because no one has read it, and dropping it out of
+        // the list once fifty newer jobs exist would leave it reachable only
+        // by an id nobody recorded. They cannot crowd the list: a lost result
+        // needs a session that no longer resolves, which is rare enough that
+        // production has never produced one.
+        const lost = newest.filter((job) => job.status !== "running" && job.time.lost)
         return c.json(
           [
             ...newest.filter((job) => job.status === "running"),
-            ...newest.filter((job) => job.status !== "running").slice(0, TAIL),
+            ...lost,
+            ...newest.filter((job) => job.status !== "running" && !job.time.lost).slice(0, TAIL),
           ].map(summarize),
         )
       },

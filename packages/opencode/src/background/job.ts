@@ -23,7 +23,11 @@ export namespace BackgroundJob {
 
   const PREFIX = ["background", "job"]
 
-  export const Status = z.enum(["running", "exited", "killed", "lost"])
+  // What the PROCESS did. Whether anyone read the result is a separate
+  // question, answered by `time.lost`: a result nobody received still came
+  // from a command that exited or was killed, and folding the two together
+  // gives a state that describes neither.
+  export const Status = z.enum(["running", "exited", "killed"])
   export type Status = z.infer<typeof Status>
 
   export const Info = z
@@ -67,6 +71,11 @@ export namespace BackgroundJob {
         // output is still on disk; what is gone is the session that asked for
         // it, so the stamp is what distinguishes a result nobody read from one
         // that was never produced.
+        //
+        // It records ONE attempt, not a verdict: the record settles before
+        // delivery is tried and a settled record is never reconciled again, so
+        // a momentary fault (lock contention, a full disk) is stamped the same
+        // as a session that will never exist again.
         lost: z.number().optional(),
       }),
       exit: z.number().optional(),

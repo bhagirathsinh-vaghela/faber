@@ -13,9 +13,18 @@ type Job = {
   project?: string
   command: string
   description: string
-  status: "running" | "exited" | "killed" | "lost"
+  status: "running" | "exited" | "killed"
   exit?: number
-  time: { created: number; soft?: number; hard: number; completed?: number; notified?: number }
+  // `lost` is when the result never reached the session that asked for it,
+  // which is not a property of the command: it ran, and its output is on disk.
+  time: {
+    created: number
+    soft?: number
+    hard: number
+    completed?: number
+    notified?: number
+    lost?: number
+  }
 }
 
 // How often the LIST is re-read. A row only changes when a job starts or ends,
@@ -35,16 +44,22 @@ function elapsed(job: Job, now: number) {
 
 // Green reads as "this went well", which a job that is merely still running has
 // not earned yet. Blue is the neutral in-progress colour used elsewhere.
+//
+// A result nobody received is checked FIRST and outranks a clean exit. The
+// command succeeding is the less useful half of that record: what a reader
+// needs to notice is that its output never reached the session that asked, and
+// a row saying "completed" hides exactly the class of record worth finding.
 function tone(job: Job) {
+  if (job.time.lost) return "var(--syntax-critical)"
   if (job.status === "running") return "var(--syntax-primitive)"
-  if (job.status === "killed" || job.status === "lost") return "var(--syntax-critical)"
+  if (job.status === "killed") return "var(--syntax-critical)"
   return job.exit === 0 ? "var(--syntax-string)" : "var(--syntax-critical)"
 }
 
 function label(job: Job) {
+  if (job.time.lost) return "never delivered"
   if (job.status === "running") return "running"
   if (job.status === "killed") return "timed out"
-  if (job.status === "lost") return "lost"
   return job.exit === 0 ? "completed" : `failed (exit ${job.exit})`
 }
 
