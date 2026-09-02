@@ -267,6 +267,18 @@ export namespace SessionRecent {
     }
   }
 
+  // A job this session started began or ended. The per-edge setter is what
+  // makes the flag land at the moment the job spawns rather than at the next
+  // sweep, which is five minutes away and would leave a short job invisible for
+  // its whole life.
+  export async function setBusyJob(sessionID: string, busyJob: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.busyJob === busyJob) return
+    entry.busyJob = busyJob
+    publish()
+  }
+
   // Derived from the job records, for the same reason busyHelper is derived
   // from the debts: a job outlives both the turn that started it and the
   // process that spawned it, so nothing held in memory has seen both ends. A

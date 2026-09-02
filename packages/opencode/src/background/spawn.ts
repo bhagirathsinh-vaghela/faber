@@ -1,5 +1,6 @@
 import fs from "fs/promises"
 import { Log } from "@/util/log"
+import { SessionRecent } from "@/session/recent"
 import { BackgroundJob } from "./job"
 import { BackgroundProcess } from "./process"
 
@@ -70,6 +71,12 @@ export namespace BackgroundSpawn {
       },
     }
     await BackgroundJob.write(job)
+    // Flagged at the START, not at the next sweep. The sweep runs every five
+    // minutes, so deriving the flag there alone leaves a session looking idle
+    // for most of a short job's life and for the whole of one that begins and
+    // ends between two passes. The sweep still derives it from disk, which is
+    // what corrects a flag this process never got to clear.
+    void SessionRecent.setBusyJob(input.sessionID, true)
 
     // Output goes to a FILE, never a pipe. A pipe dies with the process
     // holding it, so a server restart would sever a surviving job from its
@@ -150,6 +157,16 @@ export namespace BackgroundSpawn {
       draft.time.completed = completed
     })
     if (!claimed) return undefined
-    return BackgroundJob.get(id)
+    const settled = await BackgroundJob.get(id)
+    // Only the caller that settled clears the flag, and only when the session
+    // has nothing else running. A session with two jobs would otherwise stop
+    // showing one of them the moment the first finished.
+    if (settled) {
+      const running = await BackgroundJob.list().then((jobs) =>
+        jobs.some((job) => job.sessionID === settled.sessionID && job.status === "running"),
+      )
+      if (!running) void SessionRecent.setBusyJob(settled.sessionID, false)
+    }
+    return settled
   }
 }
