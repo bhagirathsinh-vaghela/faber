@@ -195,6 +195,25 @@ export namespace BackgroundJob {
     await fs.unlink(exitPath(id)).catch(() => {})
   }
 
+  // Stop a running job and settle its record. Returns undefined for an id
+  // nothing knows, so a caller can tell "no such job" from "killed it".
+  //
+  // A job whose pid no longer verifies is settled rather than signalled: it is
+  // already gone, or the number belongs to something else now.
+  export async function stop(id: string) {
+    const job = await get(id)
+    if (!job) return undefined
+    if (job.status !== "running") return job
+    if (job.process) await BackgroundProcess.kill(job.process)
+    const completed = Date.now()
+    await update(id, (draft) => {
+      draft.status = "killed"
+      draft.exit = undefined
+      draft.time.completed = completed
+    })
+    return get(id)
+  }
+
   // The exit code the job recorded for itself. Undefined means it has not
   // finished, or it was killed before it could write.
   export async function exit(id: string) {

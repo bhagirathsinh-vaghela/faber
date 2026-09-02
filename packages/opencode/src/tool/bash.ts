@@ -63,7 +63,11 @@ export const BashTool = Tool.define("bash", async () => {
       .replaceAll("${graceSeconds}", String(Math.round(BackgroundSpawn.GRACE_MS / 1000))),
     parameters: z
       .object({
-        command: z.string().describe("The command to execute"),
+        command: z.string().describe("The command to execute. Omit when killing a job.").optional(),
+        kill: z
+          .string()
+          .describe("A job_id to stop. The only way to end a background job before its timeout.")
+          .optional(),
         timeout: z
           .number()
           .describe("Milliseconds after which the job is killed. Defaults to 30 minutes.")
@@ -83,10 +87,30 @@ export const BashTool = Tool.define("bash", async () => {
       .strict(),
     async execute(params, ctx) {
       const cwd = params.workdir || Instance.directory
+
+      // Killing is a different verb, not a runtime outcome, so it takes the
+      // job id instead of a command and returns before any of the command
+      // machinery below.
+      if (params.kill) {
+        const stopped = await BackgroundJob.stop(params.kill)
+        const output = !stopped
+          ? `No job ${params.kill}. It may have finished and been cleaned up.`
+          : stopped.status === "killed"
+            ? `Killed job ${params.kill} and everything it spawned.`
+            : `Job ${params.kill} had already finished (exit ${stopped.exit ?? "unknown"}).`
+        return {
+          title: params.description,
+          metadata: { output, exit: undefined as number | undefined, description: params.description, job: params.kill },
+          output,
+        }
+      }
+
+      if (!params.command) throw new Error("Either command or kill is required.")
+      const command = params.command
       if (params.timeout !== undefined && params.timeout < 0) {
         throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
       }
-      const tree = await parser().then((p) => p.parse(params.command))
+      const tree = await parser().then((p) => p.parse(command))
       if (!tree) {
         throw new Error("Failed to parse command")
       }

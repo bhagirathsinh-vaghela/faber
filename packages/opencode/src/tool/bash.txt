@@ -31,6 +31,8 @@ Usage notes:
     Read or Grep to see progress at any point.
   - `timeout` (milliseconds) is the point at which a job is killed. It defaults to 30
     minutes. Raise it for something genuinely long, e.g. a soak or a large build.
+  - To stop a background job before then, call this tool with `kill` set to its job_id
+    and no command. That kills the job and everything it spawned.
   - Interactive commands do NOT work here: stdin is closed, so anything prompting for a
     password or confirmation fails immediately. Ask the user to run those in a terminal.
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
