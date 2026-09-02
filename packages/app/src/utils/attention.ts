@@ -1,12 +1,13 @@
 import { agentColor } from "./agent"
+import { busyBase, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
 
 export type Attention =
   | { kind: "error" }
   | { kind: "question"; tint: string }
   | { kind: "permission" }
-  // Busy is the only two-layer state: `tint` fills the base dot and `mixing`
-  // cross-fades the task accent over it, so call sites render both.
-  | { kind: "busy"; tint: string; mixing: boolean }
+  // Busy is the only layered state: `tint` fills the base dot and each entry in
+  // `overlays` cross-fades over it, so call sites render one dot per colour.
+  | { kind: "busy"; tint: string; overlays: string[] }
   | { kind: "unseen" }
 
 export type AttentionInput = {
@@ -16,12 +17,12 @@ export type AttentionInput = {
   busy?: boolean
   busySelf?: boolean
   busyDescendant?: boolean
+  busyHelper?: boolean
   unseen?: boolean
   agent?: string
 }
 
 export const AGENT_FALLBACK = "var(--icon-interactive-base)"
-export const TASK_ACCENT = "var(--box-accent-task)"
 
 export function agentTint(agent: string | undefined, custom: string | undefined) {
   if (!agent) return AGENT_FALLBACK
@@ -35,12 +36,15 @@ export function attention(input: AttentionInput, custom?: string): Attention | u
   if (input.error) return { kind: "error" }
   if (input.question) return { kind: "question", tint: agentTint(input.agent, custom) }
   if (input.permission) return { kind: "permission" }
-  if (input.busy)
-    return {
-      kind: "busy",
-      tint: input.busySelf ? agentTint(input.agent, custom) : TASK_ACCENT,
-      mixing: !!input.busySelf && !!input.busyDescendant,
+  if (input.busy) {
+    const facts = {
+      busySelf: !!input.busySelf,
+      busyDescendant: !!input.busyDescendant,
+      busyHelper: !!input.busyHelper,
     }
+    const agent = input.busySelf ? agentTint(input.agent, custom) : undefined
+    return { kind: "busy", tint: busyBase(facts, agent), overlays: busyOverlays(facts, agent) }
+  }
   if (input.unseen) return { kind: "unseen" }
   return undefined
 }

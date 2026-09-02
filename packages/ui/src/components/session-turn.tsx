@@ -32,6 +32,7 @@ import {
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { legacyInternal, Message, Part } from "./message-part"
+import { busyBase, busyDelay, busyOverlays } from "../util/busy-tint"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
@@ -409,13 +410,12 @@ export function SessionTurn(
   const busyFacts = createMemo(
     () => data.store.session_busy[props.sessionID] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
-  const busy = createMemo(() => busyFacts().busy)
+  const busy = createMemo(() => busyFacts().busy || busyFacts().busyHelper === true)
   const working = createMemo(() => busy() && isLastUserMessage())
-  // Three-state color table. No agent color in the ui context, so own-busy keeps
-  // the inherited currentColor; a child-only turn paints the spinner task-accent,
-  // and when BOTH run a task-accent copy cross-fades over the base.
-  const spinnerTint = createMemo(() => (busyFacts().busySelf ? undefined : "var(--box-accent-task)"))
-  const mixing = createMemo(() => busyFacts().busySelf && busyFacts().busyDescendant)
+  // No agent color in the ui context, so an own turn keeps the inherited
+  // currentColor rather than resolving a tint of its own.
+  const spinnerTint = createMemo(() => (busyFacts().busySelf ? undefined : busyBase(busyFacts(), undefined)))
+  const overlays = createMemo(() => busyOverlays(busyFacts(), undefined))
   const retry = createMemo(() => {
     // session_status is session-scoped; only show retry on the active (last) turn
     if (!isLastUserMessage()) return
@@ -746,16 +746,19 @@ export function SessionTurn(
                               <Match when={working()}>
                                 <span style={{ position: "relative", display: "inline-flex" }}>
                                   <Spinner style={{ color: spinnerTint() }} />
-                                  <Show when={mixing()}>
-                                    <Spinner
-                                      style={{
-                                        position: "absolute",
-                                        inset: 0,
-                                        color: "var(--box-accent-task)",
-                                        animation: "dock-task-fade 2.6s ease-in-out infinite",
-                                      }}
-                                    />
-                                  </Show>
+                                  <For each={overlays()}>
+                                    {(tint, index) => (
+                                      <Spinner
+                                        style={{
+                                          position: "absolute",
+                                          inset: 0,
+                                          color: tint,
+                                          animation: "dock-task-fade 2.6s ease-in-out infinite",
+                                          "animation-delay": busyDelay(index(), overlays().length),
+                                        }}
+                                      />
+                                    )}
+                                  </For>
                                 </span>
                               </Match>
                               <Match when={!props.stepsExpanded}>

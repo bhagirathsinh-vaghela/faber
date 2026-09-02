@@ -44,6 +44,7 @@ import { SessionReview } from "@opencode-ai/ui/session-review"
 import { Mark } from "@opencode-ai/ui/logo"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
+import { busyBase, busyDelay, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
 
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
@@ -867,19 +868,15 @@ export default function Page() {
   )
   // busy because a subtask runs (own turn may or may not also be running).
   const subtaskBusy = createMemo(() => busy().busyDescendant)
-  const titleWorking = createMemo(() => busy().busy)
+  // A helper session owing this one a report keeps the bar up too: work is
+  // still coming back, so the bar going dark would say the session is done.
+  const titleWorking = createMemo(() => busy().busy || busy().busyHelper === true)
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
   })
-  // Shared three-state color table (agent = own turn, task = child-only,
-  // agent↔task cross-fade = both). Base tint is the agent color only while the
-  // own turn runs; a child-only turn paints the base task-accent. The task
-  // overlay cross-fades in ONLY when both run.
-  const baseTint = createMemo(() =>
-    busy().busySelf ? (workingTint() ?? "var(--icon-interactive-base)") : "var(--box-accent-task)",
-  )
-  const mixing = createMemo(() => busy().busySelf && busy().busyDescendant)
+  const baseTint = createMemo(() => busyBase(busy(), workingTint()))
+  const overlays = createMemo(() => busyOverlays(busy(), workingTint()))
 
   createEffect(
     on(
@@ -2702,9 +2699,17 @@ export default function Page() {
                                       <Show when={titleWorking()}>
                                         <span class="mix-spinner size-[15px] shrink-0">
                                           <Spinner class="size-[15px]" style={{ color: baseTint() }} />
-                                          <Show when={mixing()}>
-                                            <Spinner class="mix-spinner-task size-[15px]" />
-                                          </Show>
+                                          <For each={overlays()}>
+                                            {(tint, index) => (
+                                              <Spinner
+                                                class="mix-spinner-overlay size-[15px]"
+                                                style={{
+                                                  "--overlay-tint": tint,
+                                                  "animation-delay": busyDelay(index(), overlays().length),
+                                                }}
+                                              />
+                                            )}
+                                          </For>
                                         </span>
                                       </Show>
                                       <h1 class="text-14-medium text-text-strong truncate" onDblClick={startRename}>
@@ -2901,9 +2906,17 @@ export default function Page() {
                   <div class="busy-bar-track">
                     <div class="busy-bar" style={{ "--stream-accent": baseTint() }}>
                       <span class="busy-bar-fill" />
-                      <Show when={mixing()}>
-                        <span class="busy-bar-fill busy-bar-fill-task" />
-                      </Show>
+                      <For each={overlays()}>
+                        {(tint, index) => (
+                          <span
+                            class="busy-bar-fill busy-bar-fill-overlay"
+                            style={{
+                              "--overlay-tint": tint,
+                              "animation-delay": `0s, ${busyDelay(index(), overlays().length)}`,
+                            }}
+                          />
+                        )}
+                      </For>
                     </div>
                   </div>
                 </div>

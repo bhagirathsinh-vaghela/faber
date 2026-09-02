@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useLocation, useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
@@ -16,6 +16,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { isStopKey, useStopSession } from "@/hooks/use-stop-session"
 import { attention, busy, flat } from "@/utils/attention"
+import { busyDelay } from "@opencode-ai/ui/util/busy-tint"
 
 function getFilename(dir: string) {
   const parts = dir.split("/").filter(Boolean)
@@ -154,9 +155,9 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
       </Show>
       <Show when={busy(state())}>
         {(dot) => (
-          // Base tint = the agent color when busySelf (own turn), else the task
-          // accent (child-only). A task-accent overlay cross-fades in when a
-          // subtask ALSO runs, so the tint oscillates agent↔task like the dock.
+          // One overlay per additional reason the session is busy, each
+          // cross-fading over the base so the dot's tint oscillates through
+          // every contributing colour, like the dock.
           <span
             data-slot="busy-dot"
             title={
@@ -170,9 +171,17 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
             style={{ "--busy-tint": dot().tint }}
           >
             <span class="busy-dot-fill" />
-            <Show when={dot().mixing}>
-              <span class="busy-dot-fill busy-dot-fill-task" />
-            </Show>
+            <For each={dot().overlays}>
+              {(tint, index) => (
+                <span
+                  class="busy-dot-fill busy-dot-fill-overlay"
+                  style={{
+                    "--overlay-tint": tint,
+                    "animation-delay": `0s, ${busyDelay(index(), dot().overlays.length)}`,
+                  }}
+                />
+              )}
+            </For>
           </span>
         )}
       </Show>

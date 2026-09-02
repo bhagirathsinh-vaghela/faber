@@ -38,6 +38,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
+import { busyBase, busyDelay, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -262,21 +263,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const busy = createMemo(
     () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
-  const working = createMemo(() => busy().busy)
+  // A helper session owing this one a report keeps the indicator up too: work
+  // is still coming back, so going dark would say the session is done.
+  const working = createMemo(() => busy().busy || busy().busyHelper === true)
   // Something is in the box worth sending — text draft or pending comments.
   const submittable = createMemo(() => prompt.dirty() || commentCount() > 0)
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
     return agent ? agentColor(agent.name, agent.color) : undefined
   })
-  // Shared three-state color table (agent = own turn, task = child-only,
-  // agent↔task cross-fade = both). The base tint is the agent color only while
-  // the own turn runs; a child-only turn paints the base itself task-accent.
-  // The task overlay cross-fades in ONLY when both are running.
-  const baseTint = createMemo(() =>
-    busy().busySelf ? (workingTint() ?? "var(--icon-interactive-base)") : "var(--box-accent-task)",
-  )
-  const mixing = createMemo(() => busy().busySelf && busy().busyDescendant)
+  const baseTint = createMemo(() => busyBase(busy(), workingTint()))
+  const overlays = createMemo(() => busyOverlays(busy(), workingTint()))
   const imageAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "image") as ImageAttachmentPart[],
   )
@@ -2433,19 +2430,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 not deleted) so it can be restored by dropping the `false &&`. */}
                 <Show when={false && working()}>
                   {/* Busy indicator: the spinner sits ON TOP of a soft, diffuse
-                  glow that pulses behind it. Base tint follows the three-state
-                  table (agent when own turn, task accent when child-only); when
-                  BOTH run, a task-accent copy of both layers cross-fades over the
-                  agent base so the tint oscillates between the two colors. */}
+                  glow that pulses behind it. Each additional reason the session
+                  is busy adds a copy of both layers in its own tint, cross-fading
+                  over the base so the color oscillates through all of them. */}
                   <span class="dock-working-indicator mr-2" style={{ "--dock-glow-tint": baseTint() }}>
                     <span data-slot="dock-working-glow" class="dock-working-glow" />
-                    <Show when={mixing()}>
-                      <span data-slot="dock-working-glow" class="dock-working-glow dock-working-glow-task" />
-                    </Show>
+                    <For each={overlays()}>
+                      {(tint, index) => (
+                        <span
+                          data-slot="dock-working-glow"
+                          class="dock-working-glow dock-working-glow-overlay"
+                          style={{ "--overlay-tint": tint, "animation-delay": busyDelay(index(), overlays().length) }}
+                        />
+                      )}
+                    </For>
                     <Spinner class="dock-working-spinner" style={{ color: baseTint() }} />
-                    <Show when={mixing()}>
-                      <Spinner class="dock-working-spinner dock-working-spinner-task" />
-                    </Show>
+                    <For each={overlays()}>
+                      {(tint, index) => (
+                        <Spinner
+                          class="dock-working-spinner dock-working-spinner-overlay"
+                          style={{ "--overlay-tint": tint, "animation-delay": busyDelay(index(), overlays().length) }}
+                        />
+                      )}
+                    </For>
                   </span>
                 </Show>
                 <Switch>

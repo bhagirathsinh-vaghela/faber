@@ -253,22 +253,24 @@
   }
 }
 
-/* Subtask overlay: task-accent-tinted copies of the glow and spinner sit exactly
-   on top of the agent-tinted base and fade in and out, so the visible tint
-   oscillates between the agent color and the task box accent. Opacity-only
-   animation (same Lightning CSS constraint as the glow pulse). */
-.dock-working-glow-task {
-  --dock-glow-tint: var(--box-accent-task);
+/* Overlay copies of the glow and spinner sit exactly on top of the base and
+   fade in and out, so the visible tint oscillates between the base color and
+   each overlay's. One overlay per additional reason the session is busy, each
+   carrying its own --overlay-tint and its own negative animation-delay, so N
+   colors divide the cycle instead of peaking together. Opacity-only animation
+   (same Lightning CSS constraint as the glow pulse). */
+.dock-working-glow-overlay {
+  --dock-glow-tint: var(--overlay-tint);
   animation: dock-task-fade 2.6s ease-in-out infinite;
 }
 
-.dock-working-indicator .dock-working-spinner-task {
+.dock-working-indicator .dock-working-spinner-overlay {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  color: var(--box-accent-task);
-  --dock-glow-tint: var(--box-accent-task);
+  color: var(--overlay-tint);
+  --dock-glow-tint: var(--overlay-tint);
   animation: dock-task-fade 2.6s ease-in-out infinite;
 }
 
@@ -288,8 +290,8 @@
     opacity: 0.8;
   }
 
-  .dock-working-glow-task,
-  .dock-working-indicator .dock-working-spinner-task {
+  .dock-working-glow-overlay,
+  .dock-working-indicator .dock-working-spinner-overlay {
     animation: none;
     opacity: 0.5;
   }
@@ -378,11 +380,12 @@
   }
 }
 
-/* Task-accent copy of the traveling band, cross-fading over the base while a
-   subtask runs, so the tint oscillates agent-color <-> task-accent like the
-   dock. It rides the same sweep, so both bands move in lockstep. */
-.busy-bar-fill-task {
-  --stream-accent: var(--box-accent-task);
+/* An overlay copy of the traveling band per additional busy reason, each in its
+   own --overlay-tint, cross-fading over the base so the bar's tint oscillates
+   through every contributing color. They ride the same sweep, so all the bands
+   move in lockstep. */
+.busy-bar-fill-overlay {
+  --stream-accent: var(--overlay-tint);
   animation:
     busy-bar-pulse 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate,
     dock-task-fade 2.6s ease-in-out infinite;
@@ -401,18 +404,18 @@
     opacity: 0.85;
   }
 
-  .busy-bar-fill-task {
+  .busy-bar-fill-overlay {
     opacity: 0.5;
   }
 }
 
 /* Busy dot, in the shared two-color language (dock/zen bar). The dot renders a
-   solid center in --busy-tint (own/warning when busySelf, else the task accent
-   for delegating-only), plus a radar-ping halo. When a session is busy for BOTH
-   reasons, a second task-accent halo cross-fades over the base so the tint
-   oscillates own↔task — same idiom as .dock-working-glow-task. Only opacity and
-   transform animate (dodges the Lightning CSS @keyframes-with-custom-properties
-   bug). --busy-tint is set inline on the dot element. */
+   solid center in --busy-tint, plus a radar-ping halo, and one further halo per
+   additional reason the session is busy, cross-fading over the base so the tint
+   oscillates through every contributing colour — same idiom as
+   .dock-working-glow-overlay. Only opacity and transform animate (dodges the
+   Lightning CSS @keyframes-with-custom-properties bug). --busy-tint is set
+   inline on the dot element. */
 [data-slot="busy-dot"] {
   background: var(--busy-tint, var(--icon-warning-base));
 }
@@ -432,11 +435,11 @@
   animation: busy-dot-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
-/* Task-accent halo overlaid on the base while a subtask ALSO runs; fades in and
-   out so the visible tint oscillates between the own color and the task accent,
-   matching the dock. Rides the same ping so both halos expand in lockstep. */
-.busy-dot-fill-task::after {
-  background: var(--box-accent-task);
+/* An overlay halo per additional busy reason, each in its own --overlay-tint,
+   fading in and out so the visible tint oscillates through every contributing
+   color. They ride the same ping, so all the halos expand in lockstep. */
+.busy-dot-fill-overlay::after {
+  background: var(--overlay-tint);
   animation:
     busy-dot-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite,
     dock-task-fade 2.6s ease-in-out infinite;
@@ -456,30 +459,30 @@
 
 @media (prefers-reduced-motion: reduce) {
   .busy-dot-fill::after,
-  .busy-dot-fill-task::after {
+  .busy-dot-fill-overlay::after {
     animation: none;
   }
 }
 
 /* Size-agnostic mixed spinner: a relative wrapper holds the base spinner (tinted
-   inline via the three-state table) and, when BOTH own turn and a subtask run, a
-   task-accent copy absolutely overlaid that cross-fades so the tint oscillates
-   agent↔task — same idiom as the dock, but not pinned to the dock's 23px box.
-   Used by the sidebar glyph, session title, and SessionTurn spinner. */
+   inline) and one absolutely-overlaid copy per additional busy reason, each
+   cross-fading in its own --overlay-tint so the tint oscillates through every
+   contributing color — same idiom as the dock, but not pinned to the dock's
+   23px box. Used by the sidebar glyph, session title, and SessionTurn spinner. */
 .mix-spinner {
   position: relative;
   display: inline-flex;
 }
 
-.mix-spinner-task {
+.mix-spinner-overlay {
   position: absolute;
   inset: 0;
-  color: var(--box-accent-task);
+  color: var(--overlay-tint);
   animation: dock-task-fade 2.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mix-spinner-task {
+  .mix-spinner-overlay {
     animation: none;
     opacity: 0.5;
   }

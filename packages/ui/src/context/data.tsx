@@ -21,8 +21,12 @@ type Data = {
   // The one operative busy state: busy = effective (own turn OR any subtask,
   // full subtree, rolled up server-side); busySelf = own turn only. Every busy
   // indicator reads this; busySelf picks own-vs-delegating animation.
+  //
+  // busyHelper is optional because it answers to a different clock: busy tracks
+  // turns in the server's own process, while a spawned helper's debt lives on
+  // disk, so a record written before the field existed simply lacks it.
   session_busy: {
-    [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }
+    [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean; busyHelper?: boolean }
   }
   session_diff: {
     [sessionID: string]: FileDiff[]

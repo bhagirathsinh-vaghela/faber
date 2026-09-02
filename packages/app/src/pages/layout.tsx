@@ -61,6 +61,7 @@ import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
+import { busyBase, busyDelay, busyOverlays } from "@opencode-ai/ui/util/busy-tint"
 import { useShell } from "@/utils/mobile"
 import { SidebarModeProvider, useSidebarMode } from "@/context/sidebar-mode"
 
@@ -1773,16 +1774,13 @@ export default function Layout(props: ParentProps) {
       () => sessionStore.session_busy[props.session.id] ?? { busy: false, busySelf: false, busyDescendant: false },
     )
     // A helper session owes this one a report. Not a turn in this session and
-    // not a subtask under it, so it spins in its own colour: a reader deciding
-    // whether to stop the session needs to see that work is still coming back
-    // to it, and either of the other two colours would say something untrue.
-    const helperWorking = createMemo(() => busyFacts().busyHelper === true)
+    // not a subtask under it, so it contributes its own colour: a reader
+    // deciding whether to stop the session needs to see that work is still
+    // coming back to it.
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
-      return busyFacts().busy || helperWorking()
+      return busyFacts().busy || busyFacts().busyHelper === true
     })
-    // Task-accent cross-fade shows only when BOTH own turn and a subtask run.
-    const mixing = createMemo(() => busyFacts().busySelf && busyFacts().busyDescendant)
 
     // Busy renders as the spinner above, so the dot only covers the flat states.
     const dotState = createMemo(() =>
@@ -1872,19 +1870,18 @@ export default function Layout(props: ParentProps) {
             <Switch fallback={<Icon name="dash" size="small" class="text-icon-weak" />}>
               <Match when={isWorking()}>
                 <span class="mix-spinner size-[15px]">
-                  <Spinner
-                    class="size-[15px]"
-                    style={{
-                      color: busyFacts().busySelf
-                        ? (tint() ?? "var(--icon-interactive-base)")
-                        : busyFacts().busyDescendant
-                          ? "var(--box-accent-task)"
-                          : "var(--box-accent-helper)",
-                    }}
-                  />
-                  <Show when={mixing()}>
-                    <Spinner class="mix-spinner-task size-[15px]" />
-                  </Show>
+                  <Spinner class="size-[15px]" style={{ color: busyBase(busyFacts(), tint()) }} />
+                  <For each={busyOverlays(busyFacts(), tint())}>
+                    {(overlay, index) => (
+                      <Spinner
+                        class="mix-spinner-overlay size-[15px]"
+                        style={{
+                          "--overlay-tint": overlay,
+                          "animation-delay": busyDelay(index(), busyOverlays(busyFacts(), tint()).length),
+                        }}
+                      />
+                    )}
+                  </For>
                 </span>
               </Match>
               <Match when={flat(dotState())}>
