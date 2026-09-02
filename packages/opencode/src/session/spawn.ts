@@ -225,9 +225,21 @@ export namespace SessionSpawn {
       // here, because the parent IS still waiting and the helper still has work
       // to do — clearing the flag would say otherwise, and stopping the helper
       // would end the turn about to produce the answer.
+      //
+      // ARCHIVED is the one case where never IS the answer. Archiving is how a
+      // helper is cut off, and an archived session runs no further turn, so it
+      // will never produce the text this pass is waiting for. Holding the debt
+      // open leaves the parent flagged as waiting on work that cannot arrive,
+      // and that flag outranks every other colour on the parent's spinner.
       const text = await here(() => summarize(sessionID, child.title))
       if (!text) {
-        await release()
+        if (child.time.archived === undefined) {
+          await release()
+          return
+        }
+        log.info("retiring a debt no archived helper can pay", { child: sessionID, parent: debt.parent })
+        void SessionRecent.setBusyHelper(debt.parent, false)
+        await here(() => clear(sessionID))
         return
       }
 

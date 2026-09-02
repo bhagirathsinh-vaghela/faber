@@ -182,6 +182,43 @@ describe("SessionSpawn", () => {
     })
   }, 20_000)
 
+  // Archiving is how a helper is cut off before it finishes, and an archived
+  // session runs no further turn — so the answer this pass is waiting for can
+  // never arrive. Holding the debt open leaves the parent flagged as waiting on
+  // work that cannot come, and that flag outranks every other colour on its
+  // spinner, so the parent reads as waiting on a helper forever.
+  test("a debt no archived helper can pay is retired", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+        await SessionRecent.touch({
+          sessionID: parent.id,
+          directory: tmp.path,
+          title: "waiting peer",
+          updated: Date.now(),
+        })
+        await SessionRecent.setBusyHelper(parent.id, true)
+
+        // Cut off with nothing written, which is what a stop leaves behind.
+        await Session.update(child.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+
+        SessionStatus.set(child.id, { type: "idle" })
+        await Bun.sleep(200)
+
+        expect((await Session.get(child.id)).spawn?.done).toBeNumber()
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(0)
+        const entry = (await SessionRecent.list()).find((row) => row.sessionID === parent.id)
+        expect(entry?.busyHelper).toBe(false)
+      },
+    })
+  }, 20_000)
+
   // A deleted parent and a parent that merely could not be resolved look
   // IDENTICAL from here — both are a lookup returning nothing. Since one of
   // those is recoverable and the other is not, the debt is kept either way: a
