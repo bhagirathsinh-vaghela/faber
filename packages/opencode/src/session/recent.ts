@@ -47,6 +47,13 @@ export namespace SessionRecent {
       // busySelf, lets the client pick own-only / both / delegating-only visuals
       // (busy+busySelf alone can't tell own-only from both).
       busyDescendant: z.boolean(),
+      // A spawned helper session owes this one a report and has not delivered
+      // it. Separate from busyDescendant, which walks parentID and so covers
+      // subtasks only: a helper is linked by its own spawn record, so nothing
+      // in the subtask chain knows it exists. Without this the parent looks
+      // idle while work it is waiting on is still running, and stopping it
+      // throws that work away.
+      busyHelper: z.boolean(),
       unseen: z.boolean(),
       // A question is pending an answer. Derived from the pending set rather
       // than counted, so a session with several open questions clears only when
@@ -99,6 +106,7 @@ export namespace SessionRecent {
         busy: false,
         busySelf: false,
         busyDescendant: false,
+        busyHelper: false,
         question: false,
         error: false,
         permission: false,
@@ -113,7 +121,7 @@ export namespace SessionRecent {
     timer = setTimeout(() => {
       timer = undefined
       const durable: Stored[] = sorted().map(
-        ({ busy, busySelf, busyDescendant, question, error, permission, pingAt, ...rest }) => rest,
+        ({ busy, busySelf, busyDescendant, busyHelper, question, error, permission, pingAt, ...rest }) => rest,
       )
       void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
@@ -167,7 +175,16 @@ export namespace SessionRecent {
   export async function touch(
     input: Omit<
       Entry,
-      "agent" | "busy" | "busySelf" | "busyDescendant" | "unseen" | "question" | "permission" | "error" | "pingAt"
+      | "agent"
+      | "busy"
+      | "busySelf"
+      | "busyDescendant"
+      | "busyHelper"
+      | "unseen"
+      | "question"
+      | "permission"
+      | "error"
+      | "pingAt"
     > & { agent?: string },
   ) {
     await hydrate()
@@ -179,6 +196,7 @@ export namespace SessionRecent {
       busy: prev?.busy ?? false,
       busySelf: prev?.busySelf ?? false,
       busyDescendant: prev?.busyDescendant ?? false,
+      busyHelper: prev?.busyHelper ?? false,
       unseen: prev?.unseen ?? false,
       question: prev?.question ?? false,
       permission: prev?.permission ?? false,
@@ -208,6 +226,18 @@ export namespace SessionRecent {
     entry.busy = busy
     entry.busySelf = busySelf
     entry.busyDescendant = busyDescendant
+    publish()
+  }
+
+  // A helper this session spawned started or finished owing it a report. Set
+  // apart from setBusy because the two answer to different clocks: busy tracks
+  // a turn in this process, while a helper's debt lives on disk and outlives
+  // any restart.
+  export async function setBusyHelper(sessionID: string, busyHelper: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.busyHelper === busyHelper) return
+    entry.busyHelper = busyHelper
     publish()
   }
 

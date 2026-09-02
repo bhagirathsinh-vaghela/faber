@@ -1710,6 +1710,10 @@
                   },
                   "permission": {
                     "$ref": "#/components/schemas/PermissionRuleset"
+                  },
+                  "spawnedBy": {
+                    "type": "string",
+                    "pattern": "^ses.*"
                   }
                 }
               }
@@ -8994,6 +8998,9 @@
           "busyDescendant": {
             "type": "boolean"
           },
+          "busyHelper": {
+            "type": "boolean"
+          },
           "unseen": {
             "type": "boolean"
           },
@@ -9021,6 +9028,7 @@
           "busy",
           "busySelf",
           "busyDescendant",
+          "busyHelper",
           "unseen",
           "question",
           "error",
@@ -12239,6 +12247,30 @@
           "parentID": {
             "type": "string",
             "pattern": "^ses.*"
+          },
+          "spawn": {
+            "type": "object",
+            "properties": {
+              "parent": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "directory": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "delivered": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": [
+              "parent",
+              "directory",
+              "at"
+            ]
           },
           "summary": {
             "type": "object",

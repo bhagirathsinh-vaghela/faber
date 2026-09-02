@@ -116,6 +116,15 @@ export namespace Session {
           parent: Identifier.schema("session"),
           directory: z.string(),
           at: z.number(),
+          // The message the report was written as, stamped once it exists.
+          //
+          // What makes delivery exactly-once rather than at-least-once. The
+          // debt has to outlive the write, or a crash mid-delivery loses the
+          // report with nothing left to retry it; but a debt that merely
+          // survives would be re-delivered by the next pass. A pass that finds
+          // this set knows the report already landed, so it retires the debt
+          // instead of writing a second copy.
+          delivered: Identifier.schema("message").optional(),
         })
         .optional(),
       summary: z
@@ -408,6 +417,7 @@ export namespace Session {
       cost: 0,
     }
     log.info("created", result)
+    if (input.spawnedBy) void SessionRecent.setBusyHelper(input.spawnedBy, true)
     await Storage.write(["session", Instance.project.id, result.id], result)
     indexed(result)
     Bus.publish(Event.Created, {

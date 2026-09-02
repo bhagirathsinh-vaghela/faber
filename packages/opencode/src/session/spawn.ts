@@ -1,5 +1,7 @@
 import { GlobalBus } from "@/bus/global"
+import { Scheduler } from "@/scheduler"
 import { Instance } from "@/project/instance"
+import { Storage } from "@/storage/storage"
 import { Identifier } from "@/id/id"
 import { Log } from "@/util/log"
 import { Session } from "./index"
@@ -7,6 +9,7 @@ import { SessionStatus } from "./status"
 import { SessionBusy } from "./busy"
 import { SessionPing } from "./ping"
 import { MessageV2 } from "./message-v2"
+import { SessionRecent } from "./recent"
 
 // Delivering a helper session's result to the peer that asked for it.
 //
@@ -45,9 +48,30 @@ export namespace SessionSpawn {
   // init would leave two listeners on it and deliver each result twice.
   let watching = false
 
+  // How often the debts are reconciled from disk. The idle event is the fast
+  // path; this is what makes a missed one survivable.
+  const SWEEP_MS = 60 * 1000
+
   export function init() {
     if (watching) return
     watching = true
+
+    // Level-triggered, because the event is not enough on its own. A helper
+    // killed mid-turn, one that crashed, one deleted before it finished, and
+    // one never prompted at all each leave a debt that no idle event will ever
+    // discharge, and a parent flagged for a helper that will never report shows
+    // a busy bar forever. This reads the debts off disk and decides each one
+    // from the helper's actual state, so a restart heals rather than strands.
+    //
+    // register() runs immediately as well as on the interval, so start-up gets
+    // a pass without a separate call.
+    Scheduler.register({
+      id: "session.spawn.reconcile",
+      interval: SWEEP_MS,
+      scope: "global",
+      run: () => reconcile(),
+    })
+
     GlobalBus.on("event", (event) => {
       if (event.payload?.type !== SessionStatus.Event.Idle.type) return
       const sessionID = event.payload.properties?.sessionID
@@ -55,6 +79,32 @@ export namespace SessionSpawn {
       void discharge(sessionID).catch((error) =>
         log.error("failed to deliver a spawned session's result", { sessionID, error }),
       )
+    })
+  }
+
+  // One pass over every outstanding debt, decided from the record rather than
+  // from an event having fired.
+  //
+  // Storage is read directly because this runs on a timer with no instance
+  // context, and a debt can belong to any project. Every verdict here ends the
+  // same way for the parent: either the result is delivered or the flag is
+  // cleared, so no pass can leave a bar with nothing behind it.
+  async function reconcile() {
+    const keys = await Storage.list(["session"]).catch(() => [])
+    for (const key of keys) {
+      const session = await Storage.read<Session.Info>(key).catch(() => undefined)
+      if (!session?.spawn) continue
+      // A helper mid-turn is working, and its idle event will discharge it.
+      if (SessionBusy.busy(session.id)) continue
+      await discharge(session.id).catch((error) =>
+        log.error("failed to reconcile a spawned session", { sessionID: session.id, error }),
+      )
+    }
+  }
+
+  function clear(sessionID: string) {
+    return Session.update(sessionID, (draft) => {
+      draft.spawn = undefined
     })
   }
 
@@ -66,19 +116,35 @@ export namespace SessionSpawn {
 
     const child = await Session.get(sessionID).catch(() => undefined)
     if (!child?.spawn) return
+    // Delivered by an earlier pass that crashed before retiring the debt. The
+    // report is already in the parent's transcript, so this attempt is the
+    // duplicate that at-least-once would otherwise produce, and it is dropped.
+    if (child.spawn.delivered) {
+      log.info("discarding a duplicate report", { child: sessionID, message: child.spawn.delivered })
+      void SessionRecent.setBusyHelper(child.spawn.parent, false)
+      await clear(sessionID)
+      return
+    }
 
-    // Cleared FIRST. A crash after the write costs one report; a crash before
-    // it would deliver the same result on every later idle.
+    // The debt OUTLIVES the delivery attempt and is cleared only once the
+    // report has landed. A crash between the two would otherwise lose a result
+    // for good: the next pass would find no debt and conclude there was nothing
+    // to send. Delivery is therefore at-least-once, and the duplicate that
+    // ordering admits is what `settling` and the busy check below rule out
+    // within a process.
     settling.add(sessionID)
     const debt = child.spawn
-    await Session.update(sessionID, (draft) => {
-      draft.spawn = undefined
-    })
 
     try {
       await Instance.provide({
         directory: debt.directory,
         fn: async () => {
+          // Cleared on EVERY path out of here, including the ones that deliver
+          // nothing: a parent left flagged for a helper that will never report
+          // shows a busy bar forever, and a signal that cannot clear is one a
+          // reader learns to ignore.
+          void SessionRecent.setBusyHelper(debt.parent, false)
+
           // The same teardown the Stop button performs, for the same reason: a
           // helper whose result has been delivered is finished, and a session
           // left warm for a peer that is no longer waiting pings a cache on
@@ -92,12 +158,26 @@ export namespace SessionSpawn {
 
           const parent = await Session.get(debt.parent).catch(() => undefined)
           if (!parent) {
+            // Nothing will ever receive this, so the debt is retired rather
+            // than retried on every pass forever.
             log.error("no session to report to", { child: sessionID, parent: debt.parent })
+            await clear(sessionID)
             return
           }
           const text = await summarize(sessionID, child.title)
+          // No answer YET is not the same as never: a helper that has been
+          // created but has not replied, or is between turns, still owes its
+          // report. The debt stays, and a later pass delivers once there is
+          // something to deliver.
           if (!text) return
-          await inject(debt.parent, text)
+          const messageID = await inject(debt.parent, text)
+          // Stamped BEFORE the debt is retired, so the window a crash can land
+          // in is one where the next pass sees a delivered report and discards
+          // its own attempt rather than writing a second copy.
+          await Session.update(sessionID, (draft) => {
+            if (draft.spawn) draft.spawn.delivered = messageID
+          })
+          await clear(sessionID)
           log.info("reported a spawned session's result", { child: sessionID, parent: debt.parent })
         },
       })
@@ -149,5 +229,6 @@ export namespace SessionSpawn {
       text,
       synthetic: true,
     })
+    return messageID
   }
 }

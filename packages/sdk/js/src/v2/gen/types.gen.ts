@@ -21,6 +21,7 @@ export type RecentSession = {
   busy: boolean
   busySelf: boolean
   busyDescendant: boolean
+  busyHelper: boolean
   unseen: boolean
   question: boolean
   error: boolean
@@ -978,6 +979,12 @@ export type Session = {
   projectID: string
   directory: string
   parentID?: string
+  spawn?: {
+    parent: string
+    directory: string
+    at: number
+    delivered?: string
+  }
   summary?: {
     additions: number
     deletions: number
@@ -3725,6 +3732,7 @@ export type SessionCreateData = {
     parentID?: string
     title?: string
     permission?: PermissionRuleset
+    spawnedBy?: string
   }
   path?: never
   query?: {
