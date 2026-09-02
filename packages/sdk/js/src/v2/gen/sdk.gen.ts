@@ -1213,6 +1213,7 @@ export class Session extends HeyApiClient {
       title?: string
       permission?: PermissionRuleset
       spawnedBy?: string
+      spawnedFrom?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1226,6 +1227,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "title" },
             { in: "body", key: "permission" },
             { in: "body", key: "spawnedBy" },
+            { in: "body", key: "spawnedFrom" },
           ],
         },
       ],

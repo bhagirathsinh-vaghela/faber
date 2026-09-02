@@ -166,6 +166,11 @@ export namespace SessionPing {
         fn: async () => {
           const session = await Session.get(entry.sessionID).catch(() => undefined)
           if (!session || session.parentID || !session.keepWarm || !warm(session)) return
+          // A helper stopped by its own discharge stays stopped. Its stop lands
+          // while its final message is still being written, so it reads as
+          // interrupted here — and resuming it would restart the turn that just
+          // ended and re-arm the daemon the discharge disarmed.
+          if (session.spawn?.done) return
           if (await interrupted(session.id)) return resume(session)
           start(session.id)
         },

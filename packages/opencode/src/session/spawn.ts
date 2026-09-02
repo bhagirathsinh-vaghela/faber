@@ -101,7 +101,9 @@ export namespace SessionSpawn {
     const owed = new Set<string>()
     for (const key of keys) {
       const session = await Storage.read<Session.Info>(key).catch(() => undefined)
-      if (!session?.spawn) continue
+      // A discharged record is kept for the resume path to read, so `done` is
+      // what retires a debt here; the record's mere presence no longer does.
+      if (!session?.spawn || session.spawn.done) continue
       owed.add(session.spawn.parent)
       // A helper mid-turn is working, and its idle event will discharge it.
       if (SessionBusy.busy(session.id)) continue
@@ -124,9 +126,16 @@ export namespace SessionSpawn {
     await SessionRecent.syncBusyHelper(owed)
   }
 
+  // Retires the debt WITHOUT erasing the record: `done` is what a later reader
+  // uses to tell a finished helper from an ordinary session. Removing the whole
+  // record leaves the two indistinguishable, and the supervisor's resume then
+  // sends a stopped helper a continue prompt, restarting its turn and re-arming
+  // the daemon the discharge had just disarmed.
   function clear(sessionID: string) {
     return Session.update(sessionID, (draft) => {
-      draft.spawn = undefined
+      if (!draft.spawn) return
+      draft.spawn.done = Date.now()
+      draft.spawn.claimed = undefined
     })
   }
 
@@ -137,7 +146,7 @@ export namespace SessionSpawn {
     if (SessionBusy.busy(sessionID)) return
 
     const child = await Session.get(sessionID).catch(() => undefined)
-    if (!child?.spawn) return
+    if (!child?.spawn || child.spawn.done) return
     // Delivered by an earlier pass that crashed before retiring the debt. The
     // report is already in the parent's transcript, so this attempt is the
     // duplicate that at-least-once would otherwise produce, and it is dropped.
@@ -177,56 +186,69 @@ export namespace SessionSpawn {
     }
     const debt = child.spawn
 
-    try {
-      await Instance.provide({
-        directory: debt.directory,
-        fn: async () => {
-          const parent = await Session.get(debt.parent).catch(() => undefined)
-          if (!parent) {
-            // Nothing will ever receive this, so the debt is retired rather
-            // than retried on every pass forever, and the helper is closed
-            // down along with it.
-            log.error("no session to report to", { child: sessionID, parent: debt.parent })
-            void SessionRecent.setBusyHelper(debt.parent, false)
-            await Session.stop({ sessionID })
-            await clear(sessionID)
-            return
-          }
-          const text = await summarize(sessionID, child.title)
-          // No answer YET is not the same as never: a helper that has been
-          // created but has not replied, or is between turns, still owes its
-          // report. Nothing is torn down on this path, because the parent IS
-          // still waiting and the helper still has work to do: clearing the
-          // flag here would say otherwise, and stopping the helper would end
-          // the turn that was about to produce the answer.
-          if (!text) {
-            // The claim is RELEASED, not held: this pass delivered nothing, and
-            // holding it would block every retry until the claim expired, which
-            // is the stall the window exists to bound rather than to cause.
-            await Session.update(sessionID, (draft) => {
-              if (draft.spawn) draft.spawn.claimed = undefined
-            })
-            return
-          }
+    // TWO projects, not one. A session resolves only under its own, and the
+    // helper and the peer waiting on it are not always in the same one — so the
+    // helper's own reads (its answer, its teardown) run under `child.directory`
+    // while the parent's (the lookup, the injected report) run under
+    // `debt.directory`. Running either in the other's project finds nothing.
+    const here = <T>(fn: () => Promise<T>) => Instance.provide({ directory: child.directory, fn })
+    const there = <T>(fn: () => Promise<T>) => Instance.provide({ directory: debt.directory, fn })
 
-          // Past here the report exists, so the helper is finished. The same
-          // teardown the Stop button performs, for the same reason: a session
-          // left warm for a peer that is no longer waiting pings a cache on
-          // nobody's behalf. Not a delete, since the transcript stays readable
-          // and the parent may still have a follow-up.
-          void SessionRecent.setBusyHelper(debt.parent, false)
-          await Session.stop({ sessionID })
-          const messageID = await inject(debt.parent, text)
-          // Stamped BEFORE the debt is retired, so the window a crash can land
-          // in is one where the next pass sees a delivered report and discards
-          // its own attempt rather than writing a second copy.
-          await Session.update(sessionID, (draft) => {
-            if (draft.spawn) draft.spawn.delivered = messageID
-          })
-          await clear(sessionID)
-          log.info("reported a spawned session's result", { child: sessionID, parent: debt.parent })
-        },
+    // Released rather than held: this pass delivered nothing, and holding the
+    // claim would block every retry until it expired, which is the stall the
+    // window exists to bound rather than to cause.
+    const release = () =>
+      here(() =>
+        Session.update(sessionID, (draft) => {
+          if (draft.spawn) draft.spawn.claimed = undefined
+        }),
+      )
+
+    try {
+      // A MISS IS NOT A DELETION. Reading an unresolved lookup as the user's
+      // intent destroys a report whose reader is alive and waiting, and stops
+      // the helper that produced it. The debt stays outstanding instead, the
+      // same way an unresolved job owner defers rather than reaps.
+      const parent = await there(() => Session.get(debt.parent).catch(() => undefined))
+      if (!parent) {
+        log.error("could not resolve the session to report to", {
+          child: sessionID,
+          parent: debt.parent,
+          directory: debt.directory,
+        })
+        await release()
+        return
+      }
+
+      // No answer YET is not the same as never: a helper created but not yet
+      // replying, or between turns, still owes its report. Nothing is torn down
+      // here, because the parent IS still waiting and the helper still has work
+      // to do — clearing the flag would say otherwise, and stopping the helper
+      // would end the turn about to produce the answer.
+      const text = await here(() => summarize(sessionID, child.title))
+      if (!text) {
+        await release()
+        return
+      }
+
+      // Past here the report exists, so the helper is finished. The same
+      // teardown the Stop button performs, for the same reason: a session left
+      // warm for a peer that is no longer waiting pings a cache on nobody's
+      // behalf. Not a delete, since the transcript stays readable and the parent
+      // may still have a follow-up.
+      void SessionRecent.setBusyHelper(debt.parent, false)
+      await here(() => Session.stop({ sessionID }))
+      const messageID = await there(() => inject(debt.parent, text))
+      // Stamped BEFORE the debt is retired, so the window a crash can land in is
+      // one where the next pass sees a delivered report and discards its own
+      // attempt rather than writing a second copy.
+      await here(async () => {
+        await Session.update(sessionID, (draft) => {
+          if (draft.spawn) draft.spawn.delivered = messageID
+        })
+        await clear(sessionID)
       })
+      log.info("reported a spawned session's result", { child: sessionID, parent: debt.parent })
     } finally {
       settling.delete(sessionID)
     }

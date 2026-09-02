@@ -983,6 +983,7 @@ export type Session = {
     parent: string
     directory: string
     at: number
+    done?: number
     claimed?: number
     delivered?: string
   }
@@ -3734,6 +3735,7 @@ export type SessionCreateData = {
     title?: string
     permission?: PermissionRuleset
     spawnedBy?: string
+    spawnedFrom?: string
   }
   path?: never
   query?: {

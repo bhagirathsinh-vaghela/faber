@@ -109,13 +109,24 @@ export namespace Session {
       // supervisor watching the child terminate, rather than the child being
       // asked to announce itself.
       //
-      // Cleared once discharged, which is what stops a child that goes idle
-      // repeatedly from reporting more than once.
+      // Retained after the report lands, stamped `done`, rather than removed.
+      // The record is the only durable evidence that this session is a finished
+      // helper, and a caller that restarts sessions has to be able to tell one
+      // apart from a session whose turn was merely interrupted.
       spawn: z
         .object({
           parent: Identifier.schema("session"),
           directory: z.string(),
           at: z.number(),
+          // Set once the report has landed and the helper has been stopped.
+          //
+          // A stop does not survive a restart on its own: nothing else on the
+          // record distinguishes "deliberately finished" from "idle right now",
+          // so a helper that was mid-delivery when the snapshot was taken reads
+          // as an interrupted turn and gets a continue prompt — which restarts
+          // the turn AND re-arms the ping daemon a prompt always arms. This is
+          // what a resume path checks to leave a finished helper alone.
+          done: z.number().optional(),
           // When a server took the right to deliver this report.
           //
           // Two servers share the store during a staged cutover, and each would
@@ -332,6 +343,10 @@ export namespace Session {
         // helper cannot exist for even one turn without the link that gets its
         // answer home.
         spawnedBy: Identifier.schema("session").optional(),
+        // Where that peer lives, when it is not this project. Defaults to the
+        // helper's own directory, which is right for the common case of a peer
+        // spawned alongside its spawner.
+        spawnedFrom: z.string().optional(),
       })
       .optional(),
     async (input) => {
@@ -341,6 +356,7 @@ export namespace Session {
         title: input?.title,
         permission: input?.permission,
         spawnedBy: input?.spawnedBy,
+        spawnedFrom: input?.spawnedFrom,
       })
     },
   )
@@ -400,6 +416,10 @@ export namespace Session {
     directory: string
     permission?: PermissionNext.Ruleset
     spawnedBy?: string
+    // The spawner's own directory, when it differs from the helper's. The debt
+    // resolves the parent under this, so a helper working in another project
+    // still reports home.
+    spawnedFrom?: string
   }) {
     const branch = Instance.project.vcs === "git" ? await Vcs.branch() : undefined
     const result: Info = {
@@ -414,8 +434,18 @@ export namespace Session {
       // Written with the record, so the debt is durable from the instant the
       // session exists: a crash before its first turn still leaves something
       // that knows who is waiting.
+      //
+      // `directory` is the PARENT's, since the only thing it is ever used for is
+      // resolving the parent to deliver into, and a session resolves under its
+      // own project. Recording the helper's own directory instead loses the
+      // report whenever the two differ: the lookup misses, and a miss is
+      // indistinguishable from a parent that no longer exists.
       ...(input.spawnedBy && {
-        spawn: { parent: input.spawnedBy, directory: input.directory, at: Date.now() },
+        spawn: {
+          parent: input.spawnedBy,
+          directory: input.spawnedFrom ?? input.directory,
+          at: Date.now(),
+        },
       }),
       branch,
       time: {

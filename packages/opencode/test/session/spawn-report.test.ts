@@ -93,7 +93,7 @@ describe("SessionSpawn", () => {
         await Bun.sleep(200)
 
         expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(1)
-        expect((await Session.get(child.id)).spawn).toBeUndefined()
+        expect((await Session.get(child.id)).spawn?.done).toBeNumber()
       },
     })
   }, 20_000)
@@ -147,15 +147,19 @@ describe("SessionSpawn", () => {
         SessionStatus.set(child.id, { type: "idle" })
         await Bun.sleep(200)
 
-        expect((await Session.get(child.id)).spawn).toBeUndefined()
+        expect((await Session.get(child.id)).spawn?.done).toBeNumber()
         expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(1)
       },
     })
   }, 20_000)
 
-  // A helper whose parent is gone will never deliver, so its debt is retired
-  // rather than retried on every pass for the life of the machine.
-  test("a helper whose parent is gone stops owing a report", async () => {
+  // A deleted parent and a parent that merely could not be resolved look
+  // IDENTICAL from here — both are a lookup returning nothing. Since one of
+  // those is recoverable and the other is not, the debt is kept either way: a
+  // retained debt for a parent that truly went away costs one skipped record per
+  // pass, while retiring on a failed lookup destroys a report whose reader is
+  // still waiting for it.
+  test("a helper whose parent is gone keeps its debt rather than destroying the report", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -169,7 +173,9 @@ describe("SessionSpawn", () => {
         SessionStatus.set(child.id, { type: "idle" })
         await Bun.sleep(200)
 
-        expect((await Session.get(child.id)).spawn).toBeUndefined()
+        const spawn = (await Session.get(child.id)).spawn
+        expect(spawn?.done).toBeUndefined()
+        expect(spawn?.claimed).toBeUndefined()
       },
     })
   }, 20_000)
@@ -200,7 +206,88 @@ describe("SessionSpawn", () => {
         await Bun.sleep(200)
 
         expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(1)
-        expect((await Session.get(child.id)).spawn).toBeUndefined()
+        expect((await Session.get(child.id)).spawn?.done).toBeNumber()
+      },
+    })
+  }, 20_000)
+
+  // The record OUTLIVES the debt it carried. It is the only durable evidence
+  // that this session is a finished helper rather than one whose turn happened
+  // to be interrupted, and a caller that restarts sessions decides between
+  // those two by reading it.
+  test("a discharged helper keeps a stamped record rather than losing it", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+
+        await answer(child.id, "the finding")
+        SessionStatus.set(child.id, { type: "idle" })
+        await Bun.sleep(200)
+
+        const spawn = (await Session.get(child.id)).spawn
+        expect(spawn?.parent).toBe(parent.id)
+        expect(spawn?.done).toBeNumber()
+        // Released with the debt: a claim left behind would be read as a
+        // delivery in progress by whatever next inspects the record.
+        expect(spawn?.claimed).toBeUndefined()
+      },
+    })
+  }, 20_000)
+
+  // `done` retires the debt on its OWN, without leaning on the delivered stamp
+  // beside it. A helper retired because its parent could not be found carries no
+  // stamp, so a path that only recognises `delivered` would run the whole
+  // delivery again the next time that helper went idle.
+  test("a helper retired without a delivered stamp is never delivered later", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+        await answer(child.id, "the finding")
+
+        // Exactly what the parent-gone path leaves behind: retired, with no
+        // report ever written and so nothing stamped.
+        await Session.update(child.id, (draft) => {
+          if (draft.spawn) draft.spawn.done = Date.now()
+        })
+
+        SessionStatus.set(child.id, { type: "idle" })
+        await Bun.sleep(200)
+
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(0)
+      },
+    })
+  }, 20_000)
+
+  // A retained record must not read as an outstanding debt, or the pass that
+  // heals a stranded report would re-deliver every discharged helper forever.
+  test("a discharged helper is not owed by the reconcile pass", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+
+        await answer(child.id, "the finding")
+        SessionStatus.set(child.id, { type: "idle" })
+        await Bun.sleep(200)
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(1)
+
+        await SessionSpawn.reconcile()
+        await SessionSpawn.reconcile()
+
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(1)
+        const entry = (await SessionRecent.list()).find((row) => row.sessionID === parent.id)
+        expect(entry?.busyHelper).toBe(false)
       },
     })
   }, 20_000)
@@ -238,6 +325,81 @@ describe("SessionSpawn", () => {
     })
   }, 20_000)
 
+  // A helper does its work wherever the job is, which is not always where the
+  // peer waiting on it lives. The debt resolves the parent under a recorded
+  // directory, and a session resolves only under its own project, so recording
+  // the helper's own directory loses every cross-project report.
+  test("a helper in another project still reports home", async () => {
+    await using home = await tmpdir({ git: true })
+    await using away = await tmpdir({ git: true })
+
+    const parent = await Instance.provide({
+      directory: home.path,
+      fn: async () => (await Session.create({ title: "waiting peer" })).id,
+    })
+
+    const child = await Instance.provide({
+      directory: away.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const helper = await Session.create({ title: "helper", spawnedBy: parent, spawnedFrom: home.path })
+        await answer(helper.id, "the cross-project finding")
+        SessionStatus.set(helper.id, { type: "idle" })
+        await Bun.sleep(200)
+        return helper.id
+      },
+    })
+
+    await Instance.provide({
+      directory: home.path,
+      fn: async () => {
+        const delivered = userTurns(await Session.messages({ sessionID: parent }))
+        expect(delivered.length).toBe(1)
+        const text = delivered[0].parts.find((part) => part.type === "text")
+        expect(text?.type === "text" && text.text).toContain("the cross-project finding")
+      },
+    })
+
+    await Instance.provide({
+      directory: away.path,
+      fn: async () => {
+        expect((await Session.get(child)).spawn?.done).toBeNumber()
+      },
+    })
+  }, 20_000)
+
+  // An unresolved parent is NOT an absent one. Retiring the debt on a lookup
+  // that merely failed destroys a report whose reader is alive and waiting, so
+  // the debt stays outstanding for a pass that can resolve it.
+  test("a debt whose parent cannot be resolved is kept, not destroyed", async () => {
+    await using home = await tmpdir({ git: true })
+    await using away = await tmpdir({ git: true })
+
+    const parent = await Instance.provide({
+      directory: home.path,
+      fn: async () => (await Session.create({ title: "waiting peer" })).id,
+    })
+
+    await Instance.provide({
+      directory: away.path,
+      fn: async () => {
+        SessionSpawn.init()
+        // The defective shape: the debt points at the parent but records the
+        // helper's own directory, so the parent cannot be resolved from here.
+        const helper = await Session.create({ title: "helper", spawnedBy: parent })
+        await answer(helper.id, "the finding")
+        SessionStatus.set(helper.id, { type: "idle" })
+        await Bun.sleep(200)
+
+        const spawn = (await Session.get(helper.id)).spawn
+        expect(spawn?.parent).toBe(parent)
+        expect(spawn?.done).toBeUndefined()
+        // Released, so the pass that can resolve the parent is free to try.
+        expect(spawn?.claimed).toBeUndefined()
+      },
+    })
+  }, 20_000)
+
   // The backstop, driven directly rather than through the idle event. Every
   // other test here reaches discharge from an idle, so stubbing the pass out
   // leaves them all green while the failures it exists to heal go unhealed.
@@ -261,7 +423,7 @@ describe("SessionSpawn", () => {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          expect((await Session.get(ids.child)).spawn).toBeUndefined()
+          expect((await Session.get(ids.child)).spawn?.done).toBeNumber()
           expect(userTurns(await Session.messages({ sessionID: ids.parent })).length).toBe(1)
         },
       })
@@ -339,7 +501,7 @@ describe("SessionSpawn", () => {
       directory: tmp.path,
       fn: async () => {
         expect(userTurns(await Session.messages({ sessionID: ids.parent })).length).toBe(1)
-        expect((await Session.get(ids.child)).spawn).toBeUndefined()
+        expect((await Session.get(ids.child)).spawn?.done).toBeNumber()
       },
     })
   }, 20_000)

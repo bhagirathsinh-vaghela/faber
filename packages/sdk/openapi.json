@@ -1714,6 +1714,9 @@
                   "spawnedBy": {
                     "type": "string",
                     "pattern": "^ses.*"
+                  },
+                  "spawnedFrom": {
+                    "type": "string"
                   }
                 }
               }
@@ -12259,6 +12262,9 @@
                 "type": "string"
               },
               "at": {
+                "type": "number"
+              },
+              "done": {
                 "type": "number"
               },
               "claimed": {

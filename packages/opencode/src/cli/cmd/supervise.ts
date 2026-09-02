@@ -173,12 +173,33 @@ export const SuperviseCommand = cmd({
           .then((r) => (r.ok ? r.json() : []))
           .catch(() => [])
       const [recent, pings] = await Promise.all([get("/global/recent"), get("/global/ping/armed")])
-      const busy = (recent as (SessionRef & { busy: boolean })[])
-        .filter((r) => r.busy)
-        .map((r) => ({ sessionID: r.sessionID, directory: r.directory }))
-      const busyIDs = new Set(busy.map((r) => r.sessionID))
+      // A finished helper is EXCLUDED, however busy it looks. Its discharge
+      // stops it while its own turn is still writing the final message, so the
+      // snapshot catches it mid-turn and a continue prompt would restart the
+      // turn that just ended AND re-arm the daemon (every prompt on a root
+      // session arms one). Resuming it is a resurrection, not a recovery.
+      const finished = await Promise.all(
+        (recent as (SessionRef & { busy: boolean })[])
+          .filter((r) => r.busy)
+          .map(async (r) => {
+            const session = await get(`/session/${r.sessionID}?directory=${encodeURIComponent(r.directory)}`).catch(
+              () => undefined,
+            )
+            const done = (session as { spawn?: { done?: number } } | undefined)?.spawn?.done
+            return { ref: { sessionID: r.sessionID, directory: r.directory }, done: done !== undefined }
+          }),
+      )
+      const busy = finished.filter((r) => !r.done).map((r) => r.ref)
+      // Excluded from BOTH lists. A finished helper is disarmed by its own
+      // discharge, so it should not appear in the armed registry at all — but
+      // re-arming one that raced its way in would restore exactly the daemon
+      // the discharge existed to stop.
+      const skip = new Set([
+        ...busy.map((r) => r.sessionID),
+        ...finished.filter((r) => r.done).map((r) => r.ref.sessionID),
+      ])
       const armed = (pings as SessionRef[])
-        .filter((r) => !busyIDs.has(r.sessionID))
+        .filter((r) => !skip.has(r.sessionID))
         .map((r) => ({ sessionID: r.sessionID, directory: r.directory }))
       return { busy, armed }
     }
