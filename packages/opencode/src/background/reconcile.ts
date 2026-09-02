@@ -160,8 +160,14 @@ export namespace BackgroundReconcile {
   // is caught by the next periodic pass.
   let watcher: FSWatcher | undefined
 
-  export function observe(onFinished: (id: string) => void | Promise<void>) {
+  export async function observe(onFinished: (id: string) => void | Promise<void>) {
     watcher?.close()
+    // The directory is created by the first job that runs, and this is called
+    // at boot, before any has. fs.watch throws ENOENT on a missing path, so a
+    // machine that has never spawned a job would not start: the port binds and
+    // the process dies before serving. Invisible to the suite, which always
+    // runs after some earlier test created it.
+    await BackgroundJob.init()
     watcher = watch(BackgroundJob.dir, (_event, name) => {
       if (!name || !name.endsWith(".exit")) return
       void onFinished(path.basename(name, ".exit"))

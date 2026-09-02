@@ -96,7 +96,7 @@ export namespace BackgroundOrchestrator {
     // 2. A job this server ADOPTED, whose handle died with the previous one.
     //    The exit file is the job's last act, so watching for it is both the
     //    notification and the exit code.
-    BackgroundReconcile.observe(async (id) => {
+    void BackgroundReconcile.observe(async (id) => {
       const job = await BackgroundJob.get(id)
       if (!job || job.status !== "running") return
       await sweep()
