@@ -13,19 +13,24 @@ function spawnJob(script: string) {
   return Bun.spawn({ cmd: ["sh", "-c", script], detached: true, stdio: ["ignore", "ignore", "ignore"] })
 }
 
-// A session the predicate REAPS: it resolves (so the answer is knowable), was
-// never armed, and is not in the recent list, which is `false` — the user let
-// it go. An id that does not resolve reads as undefined and is kept whatever
-// the window does, so a job stored under one cannot show the window working.
-async function reapable() {
+// A session that exists. It is idle, never armed, and absent from the recent
+// list — the shape of nearly every session on a real machine, and the one a
+// reap must never touch. `aliveFor` answers `true` for it.
+async function owned() {
   const tmp = await tmpdir({ git: true })
   const id = await Instance.provide({
     directory: tmp.path,
     fn: async () => (await Session.createNext({ directory: tmp.path, title: "orchestrator test" })).id,
   })
-  expect(await BackgroundOrchestrator.aliveFor(id, tmp.path)).toBe(false)
   return { id, directory: tmp.path }
 }
+
+// The `false` verdict, supplied directly. `aliveFor` never produces one: it
+// answers `true` for a session it can read and `undefined` for one it cannot,
+// so the reap belongs to a caller that knows something the predicate does not.
+// Reaching it through a stub is what keeps the reap tested without pretending
+// an idle session earns it.
+const gone = async () => false as const
 
 async function store(pid: number, owner: { id: string; directory: string }) {
   const live = (await BackgroundProcess.inspect(pid))!
@@ -111,7 +116,7 @@ describe("BackgroundOrchestrator: a job whose directory names another project", 
 describe("BackgroundJob.owner", () => {
   test("resolves under the project rather than where the command ran", async () => {
     const elsewhere = await tmpdir({ git: true })
-    const owner = await reapable()
+    const owner = await owned()
     expect(
       BackgroundJob.owner({
         id: BackgroundJob.id(),
@@ -146,7 +151,7 @@ describe("BackgroundJob.owner", () => {
   // ran somewhere that maps to a different project entirely.
   test("a job whose cwd is outside the project still resolves its session", async () => {
     const elsewhere = await tmpdir({ git: true })
-    const owner = await reapable()
+    const owner = await owned()
     const job: BackgroundJob.Info = {
       id: BackgroundJob.id(),
       sessionID: owner.id,
@@ -159,8 +164,33 @@ describe("BackgroundJob.owner", () => {
     }
 
     // Resolvable (a real verdict) under the owner, unknowable under the cwd.
-    expect(await BackgroundOrchestrator.aliveFor(job.sessionID, BackgroundJob.owner(job))).toBe(false)
+    expect(await BackgroundOrchestrator.aliveFor(job.sessionID, BackgroundJob.owner(job))).toBe(true)
     expect(await BackgroundOrchestrator.aliveFor(job.sessionID, job.directory)).toBeUndefined()
+  })
+
+  // An idle session is the ordinary case, not an abandoned one: its turn ended
+  // and its user reads the result when the job finishes, which is the whole
+  // reason a job outlives the turn that started it. A predicate keyed on
+  // activity answers `false` for nearly every session on a real machine.
+  test("a session that exists is kept, however idle", async () => {
+    const owner = await owned()
+    expect(await BackgroundOrchestrator.aliveFor(owner.id, owner.directory)).toBe(true)
+  })
+
+  // The end-to-end shape of the same rule: a live process owned by an idle
+  // session survives a full pass. The predicate above is what decides it, and a
+  // pass is what would have killed it.
+  test("a live job owned by an idle session survives a pass", async () => {
+    const owner = await owned()
+    const proc = spawnJob("sleep 30")
+    const job = await store(proc.pid, owner)
+
+    const pass = await BackgroundReconcile.run({ alive: BackgroundOrchestrator.aliveFor })
+
+    expect(pass.actions.find((action) => action.job.id === job.id)?.type).not.toBe("reaped")
+    expect(await BackgroundJob.get(job.id)).toBeDefined()
+    expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
+    proc.kill()
   })
 })
 
@@ -289,7 +319,7 @@ describe("BackgroundOrchestrator settle window", () => {
   // than a flag the boot path sets.
   test("defers ownership for any caller inside the window, not just the boot one", async () => {
     const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid, await reapable())
+    const job = await store(proc.pid, await owned())
 
     // No adopting flag: this is what the abort route's sweep looks like.
     await BackgroundOrchestrator.sweep()
@@ -302,7 +332,7 @@ describe("BackgroundOrchestrator settle window", () => {
 describe("BackgroundOrchestrator.sweep at boot", () => {
   test("adopts a job whose session cannot be resolved yet", async () => {
     const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid, await reapable())
+    const job = await store(proc.pid, await owned())
 
     await BackgroundOrchestrator.sweep({ adopting: true })
 
@@ -311,17 +341,18 @@ describe("BackgroundOrchestrator.sweep at boot", () => {
   }, 20_000)
 
   // The same record IS reaped once ownership is judged, which is what makes the
-  // two tests above say something: a fixture that survives every verdict would
-  // pass them whether or not the window defers anything.
+  // test above say something: a fixture that survives every verdict would pass
+  // it whether or not the window defers anything.
   //
-  // Driven through the reconciler with the ORCHESTRATOR'S OWN predicate rather
-  // than an injected `() => false`: the pair only holds if the same predicate
-  // that reaps here is the one the window is suppressing there.
+  // The verdict is injected, because the window suppresses the ANSWER rather
+  // than one predicate's opinion: `sweep({ adopting: true })` substitutes
+  // `() => true` for whatever it was given, so a `false` reaching the
+  // reconciler here is the same `false` the window swallows there.
   test("reaps that same job once ownership is judged", async () => {
     const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid, await reapable())
+    const job = await store(proc.pid, await owned())
 
-    const pass = await BackgroundReconcile.run({ alive: BackgroundOrchestrator.aliveFor })
+    const pass = await BackgroundReconcile.run({ alive: gone })
     const action = pass.actions.find((entry) => entry.job.id === job.id)
 
     expect(action?.type).toBe("reaped")

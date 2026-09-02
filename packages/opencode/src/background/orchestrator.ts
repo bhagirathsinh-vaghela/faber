@@ -1,7 +1,5 @@
-import { isAlive } from "@opencode-ai/util/session"
 import { Session } from "@/session"
 import { Instance } from "@/project/instance"
-import { SessionRecent } from "@/session/recent"
 import { Scheduler } from "@/scheduler"
 import { Log } from "@/util/log"
 import { BackgroundJob } from "./job"
@@ -44,20 +42,18 @@ export namespace BackgroundOrchestrator {
 
   // Whether a session could still read a result.
   //
-  // `isAlive` is the overview's predicate and answers "is this session working
-  // RIGHT NOW", which is not the same question. Its terms live in memory and
-  // are rebuilt after a restart, so during boot every session reads as not
-  // alive — including one whose turn is about to be resumed.
+  // The question is NOT "is this session working right now". A session sitting
+  // idle is the ordinary case: its turn ended, the user will read the result
+  // when the job finishes, and that is the whole point of a background job
+  // outliving the turn that started it. Reaping on inactivity destroys exactly
+  // the long-running work the design exists to protect.
   //
-  // What survives a restart is `keepWarm`, the persisted shadow of the user's
-  // intent. arm() writes it true, and it is cleared ONLY by a deliberate Stop
-  // (via SessionPing.stop, which the abort route alone calls). So it is exactly
-  // "has the user let this session go", which is the question a job's fate
-  // turns on.
-  //
-  // Both are consulted: live work counts even on a session that was never
-  // armed (ping can be disabled entirely), and persisted intent counts while
-  // the live view is still being rebuilt.
+  // So EXISTENCE is the predicate. A session on disk can be opened and read; a
+  // session that is gone cannot. `keepWarm` and `isAlive` both answer a
+  // different, narrower question — whether a ping daemon is armed and whether a
+  // turn is executing — and neither survives contact with an idle session:
+  // `disarm` clears keepWarm on the ordinary ping tail, not only on a deliberate
+  // Stop, so the flag means "armed right now" rather than "still wanted".
   //
   // The lookup runs inside the job's own directory. `Session.get` resolves its
   // project from an AsyncLocalStorage context, and a sweep reaches here from a
@@ -65,9 +61,10 @@ export namespace BackgroundOrchestrator {
   // provide it throws for every job.
   //
   // Undefined, not false, when the answer cannot be established: `false` here
-  // means "the user let this session go", which REAPS. A lookup that failed
-  // knows nothing about the user's intent, and reading it as intent is what
-  // turns an infrastructure error into a killed job.
+  // REAPS. A lookup that failed knows nothing about the user's intent, and
+  // reading it as intent is what turns an infrastructure error into a killed
+  // job. Nothing here returns `false` at all — a job whose session cannot be
+  // read is deferred, and the job's own hard deadline is what bounds it.
   export async function aliveFor(sessionID: string, directory: string): Promise<boolean | undefined> {
     return Instance.provide({
       directory,
@@ -78,10 +75,10 @@ export namespace BackgroundOrchestrator {
         // cleaned /tmp) finds nothing — and reading that as "the user deleted
         // this session" reaps a healthy job. Letting it throw carries it to the
         // outer catch as undefined, which is the honest answer: unknown.
-        const session = await Session.get(sessionID)
-        if (session.keepWarm) return true
-        const entry = (await SessionRecent.list()).find((row) => row.sessionID === sessionID)
-        return entry ? isAlive(entry) : false
+        await Session.get(sessionID)
+        // EXISTENCE is the whole predicate. A session on disk can be opened and
+        // read, whatever it is doing right now.
+        return true
       },
     }).catch(() => undefined)
   }
