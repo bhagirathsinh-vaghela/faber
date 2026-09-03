@@ -7,13 +7,13 @@ import { SessionRecent } from "./recent"
 // The parent's "waiting on a helper" flag, kept honest from the debts on disk.
 //
 // A spawned session carries a debt on its own record (`spawn.parent`, set at
-// spawn). Reporting is EXPLICIT: the child posts its result into the parent
-// over the API and, in the same step, stamps its own `spawn.done` (the
-// session.update route). The runtime does NOT infer completion from the
-// child going idle, because idle is ambiguous — a restart-aborted turn, a pause
-// between turns, and a genuine finish all look identical, and delivering on the
-// first would ship an interim message and stop the child before its real answer
-// exists. So the debt is retired only by the child saying so.
+// spawn). Reporting is EXPLICIT: the child calls the report route, which posts
+// its result into the parent AND stamps its own `spawn.done` in one call. The
+// runtime does NOT infer completion from the child going idle, because idle is
+// ambiguous — a restart-aborted turn, a pause between turns, and a genuine
+// finish all look identical, and delivering on the first would ship an interim
+// message and stop the child before its real answer exists. So the debt is
+// retired only by the child saying so.
 //
 // This pass reads the debts off disk and derives the parent flag from them: a
 // parent owed by a helper with no `done` shows the flag, one whose helpers have
