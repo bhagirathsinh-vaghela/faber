@@ -67,13 +67,22 @@ export namespace BackgroundReconcile {
     }
 
     // The job finished while nobody was watching, which is the ordinary case
-    // after a restart. Its output and exit code are already on disk.
+    // after a restart. Its output and exit code are already on disk. A job that
+    // ENDED past its own deadline was killed by its watchdog, not finished, so
+    // it settles `killed` (delivered as a timeout) the same way the live handle
+    // decides it — judged against when the exit file was written, not against
+    // this pass's clock, so a normal early finish reconciled long after its
+    // deadline is not misread as a timeout.
     if (verdict.type === "finished") {
-      const completed = await settle(job, "exited", verdict.exit, now)
+      const status = BackgroundJob.settledStatus(job.time.hard, await BackgroundJob.finishedAt(job.id))
+      const completed = await settle(job, status, verdict.exit, now)
       // Another pass settled it first and is delivering it, so this one keeps
       // the record and says nothing rather than delivering it twice.
       if (!completed) return { type: "kept", job }
-      return { type: "completed", job: completed, exit: verdict.exit }
+      const type = status === "killed" ? "expired" : "completed"
+      return type === "expired"
+        ? { type: "expired", job: completed }
+        : { type: "completed", job: completed, exit: verdict.exit }
     }
 
     // Still running, so the owner decides whether it may continue. A job whose

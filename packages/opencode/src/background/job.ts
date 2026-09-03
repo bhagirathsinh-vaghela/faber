@@ -338,6 +338,29 @@ export namespace BackgroundJob {
     return text.trim() === "" || Number.isNaN(code) ? undefined : code
   }
 
+  // When the job actually finished, read from the mtime of the exit file it
+  // wrote as its last act. The live handle knows this instant directly (its
+  // proc.exited resolves at it); a reconciling server that never held the
+  // handle recovers it here, so both paths judge a timeout against the SAME
+  // moment: when the job ended, not when a pass happened to notice. Undefined
+  // when the file is absent (the job was SIGKILLed before writing it).
+  export async function finishedAt(id: string) {
+    return Bun.file(exitPath(id))
+      .stat()
+      .then((s) => s.mtimeMs)
+      .catch(() => undefined)
+  }
+
+  // A job that ended AT OR PAST its hard deadline was stopped by its own
+  // watchdog, not by finishing, so it reads `killed` (delivered as a timeout)
+  // rather than `exited`. The one decision, shared by the live-handle settle and
+  // the reconcile settle, so the two paths cannot label the same timeout
+  // differently. `killed` only ever means "the deadline ended it": an unknown
+  // finish instant cannot prove that, so it stays `exited`.
+  export function settledStatus(hard: number, ended: number | undefined): Status {
+    return ended !== undefined && ended >= hard ? "killed" : "exited"
+  }
+
   export async function output(id: string) {
     return Bun.file(logPath(id))
       .text()

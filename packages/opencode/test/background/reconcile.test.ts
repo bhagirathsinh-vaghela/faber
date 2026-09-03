@@ -63,6 +63,49 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
     expect((await BackgroundJob.get(job.id))?.status).toBe("exited")
   })
 
+  // The recovery path the whole subsystem exists for: a job self-timed out via
+  // its own watchdog WHILE THE SERVER WAS DOWN, so its process is already gone
+  // and its exit file carries the watchdog's rc past the deadline. A reconciling
+  // server must call this a timeout, not a plain failure — the same verdict the
+  // live handle reaches, on the sibling path.
+  test("calls a job that self-timed-out while nobody watched a timeout, not a failure", async () => {
+    const proc = spawnJob("true")
+    const job = await store({
+      process: await identify(proc.pid),
+      time: { created: Date.now() - 7200_000, hard: Date.now() - 3600_000 },
+    })
+    await proc.exited
+    // The watchdog's exit code, written now — so the exit file's mtime is past
+    // the deadline set above, which is what marks the end as a timeout.
+    await Bun.write(BackgroundJob.exitPath(job.id), "143\n")
+
+    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+
+    expect(action?.type).toBe("expired")
+    expect((await BackgroundJob.get(job.id))?.status).toBe("killed")
+  })
+
+  // The false positive the mtime guards against: a job that finished NORMALLY
+  // before its deadline but is only reconciled long after it. Judging against a
+  // pass's own clock would call this a timeout; judging against when the job
+  // ended keeps it a clean completion.
+  test("keeps a normal early finish a completion, however late the pass runs", async () => {
+    const proc = spawnJob("true")
+    const job = await store({
+      process: await identify(proc.pid),
+      // Deadline far in the future, so the exit file written now ends well
+      // before it: a normal finish, not a timeout.
+      time: { created: Date.now(), hard: Date.now() + 3600_000 },
+    })
+    await proc.exited
+    await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
+
+    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+
+    expect(action?.type).toBe("completed")
+    expect((await BackgroundJob.get(job.id))?.status).toBe("exited")
+  })
+
   test("adopts a job still running inside its deadline and leaves it alone", async () => {
     const proc = spawnJob("sleep 30")
     const job = await store({ process: await identify(proc.pid) })
