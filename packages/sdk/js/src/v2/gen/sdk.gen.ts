@@ -200,6 +200,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionReportErrors,
+  SessionReportResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionSeenErrors,
@@ -1376,7 +1378,6 @@ export class Session extends HeyApiClient {
       }
       cacheProbeIndex?: number
       cacheProbeMessageID?: string
-      spawnDone?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1391,7 +1392,6 @@ export class Session extends HeyApiClient {
             { in: "body", key: "time" },
             { in: "body", key: "cacheProbeIndex" },
             { in: "body", key: "cacheProbeMessageID" },
-            { in: "body", key: "spawnDone" },
           ],
         },
       ],
@@ -1913,6 +1913,47 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionPromptAsyncResponses, SessionPromptAsyncErrors, ThrowOnError>({
       url: "/session/{sessionID}/prompt_async",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Report to a spawner
+   *
+   * Deliver a spawned helper's result into its spawner and, only once that message is durable, stamp the helper's own spawn.done. The two writes share one call so a restart cannot land between them and leave a delivered report with the debt still open, which would make a resumed helper deliver the report twice.
+   */
+  public report<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      parentID?: string
+      parentDirectory?: string
+      parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "parentID" },
+            { in: "body", key: "parentDirectory" },
+            { in: "body", key: "parts" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionReportResponses, SessionReportErrors, ThrowOnError>({
+      url: "/session/{sessionID}/report",
       ...options,
       ...params,
       headers: {

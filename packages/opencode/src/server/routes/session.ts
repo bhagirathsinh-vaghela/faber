@@ -3,6 +3,7 @@ import { stream } from "hono/streaming"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { Session } from "../../session"
+import { Identifier } from "../../id/id"
 import { MessageV2 } from "../../session/message-v2"
 import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
@@ -354,10 +355,6 @@ export const SessionRoutes = lazy(() =>
             .optional(),
           cacheProbeIndex: z.number().optional(),
           cacheProbeMessageID: z.string().optional(),
-          // A spawned helper retires its own debt when it reports: reporting is
-          // explicit, so the child is what marks the work delivered. Only the
-          // stamp is settable here; the parent link is written once at spawn.
-          spawnDone: z.boolean().optional(),
         }),
       ),
       async (c) => {
@@ -373,7 +370,6 @@ export const SessionRoutes = lazy(() =>
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
             if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
             if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID
-            if (updates.spawnDone && session.spawn) session.spawn.done = Date.now()
           },
           { touch: false },
         )
@@ -924,6 +920,72 @@ export const SessionRoutes = lazy(() =>
             void SessionPrompt.promptAsync({ ...body, sessionID }, resolve).catch(() => resolve())
           })
         })
+      },
+    )
+    .post(
+      "/:sessionID/report",
+      describeRoute({
+        summary: "Report to a spawner",
+        description:
+          "Deliver a spawned helper's result into its spawner and, only once that message is durable, stamp the helper's own spawn.done. The two writes share one call so a restart cannot land between them and leave a delivered report with the debt still open, which would make a resumed helper deliver the report twice.",
+        operationId: "session.report",
+        responses: {
+          200: {
+            description: "Report delivered and the helper's debt retired",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ delivered: z.boolean() })),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "The reporting helper's own session ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          parentID: Identifier.schema("session").meta({ description: "The spawner the report lands in" }),
+          // The spawner resolves only under its own project, which is not the
+          // helper's when the two live in different directories. The helper
+          // carries it on its spawn debt and passes it here.
+          parentDirectory: z.string().meta({ description: "The spawner's project directory" }),
+          parts: SessionPrompt.PromptInput.shape.parts,
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        // Deliver into the spawner under ITS directory, and wait for the message
+        // to be durable before returning: onPersisted is what fires once it is
+        // written, so awaiting it means the report has landed, not merely been
+        // accepted. A failure to resolve the spawner throws out of here and the
+        // stamp below never runs, so the helper's debt stays open and it retries
+        // cleanly.
+        await Instance.provide({
+          directory: body.parentDirectory,
+          fn: () =>
+            new Promise<void>((resolve, reject) => {
+              void SessionPrompt.promptAsync({ sessionID: body.parentID, parts: body.parts }, resolve).catch(reject)
+            }),
+        })
+        // The report is durable, so retire the helper's own debt in the same
+        // call. This is the whole point of the route: nothing runs between the
+        // durable delivery and the stamp, so no restart window can reopen the
+        // double-report the idempotent client guard only half-closes.
+        await Session.update(
+          sessionID,
+          (session) => {
+            if (session.spawn) session.spawn.done = Date.now()
+          },
+          { touch: false },
+        )
+        return c.json({ delivered: true })
       },
     )
     .post(

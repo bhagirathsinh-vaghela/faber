@@ -3924,7 +3924,6 @@ export type SessionUpdateData = {
     }
     cacheProbeIndex?: number
     cacheProbeMessageID?: string
-    spawnDone?: boolean
   }
   path: {
     sessionID: string
@@ -4564,6 +4563,54 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
+
+export type SessionReportData = {
+  body?: {
+    /**
+     * The spawner the report lands in
+     */
+    parentID: string
+    /**
+     * The spawner's project directory
+     */
+    parentDirectory: string
+    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+  }
+  path: {
+    /**
+     * The reporting helper's own session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/report"
+}
+
+export type SessionReportErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionReportError = SessionReportErrors[keyof SessionReportErrors]
+
+export type SessionReportResponses = {
+  /**
+   * Report delivered and the helper's debt retired
+   */
+  200: {
+    delivered: boolean
+  }
+}
+
+export type SessionReportResponse = SessionReportResponses[keyof SessionReportResponses]
 
 export type SessionCommandData = {
   body?: {
