@@ -642,8 +642,7 @@ describe("SessionSpawn", () => {
           draft.spawn = { parent: a.id, directory: tmp.path, at: Date.now() }
         })
 
-        const bounded = <T>(work: Promise<T>) =>
-          Promise.race([work, Bun.sleep(4000).then(() => "TIMEOUT" as const)])
+        const bounded = <T>(work: Promise<T>) => Promise.race([work, Bun.sleep(4000).then(() => "TIMEOUT" as const)])
 
         expect(await bounded(MessageV2.lastVariant(solo.id))).toBeUndefined()
         expect(await bounded(MessageV2.lastVariant(a.id))).toBeUndefined()

@@ -27,6 +27,7 @@ import {
   QuestionInfo,
 } from "@opencode-ai/sdk/v2"
 import { legacyInternal, typed } from "../util/internal"
+import { stripJobResult, stripTaskMeta, stripTaskResult } from "../util/envelope"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
@@ -336,55 +337,6 @@ function jobLabel(status: string): string {
   if (status === "running") return "JOB RUNNING"
   if (status === "failed") return "JOB FAILED"
   return "JOB DONE"
-}
-
-function stripTaskMeta(text: string): string {
-  return text
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim()
-      // The opaque IDs carry nothing a reader can act on. Everything else
-      // (agent, toolset, summary, status, duration) is surfaced as styled
-      // fields, so it comes OUT of the raw body and renders as UI instead.
-      if (trimmed.startsWith("task_id:")) return false
-      if (trimmed.startsWith("session_id:")) return false
-      if (trimmed.startsWith("Background task started:")) return false
-      if (trimmed.startsWith("agent:")) return false
-      if (trimmed.startsWith("toolset:")) return false
-      if (trimmed.startsWith("summary:")) return false
-      if (trimmed.startsWith("type: subagent")) return false
-      if (trimmed.startsWith("status:")) return false
-      if (trimmed.startsWith("duration:")) return false
-      if (trimmed === "Results will be delivered when the task completes.") return false
-      return true
-    })
-    .join("\n")
-    .trim()
-}
-
-function stripTaskResult(text: string): string {
-  const match = text.match(/<background-task-result>([\s\S]*?)<\/background-task-result>/)
-  return stripTaskMeta(match ? match[1] : text)
-}
-
-// A job's header lines, every one of which the card shows as a styled field.
-// Leaving them in the body would print each twice.
-function stripJobResult(text: string): string {
-  const match = text.match(/<background-job-result>([\s\S]*?)<\/background-job-result>/)
-  return (match ? match[1] : text)
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim()
-      if (trimmed.startsWith("job_id:")) return false
-      if (trimmed.startsWith("command:")) return false
-      if (trimmed.startsWith("status:")) return false
-      if (trimmed.startsWith("exit:")) return false
-      if (trimmed.startsWith("duration:")) return false
-      if (trimmed.startsWith("log:")) return false
-      return true
-    })
-    .join("\n")
-    .trim()
 }
 
 function stripTaskOutput(text: string): string {
