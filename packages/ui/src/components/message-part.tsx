@@ -28,6 +28,7 @@ import {
 } from "@opencode-ai/sdk/v2"
 import { legacyInternal, typed } from "../util/internal"
 import { stripJobResult, stripTaskMeta, stripTaskResult } from "../util/envelope"
+import { jobAccent, jobGlyph, jobLabel, jobStatusColor } from "../util/job-status"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
@@ -301,42 +302,11 @@ function taskResultPart(parts: PartType[]): TextPart | undefined {
 }
 
 const TASK_ACCENT = "var(--box-accent-task)"
-// A shell job carries its own accent so it is not read as a subagent task at a
-// glance: one ran a command, the other reasoned.
-const JOB_ACCENT = "var(--box-accent-job)"
-
 function taskAccent(status: string): string {
   // `--syntax-critical` rather than `--color-text-error`, which is unset in the
   // shipped themes: an unresolvable accent leaves the box drawing its default
   // white border, so a failed task read as an ordinary message.
   return status === "failed" ? "var(--syntax-critical)" : TASK_ACCENT
-}
-
-// `--syntax-critical` rather than a `--color-*-error` token: those are unset in
-// the shipped themes, and an unresolvable accent leaves the box drawing its
-// default white border, which reads as an ordinary message.
-function jobAccent(status: string): string {
-  if (status === "failed" || status === "timeout") return "var(--syntax-critical)"
-  if (status === "running") return "var(--syntax-constant)"
-  return JOB_ACCENT
-}
-
-// Icon and word together, since colour alone excludes a reader who cannot
-// distinguish it. Each status keeps one glyph everywhere it appears.
-function jobGlyph(status: string): string {
-  if (status === "failed") return "✗"
-  if (status === "timeout") return "⏱"
-  if (status === "running") return "◐"
-  return "✓"
-}
-
-// A timeout is a distinct outcome from a command that failed on its own, and a
-// reader acts differently on each, so it is named rather than folded in.
-function jobLabel(status: string): string {
-  if (status === "timeout") return "JOB TIMED OUT"
-  if (status === "running") return "JOB RUNNING"
-  if (status === "failed") return "JOB FAILED"
-  return "JOB DONE"
 }
 
 function stripTaskOutput(text: string): string {
@@ -360,14 +330,6 @@ function TaskDot() {
 function taskStatusColor(status: string): string {
   if (status === "failed") return "var(--syntax-critical)"
   if (status === "cancelled") return "var(--text-weak)"
-  return "var(--syntax-string)"
-}
-
-function jobStatusColor(status: string): string {
-  if (status === "failed" || status === "timeout") return "var(--syntax-critical)"
-  // A check-in reports a job still going, so it must not wear the colour that
-  // means finished.
-  if (status === "running") return "var(--syntax-constant)"
   return "var(--syntax-string)"
 }
 

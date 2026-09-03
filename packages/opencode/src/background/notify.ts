@@ -28,7 +28,7 @@ export namespace BackgroundNotify {
     return text
       .replace(/\r\n?/g, "\n")
       .replace(/(\n[ \t]*)+/g, "\n")
-      .replace(/^\n|\n$/g, "")
+      .replace(/^\n+|\n+$/g, "")
   }
 
   // The envelope the model reads. Its own tag, distinct from a subagent
