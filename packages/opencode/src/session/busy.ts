@@ -1,7 +1,9 @@
 import { Liveness } from "@/project/liveness"
 import { Instance } from "@/project/instance"
 import { Bus } from "@/bus"
+import { GlobalBus } from "@/bus/global"
 import { BusEvent } from "@/bus/bus-event"
+import { Event as ServerEvent } from "@/server/event"
 import { SessionRecent } from "./recent"
 import z from "zod"
 
@@ -124,11 +126,26 @@ export namespace SessionBusy {
     const f = facts(directory, sessionID)
     void SessionRecent.setBusy(sessionID, f.busy, f.busySelf, f.busyDescendant)
     Liveness.setBusy(directory, sessionID, f.busy)
-    // TUI channel: publish the per-session transition on change only. Drop the
-    // cache entry when fully idle so the map can't grow without bound.
+    // Per-session transition, published on change only. Drop the cache entry
+    // when fully idle so the map can't grow without bound.
     const prev = working.get(sessionID)
     if (!prev || prev.busy !== f.busy || prev.busySelf !== f.busySelf || prev.busyDescendant !== f.busyDescendant) {
+      // TUI channel: the plain Bus reaches the terminal's /event stream.
       Bus.publish(Event.Working, { sessionID, busy: f.busy, busySelf: f.busySelf, busyDescendant: f.busyDescendant })
+      // Web channel: the same edge, as a single-entry session.busy frame the web
+      // client's handler already writes to its store. Stamped "global" (like
+      // recent.updated) because that handler lives only in the client's global
+      // dispatch branch; the entry carries its own directory for store routing.
+      // This makes a directly-opened subtask's indicator edge-triggered like a
+      // root's, rather than waiting for the 5s reconcile tick. Rides the same
+      // transition guard, so it fires once per busy on/off, not per step.
+      GlobalBus.emit("event", {
+        directory: "global",
+        payload: {
+          type: ServerEvent.Busy.type,
+          properties: { sessions: { [sessionID]: { directory, busy: f.busy, busySelf: f.busySelf, busyDescendant: f.busyDescendant } } },
+        },
+      })
       if (f.busy) working.set(sessionID, { busy: f.busy, busySelf: f.busySelf, busyDescendant: f.busyDescendant })
       else working.delete(sessionID)
     }

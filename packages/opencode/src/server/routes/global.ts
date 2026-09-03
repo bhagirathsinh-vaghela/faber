@@ -313,12 +313,17 @@ export const GlobalRoutes = lazy(() =>
             if (!busy && !busyActive) return
             busyActive = busy
             const sessions = SessionBusy.subtreeSnapshot(scope.sessionID, scope.directory)
-            // Stamp directory so the client routes this into that directory's
-            // store (each entry also carries it); without it the frame defaults
-            // to "global" and would still hit the global handler branch, but the
-            // stamp keeps parity with how Bus.publish tags directory.
+            // Send on the "global" channel, like recent.updated: the client's
+            // `session.busy` handler lives ONLY in the `directory === "global"`
+            // dispatch branch, so a frame stamped with the real directory routes
+            // to the per-directory handler, which has no case for it, and is
+            // dropped. Each session entry carries its own directory, so per-entry
+            // store routing is unaffected. A root also gets busy via the "global"
+            // recent hub, but a directly-opened subtask (not in the hub) has this
+            // tick as its only channel — stamping the real directory hid its
+            // indicators entirely.
             void send({
-              directory: scope.directory,
+              directory: "global",
               payload: { type: ServerEvent.Busy.type, properties: { sessions } },
             })
           }, 5000)
