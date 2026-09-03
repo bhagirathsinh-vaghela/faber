@@ -4573,6 +4573,42 @@ export type SessionPromptAsyncResponses = {
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
 
+export type SessionRestoreData = {
+  body?: never
+  path: {
+    /**
+     * The parent session to resume
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/restore"
+}
+
+export type SessionRestoreErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionRestoreError = SessionRestoreErrors[keyof SessionRestoreErrors]
+
+export type SessionRestoreResponses = {
+  /**
+   * Resume accepted
+   */
+  204: void
+}
+
+export type SessionRestoreResponse = SessionRestoreResponses[keyof SessionRestoreResponses]
+
 export type SessionCommandData = {
   body?: {
     messageID?: string

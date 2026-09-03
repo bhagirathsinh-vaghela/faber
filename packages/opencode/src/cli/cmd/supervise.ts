@@ -2,7 +2,6 @@ import { spawn, type Subprocess } from "bun"
 import os from "os"
 import path from "path"
 import { cmd } from "./cmd"
-import { SessionPing } from "../../session/ping"
 
 // Supervisor for the long-lived OpenCode server: a small outer shell that owns
 // the serve process so it can be restarted from a browser with no terminal.
@@ -188,14 +187,15 @@ export const SuperviseCommand = cmd({
     async function resume(sessions: SessionRef[]) {
       const results = []
       for (const s of sessions) {
+        // The restore route resumes the session AND its restart-cut subtasks as a
+        // unit, then prompts the parent with the continue text that tells it the
+        // subtasks are alive. The supervisor does not build the prompt or know the
+        // subtask graph; that is server-side, where the disk state lives.
         const res = await fetch(
-          `http://127.0.0.1:${PORT}/session/${s.sessionID}/prompt_async?directory=${encodeURIComponent(s.directory)}`,
+          `http://127.0.0.1:${PORT}/session/${s.sessionID}/restore?directory=${encodeURIComponent(s.directory)}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            // Synthetic: this is the supervisor talking, not the user. It must
-            // not count as one of the session's prompts nor describe it.
-            body: JSON.stringify({ parts: [{ type: "text", text: SessionPing.CONTINUE_TEXT, synthetic: true }] }),
             signal: AbortSignal.timeout(10000),
           },
         ).catch(() => null)

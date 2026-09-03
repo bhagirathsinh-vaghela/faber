@@ -123,17 +123,26 @@ export namespace SessionPing {
     return !!base && base + CACHE_TTL > Date.now()
   }
 
-  // Only the parent turn is resumed, and nothing it was waiting on comes back.
-  // A subtask runs as its own session nothing relaunches; a pending question or
-  // permission is a promise map that died with the process; a tool mid-execute is
-  // left as an orphaned running part. All of it is the same fact from the model's
-  // side (a call it made that can no longer return), so the prompt states it once
-  // rather than enumerating causes. Without being told, the parent waits forever
-  // on work that is already dead.
-  export const CONTINUE_TEXT =
-    "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing." +
-    " Anything that was in flight is gone and will never return a result: a subtask you launched, a question or permission you were waiting on, a tool call part-way through." +
-    " Redo whatever still matters."
+  // What a resumed parent is told about the restart. A question or permission it
+  // was blocked on is a promise map that died with the process, and a tool
+  // mid-execute is an orphaned running part, so both are gone and it must redo
+  // them. A SUBTASK is different: when the parent comes back, its restart-cut
+  // subtasks are resumed with it as a unit, so the prompt must tell the parent
+  // they are ALIVE and to wait for their injection rather than re-launch the
+  // work. When no subtask came back, it keeps the "gone, redo" framing. The
+  // count decides which clause, so the parent's belief matches what restore
+  // actually did.
+  export function continueText(subtasks: number) {
+    const head =
+      "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing."
+    const dead =
+      " A question or permission you were waiting on, or a tool call part-way through, is gone and will never return — redo whatever still matters."
+    const alive =
+      subtasks === 1
+        ? " The subtask you launched was resumed too and will report its result back as before, so do NOT re-launch it; wait for it as you were."
+        : ` The ${subtasks} subtasks you launched were resumed too and will report their results back as before, so do NOT re-launch them; wait for them as you were.`
+    return head + dead + (subtasks > 0 ? alive : "")
+  }
 
   // A turn that never reached its own completion stamp. Every ordinary ending
   // writes one — a clean finish, an error, and a user Stop alike (the abort
@@ -141,7 +150,7 @@ export namespace SessionPing {
   // holding the turn: a reboot, a crash, a kill. That makes this the discriminator
   // the supervisor cannot supply after a reboot, when the memory it snapshots
   // busy state from died with the machine.
-  async function interrupted(sessionID: string) {
+  export async function interrupted(sessionID: string) {
     for await (const msg of MessageV2.stream(sessionID)) {
       if (msg.info.role !== "assistant") continue
       return !msg.info.time.completed
@@ -158,7 +167,7 @@ export namespace SessionPing {
   // restores nothing — correctly, since neither a daemon nor a resumed turn has
   // a warm cache left to act on. It also keeps the blast radius honest, because
   // the persisted intent accumulates across every session ever left warm.
-  export async function restore(resume: (session: Session.Info) => Promise<void>) {
+  export async function restore(resume: (session: Session.Info, subtasks: number) => Promise<void>) {
     const entries = await SessionRecent.list()
     for (const entry of entries) {
       await Instance.provide({
@@ -166,8 +175,19 @@ export namespace SessionPing {
         fn: async () => {
           const session = await Session.get(entry.sessionID).catch(() => undefined)
           if (!session || session.parentID || !session.keepWarm || !warm(session)) return
+          // Resume the parent's restart-cut subtasks whenever the parent is
+          // restored, cut or not: a subtask under a parent that finished its own
+          // turn is still work worth recovering, and its injection simply wakes
+          // the idle parent. The warm /restore path does the same, so both entry
+          // points agree. Dynamic import breaks the tool/task -> session cycle.
+          const { resumeSubtasks } = await import("@/tool/task")
+          const subtasks = await resumeSubtasks(session.id)
           const cut = await interrupted(session.id)
-          if (cut) return resume(session)
+          // The continue prompt goes only to a parent whose OWN turn was cut: it
+          // is the one that might re-issue, so it needs telling the subtasks are
+          // alive and to wait. A non-cut parent is idle and re-issues nothing;
+          // the subtask injection wakes it on its own.
+          if (cut) return resume(session, subtasks)
           start(session.id)
         },
       }).catch((e) => log.error("restore failed", { sessionID: entry.sessionID, error: e }))

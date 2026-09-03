@@ -923,6 +923,51 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
+      "/:sessionID/restore",
+      describeRoute({
+        summary: "Resume a session after a restart",
+        description:
+          "Resume a root session whose turn a restart cut off, together with the subtasks it had in flight. The subtasks come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subtask graph.",
+        operationId: "session.restore",
+        responses: {
+          204: {
+            description: "Resume accepted",
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "The parent session to resume" }),
+        }),
+      ),
+      async (c) => {
+        c.status(204)
+        c.header("Content-Type", "application/json")
+        return stream(c, async () => {
+          const sessionID = c.req.valid("param").sessionID
+          const { resumeSubtasks } = await import("../../tool/task")
+          const subtasks = await resumeSubtasks(sessionID)
+          // Only a parent whose OWN turn was cut gets the continue prompt: it is
+          // the one that might re-issue and so must be told its subtasks are
+          // alive. A parent that is busy only because of a running descendant has
+          // no interrupted turn to continue; prompting it would start a spurious
+          // one. Its resumed subtasks inject and wake it on their own.
+          if (!(await SessionPing.interrupted(sessionID))) return
+          await new Promise<void>((resolve) => {
+            void SessionPrompt.promptAsync(
+              {
+                sessionID,
+                parts: [{ type: "text", text: SessionPing.continueText(subtasks), synthetic: true }],
+              },
+              resolve,
+            ).catch(() => resolve())
+          })
+        })
+      },
+    )
+    .post(
       "/:sessionID/command",
       describeRoute({
         summary: "Send command",

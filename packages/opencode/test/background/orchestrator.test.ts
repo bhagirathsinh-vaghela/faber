@@ -413,9 +413,7 @@ describe("BackgroundOrchestrator.nudgeAll", () => {
       directory: owner.directory,
       fn: async () => {
         const messages = await Session.messages({ sessionID: owner.id })
-        return messages.flatMap((message) =>
-          message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])),
-        )
+        return messages.flatMap((message) => message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])))
       },
     })
     const checkins = texts.filter((text) => text.includes("still running after"))

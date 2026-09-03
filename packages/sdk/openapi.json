@@ -3430,6 +3430,62 @@
         ]
       }
     },
+    "/session/{sessionID}/restore": {
+      "post": {
+        "operationId": "session.restore",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "The parent session to resume"
+          }
+        ],
+        "summary": "Resume a session after a restart",
+        "description": "Resume a root session whose turn a restart cut off, together with the subtasks it had in flight. The subtasks come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subtask graph.",
+        "responses": {
+          "204": {
+            "description": "Resume accepted"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.restore({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/command": {
       "post": {
         "operationId": "session.command",

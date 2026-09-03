@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { BackgroundTask } from "../../background"
-import { acceptPendingResult, acceptAllPending } from "../../tool/task"
+import { acceptPendingResult, acceptAllPending, subtasksForSession } from "../../tool/task"
 import { lazy } from "../../util/lazy"
 
 export const BackgroundRoutes = lazy(() =>
@@ -32,7 +32,12 @@ export const BackgroundRoutes = lazy(() =>
       ),
       async (c) => {
         const query = c.req.valid("query")
-        return c.json(BackgroundTask.list(query.sessionID))
+        // For one session, derive from the durable child sessions so the list
+        // survives a restart and cannot double-count a resumed child. The
+        // unfiltered list has no parent to walk children under, so it stays the
+        // in-memory view (a diagnostic, not the dialog's source).
+        if (query.sessionID) return c.json(await subtasksForSession(query.sessionID))
+        return c.json(BackgroundTask.list())
       },
     )
     .get(

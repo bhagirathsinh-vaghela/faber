@@ -200,6 +200,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionRestoreErrors,
+  SessionRestoreResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionSeenErrors,
@@ -1918,6 +1920,36 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Resume a session after a restart
+   *
+   * Resume a root session whose turn a restart cut off, together with the subtasks it had in flight. The subtasks come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subtask graph.
+   */
+  public restore<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionRestoreResponses, SessionRestoreErrors, ThrowOnError>({
+      url: "/session/{sessionID}/restore",
+      ...options,
+      ...params,
     })
   }
 

@@ -29,10 +29,10 @@ export const ServeCommand = cmd({
     // scan must not hold the port unserved, and a client attaching mid-scan only
     // re-arms a session the scan then skips.
     if (args.restore)
-      void SessionPing.restore(async (session) => {
+      void SessionPing.restore(async (session, subtasks) => {
         await SessionPrompt.prompt({
           sessionID: session.id,
-          parts: [{ type: "text", text: SessionPing.CONTINUE_TEXT, synthetic: true }],
+          parts: [{ type: "text", text: SessionPing.continueText(subtasks), synthetic: true }],
         }).catch(() => {})
       })
     // Background jobs outlive the server that spawned them, so EVERY start

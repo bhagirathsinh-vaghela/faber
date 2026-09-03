@@ -24,6 +24,11 @@ interface BackgroundSubagentInput {
   agent: Agent.Info
   model: { modelID: string; providerID: string }
   promptParts: Awaited<ReturnType<typeof SessionPrompt.resolvePromptParts>>
+  // A resumed subtask MUST inject its result even when the parent's auto-inject
+  // resolves off: the restart wiped the per-session setting, and the parent was
+  // told to WAIT for this injection rather than re-launch, so queueing it as a
+  // pending result would strand it behind a parent that never asks.
+  forceInject?: boolean
 }
 
 async function runSubagentInBackground(input: BackgroundSubagentInput) {
@@ -78,7 +83,7 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
 
     BackgroundTask.complete(task.id, "completed", { output: text })
 
-    await injectCompletionResult(task, text)
+    await injectCompletionResult(task, text, undefined, input.forceInject)
   } catch (error) {
     progressUnsub()
     abort.signal.removeEventListener("abort", handleCancel)
@@ -97,13 +102,13 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
 
     BackgroundTask.complete(task.id, "failed", { output: "", error: errorMsg })
 
-    await injectCompletionResult(task, "", errorMsg)
+    await injectCompletionResult(task, "", errorMsg, input.forceInject)
   }
 }
 
-async function injectCompletionResult(task: BackgroundTask.Info, output: string, error?: string) {
+async function injectCompletionResult(task: BackgroundTask.Info, output: string, error?: string, force?: boolean) {
   const duration = (task.time.completed ?? Date.now()) - task.time.created
-  const autoInject = await BackgroundTask.getAutoInject(task.parentSessionID)
+  const autoInject = force || (await BackgroundTask.getAutoInject(task.parentSessionID))
 
   // If autoInject is disabled, queue the result instead
   if (!autoInject) {
@@ -283,6 +288,121 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
   }
 
   return pending.length
+}
+
+// Resume the subtasks a restart cut off under a parent that is itself being
+// resumed. The parent and its in-flight subtask come back as a UNIT, so the
+// parent's continue prompt can promise the subtask is alive and the parent then
+// waits for the injection rather than re-launching the work.
+//
+// The BackgroundTask record that linked a subtask to its parent lived in memory
+// and died with the restart, so this rebuilds it from the child session's
+// persisted state: the parent is the caller, the description is the child's
+// title, and the agent/model come off the child's own last real user message
+// (the same inheritance a fresh subtask resolves). The child is then re-driven
+// through the ordinary subagent wrapper with a continue prompt, so completing
+// injects into the parent exactly as an uninterrupted subtask would have.
+//
+// Returns how many subtasks were resumed, so the caller can tell the parent.
+export async function resumeSubtasks(parentSessionID: string): Promise<number> {
+  // Dynamic import: ping.ts dynamically imports this module, so a static import
+  // back would close the cycle.
+  const { SessionPing } = await import("../session/ping")
+  const children = await Session.children(parentSessionID)
+  let resumed = 0
+  for (const child of children) {
+    if (!(await SessionPing.interrupted(child.id))) continue
+
+    const messages = await Session.messages({ sessionID: child.id })
+    const lastUser = messages.findLast((m) => m.info.role === "user" && !m.info.synthetic)?.info as
+      | MessageV2.User
+      | undefined
+    // No resolvable model means the re-drive would throw and deliver a failed
+    // result: skip it rather than resume into a guaranteed failure. A task-tool
+    // subtask always carries a model on its prompt, so this only guards a
+    // malformed child.
+    if (!lastUser?.model) {
+      log.error("cannot resume subtask, no model on record", { child: child.id })
+      continue
+    }
+    const model = lastUser.model
+    const agentName = lastUser.agent ?? "build"
+    const agent = await Agent.get(agentName).catch(() => undefined)
+    if (!agent) {
+      log.error("cannot resume subtask, agent gone", { child: child.id, agent: agentName })
+      continue
+    }
+
+    const { task, abort } = BackgroundTask.create({
+      parentSessionID,
+      type: "subagent",
+      description: child.title,
+      subagent: { sessionID: child.id, agent: agentName, prompt: "", model },
+    })
+
+    // A continue prompt, not the original: the child resumes its cut-off turn
+    // rather than re-running its instructions from the top. The same wrapper
+    // carries the completion into an injection for the parent.
+    const promptParts = await SessionPrompt.resolvePromptParts(SUBTASK_RESUME_TEXT)
+    void runSubagentInBackground({ task, abort, session: child, agent, model, promptParts, forceInject: true })
+    resumed++
+    log.info("resumed interrupted subtask", { child: child.id, parent: parentSessionID })
+  }
+  return resumed
+}
+
+export const SUBTASK_RESUME_TEXT =
+  "Pardon the interruption — the server restarted and your turn was cut off. Continue what you were doing and finish the task you were given; your result is still awaited by the session that launched you."
+
+// The subtasks of a session, durable across a restart. The in-memory
+// BackgroundTask store is lost on restart, so a dialog reading it alone shows
+// nothing that ran before the restart and can double-count a child whose task
+// was recreated by a resume. The child SESSIONS are durable (on disk, linked by
+// parentID), so this is the source of truth: every subagent child is a subtask,
+// keyed by its session id, and an in-memory task for that child (which carries
+// live progress and the result) overrides the disk-derived shell when present.
+//
+// Status comes off the child's last assistant turn: no message yet is pending,
+// a turn still open is running, a finished turn is completed. This is a
+// projection, so it is rebuilt from disk every call rather than mutated.
+export async function subtasksForSession(parentSessionID: string): Promise<BackgroundTask.Info[]> {
+  const live = new Map(
+    BackgroundTask.list(parentSessionID)
+      .filter((t) => t.subagent?.sessionID)
+      .map((t) => [t.subagent!.sessionID, t] as const),
+  )
+  const children = await Session.children(parentSessionID)
+  const result: BackgroundTask.Info[] = []
+  for (const child of children) {
+    const held = live.get(child.id)
+    if (held) {
+      result.push(held)
+      continue
+    }
+    const messages = await Session.messages({ sessionID: child.id })
+    const assistants = messages.filter((m) => m.info.role === "assistant")
+    const last = assistants.at(-1)?.info as MessageV2.Assistant | undefined
+    const lastUser = messages.findLast((m) => m.info.role === "user" && !m.info.synthetic)?.info as
+      | MessageV2.User
+      | undefined
+    const status: BackgroundTask.Status = last === undefined ? "running" : last.time.completed ? "completed" : "running"
+    result.push({
+      id: child.id,
+      parentSessionID,
+      type: "subagent",
+      status,
+      description: child.title,
+      time: { created: child.time.created, ...(last?.time.completed ? { completed: last.time.completed } : {}) },
+      subagent: {
+        sessionID: child.id,
+        agent: lastUser?.agent ?? "build",
+        prompt: "",
+        model: lastUser?.model ?? { providerID: "unknown", modelID: "unknown" },
+      },
+    })
+  }
+  // Newest first, so the most recent subtasks head the dialog.
+  return result.sort((a, b) => b.time.created - a.time.created)
 }
 
 function buildMinimalTask(p: BackgroundTask.PendingResult): BackgroundTask.Info {

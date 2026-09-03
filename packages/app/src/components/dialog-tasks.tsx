@@ -44,28 +44,37 @@ export const DialogTasks: Component = () => {
   // store fed by events never suspends, exactly like the overview's recent_hub.
   const [tasks, setTasks] = createStore<BackgroundTask[]>([])
 
-  const upsert = (task: BackgroundTask) =>
-    setTasks(
-      produce((list) => {
-        const i = list.findIndex((t) => t.id === task.id)
-        if (i === -1) list.push(task)
-        else list[i] = task
-      }),
-    )
-
-  onMount(async () => {
+  // The server list is the source of truth: it merges the durable child sessions
+  // with the in-memory tasks, deduped by child session, so it survives a restart
+  // and never double-counts a resumed child. The task events carry a task id
+  // that a disk-derived entry (keyed by child session) cannot match, so rather
+  // than reconcile them locally, any task transition just refetches the correct
+  // list. Keyed by id via reconcile so unchanged rows keep their identity.
+  //
+  // A monotonic sequence guards against out-of-order responses: two events can
+  // each fire a refetch, and the second's response may land first, so only the
+  // newest request is allowed to write.
+  let seq = 0
+  const refetch = async () => {
     const sessionID = params.id
     if (!sessionID) return
+    const mine = ++seq
     const res = await sdk.client.background.list({ sessionID })
+    if (mine !== seq) return
     setTasks(reconcile(res.data ?? [], { key: "id" }))
-  })
+  }
+
+  onMount(refetch)
 
   const unsubs = [
     sdk.event.on("background.task.created", (evt) => {
-      if (evt.properties.task.parentSessionID === params.id) upsert(evt.properties.task)
+      if (evt.properties.task.parentSessionID === params.id) void refetch()
     }),
     sdk.event.on("background.task.progress", (evt) => {
       if (evt.properties.parentSessionID !== params.id) return
+      // Progress carries the in-memory task id, which a disk-derived row cannot
+      // match; write it where the row IS the live task, and let the periodic
+      // refetch carry it otherwise.
       setTasks(
         produce((list) => {
           const t = list.find((x) => x.id === evt.properties.taskId)
@@ -74,16 +83,7 @@ export const DialogTasks: Component = () => {
       )
     }),
     sdk.event.on("background.task.completed", (evt) => {
-      if (evt.properties.parentSessionID !== params.id) return
-      setTasks(
-        produce((list) => {
-          const t = list.find((x) => x.id === evt.properties.taskId)
-          if (!t) return
-          t.status = evt.properties.status
-          t.result = evt.properties.result
-          t.time = { ...t.time, completed: Date.now() }
-        }),
-      )
+      if (evt.properties.parentSessionID === params.id) void refetch()
     }),
   ]
   onCleanup(() => unsubs.forEach((u) => u()))
