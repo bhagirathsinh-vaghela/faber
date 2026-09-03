@@ -296,7 +296,7 @@ export type TextPart = {
     jobId: string
     command: string
     description: string
-    status: "completed" | "failed" | "timeout" | "running"
+    status: "completed" | "failed" | "timeout" | "running" | "ended"
     exit?: number
     log: string
     duration: number
@@ -2643,7 +2643,7 @@ export type TextPartInput = {
     jobId: string
     command: string
     description: string
-    status: "completed" | "failed" | "timeout" | "running"
+    status: "completed" | "failed" | "timeout" | "running" | "ended"
     exit?: number
     log: string
     duration: number

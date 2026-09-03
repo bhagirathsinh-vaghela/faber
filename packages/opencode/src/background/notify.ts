@@ -48,12 +48,19 @@ export namespace BackgroundNotify {
     }
   }
 
+  // An absent exit code is UNKNOWN, not a failure. A job killed before it could
+  // write its own exit file leaves none, so treating the absence as non-zero
+  // claims the command failed when nothing knows whether it did. The record
+  // keeps the two apart and the reader has to as well, the same way `time.lost`
+  // is kept apart from `status`.
   function statusWord(job: BackgroundJob.Info) {
+    if (job.exit === undefined) return "ended" as const
     return job.exit === 0 ? ("completed" as const) : ("failed" as const)
   }
 
   function status(job: BackgroundJob.Info, kind: Kind) {
     if (kind === "timeout") return "killed after exceeding its time limit"
+    if (job.exit === undefined) return "ended without recording an exit code"
     return job.exit === 0 ? "completed" : "failed"
   }
 

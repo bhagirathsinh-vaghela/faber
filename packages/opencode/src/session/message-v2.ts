@@ -78,7 +78,10 @@ export namespace MessageV2 {
     jobId: z.string(),
     command: z.string(),
     description: z.string(),
-    status: z.enum(["completed", "failed", "timeout", "running"]),
+    // `ended` is a job that finished without recording an exit code, which a
+    // kill before its own exit write leaves behind. Distinct from `failed`,
+    // since nothing knows whether the command succeeded.
+    status: z.enum(["completed", "failed", "timeout", "running", "ended"]),
     exit: z.number().optional(),
     log: z.string(),
     duration: z.number(),

@@ -9959,7 +9959,8 @@
                   "completed",
                   "failed",
                   "timeout",
-                  "running"
+                  "running",
+                  "ended"
                 ]
               },
               "exit": {
@@ -16071,7 +16072,8 @@
                   "completed",
                   "failed",
                   "timeout",
-                  "running"
+                  "running",
+                  "ended"
                 ]
               },
               "exit": {

@@ -150,3 +150,49 @@ describe("BackgroundNotify check-in", () => {
     expect(text).not.toContain("step-1\n")
   })
 })
+
+// A job killed before it could write its own exit file records no exit code.
+// Reading that absence as a non-zero exit claims the command failed, when
+// nothing establishes whether it did. The record keeps "we do not know" apart
+// from "returned non-zero", so every reader of it has to.
+describe("BackgroundNotify: an exit code nobody recorded", () => {
+  test("a job with no exit code is not called failed", () => {
+    const record = job({ exit: undefined })
+    expect(BackgroundNotify.meta(record, "completed").status).toBe("ended")
+    expect(BackgroundNotify.render(record, "out", "completed")).toContain(
+      "status: ended without recording an exit code",
+    )
+    expect(BackgroundNotify.render(record, "out", "completed")).toContain("exit: unknown")
+  })
+
+  test("a real non-zero exit is still a failure", () => {
+    const record = job({ exit: 2 })
+    expect(BackgroundNotify.meta(record, "completed").status).toBe("failed")
+    expect(BackgroundNotify.render(record, "out", "completed")).toContain("status: failed")
+  })
+
+  test("a zero exit is still a completion", () => {
+    expect(BackgroundNotify.meta(job(), "completed").status).toBe("completed")
+  })
+})
+
+// The header is a fixed block the writer joins a blank line after, so the body
+// begins at that separator. A reader that instead recognises header lines
+// disagrees with the writer in both directions: it deletes an output line that
+// looks like a field, and it keeps the tail of a multi-line command, which then
+// renders as the result.
+describe("BackgroundNotify: the header/body boundary", () => {
+  test("output lines that look like header fields survive the envelope", () => {
+    const rendered = BackgroundNotify.render(job(), "status: still here\ncommand: grep hit\ndone", "completed")
+    const body = rendered.slice(rendered.indexOf("\n\n") + 2)
+    expect(body).toContain("status: still here")
+    expect(body).toContain("command: grep hit")
+  })
+
+  test("a multi-line command keeps its tail out of the body", () => {
+    const rendered = BackgroundNotify.render(job({ command: "python3 - <<'PY'\nprint('x')\nPY" }), "done", "completed")
+    const body = rendered.slice(rendered.indexOf("\n\n") + 2)
+    expect(body).not.toContain("print('x')")
+    expect(body).toContain("done")
+  })
+})

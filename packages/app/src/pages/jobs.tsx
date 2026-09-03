@@ -49,10 +49,20 @@ function elapsed(job: Job, now: number) {
 // command succeeding is the less useful half of that record: what a reader
 // needs to notice is that its output never reached the session that asked, and
 // a row saying "completed" hides exactly the class of record worth finding.
+
+// An absent exit code is UNKNOWN, not a failure. A job killed before it could
+// write its own exit file leaves none, and calling that "failed" claims
+// something about the command that nothing establishes. Neutral, and named as
+// the absence it is.
+function unknown(job: Job) {
+  return job.exit === undefined
+}
+
 function tone(job: Job) {
   if (job.time.lost) return "var(--syntax-critical)"
   if (job.status === "running") return "var(--syntax-primitive)"
   if (job.status === "killed") return "var(--syntax-critical)"
+  if (unknown(job)) return "var(--text-weak)"
   return job.exit === 0 ? "var(--syntax-string)" : "var(--syntax-critical)"
 }
 
@@ -60,6 +70,7 @@ function label(job: Job) {
   if (job.time.lost) return "never delivered"
   if (job.status === "running") return "running"
   if (job.status === "killed") return "timed out"
+  if (unknown(job)) return "ended (exit unknown)"
   return job.exit === 0 ? "completed" : `failed (exit ${job.exit})`
 }
 
