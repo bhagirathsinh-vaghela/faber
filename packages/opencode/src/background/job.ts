@@ -282,23 +282,35 @@ export namespace BackgroundJob {
     // running, where no later pass reconciles it. The process that is about to
     // exist would then run to completion with a record calling it killed.
     if (!job.process) return { type: "unspawned" }
-    await BackgroundProcess.kill(job.process)
+    // Claim BEFORE the kill, not after. The kill is what makes the process
+    // exit, which resolves the live exit handle spawn.ts still holds; that
+    // handle settles the record and delivers a result, waking the very session
+    // being stopped. Killing first and claiming after loses that race every
+    // time, because kill() sleeps through its TERM-to-KILL window while the
+    // handle runs. Taking the record out of `running` first makes the handle's
+    // settle find `status !== "running"` and return undefined, so onExit never
+    // fires. Claimed inside the write lock, the same way a reconcile pass does,
+    // so a stop racing a sweep cannot overwrite a verdict the sweep reached.
+    let claimed = false
     const completed = Date.now()
-    // Claimed inside the write lock, the same way a reconcile pass claims one,
-    // so a stop racing a sweep cannot overwrite a verdict the sweep already
-    // reached and is delivering on.
     await update(id, (draft) => {
       if (draft.status !== "running") return
+      claimed = true
       draft.status = "killed"
       draft.exit = undefined
       draft.time.completed = completed
     })
-    const stopped = await get(id)
+    const current = await get(id)
     // Removed between the read and the write, which only a concurrent cleanup
     // does; there is nothing left to describe.
-    if (!stopped) return { type: "unknown" }
-    await settled(stopped.sessionID)
-    return { type: "settled", job: stopped }
+    if (!current) return { type: "unknown" }
+    // The claim lost: the job settled on its own in the same instant (its exit
+    // handle or a sweep got there first). It is already gone, so there is
+    // nothing to kill and its own recorded status stands.
+    if (!claimed) return { type: "settled", job: current }
+    await BackgroundProcess.kill(job.process)
+    await settled(current.sessionID)
+    return { type: "settled", job: current }
   }
 
   // Kill every running job a session owns. A job OUTLIVES the turn that

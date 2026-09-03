@@ -41,12 +41,12 @@ describe("Session.stop reaps the session's background jobs", () => {
 
         const alive = await Bun.$`ps -p ${cmdpid} -o pid=`.quiet().nothrow()
         expect(alive.stdout.toString().trim()).toBe("")
-        // Settled, not left running for a sweep that never comes. Whether the
-        // record reads `killed` (stop's own write won) or `exited` (the wrapper
-        // wrote its exit file as it died and the exit watcher settled first) is
-        // a race between two settle paths; both mean the job is over and no
-        // result is coming. The invariant is that it is NOT still running.
-        expect((await BackgroundJob.get(spawn.job.id))?.status).not.toBe("running")
+        // Deterministically `killed`: stop claims the record out of `running`
+        // before it signals the process, so the exit handle the kill triggers
+        // finds it already claimed and neither settles it `exited` nor delivers
+        // a result. A job that cannot finish on its own during the stop (a 45s
+        // sleep under a 600s deadline) therefore always reads `killed`.
+        expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("killed")
 
         await BackgroundJob.remove(spawn.job.id)
       },
