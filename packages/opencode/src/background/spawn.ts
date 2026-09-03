@@ -152,7 +152,13 @@ export namespace BackgroundSpawn {
     await BackgroundJob.update(id, (draft) => {
       if (draft.status !== "running") return
       claimed = true
-      draft.status = "exited"
+      // A job that reached its own hard deadline was ended by its watchdog, not
+      // by finishing. It exits on the watchdog's TERM/KILL (rc 143/137), which
+      // is indistinguishable from a failure by exit code alone, so the deadline
+      // is what tells the two apart. Recording `killed` here is the same verdict
+      // the reconcile backstop reaches for a job it has to kill itself, so both
+      // timeout paths deliver `timeout` rather than one showing up as `failed`.
+      draft.status = completed >= draft.time.hard ? "killed" : "exited"
       draft.exit = exit
       draft.time.completed = completed
     })

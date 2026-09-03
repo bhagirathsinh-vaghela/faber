@@ -123,6 +123,28 @@ describe("BackgroundSpawn exit watcher", () => {
     BackgroundSpawn.watch(() => {})
   }, 35_000)
 
+  // A job the watchdog kills on its own deadline settles `killed`, not `exited`.
+  // The watchdog's TERM leaves rc 143, indistinguishable from a failure by exit
+  // code alone, so the deadline decides it. The orchestrator delivers a `killed`
+  // record as `timeout`; classifying it `exited` here would render it "failed".
+  test("hands the watcher a killed record when the job hits its deadline", async () => {
+    const settled: Array<{ id: string; status: string }> = []
+    BackgroundSpawn.watch((job) => void settled.push({ id: job.id, status: job.status }))
+
+    // Outlives the grace window so it backgrounds, and outlives its own 6s hard
+    // deadline so the watchdog fires. Both bounds are real: at 5s grace and an
+    // 8s sleep, the deadline lands after the window and before the command ends.
+    const spawn = await run("sleep 8", { hard: 6_000 })
+    expect(spawn.type).toBe("background")
+
+    const started = Date.now()
+    while (!settled.some((j) => j.id === spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
+
+    expect(settled.find((j) => j.id === spawn.job.id)?.status).toBe("killed")
+    expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("killed")
+    BackgroundSpawn.watch(() => {})
+  }, 35_000)
+
   test("does not fire for a job that returned inline", async () => {
     const seen: string[] = []
     BackgroundSpawn.watch((job) => void seen.push(job.id))
