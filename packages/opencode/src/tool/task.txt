@@ -22,9 +22,12 @@ Available toolsets and the tools they allow:
 Passing a `toolset` name not in this list fails the call.
 
 When to use the Task tool:
+- Reach for a subtask when the work is many steps whose intermediate detail does not matter to you — only the result does — and you would rather not fill your own context with the reading, the fan-out, and the dead ends. The subtask does all of that elsewhere and hands back just the answer, so your working context stays clean. That context hygiene is the reason to delegate: a self-contained review, an investigation, a wide search, a multi-file analysis whose conclusion is all you need.
 - When you are instructed to execute custom slash commands. Use the Task tool with the slash command invocation as the entire prompt. The slash command can take arguments. For example: Task(description="Check the file", prompt="/check-file path/to/file.py")
 
 When NOT to use the Task tool:
+- When you need the result THIS turn and would just wait for it anyway, or the work is a couple of trivial steps: doing it inline is simpler and cheaper, since there is little context to protect.
+- When you are already inside a subtask (it cannot launch another; nesting is capped as a safety bound against unbounded recursive fan-out): do the work inline in your own run. Running it inline lands its context cost on you instead of a child, which is accepted because your run is short-lived and produces the same result either way.
 - If you want to read a specific file path, use the Read or Glob tool instead of the Task tool, to find the match more quickly
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Task tool, to find the match more quickly
