@@ -4,6 +4,7 @@ import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import { Identifier } from "@/id/id"
 import { Log } from "@/util/log"
+import { BackgroundTask } from "@/background"
 import { Session } from "./index"
 import { SessionStatus } from "./status"
 import { SessionBusy } from "./busy"
@@ -38,6 +39,30 @@ export namespace SessionSpawn {
   // In-process too, since two idle events can land before the first write
   // settles.
   const settling = new Set<string>()
+
+  // Whether a helper has genuinely finished everything, not merely paused
+  // between its own turns. The idle event fires when a helper's OWN turn ends,
+  // and a helper that spawned a subtask ends its turn to WAIT for that subtask:
+  // the answer it will report is written in a LATER turn, woken when the
+  // subtask injects its result. Discharging on the first idle captures that
+  // interim message ("running the subtask now") as the report, then stops the
+  // helper before the real answer is ever written.
+  //
+  // So "done" is the whole subtree at rest AND nothing queued to wake it again:
+  //   - its own turn is not in flight, and neither is any descendant's;
+  //   - it has no running background task (the subagent turn registers as
+  //     `running` synchronously inside the tool call, so this is true from the
+  //     moment the task is created until it completes — no gap for the idle to
+  //     slip through);
+  //   - it has no completed-but-uninjected task result waiting to wake it.
+  // Any one of these means more output is still coming, so the report is not
+  // ready and the debt stays outstanding for a later idle or the sweep.
+  function quiescent(sessionID: string, directory: string) {
+    if (SessionBusy.subtreeBusy(sessionID, directory)) return false
+    if (BackgroundTask.running(sessionID).length > 0) return false
+    if (BackgroundTask.getPending(sessionID).length > 0) return false
+    return true
+  }
 
   // Subscribed on the GLOBAL bus, not the per-instance one. This runs at server
   // start-up, where there is no instance context to scope a subscription to, and
@@ -104,13 +129,13 @@ export namespace SessionSpawn {
       // A discharged record is kept for the resume path to read, so `done` is
       // what retires a debt here; the record's mere presence no longer does.
       if (!session?.spawn || session.spawn.done) continue
-      // A helper mid-turn is working, and its idle event will discharge it.
-      if (SessionBusy.busy(session.id)) continue
       // Under the helper's OWN directory. This runs from a timer, which has no
       // AsyncLocalStorage context, and `discharge` reads the session through
       // one: without this it throws, the throw is swallowed by the catch that
       // treats a missing session as nothing to do, and the pass silently heals
-      // nothing at all.
+      // nothing at all. The quiescence check lives INSIDE discharge rather than
+      // here, since it queries instance-scoped background-task state and so
+      // needs the same context.
       await Instance.provide({
         directory: session.directory,
         fn: () => discharge(session.id),
@@ -153,12 +178,20 @@ export namespace SessionSpawn {
 
   async function discharge(sessionID: string) {
     if (settling.has(sessionID)) return
-    // The turn's own handle is dropped before the status flips, so a child
-    // that is still working (a tool call between turns) is not finished.
-    if (SessionBusy.busy(sessionID)) return
 
     const child = await Session.get(sessionID).catch(() => undefined)
     if (!child?.spawn || child.spawn.done) return
+    // Not finished until the whole subtree is at rest and nothing is queued to
+    // wake the helper again — a helper waiting on its own subtask is between
+    // turns, not done. See `quiescent`. It reads the record's directory (known
+    // only after the get above) and queries instance-scoped background-task
+    // state, so it runs UNDER that directory: the idle path reaches here with
+    // no ambient context, and the reconcile path with the wrong project's.
+    const ready = await Instance.provide({
+      directory: child.directory,
+      fn: async () => quiescent(sessionID, child.directory),
+    })
+    if (!ready) return
     // Delivered by an earlier pass that crashed before retiring the debt. The
     // report is already in the parent's transcript, so this attempt is the
     // duplicate that at-least-once would otherwise produce, and it is dropped.

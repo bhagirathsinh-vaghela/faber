@@ -8,6 +8,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { Identifier } from "../../src/id/id"
 import { SessionRecent } from "../../src/session/recent"
 import { SessionPrompt } from "../../src/session/prompt"
+import { BackgroundTask } from "../../src/background"
 import { tmpdir } from "../fixture/fixture"
 
 // A helper session's result reaching the peer that asked for it cannot depend
@@ -71,6 +72,58 @@ describe("SessionSpawn", () => {
         expect(text?.type === "text" && text.text).toContain("Two findings, both fixed.")
         // Named, so a reader of the parent knows which helper answered.
         expect(text?.type === "text" && text.text).toContain("helper")
+      },
+    })
+  }, 20_000)
+
+  // A helper that spawns its OWN subtask ends its turn to WAIT for it, going
+  // idle with only an interim message ("running the subtask now") written. The
+  // real answer comes in a LATER turn, woken when the subtask injects its
+  // result. Discharging on that first idle delivers the interim message as the
+  // report and stops the helper before the answer is ever written. "Done" has
+  // to mean the whole subtree is at rest, not merely that the helper's own turn
+  // ended.
+  test("a helper waiting on its own subtask is not discharged until the subtask finishes", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        SessionSpawn.init()
+        const parent = await Session.create({ title: "waiting peer" })
+        const child = await Session.create({ title: "helper", spawnedBy: parent.id })
+
+        // The interim message the helper leaves when it hands off to a subtask.
+        await answer(child.id, "spawned a subtask, waiting for it")
+        // A running background task under the helper: `create` stamps it
+        // `running` synchronously, exactly as the task tool does inside the
+        // helper's turn, so it is outstanding the moment the helper goes idle.
+        const { task } = BackgroundTask.create({
+          parentSessionID: child.id,
+          type: "subagent",
+          description: "the helper's own subtask",
+        })
+
+        SessionStatus.set(child.id, { type: "idle" })
+        await Bun.sleep(200)
+
+        // Nothing delivered: the subtask is still running, so the helper is not
+        // done and the interim message is not its report.
+        expect(userTurns(await Session.messages({ sessionID: parent.id })).length).toBe(0)
+        expect((await Session.get(child.id)).spawn?.done).toBeUndefined()
+
+        // The subtask finishes and the helper writes its real answer, then idles
+        // again. Now the subtree is quiescent and the report is ready.
+        BackgroundTask.complete(task.id, "completed", { output: "" })
+        BackgroundTask.cleanup(task.id)
+        await answer(child.id, "the real findings")
+        SessionStatus.set(child.id, { type: "idle" })
+        await Bun.sleep(200)
+
+        const delivered = userTurns(await Session.messages({ sessionID: parent.id }))
+        expect(delivered.length).toBe(1)
+        const text = delivered[0].parts.find((part) => part.type === "text")
+        expect(text?.type === "text" && text.text).toContain("the real findings")
+        expect(text?.type === "text" && text.text).not.toContain("waiting for it")
       },
     })
   }, 20_000)
