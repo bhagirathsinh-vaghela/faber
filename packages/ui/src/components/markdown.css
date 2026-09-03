@@ -320,4 +320,56 @@
     margin: 1.5rem 0;
     display: block;
   }
+
+  /* Callouts: the `:::fix` / `:::key` / etc. container directives (see the
+     remarkCallouts plugin in markdown.tsx). Each name carries an accent used
+     for the left border, the soft background, and the label. `check` folds
+     shut as a <details>. */
+  .callout {
+    margin: 1.3em 0;
+    padding: 12px 15px;
+    border-radius: 9px;
+    border: 1px solid var(--border-weak-base);
+    border-left: 3px solid var(--callout-accent, var(--border-base));
+    background: var(--callout-soft, var(--background-weak));
+  }
+
+  .callout > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .callout > strong,
+  .callout > summary {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    color: var(--callout-accent, var(--markdown-strong));
+  }
+
+  details.callout > summary {
+    cursor: pointer;
+  }
+
+  .callout.fix {
+    --callout-accent: color-mix(in srgb, #b3452b 80%, var(--text-base));
+    --callout-soft: color-mix(in srgb, #b3452b 10%, var(--background-base));
+  }
+  .callout.anchor {
+    --callout-accent: color-mix(in srgb, #2f6b52 80%, var(--text-base));
+    --callout-soft: color-mix(in srgb, #2f6b52 10%, var(--background-base));
+  }
+  .callout.key {
+    --callout-accent: color-mix(in srgb, #1f6a8c 85%, var(--text-base));
+    --callout-soft: color-mix(in srgb, #1f6a8c 10%, var(--background-base));
+  }
+  .callout.tangent {
+    --callout-accent: color-mix(in srgb, #5b4a9e 85%, var(--text-base));
+    --callout-soft: color-mix(in srgb, #5b4a9e 10%, var(--background-base));
+  }
+  .callout.check {
+    --callout-accent: color-mix(in srgb, #6b6862 85%, var(--text-base));
+    --callout-soft: color-mix(in srgb, #6b6862 8%, var(--background-base));
+  }
 }

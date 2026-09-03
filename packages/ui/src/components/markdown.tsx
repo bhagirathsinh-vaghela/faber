@@ -7,6 +7,7 @@ import { SolidMarkdown, type SolidMarkdownComponents } from "solid-markdown"
 import remarkGfm from "remark-gfm"
 import remarkBreaks from "remark-breaks"
 import remarkMath from "remark-math"
+import remarkDirective from "remark-directive"
 import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
 import { isServer } from "solid-js/web"
 
@@ -34,6 +35,44 @@ const MATH_OPTIONS = { singleDollarTextMath: false }
 const MATH = /\$\$[\s\S]+?\$\$/
 function hasMath(text: string) {
   return MATH.test(text)
+}
+
+// The `:::name` container callouts. The label is the heading a reader sees;
+// `check` folds shut so it reads as a self-test.
+const CALLOUTS: Record<string, string> = {
+  fix: "Correction",
+  anchor: "Anchor",
+  key: "Key point",
+  tangent: "Tangent",
+  check: "Check yourself",
+}
+
+// A remark transform that turns a `:::fix` / `:::key` / etc. container directive
+// into an <aside class="callout NAME"> (or <details> for `check`) carrying a
+// label, so remark-rehype emits real elements the CSS can style. An unknown
+// `:::name` is left untouched, which drops back to plain rendering rather than
+// leaking the raw fence. Written as a bare recursive walk to avoid pulling in
+// unist-util-visit for one traversal.
+function remarkCallouts() {
+  return (tree: any) => {
+    const walk = (node: any) => {
+      for (const child of node.children ?? []) walk(child)
+      if (node.type !== "containerDirective") return
+      const label = CALLOUTS[node.name]
+      if (!label) return
+      const check = node.name === "check"
+      node.data = {
+        ...node.data,
+        hName: check ? "details" : "aside",
+        hProperties: { className: check ? ["callout", "check", node.name] : ["callout", node.name] },
+      }
+      const head = check
+        ? { type: "summary", data: { hName: "summary" }, children: [{ type: "text", value: label }] }
+        : { type: "strong", children: [{ type: "text", value: label }] }
+      node.children = [head, ...(node.children ?? [])]
+    }
+    walk(tree)
+  }
 }
 
 const iconPaths = {
@@ -373,7 +412,7 @@ export function Markdown(
       <SolidMarkdown
         renderingStrategy="reconcile"
         skipHtml
-        remarkPlugins={[remarkGfm, [remarkMath, MATH_OPTIONS], remarkBreaks]}
+        remarkPlugins={[remarkGfm, [remarkMath, MATH_OPTIONS], remarkBreaks, remarkDirective, remarkCallouts]}
         rehypePlugins={rehype()}
         components={components(labels, theme, complete)}
       >
