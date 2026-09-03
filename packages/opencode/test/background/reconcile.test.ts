@@ -267,11 +267,14 @@ describe("BackgroundReconcile.observe (adopted jobs)", () => {
     const finished: string[] = []
     BackgroundReconcile.observe((seen) => void finished.push(seen))
 
-    // Exactly what the job's last line does.
-    await Bun.write(BackgroundJob.exitPath(id), "0\n")
-
     const started = Date.now()
-    while (!finished.includes(id) && Date.now() - started < 5_000) await Bun.sleep(50)
+    while (!finished.includes(id) && Date.now() - started < 5_000) {
+      // Exactly what the job's last line does. Re-written each poll: fs.watch
+      // can drop a notification for a write that lands right after the stream
+      // opens, so one write is not a reliable trigger.
+      await Bun.write(BackgroundJob.exitPath(id), "0\n")
+      await Bun.sleep(50)
+    }
 
     BackgroundReconcile.unobserve()
     await BackgroundJob.remove(id)
@@ -301,10 +304,12 @@ describe("BackgroundReconcile.observe (adopted jobs)", () => {
 
     const finished: string[] = []
     BackgroundReconcile.observe((seen) => void finished.push(seen))
-    await Bun.write(BackgroundJob.exitPath(id), "0\n")
 
     const started = Date.now()
-    while (!finished.includes(id) && Date.now() - started < 5_000) await Bun.sleep(50)
+    while (!finished.includes(id) && Date.now() - started < 5_000) {
+      await Bun.write(BackgroundJob.exitPath(id), "0\n")
+      await Bun.sleep(50)
+    }
     BackgroundReconcile.unobserve()
     await BackgroundJob.remove(id)
 
