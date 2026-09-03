@@ -338,12 +338,12 @@ export namespace BackgroundJob {
     return text.trim() === "" || Number.isNaN(code) ? undefined : code
   }
 
-  // When the job actually finished, read from the mtime of the exit file it
-  // wrote as its last act. The live handle knows this instant directly (its
-  // proc.exited resolves at it); a reconciling server that never held the
-  // handle recovers it here, so both paths judge a timeout against the SAME
-  // moment: when the job ended, not when a pass happened to notice. Undefined
-  // when the file is absent (the job was SIGKILLed before writing it).
+  // When the job actually finished, recovered from the mtime of the exit file it
+  // wrote as its last act. A reconciling server that never held the job's handle
+  // has no other record of when it ended, so this is what lets it judge a
+  // timeout against the job's own finish instant rather than against whenever a
+  // pass happened to notice. Undefined when the file is absent (the job was
+  // SIGKILLed before writing it).
   export async function finishedAt(id: string) {
     return Bun.file(exitPath(id))
       .stat()
