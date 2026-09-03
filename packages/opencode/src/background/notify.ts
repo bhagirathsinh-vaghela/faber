@@ -15,14 +15,16 @@ export namespace BackgroundNotify {
 
   export type Kind = "completed" | "timeout" | "checkin"
 
-  // Remove blank lines from a header value so it cannot forge the header/body
-  // separator, which the reader finds at the first blank line. A run of newlines
-  // (a heredoc's empty line) becomes a single one; the value's real lines are
-  // kept, just never separated by a blank one. Exported because the task-result
-  // writer builds the same envelope shape and needs the same guard on its own
-  // `command` field — one implementation for one contract.
+  // Keep a header value from forging the header/body separator, which the reader
+  // finds at the first blank line. The value must never contain a blank line NOR
+  // start or end with a newline: a single trailing newline abuts the next header
+  // field across render's join and makes a blank line just the same. Collapse
+  // every run of newlines (with any whitespace between) to one, then trim the
+  // boundaries, so the value stays one-or-more non-blank lines. Exported because
+  // the task-result writer builds the same envelope and needs the same guard on
+  // its own `command` field — one implementation for one contract.
   export function collapse(text: string) {
-    return text.replace(/(\n[ \t]*){2,}/g, "\n")
+    return text.replace(/(\n[ \t]*)+/g, "\n").replace(/^\n+|\n+$/g, "")
   }
 
   // The envelope the model reads. Its own tag, distinct from a subagent

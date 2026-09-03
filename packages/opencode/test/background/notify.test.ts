@@ -213,4 +213,30 @@ describe("BackgroundNotify: the header/body boundary", () => {
     expect(body).not.toContain("log:")
     expect(body).not.toContain("print('b')")
   })
+
+  // A SINGLE trailing newline is the subtler case: it is not a blank line on its
+  // own, but it abuts the next header field across render's join and forges the
+  // separator all the same. The value must end with no newline at all.
+  test("a command with a trailing newline does not forge the header boundary", () => {
+    const rendered = BackgroundNotify.render(job({ command: "echo hi\n" }), "the real output", "completed")
+    const body = rendered.slice(rendered.indexOf("\n\n") + 2).replace(/\n?<\/background-job-result>$/, "")
+
+    expect(body).toBe("the real output")
+    expect(body).not.toContain("status:")
+    expect(body).not.toContain("log:")
+  })
+
+  // A genuinely multi-line command (distinct non-blank lines) must survive intact
+  // in the header — collapsing must remove only blank lines, never fold real ones.
+  test("keeps the lines of a multi-line command that has no blank line", () => {
+    const rendered = BackgroundNotify.render(
+      job({ command: "python3 - <<'PY'\nprint('a')\nprint('b')\nPY" }),
+      "the real output",
+      "completed",
+    )
+    expect(rendered).toContain("print('a')")
+    expect(rendered).toContain("print('b')")
+    const body = rendered.slice(rendered.indexOf("\n\n") + 2).replace(/\n?<\/background-job-result>$/, "")
+    expect(body).toBe("the real output")
+  })
 })

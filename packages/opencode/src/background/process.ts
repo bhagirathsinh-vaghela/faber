@@ -29,7 +29,7 @@ export namespace BackgroundProcess {
   // group on its own clock), but it SIGKILLs the wrapper group mid-escalation, so
   // the outside signal is wasted and the command's death is left entirely to the
   // trap's timer instead of being bounded by the killer.
-  const SIGKILL_DELAY_MS = ESCALATION_SECONDS * 1000 + 500
+  export const SIGKILL_DELAY_MS = ESCALATION_SECONDS * 1000 + 500
 
   // Enough to distinguish a job from an unrelated process that inherited its
   // pid: a pid must wrap the whole pid space AND land in the same one-second

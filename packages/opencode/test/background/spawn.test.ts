@@ -247,6 +247,10 @@ describe("BackgroundSpawn: a kill reaches the command, not just the wrapper", ()
   // The outside killer only reaches the wrapper's group, so ending such a command
   // falls to the wrapper's trap escalating TERM to KILL on the inner group. A
   // plain `sleep` dies on the first TERM and never exercises that path.
+  //
+  // This proves the command IS ended, not that the outer SIGKILL delay is what
+  // ends it — the trap does, on its own clock, whatever the delay. The delay's
+  // backstop ordering is asserted in kill-escalation.test.ts instead.
   test("stopping a job ends a command that ignores SIGTERM", async () => {
     const spawn = await run(`echo "CMDPID=$$"; trap '' TERM; while true; do sleep 0.2; done`)
     expect(spawn.type).toBe("background")

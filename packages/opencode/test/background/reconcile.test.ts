@@ -283,17 +283,31 @@ describe("BackgroundReconcile.observe (adopted jobs)", () => {
 
   test("ignores the log file, which is written throughout the run", async () => {
     await BackgroundJob.init()
-    const id = BackgroundJob.id()
+    const logId = BackgroundJob.id()
+    const exitId = BackgroundJob.id()
 
     const finished: string[] = []
     BackgroundReconcile.observe((seen) => void finished.push(seen))
 
-    await Bun.write(BackgroundJob.logPath(id), "progress output\n")
-    await Bun.sleep(500)
+    // A `.log` for the id under test, and a `.exit` for a DIFFERENT id. The exit
+    // is what proves the watcher is live: without it, a dropped event and a
+    // correctly-ignored `.log` are indistinguishable, so the negative assertion
+    // could pass for the wrong reason. The exit id is re-written each poll for
+    // the same reason the firing tests are — fs.watch can drop the first event.
+    await Bun.write(BackgroundJob.logPath(logId), "progress output\n")
+    const started = Date.now()
+    while (!finished.includes(exitId) && Date.now() - started < 5_000) {
+      await Bun.write(BackgroundJob.exitPath(exitId), "0\n")
+      await Bun.sleep(50)
+    }
 
     BackgroundReconcile.unobserve()
-    await BackgroundJob.remove(id)
-    expect(finished).not.toContain(id)
+    await BackgroundJob.remove(logId)
+    await BackgroundJob.remove(exitId)
+    // The watcher fired for the exit file, proving it is live...
+    expect(finished).toContain(exitId)
+    // ...and did NOT fire for the log id, which is the actual assertion.
+    expect(finished).not.toContain(logId)
   }, 10_000)
 
   // The event is a wake-up carrying an id, so the id it reports must be the
