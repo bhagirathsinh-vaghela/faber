@@ -18,13 +18,17 @@ export namespace BackgroundNotify {
   // Keep a header value from forging the header/body separator, which the reader
   // finds at the first blank line. The value must never contain a blank line NOR
   // start or end with a newline: a single trailing newline abuts the next header
-  // field across render's join and makes a blank line just the same. Collapse
-  // every run of newlines (with any whitespace between) to one, then trim the
-  // boundaries, so the value stays one-or-more non-blank lines. Exported because
-  // the task-result writer builds the same envelope and needs the same guard on
-  // its own `command` field — one implementation for one contract.
+  // field across render's join and makes a blank line just the same. Exported
+  // because the task-result writer builds the same envelope and needs the same
+  // guard on its own `command` field — one implementation for one contract.
   export function collapse(text: string) {
-    return text.replace(/(\n[ \t]*)+/g, "\n").replace(/^\n+|\n+$/g, "")
+    // Normalize CR and CRLF to LF so a `\r\n\r\n` blank line is caught too, then
+    // fold any run of newlines (with whitespace between) to one and trim the
+    // boundaries.
+    return text
+      .replace(/\r\n?/g, "\n")
+      .replace(/(\n[ \t]*)+/g, "\n")
+      .replace(/^\n|\n$/g, "")
   }
 
   // The envelope the model reads. Its own tag, distinct from a subagent

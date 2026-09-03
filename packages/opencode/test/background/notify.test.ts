@@ -226,6 +226,15 @@ describe("BackgroundNotify: the header/body boundary", () => {
     expect(body).not.toContain("log:")
   })
 
+  // A CRLF blank line is still a blank line. `\r\n\r\n` does not contain the
+  // literal `\n\n` the reader splits on, so it is not a machine forge, but the
+  // value's contract is "no blank line of any flavour", and an LLM reading the
+  // raw envelope would see it. Normalizing CR to LF catches it.
+  test("a CRLF blank line in a command is collapsed like an LF one", () => {
+    expect(BackgroundNotify.collapse("a\r\n\r\nb")).toBe("a\nb")
+    expect(BackgroundNotify.collapse("echo hi\r\n")).toBe("echo hi")
+  })
+
   // A genuinely multi-line command (distinct non-blank lines) must survive intact
   // in the header — collapsing must remove only blank lines, never fold real ones.
   test("keeps the lines of a multi-line command that has no blank line", () => {
