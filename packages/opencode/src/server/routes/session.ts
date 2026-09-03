@@ -975,9 +975,12 @@ export const SessionRoutes = lazy(() =>
             }),
         })
         // The report is durable, so retire the helper's own debt in the same
-        // call. This is the whole point of the route: nothing runs between the
-        // durable delivery and the stamp, so no restart window can reopen the
-        // double-report the idempotent client guard only half-closes.
+        // call. This collapses the double-report window to the gap between these
+        // two awaits: a crash there still leaves the report delivered and the
+        // debt open, and the client guard only half-closes that. Fully closing it
+        // would need one storage transaction spanning the prompt and the update,
+        // which the layer does not offer. The remaining gap is a few instructions
+        // wide, against the whole HTTP round-trip the split-call version left.
         await Session.update(
           sessionID,
           (session) => {
