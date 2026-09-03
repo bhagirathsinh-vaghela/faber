@@ -49,6 +49,27 @@ describe("stripJobResult", () => {
   test("an empty body stays empty", () => {
     expect(stripJobResult(envelope("true", ""))).toBe("")
   })
+
+  // A wrapper with no blank-line separator is malformed (the writer always emits
+  // one), but it must degrade the same way the task reader does: drop the known
+  // header fields rather than return the raw header text as the body.
+  test("a separator-less wrapper drops the header fields rather than echoing them", () => {
+    const text = [
+      `<background-job-result>`,
+      `job_id: j1`,
+      `command: echo hi`,
+      `status: completed`,
+      `exit: 0`,
+      `duration: 1s`,
+      `log: /tmp/j.log`,
+      `hi`,
+      `</background-job-result>`,
+    ].join("\n")
+    const body = stripJobResult(text)
+    expect(body).toBe("hi")
+    expect(body).not.toContain("job_id:")
+    expect(body).not.toContain("command:")
+  })
 })
 
 describe("stripTaskResult", () => {

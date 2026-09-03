@@ -195,4 +195,22 @@ describe("BackgroundNotify: the header/body boundary", () => {
     expect(body).not.toContain("print('x')")
     expect(body).toContain("done")
   })
+
+  // A command with an INTERNAL blank line (a heredoc script with an empty line)
+  // would otherwise put a `\n\n` inside the header, so the reader's split at the
+  // first blank line lands mid-header and every field below `command:` plus the
+  // command's own tail render as the body. Collapsing blank lines in the value
+  // keeps the real separator the only one, so the split still finds the body.
+  test("a command containing a blank line does not forge the header boundary", () => {
+    const command = "python3 - <<'PY'\nprint('a')\n\nprint('b')\nPY"
+    const rendered = BackgroundNotify.render(job({ command }), "the real output", "completed")
+    const body = rendered.slice(rendered.indexOf("\n\n") + 2).replace(/\n?<\/background-job-result>$/, "")
+
+    expect(body).toBe("the real output")
+    // The split landed at the real separator, so no header field and none of the
+    // command's own lines leaked into the body.
+    expect(body).not.toContain("status:")
+    expect(body).not.toContain("log:")
+    expect(body).not.toContain("print('b')")
+  })
 })

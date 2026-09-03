@@ -242,4 +242,26 @@ describe("BackgroundSpawn: a kill reaches the command, not just the wrapper", ()
     const alive = await Bun.$`ps -p ${cmdpid} -o pid=`.quiet().nothrow()
     expect(alive.stdout.toString().trim()).toBe("")
   }, 30_000)
+
+  // The case a plain `sleep` cannot exercise: a command that IGNORES SIGTERM.
+  // The outside killer only reaches the wrapper's group, so ending such a command
+  // falls to the wrapper's trap escalating TERM to KILL on the inner group. A
+  // plain `sleep` dies on the first TERM and never exercises that path.
+  test("stopping a job ends a command that ignores SIGTERM", async () => {
+    const spawn = await run(`echo "CMDPID=$$"; trap '' TERM; while true; do sleep 0.2; done`)
+    expect(spawn.type).toBe("background")
+
+    await Bun.sleep(600)
+    const output = await BackgroundJob.output(spawn.job.id)
+    const cmdpid = Number(/CMDPID=(\d+)/.exec(output ?? "")?.[1])
+    expect(cmdpid).toBeGreaterThan(0)
+
+    await BackgroundJob.stop(spawn.job.id)
+    // Past the wrapper's escalation window plus a margin, by which point the trap
+    // has KILLed the inner group.
+    await Bun.sleep((BackgroundProcess.ESCALATION_SECONDS + 2) * 1000)
+
+    const alive = await Bun.$`ps -p ${cmdpid} -o pid=`.quiet().nothrow()
+    expect(alive.stdout.toString().trim()).toBe("")
+  }, 30_000)
 })

@@ -11,6 +11,7 @@ import { SessionRevert } from "../session/revert"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
 import { BackgroundTask } from "@/background"
+import { BackgroundNotify } from "@/background/notify"
 import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 
@@ -318,7 +319,11 @@ function buildNotification(
     `type: ${task.type}`,
     `status: ${status}`,
     `duration: ${Math.round(duration / 1000)}s`,
-    task.type === "subagent" ? `agent: ${task.subagent?.agent}` : `command: ${task.shell?.command}`,
+    task.type === "subagent"
+      ? `agent: ${task.subagent?.agent}`
+      : // Collapse blank lines so a multi-line command cannot forge the
+        // header/body separator the reader splits on.
+        `command: ${BackgroundNotify.collapse(task.shell?.command ?? "")}`,
     `session_id: ${task.subagent?.sessionID ?? ""}`,
     ``,
     body,

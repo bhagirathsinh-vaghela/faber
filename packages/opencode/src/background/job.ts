@@ -177,6 +177,10 @@ export namespace BackgroundJob {
 
   export function wrap(command: string, id: string, hardMs: number, shell = "/bin/sh") {
     const seconds = Math.max(1, Math.ceil(hardMs / 1000))
+    // The TERM-to-KILL escalation window, shared with the outside killer so the
+    // two agree: BackgroundProcess.kill waits longer than this before its own
+    // SIGKILL, which is what stops it tearing this wrapper down mid-escalation.
+    const escalate = BackgroundProcess.ESCALATION_SECONDS
     // The command is interpreted by the USER'S shell, launched from inside a
     // POSIX one. Both halves are required and neither shell can do the other's
     // job: zsh refuses job control when it is not interactive ("can't change
@@ -211,8 +215,8 @@ export namespace BackgroundJob {
       // so a command ignoring TERM would be orphaned by the very escalation
       // meant to end it. Escalating here happens while the wrapper is still
       // alive to do it.
-      `trap '{ kill -TERM -$__oc_cmd 2>/dev/null; sleep 2; kill -KILL -$__oc_cmd 2>/dev/null; } &' TERM INT HUP`,
-      `{ sleep ${seconds}; kill -TERM -$__oc_cmd 2>/dev/null; sleep 2; kill -KILL -$__oc_cmd 2>/dev/null; } &`,
+      `trap '{ kill -TERM -$__oc_cmd 2>/dev/null; sleep ${escalate}; kill -KILL -$__oc_cmd 2>/dev/null; } &' TERM INT HUP`,
+      `{ sleep ${seconds}; kill -TERM -$__oc_cmd 2>/dev/null; sleep ${escalate}; kill -KILL -$__oc_cmd 2>/dev/null; } &`,
       `__oc_wd=$!`,
       // The command's own output already reached the log; these redirects
       // silence only the shell's reports ABOUT its jobs, which are noise to a
@@ -295,6 +299,21 @@ export namespace BackgroundJob {
     if (!stopped) return { type: "unknown" }
     await settled(stopped.sessionID)
     return { type: "settled", job: stopped }
+  }
+
+  // Kill every running job a session owns. A job OUTLIVES the turn that
+  // launched it, and a session accumulates them across turns, so stopping the
+  // session is the point at which its still-running work must end too: the
+  // record's `owner-gone` reap never fires for this in production (the liveness
+  // predicate answers only `true`/`undefined`, never `false`), so a stopped
+  // session's jobs would otherwise run to their hard deadline with nobody left
+  // to read them. Signals each in parallel; each `stop` settles its own record.
+  export async function stopSession(sessionID: string) {
+    const running = await list().then((jobs) =>
+      jobs.filter((job) => job.sessionID === sessionID && job.status === "running"),
+    )
+    await Promise.all(running.map((job) => stop(job.id)))
+    return running.length
   }
 
   // The exit code the job recorded for itself. Undefined means it has not

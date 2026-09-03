@@ -83,6 +83,11 @@ export namespace BackgroundReconcile {
     // not run, which is a fact about this server rather than about the user's
     // intent, and killing on it destroys healthy work for an infrastructure
     // reason the job had nothing to do with.
+    //
+    // A LATENT BACKSTOP, not the primary reaper. Stopping a session kills its
+    // jobs directly, so the common case never reaches here. This branch fires
+    // only for a caller that can supply a definite false — it stays as the
+    // shape a future owner-gone signal would use.
     if ((await alive(job.sessionID, BackgroundJob.owner(job))) === false) {
       await BackgroundProcess.kill(verdict.identity)
       await BackgroundJob.remove(job.id)

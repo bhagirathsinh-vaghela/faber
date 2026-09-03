@@ -653,12 +653,20 @@ export namespace Session {
     async (input) => {
       const { SessionPing } = await import("./ping")
       const { SessionPin } = await import("./pin")
+      const { BackgroundJob } = await import("@/background/job")
       for (const child of await children(input.sessionID)) {
         await SessionPing.stop(child.id)
         SessionPin.drop(child.id)
+        // A subtask owns background jobs of its own, and it outlives nothing
+        // once its parent is stopped.
+        await BackgroundJob.stopSession(child.id)
       }
       await SessionPing.stop(input.sessionID)
       SessionPin.drop(input.sessionID)
+      // The session's own in-flight jobs. A job outlives the turn that launched
+      // it, so stopping the session is what ends the work it started; nothing
+      // else reaps a stopped session's jobs before their hard deadline.
+      await BackgroundJob.stopSession(input.sessionID)
       // After the disarm, never before: cancel() runs on every normal loop exit
       // too, so it must not be what disarms, or an ordinary turn ending would
       // silently stop the session.

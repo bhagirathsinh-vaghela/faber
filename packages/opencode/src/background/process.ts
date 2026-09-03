@@ -9,7 +9,27 @@ import { Log } from "@/util/log"
 export namespace BackgroundProcess {
   const log = Log.create({ service: "background-process" })
 
-  const SIGKILL_DELAY_MS = 200
+  // How long the wrapper's own trap takes to escalate SIGTERM to SIGKILL on the
+  // command's group. The command runs under `set -m` in a group of its own that
+  // nothing outside can name, so `kill` below can only signal the WRAPPER's
+  // group. A command that ignores SIGTERM is ended by the wrapper's trap, which
+  // forwards TERM to the inner group, waits this long, then KILLs it.
+  //
+  // Exported because `BackgroundJob.wrap` builds the trap from the same number:
+  // one source for the two halves of one escalation. The outer `kill` delay is
+  // derived from it so the outside killer waits for the trap rather than racing
+  // it.
+  export const ESCALATION_SECONDS = 2
+
+  // The outer wait before `kill` sends its own SIGKILL, set to exceed the
+  // wrapper's escalation window. That ordering makes the outer SIGKILL a genuine
+  // BACKSTOP: by the time it fires the trap has already forwarded TERM and KILLed
+  // the inner group, so the outer signal only matters if the trap itself failed.
+  // A shorter delay does not orphan the command (the trap still KILLs the inner
+  // group on its own clock), but it SIGKILLs the wrapper group mid-escalation, so
+  // the outside signal is wasted and the command's death is left entirely to the
+  // trap's timer instead of being bounded by the killer.
+  const SIGKILL_DELAY_MS = ESCALATION_SECONDS * 1000 + 500
 
   // Enough to distinguish a job from an unrelated process that inherited its
   // pid: a pid must wrap the whole pid space AND land in the same one-second

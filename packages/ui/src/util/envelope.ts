@@ -38,6 +38,29 @@ export function stripTaskResult(text: string): string {
   return (separator === -1 ? stripTaskMeta(envelope) : envelope.slice(separator + 2)).trim()
 }
 
+// The job header's field lines, dropped by prefix. This is the FALLBACK for a
+// malformed envelope with no separator, mirroring stripTaskMeta: the writer
+// always emits the blank line, so the separator split below is the real path
+// and this only runs when it is absent. Prefix-matching would wrongly delete an
+// output line shaped like a field, which is exactly why it is not the primary
+// path.
+function stripJobMeta(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith("job_id:")) return false
+      if (trimmed.startsWith("command:")) return false
+      if (trimmed.startsWith("status:")) return false
+      if (trimmed.startsWith("exit:")) return false
+      if (trimmed.startsWith("duration:")) return false
+      if (trimmed.startsWith("log:")) return false
+      return true
+    })
+    .join("\n")
+    .trim()
+}
+
 // A job's header lines, every one of which the card shows as a styled field.
 // Leaving them in the body would print each twice.
 //
@@ -54,5 +77,5 @@ export function stripJobResult(text: string): string {
   const match = text.match(/<background-job-result>([\s\S]*?)<\/background-job-result>/)
   const envelope = (match ? match[1] : text).replace(/^\n/, "")
   const separator = envelope.indexOf("\n\n")
-  return (separator === -1 ? envelope : envelope.slice(separator + 2)).trim()
+  return (separator === -1 ? stripJobMeta(envelope) : envelope.slice(separator + 2)).trim()
 }

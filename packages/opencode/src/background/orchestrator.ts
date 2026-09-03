@@ -66,6 +66,12 @@ export namespace BackgroundOrchestrator {
   // reading it as intent is what turns an infrastructure error into a killed
   // job. Nothing here returns `false` at all — a job whose session cannot be
   // read is deferred, and the job's own hard deadline is what bounds it.
+  //
+  // A miss and a real deletion are indistinguishable from here (both are
+  // `Session.get` finding nothing), so this cannot safely emit the `false` that
+  // the reconcile reap consumes. Reaping a stopped session's jobs is therefore
+  // done directly at stop time (Session.stop -> BackgroundJob.stopSession), not
+  // by an owner-gone verdict from here.
   export async function aliveFor(sessionID: string, directory: string): Promise<boolean | undefined> {
     return Instance.provide({
       directory,
@@ -154,6 +160,12 @@ export namespace BackgroundOrchestrator {
     // unresolved lookup does not. Delivering into a session that turns out to
     // be gone costs a message nobody reads, while withholding on a failed
     // lookup loses the result of work that already ran.
+    //
+    // Latent for the same reason as the reconcile reap: `aliveFor` cannot emit a
+    // definite `false`, so this hold does not fire in practice. A job whose
+    // session was stopped is killed at stop time, so its result is never
+    // produced to be held here. Kept as the shape a definite owner-gone signal
+    // would use.
     if ((await aliveFor(job.sessionID, BackgroundJob.owner(job))) === false) {
       log.info("holding a result for a session the user stopped", { job: job.id, kind })
       return

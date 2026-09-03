@@ -15,6 +15,16 @@ export namespace BackgroundNotify {
 
   export type Kind = "completed" | "timeout" | "checkin"
 
+  // Remove blank lines from a header value so it cannot forge the header/body
+  // separator, which the reader finds at the first blank line. A run of newlines
+  // (a heredoc's empty line) becomes a single one; the value's real lines are
+  // kept, just never separated by a blank one. Exported because the task-result
+  // writer builds the same envelope shape and needs the same guard on its own
+  // `command` field — one implementation for one contract.
+  export function collapse(text: string) {
+    return text.replace(/(\n[ \t]*){2,}/g, "\n")
+  }
+
   // The envelope the model reads. Its own tag, distinct from a subagent
   // task's, so a client can tell the two apart without inspecting the fields.
   export function render(job: BackgroundJob.Info, output: string, kind: Kind, now = Date.now()) {
@@ -22,7 +32,13 @@ export namespace BackgroundNotify {
     const head = [
       `<background-job-result>`,
       `job_id: ${job.id}`,
-      `command: ${job.command}`,
+      // The reader finds the header/body boundary at the first blank line, and
+      // `command` is the one header field that carries arbitrary user text: a
+      // heredoc with an empty line would put a blank line INSIDE the header, so
+      // the reader would cut there and render the rest of the header as output.
+      // Collapsing blank lines keeps the command readable and multi-line while
+      // guaranteeing the only blank line in the envelope is the real separator.
+      `command: ${collapse(job.command)}`,
       kind === "checkin" ? `status: still running after ${elapsed}s` : `status: ${status(job, kind)}`,
       kind === "checkin" ? undefined : `exit: ${job.exit ?? "unknown"}`,
       `duration: ${elapsed}s`,
