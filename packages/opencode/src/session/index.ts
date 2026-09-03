@@ -118,34 +118,12 @@ export namespace Session {
           parent: Identifier.schema("session"),
           directory: z.string(),
           at: z.number(),
-          // Set once the report has landed and the helper has been stopped.
-          //
-          // A stop does not survive a restart on its own: nothing else on the
-          // record distinguishes "deliberately finished" from "idle right now",
-          // so a helper that was mid-delivery when the snapshot was taken reads
-          // as an interrupted turn and gets a continue prompt — which restarts
-          // the turn AND re-arms the ping daemon a prompt always arms. This is
-          // what a resume path checks to leave a finished helper alone.
+          // Stamped by the child itself when it reports (the session.update
+          // route). Reporting is explicit, so this is the only thing that
+          // retires the debt: the flag sweep reads it to
+          // clear the parent's "waiting on a helper" spinner, and a resume path
+          // reads it to leave a finished helper alone rather than continue it.
           done: z.number().optional(),
-          // When a server took the right to deliver this report.
-          //
-          // Two servers share the store during a staged cutover, and each would
-          // otherwise read an unstamped debt and deliver its own copy. The
-          // claim is taken inside the write lock, so only one wins.
-          //
-          // It EXPIRES, because a claim that outlives the process holding it
-          // would strand the debt forever, which is worse than the duplicate it
-          // prevents: a stale claim is retried rather than trusted.
-          claimed: z.number().optional(),
-          // The message the report was written as, stamped once it exists.
-          //
-          // What makes delivery exactly-once rather than at-least-once. The
-          // debt has to outlive the write, or a crash mid-delivery loses the
-          // report with nothing left to retry it; but a debt that merely
-          // survives would be re-delivered by the next pass. A pass that finds
-          // this set knows the report already landed, so it retires the debt
-          // instead of writing a second copy.
-          delivered: Identifier.schema("message").optional(),
         })
         .optional(),
       summary: z

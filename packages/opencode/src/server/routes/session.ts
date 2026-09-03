@@ -354,6 +354,10 @@ export const SessionRoutes = lazy(() =>
             .optional(),
           cacheProbeIndex: z.number().optional(),
           cacheProbeMessageID: z.string().optional(),
+          // A spawned helper retires its own debt when it reports: reporting is
+          // explicit, so the child is what marks the work delivered. Only the
+          // stamp is settable here; the parent link is written once at spawn.
+          spawnDone: z.boolean().optional(),
         }),
       ),
       async (c) => {
@@ -369,6 +373,7 @@ export const SessionRoutes = lazy(() =>
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
             if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
             if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID
+            if (updates.spawnDone && session.spawn) session.spawn.done = Date.now()
           },
           { touch: false },
         )

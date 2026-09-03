@@ -985,8 +985,6 @@ export type Session = {
     directory: string
     at: number
     done?: number
-    claimed?: number
-    delivered?: string
   }
   summary?: {
     additions: number
@@ -3926,6 +3924,7 @@ export type SessionUpdateData = {
     }
     cacheProbeIndex?: number
     cacheProbeMessageID?: string
+    spawnDone?: boolean
   }
   path: {
     sessionID: string

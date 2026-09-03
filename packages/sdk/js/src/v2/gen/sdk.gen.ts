@@ -1376,6 +1376,7 @@ export class Session extends HeyApiClient {
       }
       cacheProbeIndex?: number
       cacheProbeMessageID?: string
+      spawnDone?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1390,6 +1391,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "time" },
             { in: "body", key: "cacheProbeIndex" },
             { in: "body", key: "cacheProbeMessageID" },
+            { in: "body", key: "spawnDone" },
           ],
         },
       ],
