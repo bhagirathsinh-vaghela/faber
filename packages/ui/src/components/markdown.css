@@ -338,18 +338,34 @@
     margin-bottom: 0;
   }
 
+  /* The name tag: small, uppercase, accent-colored. It leads an aside directly,
+     and leads the <summary> line of a check before the question text. */
   .callout > strong,
-  .callout > summary {
-    display: block;
+  .callout > summary > strong {
     font-size: 11px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    margin-bottom: 5px;
     color: var(--callout-accent, var(--markdown-strong));
   }
 
+  .callout > strong {
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  /* A check's summary shows the QUESTION collapsed (the answer folds below), so
+     the tag sits inline before it and the question reads at normal size. */
   details.callout > summary {
     cursor: pointer;
+    margin-bottom: 5px;
+  }
+
+  details.callout > summary > strong {
+    margin-right: 8px;
+  }
+
+  details.callout[open] > summary {
+    margin-bottom: 8px;
   }
 
   .callout.fix {

@@ -53,23 +53,33 @@ const CALLOUTS: Record<string, string> = {
 // `:::name` is left untouched, which drops back to plain rendering rather than
 // leaking the raw fence. Written as a bare recursive walk to avoid pulling in
 // unist-util-visit for one traversal.
+//
+// A remark transform that renders the callout directives. Authored as
+// `:::name` with a body, and `check` also takes a directive label carrying the
+// question: `:::check[the question]`. remark-directive flags that label as the
+// directive's first child paragraph (`data.directiveLabel`), which becomes the
+// <summary> so the question shows while the answer (the body) folds. Every other
+// callout is an <aside> with the name tag prepended.
 function remarkCallouts() {
+  const strong = (value: string) => ({ type: "strong", children: [{ type: "text", value }] })
   return (tree: any) => {
     const walk = (node: any) => {
       for (const child of node.children ?? []) walk(child)
       if (node.type !== "containerDirective") return
       const label = CALLOUTS[node.name]
       if (!label) return
-      const check = node.name === "check"
-      node.data = {
-        ...node.data,
-        hName: check ? "details" : "aside",
-        hProperties: { className: check ? ["callout", "check", node.name] : ["callout", node.name] },
+      const body = node.children ?? []
+      if (node.name === "check") {
+        node.data = { ...node.data, hName: "details", hProperties: { className: ["callout", "check"] } }
+        const hasLabel = body[0]?.data?.directiveLabel
+        const question = hasLabel ? body[0].children ?? [] : []
+        const answer = hasLabel ? body.slice(1) : body
+        const summary = { type: "summary", data: { hName: "summary" }, children: [strong(label), ...question] }
+        node.children = [summary, ...answer]
+        return
       }
-      const head = check
-        ? { type: "summary", data: { hName: "summary" }, children: [{ type: "text", value: label }] }
-        : { type: "strong", children: [{ type: "text", value: label }] }
-      node.children = [head, ...(node.children ?? [])]
+      node.data = { ...node.data, hName: "aside", hProperties: { className: ["callout", node.name] } }
+      node.children = [strong(label), ...body]
     }
     walk(tree)
   }
