@@ -41,9 +41,18 @@ const Summary = BackgroundJob.Info.pick({
   status: true,
   exit: true,
   time: true,
-}).meta({ ref: "BackgroundJobSummary" })
+})
+  .extend({
+    // When the job's log last grew, so a running row shows genuine progress:
+    // "updated 4s ago" is actively working, "updated 6m ago" has gone silent.
+    // Only meaningful for a running row — a finished job's last activity is its
+    // completion time, already in `time.completed` — so it is read only for
+    // those and omitted otherwise rather than stat-ing every historical log.
+    updated: z.number().optional(),
+  })
+  .meta({ ref: "BackgroundJobSummary" })
 
-function summarize(job: BackgroundJob.Info) {
+async function summarize(job: BackgroundJob.Info) {
   return {
     id: job.id,
     sessionID: job.sessionID,
@@ -52,6 +61,7 @@ function summarize(job: BackgroundJob.Info) {
     status: job.status,
     exit: job.exit,
     time: job.time,
+    updated: job.status === "running" ? await BackgroundJob.logMtime(job.id) : undefined,
   }
 }
 
@@ -88,11 +98,13 @@ export const JobRoutes = lazy(() =>
         // production has never produced one.
         const lost = newest.filter((job) => job.status !== "running" && job.time.lost)
         return c.json(
-          [
-            ...newest.filter((job) => job.status === "running"),
-            ...lost,
-            ...newest.filter((job) => job.status !== "running" && !job.time.lost).slice(0, TAIL),
-          ].map(summarize),
+          await Promise.all(
+            [
+              ...newest.filter((job) => job.status === "running"),
+              ...lost,
+              ...newest.filter((job) => job.status !== "running" && !job.time.lost).slice(0, TAIL),
+            ].map(summarize),
+          ),
         )
       },
     )

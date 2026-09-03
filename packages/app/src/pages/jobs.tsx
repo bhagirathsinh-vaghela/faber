@@ -1,7 +1,8 @@
-import { createMemo, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useServer } from "@/context/server"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useTicker } from "@/context/ticker"
 import { ReaderPill } from "@/components/reader-pill"
 
@@ -15,6 +16,9 @@ type Job = {
   description: string
   status: "running" | "exited" | "killed"
   exit?: number
+  // When the job's log last grew, present only on a running row. A finished
+  // job's last activity is its completion time, so the server omits this for it.
+  updated?: number
   // `lost` is when the result never reached the session that asked for it,
   // which is not a property of the command: it ran, and its output is on disk.
   time: {
@@ -22,7 +26,8 @@ type Job = {
     soft?: number
     hard: number
     completed?: number
-    notified?: number
+    nudges?: number
+    nudgedAt?: number
     lost?: number
   }
 }
@@ -40,6 +45,20 @@ function elapsed(job: Job, now: number) {
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}m ${seconds % 60}s`
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+// How long since the running job's log last grew, counted off the shared tick
+// so it advances without a refetch. This is the "actively working vs gone
+// silent" signal: a row updating every few seconds is making progress, one
+// stuck at minutes has stalled. Absent for a finished row, whose last activity
+// was its completion.
+function updatedAgo(job: Job, now: number) {
+  if (job.updated === undefined) return undefined
+  const seconds = Math.max(0, Math.round((now - job.updated) / 1000))
+  if (seconds < 60) return `updated ${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `updated ${minutes}m ago`
+  return `updated ${Math.floor(minutes / 60)}h ago`
 }
 
 // Green reads as "this went well", which a job that is merely still running has
@@ -90,17 +109,29 @@ export default function Jobs() {
   // reader watching a build wants what is on disk right now.
   const coarse = createMemo(() => Math.floor(ticker.now() / LIST_MS))
 
+  // A transition (a job started or settled) publishes job.updated on the global
+  // channel. Bumping this on each one refetches the list at once rather than
+  // waiting out the coarse poll, so a job appearing or finishing lands within a
+  // frame. The poll stays as the backstop for anything the stream missed (a
+  // reconnect gap, an adopted job settled on another server).
+  const global = useGlobalSDK()
+  const [live, setLive] = createSignal(0)
+  const unsub = global.event.listen((e) => {
+    if (e.name === "global" && e.details?.type === "job.updated") setLive((n) => n + 1)
+  })
+  onCleanup(unsub)
+
   const [jobs] = createResource(
-    () => [`${server.url}/job`, coarse()] as const,
+    () => [`${server.url}/job`, coarse(), live()] as const,
     ([url]) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? (r.json() as Promise<Job[]>) : [])),
   )
 
   // Fetched whole rather than picked out of the list: a list row carries a
   // clipped command and no directory, which are two of the four fields this
-  // view exists to show. Keyed on the coarse tick, since only the status can
-  // change and the log beside it is what moves.
+  // view exists to show. Keyed on the coarse tick and the live signal, since
+  // only the status can change and the log beside it is what moves.
   const [detail] = createResource(
-    () => (params.id ? ([`${server.url}/job/${params.id}`, coarse()] as const) : undefined),
+    () => (params.id ? ([`${server.url}/job/${params.id}`, coarse(), live()] as const) : undefined),
     ([url]) =>
       fetch(url, { cache: "no-store" }).then((r) =>
         r.ok ? (r.json() as Promise<{ job: Job }>).then((body) => body.job) : undefined,
@@ -128,16 +159,13 @@ export default function Jobs() {
 
   const titles = createMemo(() => new Map((sessions() ?? []).map((row) => [row.sessionID, row.title])))
 
-  // One group per session that started a job. A job belongs to the session
-  // that asked for it, which is the only thing distinguishing two identical
-  // commands, so it is the grouping rather than a field on a flat row.
-  //
-  // A session with anything running sorts first, then by its newest job: what
-  // a reader opens this page for is work still in flight, and the id is
-  // time-ordered so the newest job's id ranks its whole group.
-  const groups = createMemo(() => {
+  // A job belongs to the session that asked for it, which is the only thing
+  // distinguishing two identical commands, so the session is the grouping rather
+  // than a field on a flat row. Groups sort newest-first on the id, which is
+  // time-ordered, so the group with the most recent activity leads.
+  function groupBySession(list: Job[]) {
     const bySession = new Map<string, Job[]>()
-    for (const job of jobs() ?? []) {
+    for (const job of list) {
       const held = bySession.get(job.sessionID)
       if (held) held.push(job)
       else bySession.set(job.sessionID, [job])
@@ -147,26 +175,117 @@ export default function Jobs() {
         sessionID,
         title: titles().get(sessionID),
         items,
-        running: items.filter((job) => job.status === "running").length,
         newest: items.reduce((max, job) => (job.id > max ? job.id : max), ""),
       }))
-      .sort((a, b) => {
-        if (a.running !== b.running) return b.running - a.running
-        return a.newest > b.newest ? -1 : 1
-      })
-  })
+      .sort((a, b) => (a.newest > b.newest ? -1 : 1))
+  }
 
-  // Which groups the reader collapsed. Every group starts open: the page is
-  // already bounded, so hiding rows behind a disclosure a reader has to find
-  // would cost more than the vertical space it saves.
-  const [collapsed, setCollapsed] = createSignal(new Set<string>())
-  const toggle = (sessionID: string) =>
-    setCollapsed((held) => {
+  // Two sections rather than one flat list: what a reader opens this page for is
+  // work still in flight, so the running jobs are their own section above the
+  // finished tail. A single session can appear in both — some of its jobs
+  // running, others done — so the split is on the JOBS, then each half is
+  // grouped by session independently. A never-delivered result stays with the
+  // recent tail: it is finished work, flagged rather than in-progress.
+  const inProgress = createMemo(() => groupBySession((jobs() ?? []).filter((job) => job.status === "running")))
+  const recent = createMemo(() => groupBySession((jobs() ?? []).filter((job) => job.status !== "running")))
+
+  // Which groups the reader expanded. Every group starts COLLAPSED, showing just
+  // the session header and its job count; the reader opens the ones they care
+  // about. Keyed by section AND session, because one session can head a group in
+  // both sections and expanding its in-progress group must not open its recent
+  // one.
+  const [expanded, setExpanded] = createSignal(new Set<string>())
+  const toggle = (key: string) =>
+    setExpanded((held) => {
       const next = new Set(held)
-      if (next.has(sessionID)) next.delete(sessionID)
-      else next.add(sessionID)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
+
+  // One session's group of rows, shared by both sections. `keyPrefix` scopes the
+  // collapse state to the section so a session heading both sections folds in
+  // each independently; `running` colours the count the reader is looking for.
+  function Group(props: { group: ReturnType<typeof groupBySession>[number]; keyPrefix: string; running: boolean }) {
+    const key = () => `${props.keyPrefix}:${props.group.sessionID}`
+    return (
+      <>
+        <button
+          type="button"
+          data-slot="job-group"
+          class="mt-4 mb-2 w-full flex items-center gap-2 text-left"
+          onClick={() => toggle(key())}
+          aria-expanded={expanded().has(key())}
+        >
+          <Icon
+            name={expanded().has(key()) ? "chevron-down" : "chevron-right"}
+            size="small"
+            class="shrink-0 text-text-weaker"
+            aria-hidden="true"
+          />
+          <span class="min-w-0 flex-1 truncate text-14-medium text-text-base">
+            {props.group.title ?? props.group.sessionID}
+          </span>
+          <span
+            class="shrink-0 text-12-regular"
+            style={{ color: props.running ? "var(--syntax-primitive)" : "var(--text-weaker)" }}
+          >
+            {props.group.items.length}
+          </span>
+        </button>
+        <ul
+          class="flex flex-col gap-1"
+          data-slot="job-list"
+          style={{ display: expanded().has(key()) ? undefined : "none" }}
+        >
+          <For each={props.group.items}>
+            {(job) => (
+              <li>
+                <button
+                  type="button"
+                  data-slot="job-row"
+                  class="w-full flex items-start gap-3 rounded-md px-3 py-2.5 text-left hover:bg-surface-raised-base-hover"
+                  onClick={() => navigate(`/jobs/${job.id}`)}
+                >
+                  <span
+                    class="mt-1.5 size-2 shrink-0 rounded-full"
+                    style={{ background: tone(job) }}
+                    aria-hidden="true"
+                  />
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-14-medium text-text-base truncate">{job.description}</span>
+                    <span class="block font-mono text-12-regular text-text-weaker truncate">{job.command}</span>
+                  </span>
+                  <span class="shrink-0 text-right">
+                    <span class="block text-12-regular" style={{ color: tone(job) }}>
+                      {label(job)}
+                    </span>
+                    <span class="block text-12-regular text-text-weaker">{elapsed(job, ticker.now())}</span>
+                    <Show when={updatedAgo(job, ticker.now())}>
+                      {(ago) => <span class="block text-12-regular text-text-weakest">{ago()}</span>}
+                    </Show>
+                  </span>
+                </button>
+              </li>
+            )}
+          </For>
+        </ul>
+      </>
+    )
+  }
+
+  // A section header sits above its groups only when the section has any, so an
+  // empty In-progress collapses away rather than showing a bare heading.
+  function Section(props: { label: string; groups: ReturnType<typeof groupBySession>; running: boolean }) {
+    return (
+      <Show when={props.groups.length > 0}>
+        <h2 class="mt-6 mb-1 text-12-medium text-text-weaker uppercase tracking-wide">{props.label}</h2>
+        <For each={props.groups}>
+          {(group) => <Group group={group} keyPrefix={props.label} running={props.running} />}
+        </For>
+      </Show>
+    )
+  }
 
   return (
     <div class="size-full min-h-0 flex-1 overflow-y-auto" data-component="jobs-page">
@@ -183,78 +302,11 @@ export default function Jobs() {
 
               <Show when={jobs()} fallback={<p class="text-14-regular text-text-weaker">Loading...</p>}>
                 <Show
-                  when={groups().length > 0}
+                  when={inProgress().length > 0 || recent().length > 0}
                   fallback={<p class="text-14-regular text-text-weaker">No jobs have run recently.</p>}
                 >
-                  <For each={groups()}>
-                    {(group) => (
-                      <Show when={group.items.length > 0}>
-                        <button
-                          type="button"
-                          data-slot="job-group"
-                          class="mt-6 mb-2 w-full flex items-center gap-2 text-left"
-                          onClick={() => toggle(group.sessionID)}
-                          aria-expanded={!collapsed().has(group.sessionID)}
-                        >
-                          <Icon
-                            name={collapsed().has(group.sessionID) ? "chevron-right" : "chevron-down"}
-                            size="small"
-                            class="shrink-0 text-text-weaker"
-                            aria-hidden="true"
-                          />
-                          <span class="min-w-0 flex-1 truncate text-14-medium text-text-base">
-                            {group.title ?? group.sessionID}
-                          </span>
-                          {/* The running count is the reason to look, so it is
-                              the one thing coloured; the total is context. */}
-                          <Show when={group.running > 0}>
-                            <span class="shrink-0 text-12-regular" style={{ color: "var(--syntax-primitive)" }}>
-                              {group.running} running
-                            </span>
-                          </Show>
-                          <span class="shrink-0 text-12-regular text-text-weaker">{group.items.length}</span>
-                        </button>
-                        <ul
-                          class="flex flex-col gap-1"
-                          data-slot="job-list"
-                          style={{ display: collapsed().has(group.sessionID) ? "none" : undefined }}
-                        >
-                          <For each={group.items}>
-                            {(job) => (
-                              <li>
-                                <button
-                                  type="button"
-                                  data-slot="job-row"
-                                  class="w-full flex items-start gap-3 rounded-md px-3 py-2.5 text-left hover:bg-surface-raised-base-hover"
-                                  onClick={() => navigate(`/jobs/${job.id}`)}
-                                >
-                                  <span
-                                    class="mt-1.5 size-2 shrink-0 rounded-full"
-                                    style={{ background: tone(job) }}
-                                    aria-hidden="true"
-                                  />
-                                  <span class="min-w-0 flex-1">
-                                    <span class="block text-14-medium text-text-base truncate">{job.description}</span>
-                                    <span class="block font-mono text-12-regular text-text-weaker truncate">
-                                      {job.command}
-                                    </span>
-                                  </span>
-                                  <span class="shrink-0 text-right">
-                                    <span class="block text-12-regular" style={{ color: tone(job) }}>
-                                      {label(job)}
-                                    </span>
-                                    <span class="block text-12-regular text-text-weaker">
-                                      {elapsed(job, ticker.now())}
-                                    </span>
-                                  </span>
-                                </button>
-                              </li>
-                            )}
-                          </For>
-                        </ul>
-                      </Show>
-                    )}
-                  </For>
+                  <Section label="In progress" groups={inProgress()} running={true} />
+                  <Section label="Recent" groups={recent()} running={false} />
                 </Show>
               </Show>
             </>

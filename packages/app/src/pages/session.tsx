@@ -868,8 +868,8 @@ export default function Page() {
   )
   // busy because a subtask runs (own turn may or may not also be running).
   const subtaskBusy = createMemo(() => busy().busyDescendant)
-  // A helper session owing this one a report keeps the bar up too: work is
-  // still coming back, so the bar going dark would say the session is done.
+  // A running background job keeps the bar up too: work is still coming back,
+  // so the bar going dark would say the session is done.
   const titleWorking = createMemo(() => busyShown(busy()))
   const workingTint = createMemo(() => {
     const agent = local.agent.current()

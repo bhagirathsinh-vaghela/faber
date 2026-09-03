@@ -4,6 +4,8 @@ import z from "zod"
 import { Global } from "@/global"
 import { Storage } from "@/storage/storage"
 import { Log } from "@/util/log"
+import { BusEvent } from "@/bus/bus-event"
+import { GlobalBus } from "@/bus/global"
 import { BackgroundProcess } from "./process"
 
 // The durable record of a spawned shell job, and the files it writes.
@@ -64,9 +66,14 @@ export namespace BackgroundJob {
         soft: z.number().optional(),
         hard: z.number(),
         completed: z.number().optional(),
-        // When the soft deadline's check-in was delivered, so a reconcile
-        // that runs every few minutes does not re-deliver it.
-        notified: z.number().optional(),
+        // The progress nudge past the soft deadline repeats, so it needs two
+        // facts a single stamp cannot hold: how many have gone out (the ordinal
+        // the prose keys on for first-vs-repeat) and when the last one did (the
+        // cadence). A record carrying neither has been nudged zero times, which
+        // is the correct start for a job that predates these fields as much as
+        // for a fresh one.
+        nudges: z.number().optional(),
+        nudgedAt: z.number().optional(),
         // When a finished result could not be delivered. The work ran and its
         // output is still on disk; what is gone is the session that asked for
         // it, so the stamp is what distinguishes a result nobody read from one
@@ -82,6 +89,34 @@ export namespace BackgroundJob {
     })
     .meta({ ref: "BackgroundJob" })
   export type Info = z.infer<typeof Info>
+
+  // A job crossed a lifecycle boundary: it was just spawned, or it settled
+  // (exited/killed). The whole record rides the event, so a real-time consumer
+  // (the jobs view) applies it without a refetch, and its `status` field is
+  // what tells created from settled — one event type keeps the client
+  // subscription to a single handler.
+  //
+  // A SIGNAL, never a source of truth. The record on disk is the truth; this
+  // only says "look again". A consumer that missed one (it connected late, a
+  // frame dropped) is corrected by the sweep's periodic re-derivation, the same
+  // backstop every other job signal leans on.
+  export const Event = {
+    Updated: BusEvent.define("job.updated", z.object({ job: Info })),
+  }
+
+  // Emitted straight onto the GlobalBus rather than through Bus.publish, which
+  // resolves its subscriber list from an instance context. Every path that
+  // settles a job can run without one — the boot sweep, a Scheduler tick, the
+  // exit watcher's floating promise — so an instance-scoped publish would throw
+  // "No context found for instance" exactly where a job most needs to announce
+  // itself. The event is globally scoped anyway (one machine's jobs, no project
+  // axis), so it is tagged "global" the way SessionRecent tags its own.
+  export function publish(job: Info) {
+    GlobalBus.emit("event", {
+      directory: "global",
+      payload: { type: Event.Updated.type, properties: { job } },
+    })
+  }
 
   // Job output lives outside Storage: it is an append target for a process
   // that must keep writing after the server is gone, which a JSON record
@@ -310,6 +345,7 @@ export namespace BackgroundJob {
     if (!claimed) return { type: "settled", job: current }
     await BackgroundProcess.kill(job.process)
     await settled(current.sessionID)
+    publish(current)
     return { type: "settled", job: current }
   }
 
@@ -351,6 +387,16 @@ export namespace BackgroundJob {
       .catch(() => undefined)
   }
 
+  // How fresh a running job's output is: the log's mtime advances on every
+  // write, so a stale one is a job that has gone silent. Undefined when the log
+  // is absent (a spawn that never landed).
+  export async function logMtime(id: string) {
+    return Bun.file(logPath(id))
+      .stat()
+      .then((s) => s.mtimeMs)
+      .catch(() => undefined)
+  }
+
   // A job that ended AT OR PAST its hard deadline was stopped by its own
   // watchdog, not by finishing, so it reads `killed` (delivered as a timeout)
   // rather than `exited`. The one decision, shared by the live-handle settle and
@@ -359,6 +405,43 @@ export namespace BackgroundJob {
   // finish instant cannot prove that, so it stays `exited`.
   export function settledStatus(hard: number, ended: number | undefined): Status {
     return ended !== undefined && ended >= hard ? "killed" : "exited"
+  }
+
+  // How often a job past its soft deadline is nudged. No count cap: a job cannot
+  // outlive its hard deadline (the watchdog kills it, and a killed job is never
+  // nudged — the status guard below stops it), so the deadline is the bound, and
+  // a separate cap would wrongly silence a job whose deadline was raised. The
+  // cadence is loose and the delta each nudge carries (elapsed, log freshness) is
+  // what keeps a repeat worth reading rather than nudge-blindness.
+  export const NUDGE_MS = 3 * 60 * 1000
+
+  // Whether a running job is due another nudge, claimed and stamped atomically
+  // so two passes cannot both send one. Returns the nudge ordinal (1 for the
+  // first) when this caller won the claim, undefined otherwise — the ordinal is
+  // what the prose keys on to say the first nudge's fuller contract once and the
+  // tighter repeat after.
+  //
+  // Due when the job is past its soft deadline: the FIRST nudge fires as soon as
+  // the deadline is behind it — the deadline is itself the "should have finished
+  // by now" mark — while every later one waits NUDGE_MS since the previous
+  // nudge. Keying the first on the deadline rather than on NUDGE_MS-past-it is
+  // what makes the soft deadline mean what the caller set it to. A killed or
+  // exited job is never due: the status guard is what bounds the total against
+  // the hard deadline.
+  //
+  // The claim runs inside the write lock, the same shape as a settle claim, so
+  // the read and the stamp cannot interleave with another pass.
+  export async function nudge(id: string, now = Date.now()): Promise<number | undefined> {
+    let ordinal: number | undefined
+    await update(id, (draft) => {
+      if (draft.status !== "running" || draft.time.soft === undefined) return
+      const due = draft.time.nudgedAt === undefined ? draft.time.soft : draft.time.nudgedAt + NUDGE_MS
+      if (now < due) return
+      ordinal = (draft.time.nudges ?? 0) + 1
+      draft.time.nudges = ordinal
+      draft.time.nudgedAt = now
+    })
+    return ordinal
   }
 
   export async function output(id: string) {

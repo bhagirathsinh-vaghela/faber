@@ -48,12 +48,6 @@
      token is NOT it, despite the name, since it resolves to a brown a shade
      off the task amber. */
   --box-accent-job: var(--syntax-primitive, #79c0ff);
-  /* A helper session working on this one's behalf. Its own colour because it
-     is neither of the two states beside it: not this session's own turn, which
-     carries the agent tint, and not a subtask, which is amber. The job blue is
-     a shade off the agent tint and would read as the same thing at spinner
-     size. Yellow rather than the task amber, which leans orange. */
-  --box-accent-helper: var(--solaris-dark-9, #fcd53a);
   --box-accent-tool: var(--ink-dark-11, #b1b7b7);
 
   /* Explicit per-box border + fill tokens. Defaults reproduce the derived

@@ -22,15 +22,14 @@ type Data = {
   // full subtree, rolled up server-side); busySelf = own turn only. Every busy
   // indicator reads this; busySelf picks own-vs-delegating animation.
   //
-  // busyHelper is optional because it answers to a different clock: busy tracks
-  // turns in the server's own process, while a spawned helper's debt lives on
-  // disk, so a record written before the field existed simply lacks it.
+  // busyJob is optional because it answers to a different clock: busy tracks
+  // turns in the server's own process, while a background job outlives the turn
+  // that spawned it, so a record written before the field existed simply lacks it.
   session_busy: {
     [sessionID: string]: {
       busy: boolean
       busySelf: boolean
       busyDescendant: boolean
-      busyHelper?: boolean
       busyJob?: boolean
     }
   }

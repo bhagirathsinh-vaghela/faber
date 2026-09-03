@@ -29,7 +29,6 @@ export namespace BackgroundReconcile {
     | { type: "completed"; job: BackgroundJob.Info; exit: number | undefined }
     | { type: "expired"; job: BackgroundJob.Info }
     | { type: "reaped"; job: BackgroundJob.Info; reason: "owner-gone" | "orphaned" }
-    | { type: "notify"; job: BackgroundJob.Info }
 
   export type Pass = {
     actions: Action[]
@@ -113,23 +112,10 @@ export namespace BackgroundReconcile {
       return { type: "expired", job: completed }
     }
 
-    // Alive, owned, inside its bound. The one thing left is the soft deadline,
-    // whose check-in is delivered once: the stamp is what stops a pass every
-    // few minutes from re-delivering it forever.
-    // Claimed the same way as a settle, and for the same reason: the stamp is
-    // what stops a pass every few minutes re-delivering the check-in forever,
-    // so reading it outside the lock lets two passes both find it absent and
-    // both deliver.
-    if (job.time.soft && now >= job.time.soft && !job.time.notified) {
-      let claimed = false
-      await BackgroundJob.update(job.id, (draft) => {
-        if (draft.time.notified) return
-        claimed = true
-        draft.time.notified = now
-      })
-      if (claimed) return { type: "notify", job }
-    }
-
+    // Alive, owned, inside its bound. The soft-deadline nudge is not decided
+    // here: it repeats on its own cadence, which is finer than a reconcile pass,
+    // so the orchestrator runs it on a dedicated timer reading the same running
+    // records. A pass that reaches here has nothing left to do but keep the job.
     return { type: "kept", job }
   }
 
@@ -154,7 +140,13 @@ export namespace BackgroundReconcile {
     })
     if (!claimed) return undefined
     await BackgroundJob.settled(job.sessionID)
-    return { ...job, status, exit, time: { ...job.time, completed: now } }
+    const settled = { ...job, status, exit, time: { ...job.time, completed: now } }
+    // The record just crossed into a terminal state on a server that never held
+    // its handle (a restart adopted it). Announce it the same way the live
+    // handle does, so a view watching an adopted job sees it end in real time
+    // rather than at the next list poll.
+    BackgroundJob.publish(settled)
+    return settled
   }
 
   // Learning that an ADOPTED job has finished — one this server never spawned,

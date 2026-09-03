@@ -119,6 +119,38 @@ export namespace BackgroundOrchestrator {
       scope: "global",
       run: () => sweep(),
     })
+
+    // 4. The nudge. A running job past its soft deadline gets a periodic
+    //    check-in, on its own timer rather than the sweep's: the cadence is
+    //    finer than a sweep interval, and the nudge does no process
+    //    verification, so it must not wait on the sweep's heavier pass.
+    Scheduler.register({
+      id: "background.nudge",
+      interval: BackgroundJob.NUDGE_MS,
+      scope: "global",
+      run: () => nudgeAll(),
+    })
+  }
+
+  // Deliver a check-in for every running job that is due one. The claim on the
+  // record is what bounds and paces this — decided per job in BackgroundJob.nudge
+  // — so this reads the running set off disk (a job outlives the process that
+  // spawned it, so a set held anywhere else would miss adopted ones) and asks
+  // each for a nudge ordinal, delivering only when the claim is won.
+  //
+  // The record is RE-READ after the claim, not delivered from the pre-claim
+  // copy: nudge() writes the new `nudges` count to disk, and the check-in prose
+  // keys on it to say the first nudge's full contract once and the tighter
+  // repeat after. Delivering the stale copy would render every second nudge with
+  // the first one's text.
+  export async function nudgeAll(now = Date.now()) {
+    const running = (await BackgroundJob.list()).filter((job) => job.status === "running")
+    for (const job of running) {
+      const ordinal = await BackgroundJob.nudge(job.id, now)
+      if (ordinal === undefined) continue
+      const claimed = await BackgroundJob.get(job.id)
+      if (claimed) await deliver(claimed, "checkin")
+    }
   }
 
   // One pass, acting on each verdict.
@@ -141,7 +173,6 @@ export namespace BackgroundOrchestrator {
     for (const action of pass.actions) {
       if (action.type === "completed") await deliver(action.job, "completed")
       if (action.type === "expired") await deliver(action.job, "timeout")
-      if (action.type === "notify") await deliver(action.job, "checkin")
       if (action.type === "reaped") log.info("reaped", { job: action.job.id, reason: action.reason })
     }
     await BackgroundJob.cleanup()

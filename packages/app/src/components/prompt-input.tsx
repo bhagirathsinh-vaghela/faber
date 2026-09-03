@@ -263,8 +263,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const busy = createMemo(
     () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
-  // A helper session owing this one a report keeps the indicator up too: work
-  // is still coming back, so going dark would say the session is done.
+  // A running background job keeps the indicator up too: work is still coming
+  // back, so going dark would say the session is done.
   const working = createMemo(() => busyShown(busy()))
   // Something is in the box worth sending — text draft or pending comments.
   const submittable = createMemo(() => prompt.dirty() || commentCount() > 0)

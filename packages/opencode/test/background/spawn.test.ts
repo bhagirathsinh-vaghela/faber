@@ -180,13 +180,33 @@ describe("BackgroundSpawn durability", () => {
     expect(job.time.hard).toBeLessThan(before + 70_000)
   }, 20_000)
 
-  test("records a soft deadline only when one was asked for", async () => {
+  // An explicit soft deadline is honoured as given; otherwise one is derived so
+  // the progress nudge is reachable for every job rather than only opted-in ones.
+  test("honours an explicit soft deadline", async () => {
+    const before = Date.now()
     const withSoft = await run("sleep 30", { soft: 10_000 })
-    expect((await BackgroundJob.get(withSoft.job.id))!.time.soft).toBeDefined()
+    const job = (await BackgroundJob.get(withSoft.job.id))!
+    expect(job.time.soft).toBeGreaterThanOrEqual(before + 10_000)
+    expect(job.time.soft).toBeLessThan(before + 20_000)
+  }, 20_000)
 
-    const without = await run("true")
-    expect((await BackgroundJob.get(without.job.id))!.time.soft).toBeUndefined()
-  }, 25_000)
+  // The derived soft is capped, so a default-hard job still gets its first nudge
+  // within a few minutes rather than halfway through a 30-minute budget.
+  test("derives a capped soft deadline when none is given", async () => {
+    const before = Date.now()
+    const job = await run("true")
+    const record = (await BackgroundJob.get(job.job.id))!
+    expect(record.time.soft).toBeDefined()
+    expect(record.time.soft!).toBeLessThanOrEqual(before + BackgroundSpawn.SOFT_CAP_MS + 1_000)
+  })
+
+  test("derives soft from half the hard budget when that is under the cap", async () => {
+    const before = Date.now()
+    const job = await run("true", { hard: 60_000 })
+    const record = (await BackgroundJob.get(job.job.id))!
+    expect(record.time.soft).toBeGreaterThanOrEqual(before + 30_000)
+    expect(record.time.soft).toBeLessThan(before + 40_000)
+  })
 })
 
 describe("BackgroundSpawn stdin", () => {

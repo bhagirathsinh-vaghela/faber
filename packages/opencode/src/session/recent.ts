@@ -47,18 +47,10 @@ export namespace SessionRecent {
       // busySelf, lets the client pick own-only / both / delegating-only visuals
       // (busy+busySelf alone can't tell own-only from both).
       busyDescendant: z.boolean(),
-      // A spawned helper session owes this one a report and has not delivered
-      // it. Separate from busyDescendant, which walks parentID and so covers
-      // subtasks only: a helper is linked by its own spawn record, so nothing
-      // in the subtask chain knows it exists. Without this the parent looks
-      // idle while work it is waiting on is still running, and stopping it
-      // throws that work away.
-      busyHelper: z.boolean(),
-      // A background job this session started is still running. Like
-      // busyHelper, and unlike the other two, this is work the session is
-      // waiting on that no turn is executing: the job outlives the turn that
-      // spawned it, so without this a session with a twenty-minute build
-      // running looks idle.
+      // A background job this session started is still running. Unlike the other
+      // two busy flags, this is work the session is waiting on that no turn is
+      // executing: the job outlives the turn that spawned it, so without this a
+      // session with a twenty-minute build running looks idle.
       busyJob: z.boolean(),
       unseen: z.boolean(),
       // A question is pending an answer. Derived from the pending set rather
@@ -112,7 +104,6 @@ export namespace SessionRecent {
         busy: false,
         busySelf: false,
         busyDescendant: false,
-        busyHelper: false,
         busyJob: false,
         question: false,
         error: false,
@@ -128,7 +119,7 @@ export namespace SessionRecent {
     timer = setTimeout(() => {
       timer = undefined
       const durable: Stored[] = sorted().map(
-        ({ busy, busySelf, busyDescendant, busyHelper, busyJob, question, error, permission, pingAt, ...rest }) => rest,
+        ({ busy, busySelf, busyDescendant, busyJob, question, error, permission, pingAt, ...rest }) => rest,
       )
       void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
@@ -186,7 +177,6 @@ export namespace SessionRecent {
       | "busy"
       | "busySelf"
       | "busyDescendant"
-      | "busyHelper"
       | "busyJob"
       | "unseen"
       | "question"
@@ -204,7 +194,6 @@ export namespace SessionRecent {
       busy: prev?.busy ?? false,
       busySelf: prev?.busySelf ?? false,
       busyDescendant: prev?.busyDescendant ?? false,
-      busyHelper: prev?.busyHelper ?? false,
       busyJob: prev?.busyJob ?? false,
       unseen: prev?.unseen ?? false,
       question: prev?.question ?? false,
@@ -238,35 +227,6 @@ export namespace SessionRecent {
     publish()
   }
 
-  // A helper this session spawned started or finished owing it a report. Set
-  // apart from setBusy because the two answer to different clocks: busy tracks
-  // a turn in this process, while a helper's debt lives on disk and outlives
-  // any restart.
-  export async function setBusyHelper(sessionID: string, busyHelper: boolean) {
-    await hydrate()
-    const entry = entries.get(sessionID)
-    if (!entry || entry.busyHelper === busyHelper) return
-    entry.busyHelper = busyHelper
-    publish()
-  }
-
-  // Reconcile the flag against the debts that are actually outstanding.
-  //
-  // The per-edge setter is best-effort: it no-ops when the parent has no entry
-  // yet, and it cannot know about a debt the helper retired by reporting from
-  // another server. Deriving the whole set from disk each pass is what makes a
-  // stuck flag impossible, since a flag with no debt behind it is cleared by the
-  // same sweep that discovers it.
-  export async function syncBusyHelper(owed: Set<string>) {
-    await hydrate()
-    for (const entry of entries.values()) {
-      const next = owed.has(entry.sessionID)
-      if (entry.busyHelper === next) continue
-      entry.busyHelper = next
-      publish()
-    }
-  }
-
   // A job this session started began or ended. The per-edge setter is what
   // makes the flag land at the moment the job spawns rather than at the next
   // sweep, which is five minutes away and would leave a short job invisible for
@@ -279,10 +239,10 @@ export namespace SessionRecent {
     publish()
   }
 
-  // Derived from the job records, for the same reason busyHelper is derived
-  // from the debts: a job outlives both the turn that started it and the
-  // process that spawned it, so nothing held in memory has seen both ends. A
-  // flag with no running job behind it is cleared by the pass that discovers it.
+  // Derived from the job records rather than only toggled per edge: a job
+  // outlives both the turn that started it and the process that spawned it, so
+  // nothing held in memory has seen both ends. A flag with no running job behind
+  // it is cleared by the pass that discovers it.
   export async function syncBusyJob(running: Set<string>) {
     await hydrate()
     for (const entry of entries.values()) {

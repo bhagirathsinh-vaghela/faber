@@ -31,10 +31,52 @@ export namespace BackgroundNotify {
       .replace(/^\n+|\n+$/g, "")
   }
 
+  // How long ago the log last grew, phrased for a reader. Undefined age means
+  // the mtime could not be read, and the clause is then DROPPED rather than
+  // guessed: a nudge claiming "log active" without knowing is worse than one
+  // that gives only elapsed.
+  function freshness(logAge: number | undefined) {
+    if (logAge === undefined) return undefined
+    const seconds = Math.max(0, Math.round(logAge / 1000))
+    if (seconds < 60) return `${seconds}s`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m`
+    return `${Math.floor(minutes / 60)}h`
+  }
+
+  // The nudge's dismissibility lives entirely in this prose, so it is the load-
+  // bearing part. The first nudge for a job spells out the whole contract — no
+  // action needed, check via a todo without dropping the current step, ignore
+  // otherwise — because a synthetic user turn's default pull is "act now", which
+  // has to be actively lowered. Every repeat is the tighter form: the contract
+  // is established, and a bare re-explanation each time is the bloat that trains
+  // a reader to skim past all of them.
+  function note(ordinal: number, log: string) {
+    if (ordinal <= 1)
+      return (
+        `No action needed — this is an FYI, not a request. You launched this job, so you know roughly ` +
+        `how long it should take; if it looks stalled you can tail ${log} to check, kill it, or raise its ` +
+        `deadline. If you do look, do NOT abandon your current work: add a todo for the check and finish ` +
+        `what you're on first. Otherwise ignore this and keep going.`
+      )
+    return `FYI only. Stalled-looking? Tail ${log} as a todo, don't drop your current step. Else ignore.`
+  }
+
   // The envelope the model reads. Its own tag, distinct from a subagent
   // task's, so a client can tell the two apart without inspecting the fields.
-  export function render(job: BackgroundJob.Info, output: string, kind: Kind, now = Date.now()) {
+  //
+  // `logAge` (ms since the log last grew) is the nudge's freshness delta and is
+  // only meaningful for a check-in; the completion paths pass nothing and the
+  // clause is dropped.
+  export function render(
+    job: BackgroundJob.Info,
+    output: string,
+    kind: Kind,
+    now = Date.now(),
+    logAge?: number | undefined,
+  ) {
     const elapsed = Math.round(((job.time.completed ?? now) - job.time.created) / 1000)
+    const grew = kind === "checkin" ? freshness(logAge) : undefined
     const head = [
       `<background-job-result>`,
       `job_id: ${job.id}`,
@@ -48,7 +90,9 @@ export namespace BackgroundNotify {
       kind === "checkin" ? `status: still running after ${elapsed}s` : `status: ${status(job, kind)}`,
       kind === "checkin" ? undefined : `exit: ${job.exit ?? "unknown"}`,
       `duration: ${elapsed}s`,
+      grew ? `log last grew: ${grew} ago` : undefined,
       `log: ${BackgroundJob.logPath(job.id)}`,
+      kind === "checkin" ? `note: ${note(job.time.nudges ?? 1, BackgroundJob.logPath(job.id))}` : undefined,
     ].filter((line): line is string => line !== undefined)
 
     const tail = [``, ...body(output, kind), `</background-job-result>`]

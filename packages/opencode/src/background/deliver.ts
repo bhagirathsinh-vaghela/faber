@@ -39,7 +39,14 @@ export namespace BackgroundDeliver {
     }
     if (session.revert) await SessionRevert.cleanup(session)
 
-    const text = BackgroundNotify.render(job, await BackgroundJob.output(job.id), kind)
+    // The nudge's freshness delta: how long since the log last grew, read only
+    // for a check-in and left undefined otherwise so render drops the clause
+    // rather than claiming a freshness it does not have.
+    const logAge =
+      kind === "checkin"
+        ? await BackgroundJob.logMtime(job.id).then((at) => (at === undefined ? undefined : Date.now() - at))
+        : undefined
+    const text = BackgroundNotify.render(job, await BackgroundJob.output(job.id), kind, Date.now(), logAge)
     const messages = await Session.messages({ sessionID: job.sessionID })
     const messageID = Identifier.ascending("message")
 

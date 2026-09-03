@@ -737,15 +737,15 @@ export namespace MessageV2 {
   // it reaches the spawner: without this the helper snaps to the configured
   // defaults and runs as something the user never picked.
   //
-  // The spawner is read under the directory the debt recorded, since a session
-  // resolves only under its own project and a helper's is not always the
+  // The spawner is read under the directory the spawn link recorded, since a
+  // session resolves only under its own project and a helper's is not always the
   // spawner's.
   //
   // Bounded by a seen-set, the way `SessionBusy.chain` bounds its own walk. The
-  // debt is written once at creation and never re-pointed, so the graph should
-  // be a forest — but nothing enforces that, and a record naming itself makes
-  // this hang rather than crash: every hop awaits, so a cycle is an unbounded
-  // async loop re-reading storage, not unbounded recursion.
+  // spawn link is written once at creation and never re-pointed, so the graph
+  // should be a forest — but nothing enforces that, and a record naming itself
+  // makes this hang rather than crash: every hop awaits, so a cycle is an
+  // unbounded async loop re-reading storage, not unbounded recursion.
   async function lastStamped<T>(
     sessionID: string,
     pick: (user: User) => T | undefined,

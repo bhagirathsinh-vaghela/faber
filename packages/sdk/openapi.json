@@ -9001,9 +9001,6 @@
           "busyDescendant": {
             "type": "boolean"
           },
-          "busyHelper": {
-            "type": "boolean"
-          },
           "busyJob": {
             "type": "boolean"
           },
@@ -9034,7 +9031,6 @@
           "busy",
           "busySelf",
           "busyDescendant",
-          "busyHelper",
           "busyJob",
           "unseen",
           "question",
@@ -12268,16 +12264,6 @@
               },
               "at": {
                 "type": "number"
-              },
-              "done": {
-                "type": "number"
-              },
-              "claimed": {
-                "type": "number"
-              },
-              "delivered": {
-                "type": "string",
-                "pattern": "^msg.*"
               }
             },
             "required": [
@@ -13509,6 +13495,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.stash.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.job.updated"
           }
         ]
       },
@@ -16592,10 +16581,13 @@
               "completed": {
                 "type": "number"
               },
-              "notified": {
+              "lost": {
                 "type": "number"
               },
-              "lost": {
+              "nudgedAt": {
+                "type": "number"
+              },
+              "nudges": {
                 "type": "number"
               }
             },
@@ -16603,6 +16595,9 @@
               "created",
               "hard"
             ]
+          },
+          "updated": {
+            "type": "number"
           }
         },
         "required": [
@@ -16677,10 +16672,13 @@
               "completed": {
                 "type": "number"
               },
-              "notified": {
+              "lost": {
                 "type": "number"
               },
-              "lost": {
+              "nudgedAt": {
+                "type": "number"
+              },
+              "nudges": {
                 "type": "number"
               }
             },
@@ -16918,6 +16916,30 @@
           "name",
           "extensions",
           "enabled"
+        ]
+      },
+      "Event.job.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "job.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "job": {
+                "$ref": "#/components/schemas/BackgroundJob"
+              }
+            },
+            "required": [
+              "job"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
         ]
       }
     }

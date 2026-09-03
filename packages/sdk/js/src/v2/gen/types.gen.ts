@@ -21,7 +21,6 @@ export type RecentSession = {
   busy: boolean
   busySelf: boolean
   busyDescendant: boolean
-  busyHelper: boolean
   busyJob: boolean
   unseen: boolean
   question: boolean
@@ -801,6 +800,38 @@ export type EventQuestionRejected = {
   }
 }
 
+export type BackgroundJob = {
+  id: string
+  sessionID: string
+  directory: string
+  project?: string
+  command: string
+  description: string
+  status: "running" | "exited" | "killed"
+  process?: {
+    pid: number
+    start: string
+    pgid: number
+  }
+  time: {
+    created: number
+    soft?: number
+    hard: number
+    completed?: number
+    nudges?: number
+    nudgedAt?: number
+    lost?: number
+  }
+  exit?: number
+}
+
+export type EventJobUpdated = {
+  type: "job.updated"
+  properties: {
+    job: BackgroundJob
+  }
+}
+
 export type BackgroundTask = {
   id: string
   parentSessionID: string
@@ -984,7 +1015,6 @@ export type Session = {
     parent: string
     directory: string
     at: number
-    done?: number
   }
   summary?: {
     additions: number
@@ -1299,6 +1329,7 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventJobUpdated
   | EventBackgroundTaskCreated
   | EventBackgroundTaskProgress
   | EventBackgroundTaskCompleted
@@ -2783,33 +2814,11 @@ export type BackgroundJobSummary = {
     soft?: number
     hard: number
     completed?: number
-    notified?: number
+    nudges?: number
+    nudgedAt?: number
     lost?: number
   }
-}
-
-export type BackgroundJob = {
-  id: string
-  sessionID: string
-  directory: string
-  project?: string
-  command: string
-  description: string
-  status: "running" | "exited" | "killed"
-  process?: {
-    pid: number
-    start: string
-    pgid: number
-  }
-  time: {
-    created: number
-    soft?: number
-    hard: number
-    completed?: number
-    notified?: number
-    lost?: number
-  }
-  exit?: number
+  updated?: number
 }
 
 export type Path = {
@@ -4563,54 +4572,6 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
-
-export type SessionReportData = {
-  body?: {
-    /**
-     * The spawner the report lands in
-     */
-    parentID: string
-    /**
-     * The spawner's project directory
-     */
-    parentDirectory: string
-    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
-  }
-  path: {
-    /**
-     * The reporting helper's own session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/report"
-}
-
-export type SessionReportErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionReportError = SessionReportErrors[keyof SessionReportErrors]
-
-export type SessionReportResponses = {
-  /**
-   * Report delivered and the helper's debt retired
-   */
-  200: {
-    delivered: boolean
-  }
-}
-
-export type SessionReportResponse = SessionReportResponses[keyof SessionReportResponses]
 
 export type SessionCommandData = {
   body?: {

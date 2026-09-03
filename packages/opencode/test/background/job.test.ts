@@ -357,6 +357,95 @@ describe("BackgroundJob.wrap", () => {
   }, 20_000)
 })
 
+describe("BackgroundJob.nudge", () => {
+  // A job with no soft deadline never nudges: the soft deadline is what opts a
+  // job into the check-in at all.
+  test("never nudges a job with no soft deadline", async () => {
+    const job = record({ time: { created: Date.now(), hard: Date.now() + 600_000 } })
+    await BackgroundJob.write(job)
+    expect(await BackgroundJob.nudge(job.id)).toBeUndefined()
+  })
+
+  test("stays quiet before the soft deadline", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now, soft: now + 600_000, hard: now + 900_000 } })
+    await BackgroundJob.write(job)
+    expect(await BackgroundJob.nudge(job.id, now)).toBeUndefined()
+  })
+
+  // The first nudge is ordinal 1, fired once the soft deadline is behind us, and
+  // it stamps the record so the count and the last-nudge instant are durable.
+  test("fires the first nudge past the soft deadline and stamps the record", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 600_000 } })
+    await BackgroundJob.write(job)
+
+    expect(await BackgroundJob.nudge(job.id, now)).toBe(1)
+    const stamped = await BackgroundJob.get(job.id)
+    expect(stamped?.time.nudges).toBe(1)
+    expect(stamped?.time.nudgedAt).toBe(now)
+  })
+
+  // Inside the cadence the same job is not due again: the last-nudge stamp is
+  // what paces the repeat.
+  test("does not nudge again inside the cadence", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 600_000 } })
+    await BackgroundJob.write(job)
+
+    expect(await BackgroundJob.nudge(job.id, now)).toBe(1)
+    expect(await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS - 1)).toBeUndefined()
+  })
+
+  // Past the cadence the repeat fires as ordinal 2, which is what the tighter
+  // prose keys on.
+  test("nudges again as ordinal 2 once the cadence passes", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 3_600_000 } })
+    await BackgroundJob.write(job)
+
+    expect(await BackgroundJob.nudge(job.id, now)).toBe(1)
+    expect(await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS)).toBe(2)
+  })
+
+  // No count cap: a job keeps being nudged for as long as it runs, bounded only
+  // by its hard deadline (a killed job is never nudged). A raised deadline must
+  // keep getting check-ins rather than falling silent at some fixed count.
+  test("keeps nudging past any fixed count while the job runs", async () => {
+    const start = Date.now()
+    const job = record({ time: { created: start, soft: start - 1, hard: start + 3_600_000 } })
+    await BackgroundJob.write(job)
+
+    for (let i = 1; i <= 20; i++) {
+      const at = start + (i - 1) * BackgroundJob.NUDGE_MS
+      expect(await BackgroundJob.nudge(job.id, at)).toBe(i)
+    }
+  })
+
+  // A settled record is never nudged: the check-in is for work still in flight.
+  test("never nudges a job that is no longer running", async () => {
+    const now = Date.now()
+    const job = record({
+      status: "exited",
+      exit: 0,
+      time: { created: now - 60_000, soft: now - 1, hard: now + 600_000, completed: now },
+    })
+    await BackgroundJob.write(job)
+    expect(await BackgroundJob.nudge(job.id, now)).toBeUndefined()
+  })
+
+  // The claim runs inside the record's write lock, so two timers racing the same
+  // due job produce exactly one nudge, never two.
+  test("only one of two concurrent claims wins", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 600_000 } })
+    await BackgroundJob.write(job)
+
+    const results = await Promise.all([BackgroundJob.nudge(job.id, now), BackgroundJob.nudge(job.id, now)])
+    expect(results.filter((ordinal) => ordinal !== undefined)).toEqual([1])
+  })
+})
+
 describe("BackgroundJob paths", () => {
   test("derive from the id alone, so a half-written record cannot lose them", async () => {
     await BackgroundJob.init()

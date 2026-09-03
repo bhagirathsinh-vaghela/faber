@@ -13,11 +13,6 @@ describe("attention — work that no turn is executing", () => {
     expect(state?.overlays).toEqual([])
   })
 
-  test("a helper owing a report shows one too", () => {
-    const state = busy(attention({ busy: false, busyHelper: true }))
-    expect(state?.tint).toBe("var(--box-accent-helper)")
-  })
-
   test("an own turn alongside a job crossfades the job accent over the agent", () => {
     const state = busy(attention({ busy: true, busySelf: true, busyJob: true, agent: "build" }))
     expect(state?.overlays).toEqual(["var(--box-accent-job)"])
@@ -35,16 +30,12 @@ describe("attention — work that no turn is executing", () => {
 })
 
 // isAlive governs SSE subscription scope and transcript eviction, so a session
-// it calls dead loses the transcript its pending result would land in. A job
-// and a waiting helper are both work the server is doing, and neither reaches
-// `busy`, which covers only the turns in the open subtree.
+// it calls dead loses the transcript its pending result would land in. A running
+// job is work the server is doing, and it does not reach `busy`, which covers
+// only the turns in the open subtree.
 describe("isAlive — work the session waits on", () => {
   test("a running job keeps a session live", () => {
     expect(isAlive({ busy: false, busyJob: true })).toBe(true)
-  })
-
-  test("a helper owing a report keeps a session live", () => {
-    expect(isAlive({ busy: false, busyHelper: true })).toBe(true)
   })
 
   test("an armed ping daemon still counts", () => {

@@ -4,7 +4,6 @@ import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "../../flag/flag"
 import { SessionPing } from "../../session/ping"
 import { SessionPrompt } from "../../session/prompt"
-import { SessionSpawn } from "../../session/spawn"
 import { BackgroundOrchestrator } from "../../background/orchestrator"
 
 export const ServeCommand = cmd({
@@ -46,11 +45,6 @@ export const ServeCommand = cmd({
     // not retried, since nothing distinguishes settled-and-sent from
     // settled-and-lost.
     BackgroundOrchestrator.init()
-    // Keeps each parent's "waiting on a helper" flag honest from the debts on
-    // disk. A spawned helper reports its own result explicitly (its report
-    // stamps spawn.done through session.update); this only syncs the flag off
-    // those stamps.
-    SessionSpawn.init()
     // Adopting, not reaping: session liveness is still being rebuilt at this
     // point, so an ownership verdict here would kill healthy jobs whose
     // sessions are about to come back. The first timer pass makes that call.

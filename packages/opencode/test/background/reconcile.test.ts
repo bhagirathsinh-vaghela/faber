@@ -375,41 +375,19 @@ describe("BackgroundReconcile.observe (adopted jobs)", () => {
   }, 15_000)
 })
 
-describe("BackgroundReconcile: the soft check-in", () => {
-  test("reports a check-in once the soft deadline passes, without killing", async () => {
+// Past the soft deadline the reconcile pass only keeps a running job; the
+// nudge itself fires on its own timer and is tested in job.test.ts against
+// BackgroundJob.nudge.
+describe("BackgroundReconcile: past the soft deadline", () => {
+  test("keeps a running job rather than acting on the soft deadline", async () => {
     const proc = spawnJob("sleep 30")
     const job = await store({
       process: await identify(proc.pid),
       time: { created: Date.now() - 60_000, soft: Date.now() - 30_000, hard: Date.now() + 600_000 },
     })
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
-
-    expect(action?.type).toBe("notify")
+    expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)?.type).toBe("kept")
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
-  })
-
-  // A pass runs every few minutes; without the stamp the same check-in would
-  // arrive forever.
-  test("delivers the check-in only once", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({
-      process: await identify(proc.pid),
-      time: { created: Date.now() - 60_000, soft: Date.now() - 30_000, hard: Date.now() + 600_000 },
-    })
-
-    expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)?.type).toBe("notify")
-    expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)?.type).toBe("kept")
-  })
-
-  test("stays quiet before the soft deadline", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({
-      process: await identify(proc.pid),
-      time: { created: Date.now(), soft: Date.now() + 600_000, hard: Date.now() + 900_000 },
-    })
-
-    expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)?.type).toBe("kept")
   })
 })
 
@@ -431,20 +409,5 @@ describe("BackgroundReconcile concurrency", () => {
 
     const completed = passes.filter((pass) => actionFor(pass, job.id)?.type === "completed")
     expect(completed.length).toBe(1)
-  }, 20_000)
-
-  // The check-in stamp races identically: read outside the lock, two passes
-  // both find it absent and both deliver.
-  test("only one of two simultaneous passes may deliver a check-in", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({
-      process: await identify(proc.pid),
-      time: { created: Date.now() - 60_000, soft: Date.now() - 30_000, hard: Date.now() + 600_000 },
-    })
-
-    const passes = await Promise.all([BackgroundReconcile.run({ alive }), BackgroundReconcile.run({ alive })])
-
-    const notified = passes.filter((pass) => actionFor(pass, job.id)?.type === "notify")
-    expect(notified.length).toBe(1)
   }, 20_000)
 })

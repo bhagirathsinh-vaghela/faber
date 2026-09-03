@@ -18,6 +18,16 @@ export namespace BackgroundSpawn {
 
   export const HARD_MS = 30 * 60 * 1000
 
+  // When a running job first gets a progress check-in, absent an explicit soft
+  // deadline from the caller. DERIVED rather than asked for: the model cannot
+  // predict how long a command takes — the whole reason the grace window
+  // replaced a mode parameter — so a caller-supplied check-in time would be the
+  // same failed prediction. Half the hard budget catches a job burning through
+  // its allowance, but a 30-minute default hard would put the first nudge 15
+  // minutes out, long after a stalled build is worth a look, so a floor caps it:
+  // any job still running past SOFT_CAP_MS starts getting nudged.
+  export const SOFT_CAP_MS = 3 * 60 * 1000
+
   export type Input = {
     command: string
     description: string
@@ -51,6 +61,9 @@ export namespace BackgroundSpawn {
     const id = BackgroundJob.id()
     const created = Date.now()
     const hard = input.hard ?? HARD_MS
+    // An explicit soft deadline wins; otherwise derive one so the nudge is
+    // reachable for every job rather than only those a caller opts in.
+    const soft = input.soft ?? Math.min(hard / 2, SOFT_CAP_MS)
 
     // WRITE BEFORE SPAWN. A crash between the write and the spawn leaves a
     // record naming no process, which the reconciler reads as orphaned and
@@ -67,7 +80,7 @@ export namespace BackgroundSpawn {
       time: {
         created,
         hard: created + hard,
-        ...(input.soft ? { soft: created + input.soft } : {}),
+        soft: created + soft,
       },
     }
     await BackgroundJob.write(job)
@@ -105,6 +118,14 @@ export namespace BackgroundSpawn {
     await BackgroundJob.update(id, (draft) => {
       draft.process = identity ? { pid: identity.pid, start: identity.start, pgid: identity.pgid } : undefined
     })
+
+    // Announce the running job once its process identity is on the record, so a
+    // view that applies the event has the same shape the sweep would later
+    // re-derive. Emitted for every call, inline or backgrounded: a job that
+    // finishes inside the grace window still existed, and a view that saw it
+    // start and finish is correct where one that only ever saw finished rows is
+    // missing the ones that were quick.
+    BackgroundJob.publish((await BackgroundJob.get(id)) ?? job)
 
     // The race. Whichever settles first decides the shape of the result; the
     // job is identical either way, and so is everything on disk.
@@ -161,8 +182,12 @@ export namespace BackgroundSpawn {
     })
     if (!claimed) return undefined
     const settled = await BackgroundJob.get(id)
-    // Only the caller that made the transition clears the flag.
-    if (settled) await BackgroundJob.settled(settled.sessionID)
+    // Only the caller that made the transition clears the flag and announces
+    // the settled record, so the view learns a job ended exactly once.
+    if (settled) {
+      await BackgroundJob.settled(settled.sessionID)
+      BackgroundJob.publish(settled)
+    }
     return settled
   }
 }

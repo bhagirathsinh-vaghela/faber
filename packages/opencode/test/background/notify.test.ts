@@ -149,6 +149,62 @@ describe("BackgroundNotify check-in", () => {
     expect(text).toContain("step-299")
     expect(text).not.toContain("step-1\n")
   })
+
+  // The first nudge for a job spells out the whole contract, so the reader knows
+  // this is an FYI it may ignore and how to check without dropping its work.
+  test("the first nudge carries the full no-action contract", () => {
+    const running = job({
+      status: "running",
+      exit: undefined,
+      time: { created: Date.now() - 300_000, soft: Date.now() - 120_000, hard: Date.now() + 300_000, nudges: 1 },
+    })
+    const text = BackgroundNotify.render(running, "compiling\n", "checkin")
+
+    expect(text).toContain("No action needed")
+    expect(text).toContain("add a todo for the check")
+    expect(text).toContain("Otherwise ignore this and keep going.")
+  })
+
+  // Every repeat is the tighter form: the contract is established, so a full
+  // re-explanation each time is the bloat that trains a reader to skim past all.
+  test("a repeat nudge carries the tighter form", () => {
+    const running = job({
+      status: "running",
+      exit: undefined,
+      time: { created: Date.now() - 600_000, soft: Date.now() - 400_000, hard: Date.now() + 300_000, nudges: 2 },
+    })
+    const text = BackgroundNotify.render(running, "compiling\n", "checkin")
+
+    expect(text).toContain("FYI only.")
+    expect(text).not.toContain("No action needed")
+  })
+
+  // The freshness delta is what makes a repeat worth reading: how long since the
+  // log grew separates an actively-working job from a stalled one.
+  test("reports how long since the log last grew when the age is known", () => {
+    const running = job({
+      status: "running",
+      exit: undefined,
+      time: { created: Date.now() - 300_000, soft: Date.now() - 120_000, hard: Date.now() + 300_000, nudges: 1 },
+    })
+    const text = BackgroundNotify.render(running, "compiling\n", "checkin", Date.now(), 90_000)
+
+    expect(text).toContain("log last grew: 1m ago")
+  })
+
+  // An unknown mtime drops the clause rather than claiming a freshness it does
+  // not have: a nudge that says "log active" without knowing is worse than one
+  // that gives only elapsed.
+  test("drops the freshness clause when the log age is unknown", () => {
+    const running = job({
+      status: "running",
+      exit: undefined,
+      time: { created: Date.now() - 300_000, soft: Date.now() - 120_000, hard: Date.now() + 300_000, nudges: 1 },
+    })
+    const text = BackgroundNotify.render(running, "compiling\n", "checkin", Date.now(), undefined)
+
+    expect(text).not.toContain("log last grew")
+  })
 })
 
 // A job killed before it could write its own exit file records no exit code.

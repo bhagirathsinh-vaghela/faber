@@ -1773,10 +1773,9 @@ export default function Layout(props: ParentProps) {
     const busyFacts = createMemo(
       () => sessionStore.session_busy[props.session.id] ?? { busy: false, busySelf: false, busyDescendant: false },
     )
-    // A helper session owes this one a report. Not a turn in this session and
-    // not a subtask under it, so it contributes its own colour: a reader
-    // deciding whether to stop the session needs to see that work is still
-    // coming back to it.
+    // busyShown also lights for a running background job, which is work this
+    // session is waiting on that no turn is executing, so a reader deciding
+    // whether to stop the session sees that a result is still coming back.
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
       return busyShown(busyFacts())

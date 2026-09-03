@@ -167,12 +167,6 @@ export namespace SessionPing {
           const session = await Session.get(entry.sessionID).catch(() => undefined)
           if (!session || session.parentID || !session.keepWarm || !warm(session)) return
           const cut = await interrupted(session.id)
-          // A reported helper (spawn.done) is left idle, not stopped, so it can be
-          // reused for a new turn. Skip it ONLY when its last turn completed:
-          // resuming a finished helper would restart a turn that already ended.
-          // But a done helper CUT OFF mid a fresh turn is exactly what restore
-          // exists for, so it resumes like any other interrupted session.
-          if (session.spawn?.done && !cut) return
           if (cut) return resume(session)
           start(session.id)
         },

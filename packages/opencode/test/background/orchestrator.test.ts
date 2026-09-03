@@ -329,6 +329,104 @@ describe("BackgroundOrchestrator settle window", () => {
   }, 20_000)
 })
 
+// The nudge is delivered on its own timer, reading the running set off disk and
+// claiming each due job. A job past its soft deadline gets exactly one nudge per
+// call, stamped on the record so the next call paces off it.
+describe("BackgroundOrchestrator.nudgeAll", () => {
+  test("nudges a running job past its soft deadline and stamps it", async () => {
+    const owner = await owned()
+    const proc = spawnJob("sleep 30")
+    const live = (await BackgroundProcess.inspect(proc.pid))!
+    const id = BackgroundJob.id()
+    created.push(id)
+    const now = Date.now()
+    await BackgroundJob.write({
+      id,
+      sessionID: owner.id,
+      directory: owner.directory,
+      project: owner.directory,
+      command: "sleep 30",
+      description: "nudge test",
+      status: "running",
+      time: { created: now - 300_000, soft: now - 200_000, hard: now + 600_000 },
+      process: { pid: live.pid, start: live.start, pgid: live.pgid },
+    })
+
+    await BackgroundOrchestrator.nudgeAll(now)
+
+    expect((await BackgroundJob.get(id))?.time.nudges).toBe(1)
+    proc.kill()
+  }, 20_000)
+
+  test("does not nudge a job still inside its soft deadline", async () => {
+    const owner = await owned()
+    const proc = spawnJob("sleep 30")
+    const live = (await BackgroundProcess.inspect(proc.pid))!
+    const id = BackgroundJob.id()
+    created.push(id)
+    const now = Date.now()
+    await BackgroundJob.write({
+      id,
+      sessionID: owner.id,
+      directory: owner.directory,
+      project: owner.directory,
+      command: "sleep 30",
+      description: "nudge test",
+      status: "running",
+      time: { created: now, soft: now + 600_000, hard: now + 900_000 },
+      process: { pid: live.pid, start: live.start, pgid: live.pgid },
+    })
+
+    await BackgroundOrchestrator.nudgeAll(now)
+
+    expect((await BackgroundJob.get(id))?.time.nudges).toBeUndefined()
+    proc.kill()
+  }, 20_000)
+
+  // The prose the reader actually receives is what has to change between the
+  // first nudge and the repeats, so the delivered message is asserted, not just
+  // the disk stamp: the ordinal render keys on is written by the claim, so a
+  // deliver from the pre-claim copy renders every second nudge as the first.
+  test("the second nudge is delivered with the tighter repeat prose", async () => {
+    const owner = await owned()
+    const proc = spawnJob("sleep 30")
+    const live = (await BackgroundProcess.inspect(proc.pid))!
+    const id = BackgroundJob.id()
+    created.push(id)
+    const now = Date.now()
+    await BackgroundJob.write({
+      id,
+      sessionID: owner.id,
+      directory: owner.directory,
+      project: owner.directory,
+      command: "sleep 30",
+      description: "nudge test",
+      status: "running",
+      time: { created: now - 300_000, soft: now - 1, hard: now + 3_600_000 },
+      process: { pid: live.pid, start: live.start, pgid: live.pgid },
+    })
+
+    await BackgroundOrchestrator.nudgeAll(now)
+    await BackgroundOrchestrator.nudgeAll(now + BackgroundJob.NUDGE_MS)
+
+    const texts = await Instance.provide({
+      directory: owner.directory,
+      fn: async () => {
+        const messages = await Session.messages({ sessionID: owner.id })
+        return messages.flatMap((message) =>
+          message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+        )
+      },
+    })
+    const checkins = texts.filter((text) => text.includes("still running after"))
+    expect(checkins.length).toBe(2)
+    expect(checkins[0]).toContain("No action needed")
+    expect(checkins[1]).toContain("FYI only.")
+    expect(checkins[1]).not.toContain("No action needed")
+    proc.kill()
+  }, 20_000)
+})
+
 describe("BackgroundOrchestrator.sweep at boot", () => {
   test("adopts a job whose session cannot be resolved yet", async () => {
     const proc = spawnJob("sleep 30")

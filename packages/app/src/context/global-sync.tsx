@@ -100,7 +100,6 @@ type State = {
       busy: boolean
       busySelf: boolean
       busyDescendant: boolean
-      busyHelper?: boolean
       busyJob?: boolean
     }
   }
@@ -992,15 +991,14 @@ function createGlobalSync() {
               prev.busyDescendant === facts.busyDescendant
             )
               continue
-            // busyHelper and busyJob are CARRIED, not rewritten. This tick is authoritative
-            // about turns in the open subtree and knows nothing about a helper
-            // session owing a report, so writing the whole record would blank
+            // busyJob is CARRIED, not rewritten. This tick is authoritative about
+            // turns in the open subtree and knows nothing about a background job
+            // the session is waiting on, so writing the whole record would blank
             // that flag every five seconds and leave the spinner strobing.
             set("session_busy", id, {
               busy: facts.busy,
               busySelf: facts.busySelf,
               busyDescendant: facts.busyDescendant,
-              busyHelper: prev?.busyHelper,
               busyJob: prev?.busyJob,
             })
           }
@@ -1648,7 +1646,6 @@ function createGlobalSync() {
         prev.busy === entry.busy &&
         prev.busySelf === entry.busySelf &&
         prev.busyDescendant === entry.busyDescendant &&
-        prev.busyHelper === entry.busyHelper &&
         prev.busyJob === entry.busyJob
       )
         continue
@@ -1656,7 +1653,6 @@ function createGlobalSync() {
         busy: entry.busy,
         busySelf: entry.busySelf,
         busyDescendant: entry.busyDescendant,
-        busyHelper: entry.busyHelper,
         busyJob: entry.busyJob,
       })
     }
@@ -1672,15 +1668,14 @@ function createGlobalSync() {
   // it. A failed abort is healed by that push like any other drift.
   function clearLiveness(sessionID: string, directory: string) {
     const [store, setStore] = ensureChild(directory)
-    // busyHelper goes with them: this runs when the user stops the session, and
-    // a stopped session is no longer waiting on anything. The server's own pass
-    // is what restores the flag if a helper is somehow still owed.
+    // busyJob goes with them: this runs when the user stops the session, and a
+    // stopped session is no longer waiting on anything. The server's own pass is
+    // what restores the flag if a job is somehow still running.
     if (store.session_busy[sessionID])
       setStore("session_busy", sessionID, {
         busy: false,
         busySelf: false,
         busyDescendant: false,
-        busyHelper: false,
         busyJob: false,
       })
     const index = globalStore.recent_hub.findIndex((entry) => entry.sessionID === sessionID)

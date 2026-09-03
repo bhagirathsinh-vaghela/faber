@@ -100,29 +100,16 @@ export namespace Session {
       projectID: z.string(),
       directory: z.string(),
       parentID: Identifier.schema("session").optional(),
-      // A peer that spawned this session and is owed its result.
-      //
-      // The link home for a spawned helper. The helper reports its result
-      // explicitly when done, which stamps `done` below; this record is what
-      // tells the report where home is, and the flag sweep which parents are
-      // still owed.
-      //
-      // Retained after the report, stamped `done`, rather than removed. The
-      // record is the only durable evidence that this session is a finished
-      // helper, and a caller that restarts sessions has to be able to tell one
-      // apart from a session whose turn was merely interrupted.
+      // The peer that spawned this session, and the directory that peer resolves
+      // under. Read only for parameter inheritance: a spawned helper runs as its
+      // spawner, so MessageV2.lastStamped walks `parent` under `directory` to
+      // fall through to the model and variant the spawner last used when the
+      // helper's own history names none.
       spawn: z
         .object({
           parent: Identifier.schema("session"),
           directory: z.string(),
           at: z.number(),
-          // Stamped by the report route in the same call that delivers the
-          // child's result, so the delivery and the debt retirement cannot be
-          // split. Reporting is explicit, so this is the only thing that retires
-          // the debt: the flag sweep reads it to clear the parent's "waiting on a
-          // helper" spinner, and a resume path reads it to leave a finished
-          // helper alone rather than continue it.
-          done: z.number().optional(),
         })
         .optional(),
       summary: z
@@ -408,15 +395,11 @@ export namespace Session {
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
-      // Written with the record, so the debt is durable from the instant the
-      // session exists: a crash before its first turn still leaves something
-      // that knows who is waiting.
-      //
-      // `directory` is the PARENT's, since the only thing it is ever used for is
-      // resolving the parent to deliver into, and a session resolves under its
-      // own project. Recording the helper's own directory instead loses the
-      // report whenever the two differ: the lookup misses, and a miss is
-      // indistinguishable from a parent that no longer exists.
+      // The link to the spawner, read only to inherit its model/variant
+      // (MessageV2.lastStamped walks `parent` under `directory`). `directory` is
+      // the PARENT's, since a session resolves under its own project and the
+      // walk has to reach the parent there; the helper's own directory would
+      // miss whenever the two differ.
       ...(input.spawnedBy && {
         spawn: {
           parent: input.spawnedBy,
@@ -434,7 +417,6 @@ export namespace Session {
       cost: 0,
     }
     log.info("created", result)
-    if (input.spawnedBy) void SessionRecent.setBusyHelper(input.spawnedBy, true)
     await Storage.write(["session", Instance.project.id, result.id], result)
     indexed(result)
     Bus.publish(Event.Created, {
