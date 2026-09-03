@@ -166,12 +166,14 @@ export namespace SessionPing {
         fn: async () => {
           const session = await Session.get(entry.sessionID).catch(() => undefined)
           if (!session || session.parentID || !session.keepWarm || !warm(session)) return
-          // A helper stopped by its own discharge stays stopped. Its stop lands
-          // while its final message is still being written, so it reads as
-          // interrupted here — and resuming it would restart the turn that just
-          // ended and re-arm the daemon the discharge disarmed.
-          if (session.spawn?.done) return
-          if (await interrupted(session.id)) return resume(session)
+          const cut = await interrupted(session.id)
+          // A reported helper (spawn.done) is left idle, not stopped, so it can be
+          // reused for a new turn. Skip it ONLY when its last turn completed:
+          // resuming a finished helper would restart a turn that already ended.
+          // But a done helper CUT OFF mid a fresh turn is exactly what restore
+          // exists for, so it resumes like any other interrupted session.
+          if (session.spawn?.done && !cut) return
+          if (cut) return resume(session)
           start(session.id)
         },
       }).catch((e) => log.error("restore failed", { sessionID: entry.sessionID, error: e }))

@@ -253,10 +253,10 @@ export namespace SessionRecent {
   // Reconcile the flag against the debts that are actually outstanding.
   //
   // The per-edge setter is best-effort: it no-ops when the parent has no entry
-  // yet, and it cannot know about a debt whose discharge never ran. Deriving
-  // the whole set from disk each pass is what makes a stuck flag impossible,
-  // since a flag with no debt behind it is cleared by the same sweep that
-  // discovers it.
+  // yet, and it cannot know about a debt the helper retired by reporting from
+  // another server. Deriving the whole set from disk each pass is what makes a
+  // stuck flag impossible, since a flag with no debt behind it is cleared by the
+  // same sweep that discovers it.
   export async function syncBusyHelper(owed: Set<string>) {
     await hydrate()
     for (const entry of entries.values()) {

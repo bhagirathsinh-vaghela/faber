@@ -46,10 +46,10 @@ export const ServeCommand = cmd({
     // not retried, since nothing distinguishes settled-and-sent from
     // settled-and-lost.
     BackgroundOrchestrator.init()
-    // Watches spawned helper sessions terminate, so the peer waiting on one
-    // is answered by the runtime rather than by the helper remembering to
-    // answer. The debt lives on the child's record, so a restart mid-flight
-    // still discharges it the next time that child goes idle.
+    // Keeps each parent's "waiting on a helper" flag honest from the debts on
+    // disk. A spawned helper reports its own result explicitly (its report
+    // stamps spawn.done through session.update); this only syncs the flag off
+    // those stamps.
     SessionSpawn.init()
     // Adopting, not reaping: session liveness is still being rebuilt at this
     // point, so an ownership verdict here would kill healthy jobs whose

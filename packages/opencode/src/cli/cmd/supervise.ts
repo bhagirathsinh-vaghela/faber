@@ -173,30 +173,37 @@ export const SuperviseCommand = cmd({
           .then((r) => (r.ok ? r.json() : []))
           .catch(() => [])
       const [recent, pings] = await Promise.all([get("/global/recent"), get("/global/ping/armed")])
-      // A finished helper is EXCLUDED, however busy it looks. Its discharge
-      // stops it while its own turn is still writing the final message, so the
-      // snapshot catches it mid-turn and a continue prompt would restart the
-      // turn that just ended AND re-arm the daemon (every prompt on a root
-      // session arms one). Resuming it is a resurrection, not a recovery.
-      const finished = await Promise.all(
+      // A reported helper (spawn.done) is left idle, not stopped, so it can be
+      // reused for a new turn — a reused helper that is busy is doing real work
+      // and must resume. The one done-helper to EXCLUDE is one whose own
+      // reporting turn is still unwinding: resuming that re-runs the report and
+      // posts a second copy. The discriminator is the same one restore uses, the
+      // last assistant turn's completion stamp: a busy helper with a COMPLETED
+      // last turn is between turns (its report finished, a new turn is arming),
+      // and only that one is the "just ended, do not resurrect" case.
+      const classified = await Promise.all(
         (recent as (SessionRef & { busy: boolean })[])
           .filter((r) => r.busy)
           .map(async (r) => {
             const session = await get(`/session/${r.sessionID}?directory=${encodeURIComponent(r.directory)}`).catch(
               () => undefined,
             )
-            const done = (session as { spawn?: { done?: number } } | undefined)?.spawn?.done
-            return { ref: { sessionID: r.sessionID, directory: r.directory }, done: done !== undefined }
+            const done = (session as { spawn?: { done?: number } } | undefined)?.spawn?.done !== undefined
+            const messages = (await get(
+              `/session/${r.sessionID}/message?directory=${encodeURIComponent(r.directory)}`,
+            ).catch(() => [])) as { info: { role: string; time: { completed?: number } } }[]
+            const lastAssistant = messages.filter((m) => m.info.role === "assistant").at(-1)
+            const finished = lastAssistant ? lastAssistant.info.time.completed !== undefined : false
+            return { ref: { sessionID: r.sessionID, directory: r.directory }, skip: done && finished }
           }),
       )
-      const busy = finished.filter((r) => !r.done).map((r) => r.ref)
-      // Excluded from BOTH lists. A finished helper is disarmed by its own
-      // discharge, so it should not appear in the armed registry at all — but
-      // re-arming one that raced its way in would restore exactly the daemon
-      // the discharge existed to stop.
+      const busy = classified.filter((r) => !r.skip).map((r) => r.ref)
+      // Excluded from BOTH lists. A done-and-finished helper is between turns; a
+      // continue prompt would restart the turn that just ended AND re-arm the
+      // daemon (every prompt on a root session arms one).
       const skip = new Set([
         ...busy.map((r) => r.sessionID),
-        ...finished.filter((r) => r.done).map((r) => r.ref.sessionID),
+        ...classified.filter((r) => r.skip).map((r) => r.ref.sessionID),
       ])
       const armed = (pings as SessionRef[])
         .filter((r) => !skip.has(r.sessionID))

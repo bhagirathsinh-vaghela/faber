@@ -102,15 +102,13 @@ export namespace Session {
       parentID: Identifier.schema("session").optional(),
       // A peer that spawned this session and is owed its result.
       //
-      // Reporting back cannot be left to the child remembering to do it: a
-      // helper that ends its turn without reporting strands the session that
-      // is waiting, and nothing notices. So the debt is recorded HERE, on
-      // disk, and the runtime discharges it when the child goes idle — the
-      // supervisor watching the child terminate, rather than the child being
-      // asked to announce itself.
+      // The link home for a spawned helper. The helper reports its result
+      // explicitly when done, which stamps `done` below; this record is what
+      // tells the report where home is, and the flag sweep which parents are
+      // still owed.
       //
-      // Retained after the report lands, stamped `done`, rather than removed.
-      // The record is the only durable evidence that this session is a finished
+      // Retained after the report, stamped `done`, rather than removed. The
+      // record is the only durable evidence that this session is a finished
       // helper, and a caller that restarts sessions has to be able to tell one
       // apart from a session whose turn was merely interrupted.
       spawn: z
@@ -612,8 +610,7 @@ export namespace Session {
   })
 
   // Stopping a session: the one implementation, used by the Stop button, by the
-  // ping-stop route, ahead of a delete, and by the runtime when a spawned
-  // helper's result has been delivered.
+  // ping-stop route, and ahead of a delete.
   //
   // It is three things that only make sense together — disarm the keep-warm
   // daemon (which clears the persisted intent), drop the prompt pin, and cancel
