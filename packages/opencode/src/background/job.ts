@@ -336,23 +336,34 @@ export namespace BackgroundJob {
     return { type: "running", identity: job.process }
   }
 
-  // Reap results the owning session will never collect. Age-based rather than
-  // count-based: a finished job's output is worth keeping while its session
-  // might still be reopened, and worthless long after.
+  // Reap results the owning session will never collect. Age is the primary
+  // clock: a finished job's output is worth keeping while its session might
+  // still be reopened, and worthless long after.
   export const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
+  // A COUNT bound as well, because age alone does not bound the directory. A
+  // single heavy day writes thousands of jobs, all of them younger than the age
+  // limit and none of them collectable, and every one leaves a log and an exit
+  // file beside its record. Nothing reclaims them until they age out a week
+  // later, so the directory grows unbounded across a busy stretch.
+  export const MAX_RECORDS = 500
 
   export async function cleanup(now = Date.now()) {
     const jobs = await list()
     let removed = 0
-    for (const job of jobs) {
-      if (job.status === "running") continue
+    // Newest first, so the survivors of the count bound are the ones a reader
+    // is most likely to come back for.
+    const collectable = jobs
+      .filter((job) => job.status !== "running" && !job.time.lost)
+      .sort((a, b) => (b.time.completed ?? b.time.created) - (a.time.completed ?? a.time.created))
+    for (const [index, job] of collectable.entries()) {
       // A result that never reached a session is the one nobody has had the
       // chance to come back for, and removing a record takes its log with it.
       // Ageing it out on the same clock as a delivered result would destroy
       // both the output and the stamp that says the output is worth reading.
-      if (job.time.lost) continue
+      // Such records are filtered out above, so neither bound reaches them.
       const completed = job.time.completed ?? job.time.created
-      if (now - completed < MAX_AGE_MS) continue
+      if (now - completed < MAX_AGE_MS && index < MAX_RECORDS) continue
       await remove(job.id)
       removed++
     }

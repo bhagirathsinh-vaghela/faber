@@ -217,6 +217,40 @@ describe("BackgroundJob.cleanup", () => {
     expect(await BackgroundJob.get(fresh.id)).toBeDefined()
   })
 
+  // Age alone does not bound the directory: a heavy day writes thousands of
+  // jobs, every one younger than the age cap and none collectable, so the count
+  // cap is what keeps the directory from growing without limit.
+  test("reaps past the count cap even when everything is recent", async () => {
+    const now = Date.now()
+    const ids: string[] = []
+    for (let i = 0; i < BackgroundJob.MAX_RECORDS + 5; i++) {
+      const job = record({ status: "exited", time: { created: 0, hard: 0, completed: now - i } })
+      ids.push(job.id)
+      await BackgroundJob.write(job)
+    }
+
+    await BackgroundJob.cleanup(now)
+
+    // Newest survive, oldest go, though every one is far inside the age cap.
+    expect(await BackgroundJob.get(ids[0]!)).toBeDefined()
+    expect(await BackgroundJob.get(ids[ids.length - 1]!)).toBeUndefined()
+  }, 60_000)
+
+  // A result nobody received outranks both bounds: it is the one record a
+  // reader has never had the chance to come back for.
+  test("never reaps an undelivered result, however many newer ones exist", async () => {
+    const now = Date.now()
+    const lost = record({ status: "exited", time: { created: 0, hard: 0, completed: now - 1, lost: now - 1 } })
+    await BackgroundJob.write(lost)
+    for (let i = 0; i < BackgroundJob.MAX_RECORDS + 5; i++) {
+      await BackgroundJob.write(record({ status: "exited", time: { created: 0, hard: 0, completed: now } }))
+    }
+
+    await BackgroundJob.cleanup(now)
+
+    expect(await BackgroundJob.get(lost.id)).toBeDefined()
+  }, 60_000)
+
   // A long build must survive the cleanup that runs while it is still going.
   test("never reaps a running job, however old", async () => {
     const old = record({ time: { created: 0, hard: Date.now() + 60_000 } })
