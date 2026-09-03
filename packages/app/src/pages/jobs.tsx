@@ -79,7 +79,7 @@ function unknown(job: Job) {
 
 function tone(job: Job) {
   if (job.time.lost) return "var(--syntax-critical)"
-  if (job.status === "running") return "var(--syntax-primitive)"
+  if (job.status === "running") return "var(--box-indicator-job)"
   if (job.status === "killed") return "var(--syntax-critical)"
   if (unknown(job)) return "var(--text-weak)"
   return job.exit === 0 ? "var(--syntax-string)" : "var(--syntax-critical)"
@@ -228,7 +228,7 @@ export default function Jobs() {
           </span>
           <span
             class="shrink-0 text-12-regular"
-            style={{ color: props.running ? "var(--syntax-primitive)" : "var(--text-weaker)" }}
+            style={{ color: props.running ? "var(--box-indicator-job)" : "var(--text-weaker)" }}
           >
             {props.group.items.length}
           </span>

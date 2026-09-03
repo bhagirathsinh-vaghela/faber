@@ -32,21 +32,21 @@ describe("busy tints", () => {
 })
 
 describe("busy tints — a running job", () => {
-  test("a job alone: the job accent is the base", () => {
+  test("a job alone: the job indicator colour is the base", () => {
     const facts = { busySelf: false, busyDescendant: false, busyJob: true }
-    expect(busyBase(facts, AGENT)).toBe("var(--box-accent-job)")
+    expect(busyBase(facts, AGENT)).toBe("var(--box-indicator-job)")
     expect(busyOverlays(facts, AGENT)).toEqual([])
   })
 
-  test("own turn + job: the job accent crossfades over the agent base", () => {
+  test("own turn + job: the job indicator crossfades over the agent base", () => {
     const facts = { busySelf: true, busyDescendant: false, busyJob: true }
     expect(busyBase(facts, AGENT)).toBe(AGENT)
-    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-job)"])
+    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-indicator-job)"])
   })
 
   test("all three: two overlays, evenly phased across the cycle", () => {
     const facts = { busySelf: true, busyDescendant: true, busyJob: true }
-    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-task)", "var(--box-accent-job)"])
+    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-task)", "var(--box-indicator-job)"])
     expect(busyDelay(0, 2)).toBe("-0.87s")
     expect(busyDelay(1, 2)).toBe("-1.73s")
   })

@@ -11,11 +11,11 @@
 // busy cause reaches whichever copies get edited and silently omits the rest.
 
 // The task accent covers a subtask and the job accent a background command. The
-// job accent is the one its result card already uses, so the spinner and the
-// card that follows it agree. Own turns carry the agent's own colour, which the
+// job indicator carries the gold indicator colour, distinct from the blue accent
+// its result card draws. Own turns carry the agent's own colour, which the
 // caller resolves and passes in.
 const TASK = "var(--box-accent-task)"
-const JOB = "var(--box-accent-job)"
+const JOB = "var(--box-indicator-job)"
 
 export type BusyFacts = {
   busySelf: boolean
