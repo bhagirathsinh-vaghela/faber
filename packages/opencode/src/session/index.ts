@@ -116,11 +116,12 @@ export namespace Session {
           parent: Identifier.schema("session"),
           directory: z.string(),
           at: z.number(),
-          // Stamped by the child itself when it reports (the session.update
-          // route). Reporting is explicit, so this is the only thing that
-          // retires the debt: the flag sweep reads it to
-          // clear the parent's "waiting on a helper" spinner, and a resume path
-          // reads it to leave a finished helper alone rather than continue it.
+          // Stamped by the report route in the same call that delivers the
+          // child's result, so the delivery and the debt retirement cannot be
+          // split. Reporting is explicit, so this is the only thing that retires
+          // the debt: the flag sweep reads it to clear the parent's "waiting on a
+          // helper" spinner, and a resume path reads it to leave a finished
+          // helper alone rather than continue it.
           done: z.number().optional(),
         })
         .optional(),
