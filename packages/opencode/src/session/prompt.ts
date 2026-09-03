@@ -900,8 +900,23 @@ export namespace SessionPrompt {
   //   - id present as a bare string   -> allowed, any arguments
   //   - id present as { id, paths }   -> allowed only when args.filePath
   //                                      matches a glob in paths
-  function toolDenial(allowed: Session.AllowedTool[] | undefined, id: string, args: any): string | undefined {
+  //
+  // `mcp` is passed ONLY when the caller is the MCP tool loop, marking `id` as a
+  // dynamic MCP tool key whose grant may come from a class sentinel rather than
+  // an exact-id match: Agent.MCP_WRITE grants any MCP tool, Agent.MCP_READ
+  // grants one only when `mcp.readOnly` is true. Native tools pass no `mcp`, so
+  // the sentinels are inert for them (a native id never equals a sentinel).
+  export function toolDenial(
+    allowed: Session.AllowedTool[] | undefined,
+    id: string,
+    args: any,
+    mcp?: { readOnly: boolean },
+  ): string | undefined {
     if (!allowed) return undefined
+    if (mcp) {
+      if (allowed.includes(Agent.MCP_WRITE)) return undefined
+      if (mcp.readOnly && allowed.includes(Agent.MCP_READ)) return undefined
+    }
     const entry = allowed.find((t) => (typeof t === "string" ? t === id : t.id === id))
     if (!entry) {
       const names = allowed.map((t) => (typeof t === "string" ? t : t.id))
@@ -1060,7 +1075,15 @@ export namespace SessionPrompt {
       item.execute = async (args, opts) => {
         const ctx = context(args, opts)
 
-        const denial = (await mcpDenied(key)) ?? toolDenial(allowedTools, key, args)
+        // Classify read/write only when the allowlist could grant MCP by the
+        // read-only CLASS (an allowlist present, without the all-MCP sentinel).
+        // The common paths — a root session (undefined) or a write grant — need
+        // no classification, so they skip the lookup.
+        const mcpClass =
+          allowedTools && !allowedTools.includes(Agent.MCP_WRITE)
+            ? { readOnly: await MCP.readOnly(key) }
+            : { readOnly: false }
+        const denial = (await mcpDenied(key)) ?? toolDenial(allowedTools, key, args, mcpClass)
         // The processor builds a completed tool part out of title/metadata/output,
         // so a content-only return fails ToolStateCompleted validation and aborts
         // the turn instead of showing the model why the call was refused.

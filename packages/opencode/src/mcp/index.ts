@@ -895,6 +895,26 @@ export namespace MCP {
     return false
   }
 
+  // Whether an executable tool key is safe for a read-only grant. The MCP spec
+  // makes `annotations.readOnlyHint` an OPTIONAL hint that defaults to false and
+  // that servers set inconsistently (the spec itself says clients must not trust
+  // it from untrusted servers). So this classifies as read-only ONLY when a
+  // connected server advertises `readOnlyHint === true` for the tool; an absent
+  // or false hint is treated as a WRITE. That fail-safe means an unclassified
+  // tool is DENIED by a read-only grant, never wrongly allowed — a write tool
+  // can never reach a subtask through the read-only toolset.
+  export async function readOnly(key: string): Promise<boolean> {
+    const s = await state()
+    for (const clientName of Object.keys(s.clients)) {
+      const cached = s.tools[clientName]
+      if (!cached) continue
+      for (const mcpTool of cached.tools) {
+        if (toolKey(clientName, mcpTool.name) === key) return mcpTool.annotations?.readOnlyHint === true
+      }
+    }
+    return false
+  }
+
   export async function tools() {
     // Serve from the per-client tools cache populated at create() time.
     // We deliberately do NOT call client.listTools() here — that caused MCP

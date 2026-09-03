@@ -341,11 +341,32 @@ export namespace Agent {
     return result.object
   }
 
+  // Sentinels that grant a subtask a CLASS of MCP tools rather than an
+  // enumerable id. MCP tool keys are dynamic (per configured server), so a
+  // static toolset list cannot name them; a sentinel in the list is matched by
+  // class at execute time in SessionPrompt.toolDenial. The `:` keeps them from
+  // ever colliding with a real tool id (native ids and MCP toolKeys use only
+  // `_`/`-`). MCP_READ permits MCP tools the server advertises as read-only;
+  // MCP_WRITE permits every MCP tool.
+  export const MCP_READ = "mcp:read"
+  export const MCP_WRITE = "mcp:write"
+
   /**
    * Built-in named tool presets. Subtasks always use the parent's
    * agent/model/tools for cache-identical prefixes, but tool execution is
    * restricted to the tools in the chosen preset — tools not in the list are
    * present in the schema but rejected at runtime.
+   *
+   * `question` is absent from every subtask preset by design: a subtask runs
+   * headless with no human to answer, so a `question` call would strand it
+   * waiting on input that cannot arrive. (Removing it here does NOT restrict a
+   * parent session, which carries no allowlist and is never gated by these.)
+   *
+   * The `-mcp` presets add an MCP sentinel: `explore-mcp` grants read-only MCP
+   * tools, `general-mcp` grants all MCP tools. Both grant `mcp_search` so the
+   * subtask can disclose tool schemas (the catalog is name-tier). They are
+   * opt-in — a parent picks one by name; the plain `explore`/`general` presets
+   * grant no MCP access, unchanged.
    */
   const BUILTIN_TOOLSETS: Record<string, string[]> = {
     explore: ["grep", "glob", "list", "bash", "read", "webfetch", "websearch", "codesearch", "lsp"],
@@ -363,8 +384,38 @@ export namespace Agent {
       "websearch",
       "codesearch",
       "lsp",
-      "question",
       "skill",
+    ],
+    "explore-mcp": [
+      "grep",
+      "glob",
+      "list",
+      "bash",
+      "read",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "lsp",
+      "mcp_search",
+      MCP_READ,
+    ],
+    "general-mcp": [
+      "grep",
+      "glob",
+      "list",
+      "bash",
+      "read",
+      "write",
+      "edit",
+      "patch",
+      "multiedit",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "lsp",
+      "skill",
+      "mcp_search",
+      MCP_WRITE,
     ],
   }
 
