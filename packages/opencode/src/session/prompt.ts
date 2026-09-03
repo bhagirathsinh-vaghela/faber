@@ -339,6 +339,37 @@ export namespace SessionPrompt {
     ]
   }
 
+  // Frame a message that joined a turn already in flight, so the model does not
+  // miss it mid-turn. A delivered background result is framed as just-arrived, a
+  // typed prompt as the user's. An `internal` part (MCP catalog, rule reminder)
+  // is machinery the model already expects, so it is left unframed.
+  export function wrapQueued(messages: MessageV2.WithParts[], lastFinishedID: string) {
+    for (const msg of messages) {
+      if (msg.info.role !== "user" || msg.info.id <= lastFinishedID) continue
+      for (const part of msg.parts) {
+        if (part.type !== "text" || part.ignored || part.internal) continue
+        if (!part.text.trim()) continue
+        const lead = part.backgroundJobResult
+          ? "A background job you started has finished while you were working:"
+          : part.backgroundTaskResult
+            ? "A background task you delegated has finished while you were working:"
+            : part.synthetic
+              ? undefined
+              : "The user sent the following message:"
+        if (!lead) continue
+        part.text = [
+          "<system-reminder>",
+          lead,
+          part.text,
+          "",
+          "Please address this and continue with your tasks.",
+          "</system-reminder>",
+        ].join("\n")
+      }
+    }
+    return messages
+  }
+
   function start(sessionID: string) {
     const s = state()
     if (s[sessionID]) return
@@ -751,24 +782,8 @@ export namespace SessionPrompt {
 
       const sessionMessages = clone(msgs)
 
-      // Ephemerally wrap queued user messages with a reminder to stay on track
-      if (step > 1 && lastFinished) {
-        for (const msg of sessionMessages) {
-          if (msg.info.role !== "user" || msg.info.id <= lastFinished.id) continue
-          for (const part of msg.parts) {
-            if (part.type !== "text" || part.ignored || part.synthetic) continue
-            if (!part.text.trim()) continue
-            part.text = [
-              "<system-reminder>",
-              "The user sent the following message:",
-              part.text,
-              "",
-              "Please address this message and continue with your tasks.",
-              "</system-reminder>",
-            ].join("\n")
-          }
-        }
-      }
+      // Ephemerally frame messages that joined this turn after it started.
+      if (step > 1 && lastFinished) wrapQueued(sessionMessages, lastFinished.id)
 
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
