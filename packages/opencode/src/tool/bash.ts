@@ -69,6 +69,12 @@ export const BashTool = Tool.define("bash", async () => {
           .describe("A job_id to stop. The only way to end a background job before its timeout.")
           .optional(),
         timeout: z.number().describe("Milliseconds after which the job is killed. Defaults to 30 minutes.").optional(),
+        estimate: z
+          .number()
+          .describe(
+            "Optional estimate, in milliseconds, of how long the command should take. If the job is still running past this, you get a progress check-in. It only makes the first check-in EARLIER (capped at ~3 minutes), so a rough guess is fine and a wrong one is cheap. Give one for a command you expect to finish quickly and want to hear about sooner if it hangs.",
+          )
+          .optional(),
         workdir: z
           .string()
           .describe(
@@ -117,6 +123,9 @@ export const BashTool = Tool.define("bash", async () => {
       const command = params.command
       if (params.timeout !== undefined && params.timeout < 0) {
         throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
+      }
+      if (params.estimate !== undefined && params.estimate < 0) {
+        throw new Error(`Invalid estimate value: ${params.estimate}. Estimate must be a positive number.`)
       }
       const tree = await parser().then((p) => p.parse(command))
       if (!tree) {
@@ -233,6 +242,7 @@ export const BashTool = Tool.define("bash", async () => {
           ...(listening ? { OPENCODE_SERVER_URL: listening } : {}),
         },
         hard: params.timeout,
+        soft: params.estimate,
       })
 
       // Past the window. The job keeps running and reports itself when it

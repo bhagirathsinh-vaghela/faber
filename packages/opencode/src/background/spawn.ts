@@ -18,14 +18,13 @@ export namespace BackgroundSpawn {
 
   export const HARD_MS = 30 * 60 * 1000
 
-  // When a running job first gets a progress check-in, absent an explicit soft
-  // deadline from the caller. DERIVED rather than asked for: the model cannot
-  // predict how long a command takes — the whole reason the grace window
-  // replaced a mode parameter — so a caller-supplied check-in time would be the
-  // same failed prediction. Half the hard budget catches a job burning through
-  // its allowance, but a 30-minute default hard would put the first nudge 15
-  // minutes out, long after a stalled build is worth a look, so a floor caps it:
-  // any job still running past SOFT_CAP_MS starts getting nudged.
+  // Ceiling on the first progress check-in, so a nudge always arrives by this
+  // point however large or absent the caller's estimate. A caller may pass a
+  // `soft` estimate of the command's runtime, which can only pull the first
+  // check-in EARLIER (it is min'd with this) and never later, so a wrong
+  // estimate is cheap: too high is clamped here, too low costs one early nudge.
+  // With no estimate the check-in falls to half the hard budget, keeping a
+  // short-hard job nudged before its kill rather than after it.
   export const SOFT_CAP_MS = 3 * 60 * 1000
 
   export type Input = {
@@ -61,9 +60,7 @@ export namespace BackgroundSpawn {
     const id = BackgroundJob.id()
     const created = Date.now()
     const hard = input.hard ?? HARD_MS
-    // An explicit soft deadline wins; otherwise derive one so the nudge is
-    // reachable for every job rather than only those a caller opts in.
-    const soft = input.soft ?? Math.min(hard / 2, SOFT_CAP_MS)
+    const soft = Math.min(input.soft ?? hard / 2, SOFT_CAP_MS)
 
     // WRITE BEFORE SPAWN. A crash between the write and the spawn leaves a
     // record naming no process, which the reconciler reads as orphaned and

@@ -180,14 +180,23 @@ describe("BackgroundSpawn durability", () => {
     expect(job.time.hard).toBeLessThan(before + 70_000)
   }, 20_000)
 
-  // An explicit soft deadline is honoured as given; otherwise one is derived so
-  // the progress nudge is reachable for every job rather than only opted-in ones.
-  test("honours an explicit soft deadline", async () => {
+  // An explicit soft estimate under the cap is honoured, pulling the first nudge
+  // earlier than the derived half-hard default would.
+  test("honours an explicit soft estimate under the cap", async () => {
     const before = Date.now()
     const withSoft = await run("sleep 30", { soft: 10_000 })
     const job = (await BackgroundJob.get(withSoft.job.id))!
     expect(job.time.soft).toBeGreaterThanOrEqual(before + 10_000)
     expect(job.time.soft).toBeLessThan(before + 20_000)
+  }, 20_000)
+
+  // An estimate can only pull the first nudge earlier, never later: one above the
+  // cap is clamped to it, so a nudge still arrives within a few minutes.
+  test("clamps an explicit soft estimate above the cap", async () => {
+    const before = Date.now()
+    const withSoft = await run("sleep 30", { soft: 30 * 60 * 1000 })
+    const job = (await BackgroundJob.get(withSoft.job.id))!
+    expect(job.time.soft).toBeLessThanOrEqual(before + BackgroundSpawn.SOFT_CAP_MS + 1_000)
   }, 20_000)
 
   // The derived soft is capped, so a default-hard job still gets its first nudge
