@@ -1,5 +1,8 @@
-Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
-It also helps the user understand the progress of the task and overall progress of their requests.
+Use this tool to create and manage a structured task list for your current coding session.
+
+The list is your MEMORY, not a status display. Work that lives only in your reasoning is lost the moment your turn is cut off, a subtask returns and reroutes your attention, or the context compacts. Work that lives in the list survives all three and is picked up exactly where it was left. This is the single most reliable way to make sure nothing is silently dropped across a long or interrupted piece of work. Default to writing the list the moment a task has more than a couple of steps, spans more than one turn, or has any step that gates another. The cost is a few tokens; the payoff is that nothing is ever forgotten.
+
+It also lets the user see the progress of their request. But the primary reason to keep it is durability: drain the list aggressively, mark one item in_progress at a time, and mark it completed the instant it is done.
 
 ## When to Use This Tool
 Use this tool proactively in these scenarios:
@@ -158,7 +161,9 @@ The assistant did not use the todo list because this is a single command executi
    - Complete current tasks before starting new ones
    - Cancel tasks that become irrelevant
 
-3. **Task Breakdown**:
+3. **When a new request arrives mid-work, INSERT it, do not pivot to it.** A new instruction while a task is in flight is not a signal to drop everything and chase the new thing. Add it to the list at the right priority, judge whether it should run now or after the current item, and keep the in-flight work intact. The list is what stops a distraction from silently abandoning half-finished work: as long as every open item is on it, you can service the new request in proper order and return to exactly where you were.
+
+4. **Task Breakdown**:
    - Create specific, actionable items
    - Break complex tasks into smaller, manageable steps
    - Use clear, descriptive task names
