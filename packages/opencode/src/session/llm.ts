@@ -55,10 +55,6 @@ export namespace LLM {
     /** Hard cap on completion tokens, overriding the model default. */
     maxOutputTokens?: number
     tools: Record<string, Tool>
-    /** Whether the question tool is callable this turn. A tool the allowlist denies
-     * stays in `tools` (removing it would churn the cache prefix), so schema
-     * presence alone would promise a tool the runtime rejects. */
-    canAsk?: boolean
     retries?: number
     /** One-shot probe: place an extra cache marker at this block index for testing */
     cacheProbeIndex?: number
@@ -124,13 +120,16 @@ export namespace LLM {
     const s2 = [envBlock, projectBlock].filter(Boolean).join("\n")
     if (s2) system.push(s2)
 
-    // S3 rather than S2: a session allowlist (subtask, compaction) can deny the
-    // question tool, and a fragment that ships for one session but not the next
-    // forks S2 into variants that two sessions in the same directory cannot
-    // share. Everything here is per-session by nature and carries no marker.
+    // S3 carries the per-directory session context and the question-tool
+    // guidance. The guidance is unconditional: it ships whenever the question
+    // tool is in the schema, never gated on whether this turn may call it.
+    // Availability is enforced only at execute time (SessionPrompt.toolDenial),
+    // so a session that denies the tool still sees identical S3 bytes. S3 sits
+    // ahead of every conversation cache marker, so any per-turn variance here
+    // invalidates the whole message-region cache for that session.
     const s3 = SystemPrompt.sessionBlock({
       context: input.system.sessionContext,
-      question: input.tools["question"] && input.canAsk !== false ? SystemPrompt.question() : undefined,
+      question: input.tools["question"] ? SystemPrompt.question() : undefined,
     })
     if (s3) system.push(s3)
 

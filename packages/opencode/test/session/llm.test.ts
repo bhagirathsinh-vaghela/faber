@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
-import type { ModelMessage } from "ai"
+import type { ModelMessage, Tool } from "ai"
 import { LLM } from "../../src/session/llm"
+import { SystemPrompt } from "../../src/session/system"
 import { Global } from "../../src/global"
 import { Instance } from "../../src/project/instance"
 import { Provider } from "../../src/provider/provider"
@@ -575,6 +576,111 @@ describe("session.llm.stream", () => {
         )
         expect(body.temperature).toBe(0.4)
         expect(body.top_p).toBe(0.9)
+      },
+    })
+  })
+
+  // The question-tool guidance rides in the session block, which sits ahead of
+  // every conversation cache marker. Its presence must depend only on the
+  // question tool being in the schema, never on a per-turn allowlist — otherwise
+  // a compaction or subtask turn forks the block and misses the whole cache. The
+  // question tool stays in the schema across those turns (the allowlist gates it
+  // at execute time), so the block is identical whether or not the turn may ask.
+  test("session block is identical whether or not the question tool is present", async () => {
+    const server = state.server
+    if (!server) throw new Error("Server not initialized")
+
+    const providerID = "anthropic"
+    const modelID = "claude-3-5-sonnet-20241022"
+    const fixture = await loadFixture(providerID, modelID)
+    const model = fixture.model
+
+    const chunks = [
+      { type: "message_start", message: { id: "m", model: model.id, usage: { input_tokens: 1 } } },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+      { type: "content_block_stop", index: 0 },
+      {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn", stop_sequence: null, container: null },
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      { type: "message_stop" },
+    ]
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "opencode.json"),
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            enabled_providers: [providerID],
+            provider: {
+              [providerID]: { options: { apiKey: "test-anthropic-key", baseURL: `${server.url.origin}/v1` } },
+            },
+          }),
+        )
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const resolved = await Provider.getModel(providerID, model.id)
+        const sessionID = "session-question-block"
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+        const user = {
+          id: "user-q",
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID, modelID: resolved.id },
+        } satisfies MessageV2.User
+
+        const questionTool = { description: "Ask the user a question", parameters: {} } as unknown as Tool
+        const capture = async (tools: Record<string, Tool>, extra?: Record<string, unknown>) => {
+          const request = waitRequest("/messages", createEventResponse(chunks))
+          const { stream } = await LLM.stream({
+            user,
+            sessionID,
+            model: resolved,
+            agent,
+            system: {
+              env: [],
+              globalInstructions: [],
+              projectInstructions: [],
+              sessionContext: SystemPrompt.sessionContext({ created: user.time.created }),
+            },
+            abort: new AbortController().signal,
+            messages: [{ role: "user", content: "hi" }],
+            tools,
+            ...extra,
+          } as Parameters<typeof LLM.stream>[0])
+          for await (const _ of stream.fullStream) {
+          }
+          const body = (await request).body
+          return body.system as Array<{ text: string }>
+        }
+
+        const withQuestion = await capture({ question: questionTool })
+        const withoutQuestion = await capture({})
+        // A restricted turn (subtask/compaction) denies the question tool at
+        // execute time while keeping it in the schema, so its block must equal a
+        // normal turn's. A per-turn ask/deny signal must not fork the block, or
+        // the whole message-region cache misses on that turn.
+        const restricted = await capture({ question: questionTool }, { canAsk: false })
+
+        const questionText = SystemPrompt.question()
+        const joined = (blocks: Array<{ text: string }>) => blocks.map((b) => b.text).join("\n")
+        expect(joined(withQuestion)).toContain(questionText)
+        expect(joined(withoutQuestion)).not.toContain(questionText)
+        expect(joined(restricted)).toBe(joined(withQuestion))
       },
     })
   })

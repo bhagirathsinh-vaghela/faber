@@ -491,9 +491,6 @@ export namespace SessionPing {
             branch: session.branch,
           }),
         },
-        // Warming a prefix the turn never reads is worse than not warming: the
-        // ping must match the turn's question decision, not fall back to the default.
-        canAsk: SessionPrompt.canAsk(session),
         messages: allMessages,
         sessionMessages,
         messageIdToIndex: idToIndex,

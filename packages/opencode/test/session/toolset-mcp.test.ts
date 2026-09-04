@@ -80,8 +80,8 @@ describe("toolDenial — root/parent session denies NOTHING", () => {
     expect(SessionPrompt.toolDenial(undefined, WRITE_KEY, {}, { readOnly: false })).toBeUndefined()
   })
 
-  test("canAsk is true for an undefined allowlist", () => {
-    expect(SessionPrompt.canAsk({ allowedTools: undefined } as Session.Info)).toBe(true)
+  test("question is allowed for an undefined allowlist", () => {
+    expect(SessionPrompt.toolDenial(undefined, "question", {})).toBeUndefined()
   })
 })
 
@@ -108,7 +108,6 @@ describe("toolDenial — read-only MCP subtask (explore-mcp)", () => {
     const set = await toolset("explore-mcp")
     const denial = SessionPrompt.toolDenial(set, "question", {})
     expect(denial).toBe(`Tool "question" is not available for this task. Available tools: ${set.join(", ")}`)
-    expect(SessionPrompt.canAsk({ allowedTools: set } as Session.Info)).toBe(false)
   })
 })
 
@@ -130,7 +129,8 @@ describe("toolDenial — write-capable MCP subtask (general-mcp)", () => {
 
   test("question is denied", async () => {
     const set = await toolset("general-mcp")
-    expect(SessionPrompt.canAsk({ allowedTools: set } as Session.Info)).toBe(false)
+    const denial = SessionPrompt.toolDenial(set, "question", {})
+    expect(denial).toBe(`Tool "question" is not available for this task. Available tools: ${set.join(", ")}`)
   })
 })
 

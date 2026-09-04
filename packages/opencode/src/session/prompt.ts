@@ -848,7 +848,6 @@ export namespace SessionPrompt {
         assistantMessage: processor.message,
         persistPromptIndex: true,
         tools,
-        canAsk: canAsk(session),
         model,
         cacheProbeIndex,
         cacheProbeMessageID,
@@ -944,16 +943,6 @@ export namespace SessionPrompt {
     const target = path.isAbsolute(filePath) ? path.relative(Instance.worktree, filePath) : filePath
     if (entry.paths.some((p) => Wildcard.match(target, p) || Wildcard.match(filePath, p))) return undefined
     return `Tool "${id}" is restricted to ${entry.paths.join(", ")} for this task. "${filePath}" is not allowed.`
-  }
-
-  // Whether a session may call `question` this turn. Mirrors the allowlist the
-  // runtime enforces, so the prompt fragment describing the tool ships only when
-  // a call would actually succeed — a denied tool is still on the wire, so its
-  // schema presence proves nothing.
-  // Plan mode is not consulted: its derived allowlist carries every registered
-  // tool, so only an explicit session allowlist (subtask, compaction) can deny.
-  export function canAsk(session: Session.Info) {
-    return toolDenial(session.allowedTools, "question", {}) === undefined
   }
 
   // Per-session MCP latch, enforced at execute time so tools[] stays
