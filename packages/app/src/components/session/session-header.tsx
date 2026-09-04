@@ -145,12 +145,12 @@ export function SessionHeader() {
               </Tooltip>
               <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                 <IconButton
-                  icon="stop-mobile"
+                  icon="circle-ban-sign"
                   iconSize="medium"
                   variant="ghost"
                   onClick={stopSession}
                   aria-label={language.t("session.stop")}
-                  class="shrink-0 border border-text-strong [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
+                  class="shrink-0 [&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-slot=icon-svg]]:[stroke-width:1.5] hover:!bg-surface-critical-weak"
                 />
               </Tooltip>
             </Show>
@@ -201,12 +201,12 @@ export function SessionHeader() {
                   </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton
-                      icon="stop-mobile"
+                      icon="circle-ban-sign"
                       iconSize="medium"
                       variant="ghost"
                       onClick={stopSession}
                       aria-label={language.t("session.stop")}
-                      class="border border-text-strong [&_[data-slot=icon-svg]]:!text-icon-critical-base hover:!bg-surface-critical-weak"
+                      class="[&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-slot=icon-svg]]:[stroke-width:1.5] hover:!bg-surface-critical-weak"
                     />
                   </Tooltip>
                 </div>

@@ -213,7 +213,7 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
           icon="circle-ban-sign"
           title={language.t("home.attention.stopPing")}
           onClick={stopPing}
-          class=""
+          class="[&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-slot=icon-svg]]:[stroke-width:1.5]"
         />
       </Show>
     </div>
