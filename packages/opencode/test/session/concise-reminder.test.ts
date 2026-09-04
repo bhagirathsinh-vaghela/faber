@@ -109,3 +109,53 @@ describe("sinceLastPrompt", () => {
     expect(SessionPrompt.sinceLastPrompt([only]).length).toBe(1)
   })
 })
+
+describe("conciseDue", () => {
+  test("a fresh typed prompt with no reminder is due", () => {
+    const prompt = user({ texts: [{ text: "start" }] })
+    expect(SessionPrompt.conciseDue([prompt])).toBe(true)
+  })
+
+  test("the same turn is not due once the reminder is present", () => {
+    const prompt = user({ texts: [{ text: "start" }, reminder] })
+    expect(SessionPrompt.conciseDue([prompt])).toBe(false)
+  })
+
+  test("four assistant round-trips after the reminder stay suppressed", () => {
+    const prompt = user({ texts: [{ text: "start" }, reminder] })
+    const msgs = [prompt, assistant(), assistant(), assistant(), assistant()]
+    expect(SessionPrompt.conciseDue(msgs)).toBe(false)
+  })
+
+  test("the fifth assistant round-trip is due again", () => {
+    const prompt = user({ texts: [{ text: "start" }, reminder] })
+    const msgs = [prompt, assistant(), assistant(), assistant(), assistant(), assistant()]
+    expect(SessionPrompt.conciseDue(msgs)).toBe(true)
+  })
+
+  // A new human-typed prompt opens a fresh window with no reminder in it, so it
+  // is due at once even though the previous turn carried one.
+  test("a new typed prompt after a reminded turn is due", () => {
+    const first = user({ texts: [{ text: "turn one" }, reminder] })
+    const second = user({ texts: [{ text: "turn two" }] })
+    expect(SessionPrompt.conciseDue([first, assistant(), second])).toBe(true)
+  })
+
+  // A delivered task/job result is a synthetic user message. It advances the
+  // clock (counts as neither a reset nor an assistant step) but must not itself
+  // trigger a reminder while under the step threshold.
+  test("a synthetic result mid-turn does not reset the clock", () => {
+    const prompt = user({ texts: [{ text: "launch a job" }, reminder] })
+    const result = user({ synthetic: true, texts: [{ text: "job result", synthetic: true }] })
+    const msgs = [prompt, assistant(), result, assistant()]
+    expect(SessionPrompt.conciseDue(msgs)).toBe(false)
+  })
+
+  test("a subtask session never carries the reminder regardless of due state", () => {
+    // conciseDue is the cadence gate; the parentID guard lives at the call
+    // site. This pins that a fresh window reads due, so the parentID check is
+    // the only thing suppressing a subtask.
+    const prompt = user({ texts: [{ text: "subtask work" }] })
+    expect(SessionPrompt.conciseDue([prompt])).toBe(true)
+  })
+})

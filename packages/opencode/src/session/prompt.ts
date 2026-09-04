@@ -1599,7 +1599,12 @@ export namespace SessionPrompt {
   const PLAN_EXIT_MARKER = "<!-- plan-mode-exit -->"
   const SUBTASK_MARKER = "<!-- subtask-no-delegation -->"
   const CONCISE_MARKER = "<!-- concise-reminder -->"
-  const CONCISE = "Keep replies concise: lead with the answer, no preamble, no recap."
+  const CONCISE =
+    "Keep replies concise: lead with the answer, no preamble, no recap. " +
+    "This governs user-facing text only, not how much you read, investigate, or think before acting."
+  // How many assistant round-trips a single concise reminder covers before it is
+  // re-stated, so a long turn does not drift far past the last reminder.
+  const CONCISE_EVERY_N_STEPS = 5
   const TURNS_BETWEEN_REMINDERS = 5
   const FULL_REMINDER_EVERY_N = 5
 
@@ -1625,6 +1630,21 @@ export namespace SessionPrompt {
   export function sinceLastPrompt(messages: MessageV2.WithParts[]) {
     const start = messages.findLastIndex((msg) => msg.info.role === "user" && !msg.info.synthetic)
     return start === -1 ? messages : messages.slice(start)
+  }
+
+  // A fresh human-typed prompt carries no reminder yet, so the count is 0 and it
+  // is due at once; the same clock then re-states it once every N assistant
+  // round-trips a long turn runs. Counting assistant messages after the last
+  // reminder makes the human-typed boundary reset the clock for free (the reminder
+  // rides that new user message), so one rule covers both triggers. A delivered
+  // task/job result is a synthetic user message inside the window, never a typed
+  // prompt, so it advances the clock but never resets it.
+  export function conciseDue(messages: MessageV2.WithParts[]) {
+    const window = sinceLastPrompt(messages)
+    const lastReminder = window.findLastIndex(hasConciseReminder)
+    if (lastReminder === -1) return true
+    const since = window.slice(lastReminder + 1).filter((msg) => msg.info.role === "assistant").length
+    return since >= CONCISE_EVERY_N_STEPS
   }
 
   function planFileInfo(planPath: string, exists: boolean) {
@@ -1827,21 +1847,17 @@ export namespace SessionPrompt {
     if (!userMessage) return input.messages
 
     // The concision rules live in the cached system prompt, which a long turn
-    // drifts from; re-stating the shape each turn is what holds it. Appending
-    // to the newest message keeps the prefix behind it byte-identical. A
-    // subtask's output is read by its parent model, not the user, so terseness
-    // tuned for a human reader would cost the parent detail.
+    // drifts from; re-stating the shape holds it. Appending to the newest
+    // message keeps the prefix behind it byte-identical. A subtask's output is
+    // read by its parent model, not the user, so terseness tuned for a human
+    // reader would cost the parent detail.
     //
-    // Presence is checked from the typed prompt onward, not on the message
-    // being appended to: a task summary or a compaction mints a fresh user
-    // message mid-turn, and a per-message check would inject once more for
-    // each one, rewriting the tail every time.
-    //
-    // The append target itself is also checked directly, so the guard holds
-    // even if the window ever stops covering it — a second append onto a
-    // message already sent would rewrite the prefix behind the rolling marker.
-    const carried = hasConciseReminder(userMessage) || sinceLastPrompt(input.messages).some(hasConciseReminder)
-    if (!input.session.parentID && !carried) {
+    // Cadence: on every human-typed prompt (which resets the clock), and once
+    // per CONCISE_EVERY_N_STEPS assistant round-trips inside a long turn.
+    // conciseDue counts from the typed prompt onward so a synthetic mid-turn
+    // message (task summary, compaction, tool result) advances the clock but
+    // never counts as a new prompt.
+    if (!input.session.parentID && conciseDue(input.messages)) {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
       if (concise) await persistReminder(userMessage, CONCISE, CONCISE_MARKER)
     }
