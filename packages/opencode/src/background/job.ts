@@ -186,19 +186,19 @@ export namespace BackgroundJob {
   // foreground command would make the shell replace itself, and the exit
   // write after it would never run.
   //
-  // The command runs inside a NESTED `sh -c` that turns on job control for
-  // itself. That placement is load-bearing twice over.
+  // The command is put in a process group of its own, which is what lets the
+  // watchdog signal `-$__oc_cmd` and take the whole subtree. Without it the
+  // command shares the wrapper's group, so the watchdog reaches only the direct
+  // child and a `make`'s compilers keep running.
   //
-  // Job control is what puts the command in a process group of its own, which
-  // is what lets the watchdog signal `-$__oc_cmd` and take the whole subtree.
-  // Without it the command shares the wrapper's group, so the watchdog reaches
-  // only the direct child and a `make`'s compilers keep running.
-  //
-  // It has to be a nested `sh` because the OUTER shell is the user's login
-  // shell, and zsh refuses job control when it is not interactive
-  // ("can't change option: -m", exit 1, nothing runs). POSIX sh accepts it, so
-  // the nesting confines the requirement to a shell that can meet it while the
-  // user's own shell still interprets their command.
+  // Two mechanisms reach that same end, one per platform, because neither works
+  // on the other. `setsid` (Linux, absent on macOS) execs the command as a new
+  // session leader, so its pid IS its group. `set -m` (macOS) turns on job
+  // control, which puts a backgrounded command in its own group; POSIX sh
+  // accepts it non-interactively, but dash then refuses on a machine with no
+  // controlling tty ("can't access tty; job control turned off") and leaves the
+  // command in the wrapper's group. Either way `$!` ends up equal to the
+  // command's group id, so every `kill -$__oc_cmd` below is unchanged.
   //
   // The job learns exactly one thing about the world outside itself: how long
   // it may live. It knows nothing of sessions, injection, or its own record.
@@ -222,22 +222,26 @@ export namespace BackgroundJob {
     // option: -m"), and running the command under plain `sh` would drop the
     // user's own login shell.
     const user = `${shell} -lc ${quote(command)}`
-    // The watchdog lives INSIDE the nested shell, alongside the command.
-    //
-    // Only that shell knows the command's process group: job control assigns
-    // the group there, and the launching shell sees just this shell's pid,
-    // whose own group is its parent's. A watchdog placed outside would signal
-    // that wrong group and never reach the command (verified: the command
-    // outlived its deadline and ran to completion).
+    // The watchdog lives INSIDE this shell, alongside the command, because only
+    // here is the command's group id known: `$!` after the launch below equals
+    // it on both platforms. A watchdog placed outside would see just this
+    // shell's pid, whose group is its parent's, and signal the wrong group
+    // (verified: the command outlived its deadline and ran to completion).
     const inner = [
-      `set -m`,
-      `{ ${user} ; } &`,
+      // Prefer setsid (Linux) so no tty is needed; fall back to set -m (macOS,
+      // which has no setsid). `set +m` after is harmless when -m never ran.
+      `if command -v setsid >/dev/null 2>&1; then`,
+      `  setsid ${user} &`,
+      `else`,
+      `  set -m 2>/dev/null`,
+      `  { ${user} ; } &`,
+      `fi`,
       `__oc_cmd=$!`,
-      `set +m`,
-      // A signal aimed at this wrapper is FORWARDED to the group the line above
-      // created. An outside killer can only ever reach this process: it records
-      // the identity it got from spawning, which is this shell, while `set -m`
-      // puts the command in a group of its own that nothing out there can name.
+      `set +m 2>/dev/null`,
+      // A signal aimed at this wrapper is FORWARDED to the command's group. An
+      // outside killer can only ever reach this process: it records the identity
+      // it got from spawning, which is this shell, while the launch above puts
+      // the command in a group of its own that nothing out there can name.
       // Without the trap, killing the job kills the wrapper and its watchdog and
       // leaves the command running with nothing left that knows about it.
       //
