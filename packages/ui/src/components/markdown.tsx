@@ -7,7 +7,8 @@ import { SolidMarkdown, type SolidMarkdownComponents } from "solid-markdown"
 import remarkGfm from "remark-gfm"
 import remarkBreaks from "remark-breaks"
 import remarkMath from "remark-math"
-import remarkDirective from "remark-directive"
+import { directive } from "micromark-extension-directive"
+import { directiveFromMarkdown } from "mdast-util-directive"
 import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
 import { isServer } from "solid-js/web"
 
@@ -45,6 +46,21 @@ const CALLOUTS: Record<string, string> = {
   key: "Key point",
   tangent: "Tangent",
   check: "Check yourself",
+}
+
+// remark-directive, wired to CONTAINER directives only. Its default also enables
+// inline text directives (`:name`), whose `:\w+` pattern false-matches ordinary
+// prose — `13:20`, `localhost:8080`, `John 15:13` — silently eating everything
+// after the colon and emitting a stray empty <div> (micromark-extension-directive
+// issue #33; upstream declines to fix it). We only author `:::name` container
+// callouts, so drop the extension's `text` rules and keep flow (leaf + container),
+// which require a line-leading run of colons and never fire by accident.
+function remarkDirectiveContainerOnly(this: any) {
+  const config = this.data()
+  const extension = { ...directive() }
+  delete extension.text
+  ;(config.micromarkExtensions ??= []).push(extension)
+  ;(config.fromMarkdownExtensions ??= []).push(directiveFromMarkdown())
 }
 
 // A remark transform that turns a `:::fix` / `:::key` / etc. container directive
@@ -422,7 +438,7 @@ export function Markdown(
       <SolidMarkdown
         renderingStrategy="reconcile"
         skipHtml
-        remarkPlugins={[remarkGfm, [remarkMath, MATH_OPTIONS], remarkBreaks, remarkDirective, remarkCallouts]}
+        remarkPlugins={[remarkGfm, [remarkMath, MATH_OPTIONS], remarkBreaks, remarkDirectiveContainerOnly, remarkCallouts]}
         rehypePlugins={rehype()}
         components={components(labels, theme, complete)}
       >
