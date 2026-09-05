@@ -15,6 +15,7 @@ import { Dynamic } from "solid-js/web"
 import {
   AgentPart,
   AssistantMessage,
+  CompactionPart,
   FilePart,
   Message as MessageType,
   Part as PartType,
@@ -453,6 +454,34 @@ function NoticeDisplay(props: { part: TextPart }) {
   )
 }
 
+function compactionPart(parts: PartType[]): CompactionPart | undefined {
+  return parts.find((p) => p.type === "compaction") as CompactionPart | undefined
+}
+
+// The compaction request carries no text — its part is {type,auto} only — so
+// without its own branch the user box renders empty. Reuses the notice box
+// chrome (SYSTEM label, tool accent) so it reads like the supervisor's
+// continue prompt, the other message the system writes on its own.
+function CompactionDisplay(props: { part: CompactionPart }) {
+  const i18n = useI18n()
+  const text = createMemo(() =>
+    props.part.auto ? i18n.t("ui.message.compaction.auto") : i18n.t("ui.message.compaction.manual"),
+  )
+  return (
+    <div data-component="notice-result">
+      <div
+        data-slot="notice-result-meta"
+        class="flex flex-row flex-wrap items-center font-mono"
+        style={{ "font-size": "11px", "line-height": "1.2" }}
+      >
+        <span class="font-medium" style={{ color: "var(--syntax-constant)" }}>
+          ⚙ {text()}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // A job's header answers what a reader asks of a finished command: what ran,
 // how it ended, and how long it took. The command leads, because it is what
 // identifies the block; the exit code follows the status, since a bare number
@@ -554,6 +583,22 @@ export function Message(props: MessageProps) {
               jumpHint={props.jumpHint}
             >
               <NoticeDisplay part={part()} />
+            </MessageBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "user" && compactionPart(props.parts)}>
+        {(part) => (
+          <Show when={props.boxed} fallback={<CompactionDisplay part={part()} />}>
+            <MessageBox
+              message={props.message}
+              label="SYSTEM"
+              accent="var(--box-accent-tool)"
+              action={props.action}
+              onJump={props.onJump}
+              jumpHint={props.jumpHint}
+            >
+              <CompactionDisplay part={part()} />
             </MessageBox>
           </Show>
         )}

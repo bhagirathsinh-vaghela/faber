@@ -105,6 +105,8 @@ export const dict = {
   "ui.message.copied": "Copied!",
   "ui.message.speak": "Read aloud",
   "ui.message.attachment.alt": "attachment",
+  "ui.message.compaction.auto": "Context automatically compacted. Earlier messages were summarized to free up context; the summary below continues the conversation.",
+  "ui.message.compaction.manual": "Context compacted. Earlier messages were summarized to free up context; the summary below continues the conversation.",
 
   "ui.patch.action.deleted": "Deleted",
   "ui.patch.action.created": "Created",
