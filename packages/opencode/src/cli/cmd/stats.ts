@@ -3,6 +3,7 @@ import { cmd } from "./cmd"
 import { Session } from "../../session"
 import { bootstrap } from "../bootstrap"
 import { Storage } from "../../storage/storage"
+import { Sessions } from "../../storage/sessions"
 import { Project } from "../../project/project"
 import { Instance } from "../../project/instance"
 
@@ -95,13 +96,8 @@ async function getAllSessions(): Promise<Session.Info[]> {
   for (const project of projects) {
     if (!project) continue
 
-    const sessionKeys = await Storage.list(["session", project.id])
-    const projectSessions = await Promise.all(sessionKeys.map((key) => Storage.read<Session.Info>(key)))
-
-    for (const session of projectSessions) {
-      if (session) {
-        sessions.push(session)
-      }
+    for (const session of await Sessions.listProject(project.id)) {
+      sessions.push(session)
     }
   }
 

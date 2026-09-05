@@ -2,8 +2,9 @@ import type { Argv } from "yargs"
 import { Session } from "../../session"
 import { cmd } from "./cmd"
 import { bootstrap } from "../bootstrap"
-import { Storage } from "../../storage/storage"
-import { Instance } from "../../project/instance"
+import { Parts } from "../../storage/parts"
+import { Messages } from "../../storage/messages"
+import { Sessions } from "../../storage/sessions"
 import { EOL } from "os"
 
 export const ImportCommand = cmd({
@@ -81,13 +82,13 @@ export const ImportCommand = cmd({
         return
       }
 
-      await Storage.write(["session", Instance.project.id, exportData.info.id], exportData.info)
+      await Sessions.write(exportData.info)
 
       for (const msg of exportData.messages) {
-        await Storage.write(["message", exportData.info.id, msg.info.id], msg.info)
+        await Messages.put(msg.info)
 
         for (const part of msg.parts) {
-          await Storage.write(["part", msg.info.id, part.id], part)
+          await Parts.put(part)
         }
       }
 

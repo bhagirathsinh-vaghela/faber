@@ -158,6 +158,11 @@ export namespace Storage {
     }
   })
 
+  // The storage dir, once every migration has run and orphans were swept.
+  // Parts.open depends on it so the SQLite parts table is opened only after the
+  // migration that populates it from the legacy part/**.json tree.
+  export const ready = () => state()
+
   export async function remove(key: string[]) {
     const dir = await state().then((x) => x.dir)
     const target = path.join(dir, ...key) + ".json"

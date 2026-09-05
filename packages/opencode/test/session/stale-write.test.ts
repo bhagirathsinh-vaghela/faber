@@ -120,7 +120,7 @@ describe("Session.updateMessage terminal fields", () => {
         user.ordinal = 7
         await Session.updateMessage(user)
 
-        const stored = await Storage(session.id, user.id)
+        const stored = await readMessage(user.id)
         expect(stored.role).toBe("user")
         expect((stored as MessageV2.User).ordinal).toBe(7)
       },
@@ -272,13 +272,13 @@ describe("SessionBusy.busy", () => {
   })
 })
 
-async function Storage(sessionID: string, messageID: string) {
-  const { Storage } = await import("../../src/storage/storage")
-  return Storage.read<MessageV2.Info>(["message", sessionID, messageID])
+async function readMessage(messageID: string) {
+  const { Messages } = await import("../../src/storage/messages")
+  return Messages.read(messageID)
 }
 
 async function storedAssistant(sessionID: string, messageID: string) {
-  const stored = await Storage(sessionID, messageID)
+  const stored = await readMessage(messageID)
   if (stored.role !== "assistant") throw new Error(`expected an assistant message, got ${stored.role}`)
   return stored
 }

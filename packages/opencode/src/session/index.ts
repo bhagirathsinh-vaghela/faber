@@ -11,6 +11,9 @@ import { Identifier } from "../id/id"
 import { Installation } from "../installation"
 
 import { Storage } from "../storage/storage"
+import { Parts } from "../storage/parts"
+import { Messages } from "../storage/messages"
+import { Sessions } from "../storage/sessions"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionRecent } from "./recent"
@@ -64,10 +67,8 @@ export namespace Session {
   async function load() {
     const state = index()
     if (state.loaded) return state.entries
-    const project = Instance.project
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item).catch(() => undefined)
-      if (session) state.entries.set(session.id, session)
+    for (const session of await Sessions.listProject(Instance.project.id)) {
+      state.entries.set(session.id, session)
     }
     state.loaded = true
     return state.entries
@@ -417,7 +418,7 @@ export namespace Session {
       cost: 0,
     }
     log.info("created", result)
-    await Storage.write(["session", Instance.project.id, result.id], result)
+    await Sessions.write(result)
     indexed(result)
     Bus.publish(Event.Created, {
       info: result,
@@ -449,8 +450,7 @@ export namespace Session {
   export const get = fn(Identifier.schema("session"), async (id) => {
     const cached = index().entries.get(id)
     if (cached) return cached
-    const read = await Storage.read<Info>(["session", Instance.project.id, id])
-    return indexed(read as Info)
+    return indexed(await Sessions.read(id))
   })
 
   export const getShare = fn(Identifier.schema("session"), async (id) => {
@@ -490,13 +490,12 @@ export namespace Session {
   })
 
   export async function update(id: string, editor: (session: Info) => void, options?: { touch?: boolean }) {
-    const project = Instance.project
     // Detect a no-op update: mid-turn callers (cache-marker refresh, ping
     // bookkeeping) frequently run an editor that changes nothing, and each one
     // otherwise re-broadcasts an identical session object to every client. Snapshot
     // before/after and skip the publish when the serialized session is unchanged.
     let changed = true
-    const result = await Storage.update<Info>(["session", project.id, id], (draft) => {
+    const result = await Sessions.update(id, (draft) => {
       const before = JSON.stringify(draft)
       editor(draft)
       if (options?.touch !== false) {
@@ -640,13 +639,11 @@ export namespace Session {
         await remove(child.id)
       }
       await unshare(sessionID).catch(() => {})
-      for (const msg of await Storage.list(["message", sessionID])) {
-        for (const part of await Storage.list(["part", msg.at(-1)!])) {
-          await Storage.remove(part)
-        }
-        await Storage.remove(msg)
-      }
-      await Storage.remove(["session", project.id, sessionID])
+      // Drop the whole session in three indexed statements (parts, messages, the
+      // session row) rather than a file unlink per record.
+      await Parts.removeSession(sessionID)
+      await Messages.removeSession(sessionID)
+      await Sessions.remove(sessionID)
       index().entries.delete(sessionID)
       void SessionRecent.remove(sessionID)
       Bus.publish(Event.Deleted, {
@@ -682,9 +679,7 @@ export namespace Session {
   }
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
-    msg = await Storage.reconcile<MessageV2.Info>(["message", msg.sessionID, msg.id], (stored) =>
-      preserveTerminal(msg, stored),
-    )
+    msg = await Messages.reconcile(msg.id, (stored) => preserveTerminal(msg, stored))
     MessageV2.uncache(msg.id)
     // A message write is the only real-turn signal (pings never persist a
     // message). Stamp lastActivity with touch:false so it doesn't bump
@@ -719,23 +714,6 @@ export namespace Session {
     return msg
   })
 
-  export const removeMessage = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      messageID: Identifier.schema("message"),
-    }),
-    async (input) => {
-      await Storage.remove(["message", input.sessionID, input.messageID])
-      MessageV2.uncache(input.messageID)
-      broadcasted.delete(input.messageID)
-      Bus.publish(MessageV2.Event.Removed, {
-        sessionID: input.sessionID,
-        messageID: input.messageID,
-      })
-      return input.messageID
-    },
-  )
-
   export const removePart = fn(
     z.object({
       sessionID: Identifier.schema("session"),
@@ -743,7 +721,7 @@ export namespace Session {
       partID: Identifier.schema("part"),
     }),
     async (input) => {
-      await Storage.remove(["part", input.messageID, input.partID])
+      await Parts.remove(input.messageID, input.partID)
       MessageV2.uncache(input.messageID)
       Bus.publish(MessageV2.Event.PartRemoved, {
         sessionID: input.sessionID,
@@ -773,7 +751,17 @@ export namespace Session {
   export const updatePart = fn(UpdatePartInput, async (input) => {
     const part = "delta" in input ? input.part : input
     const delta = "delta" in input ? input.delta : undefined
-    await Storage.write(["part", part.messageID, part.id], part)
+    await Parts.put(part)
+    publishPart(part, delta)
+    return part
+  })
+
+  // The live-only half of updatePart: broadcast the accumulated part (with its
+  // delta) without persisting. Level 2 streaming publishes every delta this way
+  // so the UI streams in real time, then persists ONCE via updatePart at
+  // block-end — a text/reasoning part that streamed over hundreds of deltas
+  // costs one DB write instead of one per delta.
+  export function publishPart(part: MessageV2.Part, delta?: string) {
     MessageV2.uncache(part.messageID)
     // Publish the full accumulated part to the in-process bus so every consumer
     // (TUI, share sync) sees real text. The O(n^2)-on-the-wire cost of resending
@@ -785,8 +773,7 @@ export namespace Session {
       part,
       delta,
     })
-    return part
-  })
+  }
 
   export const getUsage = fn(
     z.object({

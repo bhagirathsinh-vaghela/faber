@@ -6,6 +6,8 @@ import { Session } from "."
 import { Log } from "../util/log"
 import { splitWhen } from "remeda"
 import { Storage } from "../storage/storage"
+import { Parts } from "../storage/parts"
+import { Messages } from "../storage/messages"
 import { Bus } from "../bus"
 import { SessionPrompt } from "./prompt"
 import { SessionSummary } from "./summary"
@@ -115,7 +117,9 @@ export namespace SessionRevert {
     const [preserve, remove] = splitWhen(msgs, (x) => x.info.id === messageID)
     msgs = preserve
     for (const msg of remove) {
-      await Storage.remove(["message", sessionID, msg.info.id])
+      await Messages.remove(msg.info.id)
+      // Cascade the message's parts: an orphan row is never swept.
+      await Parts.removeMessage(msg.info.id)
       await Bus.publish(MessageV2.Event.Removed, { sessionID: sessionID, messageID: msg.info.id })
     }
     const last = preserve.at(-1)
@@ -124,7 +128,7 @@ export namespace SessionRevert {
       const [preserveParts, removeParts] = splitWhen(last.parts, (x) => x.id === partID)
       last.parts = preserveParts
       for (const part of removeParts) {
-        await Storage.remove(["part", last.info.id, part.id])
+        await Parts.remove(last.info.id, part.id)
         await Bus.publish(MessageV2.Event.PartRemoved, {
           sessionID: sessionID,
           messageID: last.info.id,

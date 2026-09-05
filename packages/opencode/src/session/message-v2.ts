@@ -6,7 +6,8 @@ import { Identifier } from "../id/id"
 import { LSP } from "../lsp"
 import { Snapshot } from "@/snapshot"
 import { fn } from "@/util/fn"
-import { Storage } from "@/storage/storage"
+import { Parts } from "@/storage/parts"
+import { Messages } from "@/storage/messages"
 import { ProviderTransform } from "@/provider/transform"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
@@ -712,10 +713,9 @@ export namespace MessageV2 {
   }
 
   export const stream = fn(Identifier.schema("session"), async function* (sessionID) {
-    const list = await Array.fromAsync(await Storage.list(["message", sessionID]))
     const messages = [] as WithParts[]
-    for (const item of list) {
-      const message = await get({ sessionID, messageID: item[2] }).catch(() => undefined)
+    for (const messageID of await Messages.listSession(sessionID)) {
+      const message = await get({ sessionID, messageID }).catch(() => undefined)
       if (message) messages.push(message)
     }
     // The id IS the ordering key: it packs the mint millisecond and a counter
@@ -786,22 +786,11 @@ export namespace MessageV2 {
     return sizedParts(messageID).then((x) => x.parts)
   })
 
-  // Carries the stored byte total the cache budgets on, which the same reads
-  // already know. Measuring it afterwards means serializing every part again.
+  // Carries the stored byte total the cache budgets on, which the query returns
+  // alongside the rows. The DB returns parts already ordered by id (the file
+  // backend's sort), so no in-memory sort is needed.
   async function sizedParts(messageID: string) {
-    const parts = [] as MessageV2.Part[]
-    let size = 0
-    for (const item of await Storage.list(["part", messageID])) {
-      // A torn part file (e.g. a process killed mid-write) must drop only that
-      // part, not throw and make the whole session unopenable. Session.list
-      // already guards its per-file reads the same way.
-      const read = await Storage.readSized<MessageV2.Part>(item).catch(() => undefined)
-      if (!read) continue
-      parts.push(read.value)
-      size += read.size
-    }
-    parts.sort((a, b) => (a.id > b.id ? 1 : -1))
-    return { parts, size }
+    return Parts.list(messageID)
   }
 
   // Completed assistant turns are immutable, so re-reading one costs a directory
@@ -855,7 +844,7 @@ export namespace MessageV2 {
         cache.set(input.messageID, hit)
         return hit.record
       }
-      const info = await Storage.readSized<MessageV2.Info>(["message", input.sessionID, input.messageID])
+      const info = await Messages.readSized(input.messageID)
       const stored = await sizedParts(input.messageID)
       const record = { info: info.value, parts: stored.parts }
       // Only a finished assistant turn is safe to keep: a streaming one is

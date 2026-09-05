@@ -52,30 +52,63 @@ export namespace SessionProcessor {
         needsCompaction = false
         const cfg = await Config.get()
         const shouldBreak = cfg.experimental?.continue_loop_on_deny !== true
-        // Coalesce streaming text deltas: instead of one SSE part event per token,
-        // buffer deltas and publish a combined one every flushMs. The client appends
-        // the combined delta identically to many small ones. 0 disables (publish per
-        // delta). Default 80ms is ~12 flushes/sec, imperceptible while cutting the
-        // per-token event envelope by the batch factor.
-        const flushMs = cfg.experimental?.stream_flush_ms ?? 80
+        // Coalesce streaming text AND reasoning deltas for the LIVE BUS only:
+        // buffer deltas and publish a combined one every flushMs so the UI streams
+        // without one bus event per token. This never touches the DB — Level 2
+        // persists a text/reasoning part exactly once, at its block-end event
+        // below. 0 publishes per delta. Default 100ms is ~10 flushes/sec.
+        const flushMs = cfg.experimental?.stream_flush_ms ?? 100
         while (true) {
-          // Per-iteration streaming state, hoisted above the try so the catch can
-          // tear down a pending flush timer after an abort/error.
+          // Per-iteration streaming state, hoisted above the try so persistActive
+          // can flush and persist the active parts from both the post-loop drain
+          // and the catch after an abort/error.
           let currentText: MessageV2.TextPart | undefined
           let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
-          // Pending (un-published) delta text for the active text part, and the
-          // scheduled flush. flushText publishes the buffer as one combined delta.
+          // The active reasoning part, buffered on the same timer as text so
+          // extended thinking does not persist on every delta. Reasoning arrives
+          // as a contiguous run per id, so one active part covers it.
+          let currentReasoning: MessageV2.ReasoningPart | undefined
+          // Pending (un-published) delta text for the active text and reasoning
+          // parts, and the shared flush timer. flushStream publishes each buffer
+          // as one combined delta to the bus — no persistence (Level 2 persists
+          // at block-end).
           let pendingDelta = ""
+          let pendingReasoning = ""
           let flushTimer: ReturnType<typeof setTimeout> | undefined
-          const flushText = async () => {
+          const flushStream = () => {
             if (flushTimer) {
               clearTimeout(flushTimer)
               flushTimer = undefined
             }
-            if (!currentText || !pendingDelta) return
-            const delta = pendingDelta
-            pendingDelta = ""
-            await Session.updatePart({ part: currentText, delta })
+            if (currentText && pendingDelta) {
+              const delta = pendingDelta
+              pendingDelta = ""
+              Session.publishPart(currentText, delta)
+            }
+            if (currentReasoning && pendingReasoning) {
+              const delta = pendingReasoning
+              pendingReasoning = ""
+              Session.publishPart(currentReasoning, delta)
+            }
+          }
+          // Persist any active text/reasoning part that never reached its
+          // block-end event — a stream that ends on `finish`/compaction, or an
+          // abort/error mid-block. Under Level 2 nothing was persisted during the
+          // stream, so without this the whole streamed block is lost on reload.
+          // Drains to the bus first so the final text is published, then writes
+          // once and clears the ref so a later path can't double-write it.
+          const persistActive = async () => {
+            flushStream()
+            if (currentText) {
+              const part = currentText
+              currentText = undefined
+              await Session.updatePart(part)
+            }
+            if (currentReasoning) {
+              const part = currentReasoning
+              currentReasoning = undefined
+              await Session.updatePart(part)
+            }
           }
           try {
             const { stream, cacheMarkers, systemBlockCount } = await LLM.stream(streamInput)
@@ -140,13 +173,30 @@ export namespace SessionProcessor {
                     if (value.providerMetadata) part.metadata = value.providerMetadata
                     const signature = (value as any).providerMetadata?.anthropic?.signature as string | undefined
                     if (signature) part.signature = signature
-                    if (part.text) await Session.updatePart({ part, delta: value.text })
+                    if (!part.text) break
+                    // A delta for a different reasoning id than the one buffered
+                    // means the previous block is done streaming; drain it before
+                    // switching, so its pending tail isn't attributed to this part.
+                    if (currentReasoning && currentReasoning.id !== part.id) flushStream()
+                    currentReasoning = part
+                    if (flushMs <= 0) {
+                      Session.publishPart(part, value.text)
+                      break
+                    }
+                    pendingReasoning += value.text
+                    if (!flushTimer) flushTimer = setTimeout(() => flushStream(), flushMs)
                   }
                   break
 
                 case "reasoning-end":
                   if (value.id in reasoningMap) {
                     const part = reasoningMap[value.id]
+                    // Drain buffered reasoning deltas before the final full-part
+                    // persist, so nothing streamed is dropped.
+                    if (currentReasoning?.id === part.id) {
+                      flushStream()
+                      currentReasoning = undefined
+                    }
                     part.text = part.text.trimEnd()
 
                     part.time = {
@@ -382,20 +432,20 @@ export namespace SessionProcessor {
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
                     if (!currentText.text) break
                     if (flushMs <= 0) {
-                      await Session.updatePart({ part: currentText, delta: value.text })
+                      Session.publishPart(currentText, value.text)
                       break
                     }
                     pendingDelta += value.text
-                    if (!flushTimer) flushTimer = setTimeout(() => void flushText(), flushMs)
+                    if (!flushTimer) flushTimer = setTimeout(() => flushStream(), flushMs)
                   }
                   break
 
                 case "text-end":
                   if (currentText) {
-                    // Drain any buffered deltas before the final full-part publish,
-                    // so nothing streamed is dropped and the client's appended text
-                    // matches the finalized part.
-                    await flushText()
+                    // Drain any buffered deltas to the bus before the final
+                    // full-part persist, so nothing streamed is dropped and the
+                    // client's appended text matches the finalized part.
+                    flushStream()
                     currentText.text = currentText.text.trimEnd()
                     const textOutput = await Plugin.trigger(
                       "experimental.text.complete",
@@ -428,17 +478,17 @@ export namespace SessionProcessor {
               }
               if (needsCompaction) break
             }
-            // Drain any deltas buffered when the stream ended without a text-end
-            // (finish event, or a break on compaction), so the tail isn't stranded.
-            await flushText()
+            // Persist any active part left when the stream ended without a
+            // text-end/reasoning-end (finish event, or a break on compaction), so
+            // its streamed text is not stranded unpersisted.
+            await persistActive()
           } catch (e: any) {
-            // A throw (abort included) skips the post-loop drain; kill the pending
-            // timer so it can't fire a stale delta against a part that's ending.
-            if (flushTimer) {
-              clearTimeout(flushTimer)
-              flushTimer = undefined
-            }
-            pendingDelta = ""
+            // An abort/error mid-block skips the block-end persist. Write the
+            // partial text/reasoning before unwinding so a stopped turn keeps what
+            // it streamed, rather than losing the whole block on reload (Level 2
+            // persisted nothing during the stream). persistActive drains, writes
+            // once, and clears the refs, so the timer can no longer target them.
+            await persistActive().catch(() => {})
             log.error("process", {
               error: e,
               stack: JSON.stringify(e.stack),
