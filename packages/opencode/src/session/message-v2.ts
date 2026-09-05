@@ -742,6 +742,14 @@ export namespace MessageV2 {
 
   export const lastVariant = fn(Identifier.schema("session"), (sessionID) => current(sessionID).then((x) => x?.variant))
 
+  // The model a session resolves to, falling through to the provider default so
+  // the caller always has one. The bare lastModel is nullable; this is the form
+  // every consumer that needs a usable model shares.
+  export async function model(sessionID: string) {
+    const { Provider } = await import("@/provider/provider")
+    return (await lastModel(sessionID)) ?? (await Provider.defaultModel())
+  }
+
   // The per-turn parameters a synthetic message inherits from the turn it
   // continues: which agent is running, and the model/variant it runs as. Every
   // synthetic writer spreads exactly these, so a new one cannot silently omit
@@ -750,14 +758,23 @@ export namespace MessageV2 {
     return { agent: source.agent, model: source.model, variant: source.variant }
   }
 
-  // The parameters a synthetic mint runs as: the session's persistent pick. The
-  // "unknown" model is the last resort for a session that has never had a real
-  // send establish one.
+  // The model stamped when a session has never had a real send establish one.
+  export const UNKNOWN_MODEL = { providerID: "unknown", modelID: "unknown" }
+
+  // The parameters a synthetic mint runs as: the session's persistent pick.
   export async function currentParams(sessionID: string, messages: WithParts[]) {
     const stored = await current(sessionID)
     return stored?.model
       ? { agent: stored.agent ?? "build", model: stored.model, variant: stored.variant }
-      : { agent: "build", model: { providerID: "unknown", modelID: "unknown" }, variant: undefined }
+      : { agent: "build", model: UNKNOWN_MODEL, variant: undefined }
+  }
+
+  // The wire block position for the next synthetic message minted into a session:
+  // one past the highest promptIndex any message carries. Every synthetic mint
+  // (a task result, a job result) shares this, so the position is computed one
+  // way rather than re-derived at each mint site.
+  export function nextPromptIndex(messages: WithParts[]) {
+    return messages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0) + 1
   }
 
   // A message the human typed, as opposed to one the loop minted (a task/job

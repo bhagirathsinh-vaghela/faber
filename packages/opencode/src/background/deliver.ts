@@ -57,7 +57,7 @@ export namespace BackgroundDeliver {
       time: { created: Date.now() },
       ...(await MessageV2.currentParams(job.sessionID, messages)),
       synthetic: true,
-      promptIndex: messages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0) + 1,
+      promptIndex: MessageV2.nextPromptIndex(messages),
     })
 
     await Session.updatePart({

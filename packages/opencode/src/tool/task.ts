@@ -150,9 +150,7 @@ async function doInject(
   const status: "completed" | "failed" | "cancelled" = statusOverride ?? (error ? "failed" : "completed")
   const notification = buildNotification(task, output, error, duration, status)
 
-  // Get existing messages to calculate next promptIndex and resolve parent session's params
   const existingMessages = await Session.messages({ sessionID: task.parentSessionID })
-  const maxPromptIndex = existingMessages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0)
 
   const messageID = Identifier.ascending("message")
   const userMsg: MessageV2.User = {
@@ -162,7 +160,7 @@ async function doInject(
     time: { created: Date.now() },
     ...(await MessageV2.currentParams(task.parentSessionID, existingMessages)),
     synthetic: true,
-    promptIndex: maxPromptIndex + 1,
+    promptIndex: MessageV2.nextPromptIndex(existingMessages),
   }
   await Session.updateMessage(userMsg)
 
@@ -228,7 +226,6 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
   }
 
   const existingMessages = await Session.messages({ sessionID })
-  const maxPromptIndex = existingMessages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0)
 
   const messageID = Identifier.ascending("message")
   const userMsg: MessageV2.User = {
@@ -238,7 +235,7 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
     time: { created: Date.now() },
     ...(await MessageV2.currentParams(sessionID, existingMessages)),
     synthetic: true,
-    promptIndex: maxPromptIndex + 1,
+    promptIndex: MessageV2.nextPromptIndex(existingMessages),
   }
   await Session.updateMessage(userMsg)
 
@@ -374,7 +371,7 @@ export async function subtasksForSession(parentSessionID: string): Promise<Backg
         sessionID: child.id,
         agent: child.current?.agent ?? "build",
         prompt: "",
-        model: child.current?.model ?? { providerID: "unknown", modelID: "unknown" },
+        model: child.current?.model ?? MessageV2.UNKNOWN_MODEL,
       },
     })
   }
@@ -391,7 +388,7 @@ function buildMinimalTask(p: BackgroundTask.PendingResult): BackgroundTask.Info 
     description: p.description,
     time: { created: p.completedAt - p.duration, completed: p.completedAt },
     subagent: p.agent
-      ? { sessionID: "", agent: p.agent, prompt: "", model: { providerID: "unknown", modelID: "unknown" } }
+      ? { sessionID: "", agent: p.agent, prompt: "", model: MessageV2.UNKNOWN_MODEL }
       : undefined,
   }
 }

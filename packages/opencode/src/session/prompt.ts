@@ -887,10 +887,6 @@ export namespace SessionPrompt {
     throw new Error("Impossible")
   })
 
-  async function lastModel(sessionID: string) {
-    return (await MessageV2.lastModel(sessionID)) ?? (await Provider.defaultModel())
-  }
-
   // Tools that carry a file path we can scope against (the edit family).
   const PATH_SCOPED_TOOLS = ["edit", "write", "multiedit"]
 
@@ -1208,7 +1204,7 @@ export namespace SessionPrompt {
       ? await joined
       : {
           agent: agent.name,
-          model: input.model ?? current?.model ?? agent.model ?? (await lastModel(input.sessionID)),
+          model: input.model ?? current?.model ?? agent.model ?? (await MessageV2.model(input.sessionID)),
           variant: input.variant ?? current?.variant ?? agent.variant,
         }
     const info: MessageV2.User = {
@@ -1632,20 +1628,12 @@ export namespace SessionPrompt {
   const TURNS_BETWEEN_REMINDERS = 5
   const FULL_REMINDER_EVERY_N = 5
 
-  function hasPlanReminder(msg: MessageV2.WithParts) {
-    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(PLAN_REMINDER_MARKER))
-  }
-
-  function hasPlanExit(msg: MessageV2.WithParts) {
-    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(PLAN_EXIT_MARKER))
-  }
-
-  function hasSubtaskReminder(msg: MessageV2.WithParts) {
-    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(SUBTASK_MARKER))
+  function hasReminder(msg: MessageV2.WithParts, marker: string) {
+    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(marker))
   }
 
   export function hasConciseReminder(msg: MessageV2.WithParts) {
-    return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(CONCISE_MARKER))
+    return hasReminder(msg, CONCISE_MARKER)
   }
 
   // The reminder rides the message that opens a turn, and ONLY there. It is due
@@ -1882,7 +1870,7 @@ export namespace SessionPrompt {
     // the tail of the prefix every time. Presence is checked across the whole
     // conversation, not just the message being answered, since later turns
     // carry their own fresh message.
-    if (input.session.parentID && !input.messages.some(hasSubtaskReminder)) {
+    if (input.session.parentID && !input.messages.some((m) => hasReminder(m, SUBTASK_MARKER))) {
       const first = input.messages.find((msg) => msg.info.role === "user") ?? userMessage
       await persistReminder(first, SUBTASK, SUBTASK_MARKER)
     }
@@ -1902,7 +1890,7 @@ export namespace SessionPrompt {
 
     // Not in plan mode — check if this is a sub-agent whose parent is in plan mode
     if (input.agent.name !== "plan") {
-      if (input.session.parentID && !hasPlanReminder(userMessage)) {
+      if (input.session.parentID && !hasReminder(userMessage, PLAN_REMINDER_MARKER)) {
         const parentMsgs = await Session.messages({ sessionID: input.session.parentID })
         const parentLastUser = parentMsgs.findLast(MessageV2.isHumanTyped)
         if (parentLastUser && (parentLastUser.info as MessageV2.User).agent === "plan") {
@@ -1922,7 +1910,7 @@ export namespace SessionPrompt {
     if (!exists) await fs.mkdir(path.dirname(plan), { recursive: true })
 
     // Check if this user message already has a plan reminder (e.g. from a previous loop iteration)
-    if (hasPlanReminder(userMessage)) return input.messages
+    if (hasReminder(userMessage, PLAN_REMINDER_MARKER)) return input.messages
 
     // Count assistant turns since last plan reminder and total reminders since last exit
     let turnsSinceReminder = 0
@@ -1930,11 +1918,11 @@ export namespace SessionPrompt {
     let hadPlanExit = false
     for (let i = input.messages.length - 1; i >= 0; i--) {
       const msg = input.messages[i]
-      if (msg.info.role === "user" && hasPlanExit(msg)) {
+      if (msg.info.role === "user" && hasReminder(msg, PLAN_EXIT_MARKER)) {
         hadPlanExit = true
         break
       }
-      if (msg.info.role === "user" && hasPlanReminder(msg)) {
+      if (msg.info.role === "user" && hasReminder(msg, PLAN_REMINDER_MARKER)) {
         break
       }
       if (msg.info.role === "assistant") {
@@ -1944,8 +1932,8 @@ export namespace SessionPrompt {
     // Count total plan reminders since last exit for full/sparse cycling
     for (let i = input.messages.length - 1; i >= 0; i--) {
       const msg = input.messages[i]
-      if (msg.info.role === "user" && hasPlanExit(msg)) break
-      if (msg.info.role === "user" && hasPlanReminder(msg)) totalReminders++
+      if (msg.info.role === "user" && hasReminder(msg, PLAN_EXIT_MARKER)) break
+      if (msg.info.role === "user" && hasReminder(msg, PLAN_REMINDER_MARKER)) totalReminders++
     }
 
     const isEnteringPlan = !lastAssistant || lastAssistant.info.agent !== "plan"
@@ -2004,7 +1992,7 @@ export namespace SessionPrompt {
       await SessionRevert.cleanup(session)
     }
     const agent = (await SessionPin.get(input.sessionID)).agents[input.agent] ?? (await Agent.get(input.agent))
-    const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
+    const model = input.model ?? agent.model ?? (await MessageV2.model(input.sessionID))
     const userMsg: MessageV2.User = {
       id: input.messageID ?? Identifier.ascending("message"),
       sessionID: input.sessionID,
@@ -2314,7 +2302,7 @@ export namespace SessionPrompt {
         }
       }
       if (input.model) return Provider.parseModel(input.model)
-      return await lastModel(input.sessionID)
+      return await MessageV2.model(input.sessionID)
     })()
 
     try {
@@ -2365,7 +2353,7 @@ export namespace SessionPrompt {
     const userModel = isSubtask
       ? input.model
         ? Provider.parseModel(input.model)
-        : await lastModel(input.sessionID)
+        : await MessageV2.model(input.sessionID)
       : taskModel
 
     await Plugin.trigger(
