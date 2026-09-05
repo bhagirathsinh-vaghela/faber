@@ -220,7 +220,7 @@ export namespace ProviderTransform {
       indices.push(msgs.indexOf(msg))
     }
 
-    const lastUserPrompt = conversationMsgs.findLast((msg) => msg.role === "user" && !isMetaMessage(msg))
+    const lastUserPrompt = conversationMsgs.findLast((msg) => msg.role === "user")
     const lastUserPromptIndex = lastUserPrompt ? msgs.indexOf(lastUserPrompt) : -1
 
     // Marker 3: last assistant before the current typed prompt (previous turn's final output).
@@ -351,22 +351,6 @@ export namespace ProviderTransform {
   // only at its start.
   function isSessionContext(msg: ModelMessage) {
     return msg.role === "system" && msg.content.includes(SESSION_CONTEXT_MARKER)
-  }
-
-  function isMetaMessage(msg: ModelMessage) {
-    if (msg.role !== "user") return false
-    if (typeof msg.content === "string") return isSyntheticContent(msg.content)
-    if (!Array.isArray(msg.content)) return false
-    if (msg.content.length !== 1) return false
-    const part = msg.content[0]
-    if (!part || typeof part !== "object" || part.type !== "text") return false
-    return isSyntheticContent(part.text)
-  }
-
-  function isSyntheticContent(text: string) {
-    const trimmed = text.trim()
-    if (trimmed.startsWith("<system-reminder>") && trimmed.endsWith("</system-reminder>")) return true
-    return false
   }
 
   function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {

@@ -25,6 +25,10 @@ export namespace Flag {
     OPENCODE_DISABLE_CLAUDE_CODE || truthy("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS")
   export const OPENCODE_DISABLE_EXTERNAL_SKILLS =
     OPENCODE_DISABLE_CLAUDE_CODE_SKILLS || truthy("OPENCODE_DISABLE_EXTERNAL_SKILLS")
+  // Per-request cache-prefix diagnostics (the CACHE_*_HASH_V1 lines). Off by
+  // default: the per-tool hash dump is ~8KB every API call and is only wanted
+  // when chasing a prefix drift. Set to re-enable the detail.
+  export const OPENCODE_CACHE_DEBUG = truthy("OPENCODE_CACHE_DEBUG")
   export declare const OPENCODE_DISABLE_PROJECT_CONFIG: boolean
   export const OPENCODE_FAKE_VCS = process.env["OPENCODE_FAKE_VCS"]
   export declare const OPENCODE_CLIENT: string

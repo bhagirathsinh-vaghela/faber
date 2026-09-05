@@ -441,7 +441,10 @@ export namespace SessionPrompt {
     while (true) {
       log.info("loop", { step, sessionID })
       if (abort.aborted) break
+      const loadTimer = log.time("messages.load")
       let msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
+      loadTimer.stop()
+      log.info("messages.load count", { count: msgs.length })
 
       // Raise the ID floor to this session's newest message before minting any
       // new ids this turn. filterCompacted always keeps the tail, so the max id
@@ -1602,9 +1605,6 @@ export namespace SessionPrompt {
   const CONCISE =
     "Keep replies concise: lead with the answer, no preamble, no recap. " +
     "This governs user-facing text only, not how much you read, investigate, or think before acting."
-  // How many assistant round-trips a single concise reminder covers before it is
-  // re-stated, so a long turn does not drift far past the last reminder.
-  const CONCISE_EVERY_N_STEPS = 5
   const TURNS_BETWEEN_REMINDERS = 5
   const FULL_REMINDER_EVERY_N = 5
 
@@ -1624,27 +1624,18 @@ export namespace SessionPrompt {
     return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(CONCISE_MARKER))
   }
 
-  // The messages of the turn in flight: everything from the user's typed prompt
-  // onward, so the synthetic user messages a turn mints along the way are in
-  // scope while earlier turns are not.
-  export function sinceLastPrompt(messages: MessageV2.WithParts[]) {
-    const start = messages.findLastIndex((msg) => msg.info.role === "user" && !msg.info.synthetic)
-    return start === -1 ? messages : messages.slice(start)
-  }
-
-  // A fresh human-typed prompt carries no reminder yet, so the count is 0 and it
-  // is due at once; the same clock then re-states it once every N assistant
-  // round-trips a long turn runs. Counting assistant messages after the last
-  // reminder makes the human-typed boundary reset the clock for free (the reminder
-  // rides that new user message), so one rule covers both triggers. A delivered
-  // task/job result is a synthetic user message inside the window, never a typed
-  // prompt, so it advances the clock but never resets it.
+  // The reminder rides the human-typed prompt that opens a turn, and ONLY there.
+  // It is due when the newest message is a fresh typed prompt (non-synthetic
+  // user) that does not already carry the reminder — i.e. exactly once, at turn
+  // start, on a message not yet sent. A mid-turn re-fire would append to a
+  // message already on the wire (the turn's first message stays `findLast(user)`
+  // through the whole tool loop), mutating a sent block and re-hashing the
+  // prefix behind the rolling marker every call. Freezing the reminder to the
+  // typed prompt keeps every sent block byte-identical for the life of the turn.
   export function conciseDue(messages: MessageV2.WithParts[]) {
-    const window = sinceLastPrompt(messages)
-    const lastReminder = window.findLastIndex(hasConciseReminder)
-    if (lastReminder === -1) return true
-    const since = window.slice(lastReminder + 1).filter((msg) => msg.info.role === "assistant").length
-    return since >= CONCISE_EVERY_N_STEPS
+    const last = messages[messages.length - 1]
+    if (!last || last.info.role !== "user" || last.info.synthetic) return false
+    return !hasConciseReminder(last)
   }
 
   function planFileInfo(planPath: string, exists: boolean) {
@@ -1847,16 +1838,11 @@ export namespace SessionPrompt {
     if (!userMessage) return input.messages
 
     // The concision rules live in the cached system prompt, which a long turn
-    // drifts from; re-stating the shape holds it. Appending to the newest
-    // message keeps the prefix behind it byte-identical. A subtask's output is
-    // read by its parent model, not the user, so terseness tuned for a human
-    // reader would cost the parent detail.
-    //
-    // Cadence: on every human-typed prompt (which resets the clock), and once
-    // per CONCISE_EVERY_N_STEPS assistant round-trips inside a long turn.
-    // conciseDue counts from the typed prompt onward so a synthetic mid-turn
-    // message (task summary, compaction, tool result) advances the clock but
-    // never counts as a new prompt.
+    // drifts from; re-stating the shape on each new turn holds it. The reminder
+    // rides the typed prompt itself (a message not yet sent), so the prefix
+    // behind it stays byte-identical. A subtask's output is read by its parent
+    // model, not the user, so terseness tuned for a human reader would cost the
+    // parent detail — hence the parentID guard.
     if (!input.session.parentID && conciseDue(input.messages)) {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
       if (concise) await persistReminder(userMessage, CONCISE, CONCISE_MARKER)

@@ -111,7 +111,9 @@ export namespace SessionProcessor {
             }
           }
           try {
+            const buildTimer = log.time("llm.build")
             const { stream, cacheMarkers, systemBlockCount } = await LLM.stream(streamInput)
+            buildTimer.stop()
 
             // Store cache markers and system block count on session for TUI display.
             // Anchor the cache TTL to request dispatch time (parent sessions only) —
@@ -136,6 +138,7 @@ export namespace SessionProcessor {
             const iterator = stream.fullStream[Symbol.asyncIterator]()
             const aborted = settled(input.abort)
             using release = { [Symbol.dispose]: aborted.release }
+            let firstChunk = true
             while (true) {
               const step = await Promise.race([iterator.next(), aborted.promise])
               // Abandon the suspended tool rather than await it: returning the
@@ -146,6 +149,12 @@ export namespace SessionProcessor {
                 break
               }
               if (step.done) break
+              // Time-to-first-chunk isolates cloud latency (dispatch -> first
+              // token) from the local build and per-step processing around it.
+              if (firstChunk) {
+                firstChunk = false
+                log.info("llm.first-chunk", { duration: Date.now() - dispatchedAt })
+              }
               const value = step.value
               input.abort.throwIfAborted()
               switch (value.type) {
@@ -333,7 +342,10 @@ export namespace SessionProcessor {
                   throw value.error
 
                 case "start-step":
-                  snapshot = await Snapshot.track()
+                  {
+                    using _t = log.time("snapshot.track", { phase: "start-step" })
+                    snapshot = await Snapshot.track()
+                  }
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     messageID: input.assistantMessage.id,
@@ -378,10 +390,15 @@ export namespace SessionProcessor {
                       draft.cost += stepCost
                     })
                   }
+                  let finishSnapshot: string | undefined
+                  {
+                    using _t = log.time("snapshot.track", { phase: "finish-step" })
+                    finishSnapshot = await Snapshot.track()
+                  }
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     reason: value.finishReason,
-                    snapshot: await Snapshot.track(),
+                    snapshot: finishSnapshot,
                     messageID: input.assistantMessage.id,
                     sessionID: input.assistantMessage.sessionID,
                     type: "step-finish",
@@ -390,6 +407,7 @@ export namespace SessionProcessor {
                   })
                   await Session.updateMessage(input.assistantMessage)
                   if (snapshot) {
+                    using _tp = log.time("snapshot.patch")
                     const patch = await Snapshot.patch(snapshot)
                     if (patch.files.length) {
                       await Session.updatePart({
@@ -478,6 +496,10 @@ export namespace SessionProcessor {
               }
               if (needsCompaction) break
             }
+            // Full cloud span: dispatch -> stream end. Paired with llm.first-chunk
+            // (dispatch -> first token), the difference is the streaming/generation
+            // time, separate from the local build and per-step work.
+            log.info("llm.stream-complete", { duration: Date.now() - dispatchedAt })
             // Persist any active part left when the stream ended without a
             // text-end/reasoning-end (finish event, or a break on compaction), so
             // its streamed text is not stranded unpersisted.
@@ -517,7 +539,9 @@ export namespace SessionProcessor {
             // in flight) until the loop unwinds through defer(cancel).
             SessionStatus.set(input.sessionID, { type: "idle" })
           }
+          const postTimer = log.time("llm.post-stream")
           if (snapshot) {
+            using _tp = log.time("snapshot.patch", { phase: "post-stream" })
             const patch = await Snapshot.patch(snapshot)
             if (patch.files.length) {
               await Session.updatePart({
@@ -552,6 +576,7 @@ export namespace SessionProcessor {
           const completed = await Session.get(input.sessionID)
           input.assistantMessage.sessionTotal = { ...completed.total, cost: completed.cost }
           await Session.updateMessage(input.assistantMessage)
+          postTimer.stop()
           if (needsCompaction) return "compact"
           if (blocked) return "stop"
           if (input.assistantMessage.error) return "stop"

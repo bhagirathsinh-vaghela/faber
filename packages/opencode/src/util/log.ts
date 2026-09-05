@@ -49,6 +49,11 @@ export namespace Log {
   const MAXSIZE = 50 * 1024 * 1024
   const MAXAGE = 7 * 24 * 60 * 60 * 1000
   const MAXFILES = 20
+  // Ceiling on the whole log directory. Age and count alone let a burst of large
+  // files (a verbose session rotating at MAXSIZE) sit under both limits while the
+  // directory grows unbounded, so newest-first accumulation past this byte budget
+  // prunes the oldest regardless of age.
+  const MAXTOTAL = 256 * 1024 * 1024
 
   let logpath = ""
   export function file() {
@@ -76,7 +81,9 @@ export namespace Log {
     }
 
     write = (msg: any) => {
-      const num = writer.write(msg)
+      // Bun's FileSink.write is synchronous (returns the byte count); the SDK
+      // type widens it to number | Promise<number>, so narrow it back here.
+      const num = writer.write(msg) as number
       writer.flush()
       size += num
       if (size < MAXSIZE) return num
@@ -99,14 +106,22 @@ export namespace Log {
       await Promise.all(
         files.map(async (file) => {
           const stat = await fs.stat(file).catch(() => null)
-          return stat && { file, modified: stat.mtimeMs }
+          return stat && { file, modified: stat.mtimeMs, size: stat.size }
         }),
       )
     ).filter((entry) => entry !== null && entry !== undefined)
     const cutoff = Date.now() - MAXAGE
+    // Newest first: an entry is expired when it is too old, past the count cap,
+    // or past the point where the running byte total exceeds MAXTOTAL. The
+    // current log is never pruned.
+    let total = 0
     const expired = entries
       .sort((a, b) => b.modified - a.modified)
-      .filter((entry, index) => entry.file !== logpath && (entry.modified < cutoff || index >= MAXFILES))
+      .filter((entry, index) => {
+        if (entry.file === logpath) return false
+        total += entry.size
+        return entry.modified < cutoff || index >= MAXFILES || total > MAXTOTAL
+      })
     await Promise.all(expired.map((entry) => fs.unlink(entry.file).catch(() => {})))
   }
 

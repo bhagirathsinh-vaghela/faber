@@ -290,29 +290,34 @@ export namespace LLM {
         schema: tool.inputSchema,
       }))
       .sort((a, b) => a.id.localeCompare(b.id))
-    const toolHashes = toolEntries.map((entry) => ({
-      id: entry.id,
-      hash: createHash("sha256")
-        .update(JSON.stringify({ description: entry.description, schema: entry.schema }))
-        .digest("hex"),
-    }))
-    const system0 = system[0] ?? ""
-    const toolsHash = createHash("sha256").update(JSON.stringify(toolEntries)).digest("hex")
-    const system0Hash = createHash("sha256").update(system0).digest("hex")
-    const prefixHash = createHash("sha256")
-      .update(JSON.stringify({ tools: toolEntries, system0 }))
-      .digest("hex")
-    l.info("CACHE_PREFIX_HASH_V1", {
-      toolsHash,
-      system0Hash,
-      prefixHash,
-      toolCount: toolEntries.length,
-      system0Length: system0.length,
-    })
-    l.info("CACHE_TOOL_HASHES_V1", {
-      toolCount: toolEntries.length,
-      tools: toolHashes,
-    })
+    // Cache-prefix diagnostics: the per-tool hash dump is ~8KB every API call
+    // and the hashing itself is 40+ sha256 passes, wanted only when chasing a
+    // prefix drift. Gated so the normal path neither computes nor logs it.
+    if (Flag.OPENCODE_CACHE_DEBUG) {
+      const toolHashes = toolEntries.map((entry) => ({
+        id: entry.id,
+        hash: createHash("sha256")
+          .update(JSON.stringify({ description: entry.description, schema: entry.schema }))
+          .digest("hex"),
+      }))
+      const system0 = system[0] ?? ""
+      const toolsHash = createHash("sha256").update(JSON.stringify(toolEntries)).digest("hex")
+      const system0Hash = createHash("sha256").update(system0).digest("hex")
+      const prefixHash = createHash("sha256")
+        .update(JSON.stringify({ tools: toolEntries, system0 }))
+        .digest("hex")
+      l.info("CACHE_PREFIX_HASH_V1", {
+        toolsHash,
+        system0Hash,
+        prefixHash,
+        toolCount: toolEntries.length,
+        system0Length: system0.length,
+      })
+      l.info("CACHE_TOOL_HASHES_V1", {
+        toolCount: toolEntries.length,
+        tools: toolHashes,
+      })
+    }
 
     // LiteLLM and some Anthropic proxies require the tools parameter to be present
     // when message history contains tool calls, even if no tools are being used.

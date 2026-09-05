@@ -71,90 +71,41 @@ describe("hasConciseReminder", () => {
   })
 })
 
-describe("sinceLastPrompt", () => {
-  test("the window opens at the newest typed prompt, not an earlier turn", () => {
-    const first = user({ texts: [{ text: "turn one" }, reminder] })
-    const second = user({ texts: [{ text: "turn two" }] })
-    const window = SessionPrompt.sinceLastPrompt([first, assistant(), second])
-
-    expect(window.length).toBe(1)
-    expect(window.some(SessionPrompt.hasConciseReminder)).toBe(false)
-  })
-
-  // A task summary and a compaction each mint a synthetic user message
-  // mid-turn. Scoping the window to the newest message alone would leave the
-  // turn's own reminder outside it and inject a second copy per synthetic
-  // message, rewriting the tail every time.
-  test("a synthetic message minted mid-turn keeps the turn's reminder in scope", () => {
-    const prompt = user({ texts: [{ text: "use a subtask" }, reminder] })
-    const summary = user({
-      synthetic: true,
-      texts: [{ text: "Summarize the task tool output above.", synthetic: true }],
-    })
-    const window = SessionPrompt.sinceLastPrompt([prompt, assistant(), summary])
-
-    expect(window.some(SessionPrompt.hasConciseReminder)).toBe(true)
-  })
-
-  test("two synthetic messages in one turn still see the reminder", () => {
-    const prompt = user({ texts: [{ text: "use two subtasks" }, reminder] })
-    const one = user({ synthetic: true, texts: [{ text: "summary one", synthetic: true }] })
-    const two = user({ synthetic: true, texts: [{ text: "summary two", synthetic: true }] })
-
-    expect(SessionPrompt.sinceLastPrompt([prompt, one, two]).some(SessionPrompt.hasConciseReminder)).toBe(true)
-  })
-
-  test("history with no typed prompt yields every message", () => {
-    const only = user({ synthetic: true, texts: [{ text: "resume", synthetic: true }] })
-    expect(SessionPrompt.sinceLastPrompt([only]).length).toBe(1)
-  })
-})
-
+// The reminder rides the typed prompt that opens a turn, and ONLY there. It is
+// due when the newest message is a fresh typed prompt without the reminder yet
+// — so it attaches once, to a message not yet on the wire. It never fires
+// mid-turn (which would append to a message already sent and re-hash the
+// prefix), and never onto a synthetic message.
 describe("conciseDue", () => {
   test("a fresh typed prompt with no reminder is due", () => {
     const prompt = user({ texts: [{ text: "start" }] })
     expect(SessionPrompt.conciseDue([prompt])).toBe(true)
   })
 
-  test("the same turn is not due once the reminder is present", () => {
+  test("the same prompt is not due once it carries the reminder", () => {
     const prompt = user({ texts: [{ text: "start" }, reminder] })
     expect(SessionPrompt.conciseDue([prompt])).toBe(false)
   })
 
-  test("four assistant round-trips after the reminder stay suppressed", () => {
+  test("mid-turn, behind an assistant message, is never due", () => {
     const prompt = user({ texts: [{ text: "start" }, reminder] })
-    const msgs = [prompt, assistant(), assistant(), assistant(), assistant()]
+    const msgs = [prompt, assistant(), assistant(), assistant(), assistant(), assistant()]
     expect(SessionPrompt.conciseDue(msgs)).toBe(false)
   })
 
-  test("the fifth assistant round-trip is due again", () => {
-    const prompt = user({ texts: [{ text: "start" }, reminder] })
-    const msgs = [prompt, assistant(), assistant(), assistant(), assistant(), assistant()]
-    expect(SessionPrompt.conciseDue(msgs)).toBe(true)
-  })
-
-  // A new human-typed prompt opens a fresh window with no reminder in it, so it
-  // is due at once even though the previous turn carried one.
-  test("a new typed prompt after a reminded turn is due", () => {
+  test("a new typed prompt after a reminded turn is due again", () => {
     const first = user({ texts: [{ text: "turn one" }, reminder] })
     const second = user({ texts: [{ text: "turn two" }] })
     expect(SessionPrompt.conciseDue([first, assistant(), second])).toBe(true)
   })
 
-  // A delivered task/job result is a synthetic user message. It advances the
-  // clock (counts as neither a reset nor an assistant step) but must not itself
-  // trigger a reminder while under the step threshold.
-  test("a synthetic result mid-turn does not reset the clock", () => {
-    const prompt = user({ texts: [{ text: "launch a job" }, reminder] })
-    const result = user({ synthetic: true, texts: [{ text: "job result", synthetic: true }] })
-    const msgs = [prompt, assistant(), result, assistant()]
-    expect(SessionPrompt.conciseDue(msgs)).toBe(false)
+  test("a synthetic user message at the tail is never due", () => {
+    const prompt = user({ texts: [{ text: "start" }, reminder] })
+    const delivered = user({ synthetic: true, texts: [{ text: "job result", synthetic: true }] })
+    expect(SessionPrompt.conciseDue([prompt, assistant(), delivered])).toBe(false)
   })
 
-  test("a subtask session never carries the reminder regardless of due state", () => {
-    // conciseDue is the cadence gate; the parentID guard lives at the call
-    // site. This pins that a fresh window reads due, so the parentID check is
-    // the only thing suppressing a subtask.
+  test("a fresh typed prompt is due even after a reminded prior turn", () => {
     const prompt = user({ texts: [{ text: "subtask work" }] })
     expect(SessionPrompt.conciseDue([prompt])).toBe(true)
   })

@@ -16,10 +16,9 @@ function reply(text: string): ModelMessage {
   return { role: "assistant", content: [{ type: "text" as const, text }] }
 }
 
-// M3 anchors the turn, and selectCacheMarkers skips a user message whose
-// content is nothing but a <system-reminder>. A reminder appended beside the
-// text the user typed has to leave that anchor where it was, or the turn's
-// whole prefix falls outside the 20-block lookback.
+// The reminder rides the typed prompt as a synthetic block. Once a block is on
+// the wire it is byte-stable, so its position never breaks the cache; markers
+// go on the last block whatever it is, with no special-casing for reminders.
 describe("cache markers with an appended concise reminder", () => {
   test("a prompt carrying the reminder still anchors a marker", () => {
     const plain = [system("S1"), system("S2"), prompt(["do the thing"])]
@@ -38,13 +37,5 @@ describe("cache markers with an appended concise reminder", () => {
     ]
 
     expect(ProviderTransform.cacheMarkerIndices(withReminder)).toEqual([0, 1, 3, 4])
-  })
-
-  // A reminder-only message is skipped as meta, so the anchor falls back to the
-  // last message carrying typed text instead of moving onto the reminder.
-  test("a message of nothing but a reminder anchors on the prompt behind it", () => {
-    const stranded = [system("S1"), system("S2"), prompt(["turn one"]), reply("done"), prompt([REMINDER])]
-
-    expect(ProviderTransform.cacheMarkerIndices(stranded)).toEqual([0, 1, 2, 4])
   })
 })
