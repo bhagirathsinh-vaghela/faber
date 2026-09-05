@@ -93,10 +93,11 @@ export namespace SessionJudge {
         retries: 1,
       })
 
-      const verdict = await stream.text
+      // Settle text, usage, and finishReason together so a text rejection does
+      // not leave the other two unhandled (a process-level unhandledRejection).
+      const [verdict, usage, finish] = await Promise.all([stream.text, stream.usage, stream.finishReason])
       // A judge call never lands in the session's message list, so this log is the
       // only place its cost is observable.
-      const usage = await stream.usage
       log.info("judge", {
         model: model.id,
         chars: verdict.length,
@@ -104,9 +105,18 @@ export namespace SessionJudge {
         output: usage.outputTokens,
         reasoning: usage.reasoningTokens,
         cacheRead: usage.cachedInputTokens,
-        finish: await stream.finishReason,
+        finish,
       })
       return verdict
+    } catch (error) {
+      // The judge is an enforcement gate, never the user's conversation. An
+      // infrastructure failure here (500, network, timeout, abort) is not a
+      // verdict and must never surface as a thrown tool error or end the turn, so
+      // it fails open. A real verdict is the returned STRING from a successful
+      // stream, so this cannot suppress a genuine deny; every caller reads the
+      // empty string as inconclusive and allows the guarded work.
+      log.error("judge failed, failing open", { error })
+      return ""
     } finally {
       release()
     }
