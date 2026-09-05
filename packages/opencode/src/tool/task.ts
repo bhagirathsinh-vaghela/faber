@@ -134,15 +134,6 @@ async function injectCompletionResult(task: BackgroundTask.Info, output: string,
   await doInject(task, output, error, duration)
 }
 
-function inheritedParams(existingMessages: MessageV2.WithParts[]) {
-  const parentUser = existingMessages.findLast((m) => m.info.role === "user" && !m.info.synthetic)?.info as
-    | MessageV2.User
-    | undefined
-  return parentUser
-    ? MessageV2.inherit(parentUser)
-    : { agent: "build", model: { providerID: "unknown", modelID: "unknown" }, variant: undefined }
-}
-
 async function doInject(
   task: BackgroundTask.Info,
   output: string,
@@ -169,7 +160,7 @@ async function doInject(
     sessionID: task.parentSessionID,
     role: "user",
     time: { created: Date.now() },
-    ...inheritedParams(existingMessages),
+    ...(await MessageV2.currentParams(task.parentSessionID, existingMessages)),
     synthetic: true,
     promptIndex: maxPromptIndex + 1,
   }
@@ -238,11 +229,6 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
 
   const existingMessages = await Session.messages({ sessionID })
   const maxPromptIndex = existingMessages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0)
-  const lastRealUser = existingMessages.findLast((m) => m.info.role === "user" && !m.info.synthetic)
-  const parentUser = lastRealUser?.info as MessageV2.User | undefined
-  const model = parentUser?.model ?? { providerID: "unknown", modelID: "unknown" }
-  const agent = parentUser?.agent ?? "build"
-  const variant = parentUser?.variant
 
   const messageID = Identifier.ascending("message")
   const userMsg: MessageV2.User = {
@@ -250,9 +236,7 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
     sessionID,
     role: "user",
     time: { created: Date.now() },
-    agent,
-    model,
-    variant,
+    ...(await MessageV2.currentParams(sessionID, existingMessages)),
     synthetic: true,
     promptIndex: maxPromptIndex + 1,
   }
@@ -313,20 +297,16 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
   for (const child of children) {
     if (!(await SessionPing.interrupted(child.id))) continue
 
-    const messages = await Session.messages({ sessionID: child.id })
-    const lastUser = messages.findLast((m) => m.info.role === "user" && !m.info.synthetic)?.info as
-      | MessageV2.User
-      | undefined
     // No resolvable model means the re-drive would throw and deliver a failed
     // result: skip it rather than resume into a guaranteed failure. A task-tool
     // subtask always carries a model on its prompt, so this only guards a
     // malformed child.
-    if (!lastUser?.model) {
+    if (!child.current?.model) {
       log.error("cannot resume subtask, no model on record", { child: child.id })
       continue
     }
-    const model = lastUser.model
-    const agentName = lastUser.agent ?? "build"
+    const model = child.current.model
+    const agentName = child.current.agent ?? "build"
     const agent = await Agent.get(agentName).catch(() => undefined)
     if (!agent) {
       log.error("cannot resume subtask, agent gone", { child: child.id, agent: agentName })
@@ -382,9 +362,6 @@ export async function subtasksForSession(parentSessionID: string): Promise<Backg
     const messages = await Session.messages({ sessionID: child.id })
     const assistants = messages.filter((m) => m.info.role === "assistant")
     const last = assistants.at(-1)?.info as MessageV2.Assistant | undefined
-    const lastUser = messages.findLast((m) => m.info.role === "user" && !m.info.synthetic)?.info as
-      | MessageV2.User
-      | undefined
     const status: BackgroundTask.Status = last === undefined ? "running" : last.time.completed ? "completed" : "running"
     result.push({
       id: child.id,
@@ -395,9 +372,9 @@ export async function subtasksForSession(parentSessionID: string): Promise<Backg
       time: { created: child.time.created, ...(last?.time.completed ? { completed: last.time.completed } : {}) },
       subagent: {
         sessionID: child.id,
-        agent: lastUser?.agent ?? "build",
+        agent: child.current?.agent ?? "build",
         prompt: "",
-        model: lastUser?.model ?? { providerID: "unknown", modelID: "unknown" },
+        model: child.current?.model ?? { providerID: "unknown", modelID: "unknown" },
       },
     })
   }

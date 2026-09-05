@@ -163,6 +163,26 @@ describe("session.message-v2.filterCompacted", () => {
   })
 })
 
+describe("session.message-v2.isHumanTyped", () => {
+  test("true for a plain user message", () => {
+    expect(MessageV2.isHumanTyped(plainUser("u", "hello"))).toBe(true)
+  })
+
+  test("false for a synthetic user message", () => {
+    const msg = plainUser("u", "injected")
+    msg.info.synthetic = true
+    expect(MessageV2.isHumanTyped(msg)).toBe(false)
+  })
+
+  test("false for an assistant message", () => {
+    const msg: MessageV2.WithParts = {
+      info: { ...assistantInfo("a", "u"), finish: "stop" } as MessageV2.Assistant,
+      parts: [{ ...basePart("a", "a-p"), type: "text", text: "reply" }] as MessageV2.Part[],
+    }
+    expect(MessageV2.isHumanTyped(msg)).toBe(false)
+  })
+})
+
 describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with no parts", () => {
     const input: MessageV2.WithParts[] = [

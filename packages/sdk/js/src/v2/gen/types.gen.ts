@@ -1016,6 +1016,14 @@ export type Session = {
     directory: string
     at: number
   }
+  current?: {
+    agent?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    variant?: string
+  }
   summary?: {
     additions: number
     deletions: number

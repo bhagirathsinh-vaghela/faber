@@ -727,52 +727,20 @@ export namespace MessageV2 {
     for (const message of messages) yield message
   })
 
-  // The newest user message whose selector returns a value. Synthetic turns
-  // stamp what they inherit but never leave a setting blank, so the newest
-  // message carrying it is the session's current pick — a turn that names none
-  // inherits rather than snapping to a default. The one scan every forward-pick
-  // reader shares (model, variant).
-  // A SPAWNED HELPER falls through to the session that spawned it. Its own
-  // history is empty on the first turn, and it is a ROOT session, so nothing in
-  // it reaches the spawner: without this the helper snaps to the configured
-  // defaults and runs as something the user never picked.
-  //
-  // The spawner is read under the directory the spawn link recorded, since a
-  // session resolves only under its own project and a helper's is not always the
-  // spawner's.
-  //
-  // Bounded by a seen-set, the way `SessionBusy.chain` bounds its own walk. The
-  // spawn link is written once at creation and never re-pointed, so the graph
-  // should be a forest — but nothing enforces that, and a record naming itself
-  // makes this hang rather than crash: every hop awaits, so a cycle is an
-  // unbounded async loop re-reading storage, not unbounded recursion.
-  async function lastStamped<T>(
-    sessionID: string,
-    pick: (user: User) => T | undefined,
-    seen: Set<string> = new Set(),
-  ): Promise<T | undefined> {
-    if (seen.has(sessionID)) return undefined
-    seen.add(sessionID)
-    for await (const item of stream(sessionID)) {
-      if (item.info.role !== "user") continue
-      const value = pick(item.info)
-      if (value !== undefined) return value
-    }
+  // The session's persistent per-turn parameters, established by the last real
+  // typed send and seeded from the spawner at create for a spawned session. Each
+  // accessor reads one, so a caller that needs only the variant does not pull the
+  // whole record's shape.
+  async function current(sessionID: string) {
     const { Session } = await import(".")
-    const session = await Session.get(sessionID).catch(() => undefined)
-    if (!session?.spawn) return undefined
-    const { Instance } = await import("@/project/instance")
-    return Instance.provide({
-      directory: session.spawn.directory,
-      fn: () => lastStamped(session.spawn!.parent, pick, seen),
-    }).catch(() => undefined)
+    return Session.get(sessionID)
+      .then((x) => x.current)
+      .catch(() => undefined)
   }
 
-  export const lastModel = fn(Identifier.schema("session"), (sessionID) => lastStamped(sessionID, (user) => user.model))
+  export const lastModel = fn(Identifier.schema("session"), (sessionID) => current(sessionID).then((x) => x?.model))
 
-  export const lastVariant = fn(Identifier.schema("session"), (sessionID) =>
-    lastStamped(sessionID, (user) => user.variant),
-  )
+  export const lastVariant = fn(Identifier.schema("session"), (sessionID) => current(sessionID).then((x) => x?.variant))
 
   // The per-turn parameters a synthetic message inherits from the turn it
   // continues: which agent is running, and the model/variant it runs as. Every
@@ -780,6 +748,24 @@ export namespace MessageV2 {
   // one and leave a blank the next reader falls through.
   export function inherit(source: User) {
     return { agent: source.agent, model: source.model, variant: source.variant }
+  }
+
+  // The parameters a synthetic mint runs as: the session's persistent pick. The
+  // "unknown" model is the last resort for a session that has never had a real
+  // send establish one.
+  export async function currentParams(sessionID: string, messages: WithParts[]) {
+    const stored = await current(sessionID)
+    return stored?.model
+      ? { agent: stored.agent ?? "build", model: stored.model, variant: stored.variant }
+      : { agent: "build", model: { providerID: "unknown", modelID: "unknown" }, variant: undefined }
+  }
+
+  // A message the human typed, as opposed to one the loop minted (a task/job
+  // result, a compaction, a resume prompt). The single predicate for "was this
+  // the user's own voice", used by the prompt count, the title, and every
+  // "last real user message" lookup, so the definition lives in one place.
+  export function isHumanTyped(msg: WithParts) {
+    return msg.info.role === "user" && !msg.info.synthetic
   }
 
   export const parts = fn(Identifier.schema("message"), async (messageID) => {

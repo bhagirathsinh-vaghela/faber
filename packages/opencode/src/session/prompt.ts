@@ -1198,15 +1198,18 @@ export namespace SessionPrompt {
     const agent =
       snapshot.agents[input.agent ?? snapshot.defaultAgent ?? ""] ??
       (await Agent.get(input.agent ?? (await Agent.defaultAgent())))
+    const current = (await Session.get(input.sessionID)).current
     // A prompt that joined a running turn adopts that turn's parameters — not the
     // picker values the client echoed since. Changing them is a conscious
-    // idle-time act: interrupt, change, then send.
+    // idle-time act: interrupt, change, then send. An idle send reads the
+    // session's persistent parameters, letting a client override (a dock pick)
+    // take precedence and fall through to the agent default when neither names one.
     const resolved = joined
       ? await joined
       : {
           agent: agent.name,
-          model: input.model ?? (await lastModel(input.sessionID)) ?? agent.model,
-          variant: input.variant ?? (await MessageV2.lastVariant(input.sessionID)) ?? agent.variant,
+          model: input.model ?? current?.model ?? agent.model ?? (await lastModel(input.sessionID)),
+          variant: input.variant ?? current?.variant ?? agent.variant,
         }
     const info: MessageV2.User = {
       id: input.messageID ?? Identifier.ascending("message"),
@@ -1219,6 +1222,27 @@ export namespace SessionPrompt {
       system: input.system,
       ...resolved,
     }
+    // Persist whatever this turn resolved to, so the next message (real or
+    // synthetic) runs as the same parameters without re-deriving them.
+    // A resolved model is the marker of a real turn worth persisting; a session
+    // whose agent names no model has nothing to inherit forward.
+    if (
+      resolved.model &&
+      (current?.agent !== resolved.agent ||
+        current?.model?.modelID !== resolved.model.modelID ||
+        current?.model?.providerID !== resolved.model.providerID ||
+        current?.variant !== resolved.variant)
+    )
+      await Session.update(
+        input.sessionID,
+        (draft) =>
+          void (draft.current = {
+            agent: resolved.agent,
+            model: resolved.model,
+            variant: resolved.variant,
+          }),
+        { touch: false },
+      )
     using _ = defer(() => InstructionPrompt.clear(info.id))
 
     const parts = await Promise.all(
@@ -1880,7 +1904,7 @@ export namespace SessionPrompt {
     if (input.agent.name !== "plan") {
       if (input.session.parentID && !hasPlanReminder(userMessage)) {
         const parentMsgs = await Session.messages({ sessionID: input.session.parentID })
-        const parentLastUser = parentMsgs.findLast((m) => m.info.role === "user" && !m.info.synthetic)
+        const parentLastUser = parentMsgs.findLast(MessageV2.isHumanTyped)
         if (parentLastUser && (parentLastUser.info as MessageV2.User).agent === "plan") {
           const parentSession = await Session.get(input.session.parentID)
           const parentPlan = Session.plan(parentSession)
@@ -2424,7 +2448,7 @@ export namespace SessionPrompt {
   // text part at all.
   export function titleInput(history: MessageV2.WithParts[]) {
     const text = history
-      .filter((msg) => msg.info.role === "user" && !msg.info.synthetic)
+      .filter(MessageV2.isHumanTyped)
       .flatMap((msg) =>
         msg.parts.flatMap((part) => {
           if (part.type === "subtask") return [part.prompt]
@@ -2488,7 +2512,7 @@ export namespace SessionPrompt {
   export function titleTrigger(session: Session.Info, history: MessageV2.WithParts[]) {
     if (session.parentID) return
     if (!generatorOwns(session)) return
-    const latest = history.findLast((msg) => msg.info.role === "user" && !msg.info.synthetic)
+    const latest = history.findLast(MessageV2.isHumanTyped)
     if (!latest) return
     // The message's own ordinal, not a count of what this turn can see: a
     // re-entered loop (a task result arriving, the compaction route) reaches
@@ -2508,7 +2532,7 @@ export namespace SessionPrompt {
   }) {
     const ordinal = titleTrigger(input.session, input.history)
     if (!ordinal) return
-    const latestUser = input.history.findLast((msg) => msg.info.role === "user" && !msg.info.synthetic)!
+    const latestUser = input.history.findLast(MessageV2.isHumanTyped)!
 
     const content = titleInput(input.history)
     if (!content) return

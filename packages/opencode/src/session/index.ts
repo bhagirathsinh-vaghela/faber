@@ -103,14 +103,26 @@ export namespace Session {
       parentID: Identifier.schema("session").optional(),
       // The peer that spawned this session, and the directory that peer resolves
       // under. Read only for parameter inheritance: a spawned helper runs as its
-      // spawner, so MessageV2.lastStamped walks `parent` under `directory` to
-      // fall through to the model and variant the spawner last used when the
-      // helper's own history names none.
+      // spawner, so `current` is seeded from the spawner at create time under
+      // `directory`, falling through to the model and variant the spawner
+      // last used.
       spawn: z
         .object({
           parent: Identifier.schema("session"),
           directory: z.string(),
           at: z.number(),
+        })
+        .optional(),
+      // The per-turn parameters the session runs as: the persistent
+      // source of truth read to stamp every message, real or synthetic. A client
+      // override (a dock pick) writes it; a message with no override reads it.
+      // Seeded from the spawner at create for a spawned session, else established
+      // by the first send.
+      current: z
+        .object({
+          agent: z.string().optional(),
+          model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+          variant: z.string().optional(),
         })
         .optional(),
       summary: z
@@ -387,6 +399,15 @@ export namespace Session {
     spawnedFrom?: string
   }) {
     const branch = Instance.project.vcs === "git" ? await Vcs.branch() : undefined
+    // A spawned helper runs as its spawner, so it starts from the spawner's
+    // current parameters. Resolved under the spawner's directory, since the
+    // parent record lives in the spawner's project.
+    const seeded =
+      input.spawnedBy &&
+      (await Instance.provide({
+        directory: input.spawnedFrom ?? input.directory,
+        fn: () => get(input.spawnedBy!).then((x) => x.current),
+      }).catch(() => undefined))
     const result: Info = {
       id: Identifier.descending("session", input.id),
       slug: Slug.create(),
@@ -396,11 +417,10 @@ export namespace Session {
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
-      // The link to the spawner, read only to inherit its model/variant
-      // (MessageV2.lastStamped walks `parent` under `directory`). `directory` is
-      // the PARENT's, since a session resolves under its own project and the
-      // walk has to reach the parent there; the helper's own directory would
-      // miss whenever the two differ.
+      ...(seeded && { current: seeded }),
+      // The link to the spawner, kept so a later reader can trace the origin.
+      // `directory` is the PARENT's, since a session resolves under its own
+      // project; the helper's own directory would miss whenever the two differ.
       ...(input.spawnedBy && {
         spawn: {
           parent: input.spawnedBy,

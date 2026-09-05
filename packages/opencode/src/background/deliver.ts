@@ -55,7 +55,7 @@ export namespace BackgroundDeliver {
       sessionID: job.sessionID,
       role: "user",
       time: { created: Date.now() },
-      ...inherited(messages),
+      ...(await MessageV2.currentParams(job.sessionID, messages)),
       synthetic: true,
       promptIndex: messages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0) + 1,
     })
@@ -87,15 +87,4 @@ export namespace BackgroundDeliver {
     return true
   }
 
-  // Which agent, model and variant the synthetic message runs as. Taken from
-  // the last message a HUMAN sent, so a chain of injected results cannot drift
-  // the session onto different parameters than the user chose.
-  function inherited(messages: MessageV2.WithParts[]) {
-    const user = messages.findLast((m) => m.info.role === "user" && !m.info.synthetic)?.info as
-      | MessageV2.User
-      | undefined
-    return user
-      ? MessageV2.inherit(user)
-      : { agent: "build", model: { providerID: "unknown", modelID: "unknown" }, variant: undefined }
-  }
 }
