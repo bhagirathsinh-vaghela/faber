@@ -80,6 +80,33 @@ describe("session.current — the persistent per-turn parameters", () => {
     })
   })
 
+  test("a resume prompt (synthetic, no agent) runs as the session's established agent", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          agent: "plan",
+          model: MODEL,
+          noReply: true,
+          parts: [{ type: "text", text: "plan this" }],
+        })
+
+        // Exactly what serve.ts sends on restart-resume: synthetic, no agent.
+        const resumed = await SessionPrompt.prompt({
+          sessionID: session.id,
+          noReply: true,
+          parts: [{ type: "text", text: "continue", synthetic: true }],
+        })
+        if (resumed.info.role !== "user") throw new Error("expected user message")
+        expect(resumed.info.agent).toBe("plan")
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("a synthetic mint does not overwrite current, even to a different agent", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

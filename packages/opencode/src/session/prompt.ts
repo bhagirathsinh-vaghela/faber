@@ -1191,10 +1191,13 @@ export namespace SessionPrompt {
 
   async function createUserMessage(input: PromptInput, joined?: Promise<ReturnType<typeof MessageV2.inherit>>) {
     const snapshot = await SessionPin.get(input.sessionID)
-    const agent =
-      snapshot.agents[input.agent ?? snapshot.defaultAgent ?? ""] ??
-      (await Agent.get(input.agent ?? (await Agent.defaultAgent())))
     const current = (await Session.get(input.sessionID)).current
+    // Resolve the agent the same way as model/variant below: the request's pick,
+    // else the session's established agent, else the default. Without the
+    // current fallback a send that names no agent (a restart-resume prompt, any
+    // synthetic mint) would snap a non-default-agent session back to the default.
+    const agentName = input.agent ?? current?.agent ?? snapshot.defaultAgent
+    const agent = (agentName ? snapshot.agents[agentName] : undefined) ?? (await Agent.get(agentName ?? (await Agent.defaultAgent())))
     // A prompt that joined a running turn adopts that turn's parameters — not the
     // picker values the client echoed since. Changing them is a conscious
     // idle-time act: interrupt, change, then send. An idle send reads the
