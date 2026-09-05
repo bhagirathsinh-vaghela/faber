@@ -3,6 +3,7 @@ import { Instance } from "../../src/project/instance"
 import { Session } from "../../src/session"
 import { SessionPrompt } from "../../src/session/prompt"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Provider } from "../../src/provider/provider"
 import { tmpdir } from "../fixture/fixture"
 
 const MODEL = { providerID: "anthropic", modelID: "claude-x" }
@@ -29,12 +30,40 @@ describe("session.current — the persistent per-turn parameters", () => {
     })
   })
 
-  test("a synthetic mint inherits session.current, not the request", async () => {
+  test("a synthetic mint inherits a still-valid session.current model", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        // A model that actually resolves in this env, so currentParams' config
+        // check passes it through rather than falling back.
+        const real = await Provider.defaultModel()
+        const session = await Session.create({})
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          model: real,
+          noReply: true,
+          parts: [{ type: "text", text: "establish" }],
+        })
+        const messages = await Session.messages({ sessionID: session.id })
+        const params = await MessageV2.currentParams(session.id, messages)
+        expect(params.model).toEqual(real)
+        expect(params.agent).toBe("build")
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("a synthetic mint falls back when session.current names a dropped model", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
+        // MODEL does not resolve against the provider, so currentParams must not
+        // forward it (getModel would throw when the mint runs); it falls back to
+        // the default instead.
         await SessionPrompt.prompt({
           sessionID: session.id,
           agent: "build",
@@ -44,8 +73,8 @@ describe("session.current — the persistent per-turn parameters", () => {
         })
         const messages = await Session.messages({ sessionID: session.id })
         const params = await MessageV2.currentParams(session.id, messages)
-        expect(params.model).toEqual(MODEL)
-        expect(params.agent).toBe("build")
+        expect(params.model).toEqual(await Provider.defaultModel())
+        expect(params.model).not.toEqual(MODEL)
         await Session.remove(session.id)
       },
     })

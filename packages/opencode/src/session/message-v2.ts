@@ -761,12 +761,24 @@ export namespace MessageV2 {
   // The model stamped when a session has never had a real send establish one.
   export const UNKNOWN_MODEL = { providerID: "unknown", modelID: "unknown" }
 
-  // The parameters a synthetic mint runs as: the session's persistent pick.
+  // The parameters a synthetic mint runs as: the session's persistent pick,
+  // each resolved through config so a name the config has since dropped is not
+  // used. The model is checked against the provider (getModel throws for a model
+  // config no longer offers) and falls back to the default, since a synthetic
+  // delivery must not crash the turn on a stale model. A dropped model takes its
+  // per-model variant with it.
   export async function currentParams(sessionID: string, messages: WithParts[]) {
+    const { Provider } = await import("@/provider/provider")
     const stored = await current(sessionID)
-    return stored?.model
-      ? { agent: stored.agent ?? "build", model: stored.model, variant: stored.variant }
-      : { agent: "build", model: UNKNOWN_MODEL, variant: undefined }
+    const valid = stored?.model
+      ? await Provider.getModel(stored.model.providerID, stored.model.modelID).then(
+          () => true,
+          () => false,
+        )
+      : false
+    return valid
+      ? { agent: stored!.agent ?? "build", model: stored!.model!, variant: stored!.variant }
+      : { agent: stored?.agent ?? "build", model: (await Provider.defaultModel().catch(() => UNKNOWN_MODEL)), variant: undefined }
   }
 
   // The wire block position for the next synthetic message minted into a session:

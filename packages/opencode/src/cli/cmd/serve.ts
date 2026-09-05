@@ -5,6 +5,7 @@ import { Flag } from "../../flag/flag"
 import { SessionPing } from "../../session/ping"
 import { SessionPrompt } from "../../session/prompt"
 import { BackgroundOrchestrator } from "../../background/orchestrator"
+import { Db } from "../../storage/db"
 
 export const ServeCommand = cmd({
   command: "serve",
@@ -22,6 +23,8 @@ export const ServeCommand = cmd({
     const opts = await resolveNetworkOptions(args)
     const server = Server.listen(opts)
     console.log(`opencode server listening on http://${server.hostname}:${server.port}`)
+    // Detached: a boot-time GC of orphan rows must not hold the port unserved.
+    void Db.sweepOrphansOnce().catch(() => {})
     // Opt-in, because only a COLD start may rebuild liveness from disk. On a
     // /restart the supervisor still holds a snapshot of the server it killed and
     // replays it itself, so restoring here too would resume the same turn twice;

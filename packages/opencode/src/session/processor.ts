@@ -58,11 +58,20 @@ export namespace SessionProcessor {
         // persists a text/reasoning part exactly once, at its block-end event
         // below. 0 publishes per delta. Default 100ms is ~10 flushes/sec.
         const flushMs = cfg.experimental?.stream_flush_ms ?? 100
+        // Persist an active text block to disk once it grows this far past its
+        // last checkpoint, bounding what a hard crash (which never runs
+        // persistActive) loses. Well above a normal block, so the common case
+        // still persists once at block-end and Level 2's write budget holds.
+        const CHECKPOINT_BYTES = 256 * 1024
         while (true) {
           // Per-iteration streaming state, hoisted above the try so persistActive
           // can flush and persist the active parts from both the post-loop drain
           // and the catch after an abort/error.
           let currentText: MessageV2.TextPart | undefined
+          // Text length already checkpointed to disk for the active block, so a
+          // long stream persists once per CHECKPOINT_BYTES rather than never
+          // until block-end.
+          let textPersisted = 0
           let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
           // The active reasoning part, buffered on the same timer as text so
           // extended thinking does not persist on every delta. Reasoning arrives
@@ -442,6 +451,7 @@ export namespace SessionProcessor {
                     },
                     metadata: value.providerMetadata,
                   }
+                  textPersisted = 0
                   break
 
                 case "text-delta":
@@ -449,6 +459,15 @@ export namespace SessionProcessor {
                     currentText.text += value.text
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
                     if (!currentText.text) break
+                    // Checkpoint a very long block to disk so a hard crash
+                    // (SIGKILL/OOM, which persistActive never runs for) loses at
+                    // most CHECKPOINT_BYTES of streamed text, not the whole block.
+                    // The threshold is high enough that an ordinary block still
+                    // persists once, at block-end, keeping Level 2's write budget.
+                    if (currentText.text.length - textPersisted >= CHECKPOINT_BYTES) {
+                      textPersisted = currentText.text.length
+                      await Session.updatePart(currentText)
+                    }
                     if (flushMs <= 0) {
                       Session.publishPart(currentText, value.text)
                       break

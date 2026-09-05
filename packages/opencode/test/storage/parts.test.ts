@@ -112,3 +112,53 @@ describe("Parts", () => {
     expect((await Parts.list(otherMsg)).parts).toEqual([keep])
   })
 })
+
+describe("Db.sweepOrphans", () => {
+  test("reaps parts with no message and messages with no session, keeps owned rows", async () => {
+    const { Messages } = await import("../../src/storage/messages")
+    const { Sessions } = await import("../../src/storage/sessions")
+    const { Db } = await import("../../src/storage/db")
+
+    // A fully-owned chain that must survive.
+    const session = "ses_sweep_keep"
+    const ownedMsg = "msg_sweep_keep"
+    await Sessions.write({
+      id: session,
+      projectID: "prj_sweep",
+      directory: "/tmp",
+      title: "t",
+      version: "0",
+      time: { created: 1, updated: 1 },
+    } as unknown as Parameters<typeof Sessions.write>[0])
+    await Messages.put({
+      id: ownedMsg,
+      sessionID: session,
+      role: "user",
+      time: { created: 1 },
+      agent: "build",
+      model: { providerID: "anthropic", modelID: "claude" },
+    } as MessageV2.User)
+    const ownedPart = text(ownedMsg, "prt_0000000000000016000000000a", "keep", session)
+    await Parts.put(ownedPart)
+
+    // Orphans: a part whose message never existed, a message whose session is gone.
+    const orphanPart = text("msg_sweep_ghost", "prt_0000000000000017000000000b", "orphan", "ses_sweep_ghost")
+    await Parts.put(orphanPart)
+    await Messages.put({
+      id: "msg_sweep_orphan",
+      sessionID: "ses_sweep_ghost",
+      role: "user",
+      time: { created: 1 },
+      agent: "build",
+      model: { providerID: "anthropic", modelID: "claude" },
+    } as MessageV2.User)
+
+    await Db.sweepOrphans()
+
+    expect(await Parts.one("msg_sweep_ghost", orphanPart.id).catch(() => undefined)).toBeUndefined()
+    expect(await Messages.read("msg_sweep_orphan").catch(() => undefined)).toBeUndefined()
+    // The owned chain is untouched.
+    expect(await Parts.one(ownedMsg, ownedPart.id)).toEqual(ownedPart)
+    expect((await Messages.read(ownedMsg)).id).toBe(ownedMsg)
+  })
+})

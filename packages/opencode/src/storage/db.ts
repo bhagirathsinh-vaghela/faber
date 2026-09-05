@@ -27,7 +27,6 @@ export namespace Db {
     db.run("PRAGMA busy_timeout = 5000")
     db.run("PRAGMA temp_store = MEMORY")
     db.run("PRAGMA cache_size = -8000")
-    db.run("PRAGMA foreign_keys = ON")
     return db
   })
 
@@ -39,4 +38,29 @@ export namespace Db {
     const db = await open()
     db.transaction(fn)()
   }
+
+  // Reap rows whose owner is gone: parts whose message is deleted, messages whose
+  // session is deleted. No schema FK enforces this (the tables predate one, and
+  // adding it means a live table rebuild), so the sweep is the GC. Warms the
+  // three facades first so every table exists.
+  export async function sweepOrphans() {
+    const [{ Parts }, { Messages }, { Sessions }] = await Promise.all([
+      import("./parts"),
+      import("./messages"),
+      import("./sessions"),
+    ])
+    await Promise.all([
+      Parts.list("__warm__"),
+      Messages.read("__warm__").catch(() => undefined),
+      Sessions.listProject("__warm__"),
+    ])
+    const db = await open()
+    const parts = db.run(`DELETE FROM part WHERE message_id NOT IN (SELECT id FROM message)`).changes
+    const messages = db.run(`DELETE FROM message WHERE session_id NOT IN (SELECT id FROM session)`).changes
+    return { parts, messages }
+  }
+
+  // The boot trigger, memoized so a restart's re-import of this module does not
+  // re-sweep. Tests call sweepOrphans directly.
+  export const sweepOrphansOnce = lazy(sweepOrphans)
 }
