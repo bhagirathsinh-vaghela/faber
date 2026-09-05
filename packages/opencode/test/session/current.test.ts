@@ -51,6 +51,35 @@ describe("session.current — the persistent per-turn parameters", () => {
     })
   })
 
+  test("a synthetic mint does not overwrite current, even to a different agent", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        // Establish current as a non-default agent.
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          agent: "plan",
+          model: MODEL,
+          noReply: true,
+          parts: [{ type: "text", text: "plan this" }],
+        })
+        expect((await Session.get(session.id)).current?.agent).toBe("plan")
+
+        // A synthetic-only send (a resume prompt / delivered result) carries no
+        // params. It must not rewrite current.agent to the resolved default.
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          noReply: true,
+          parts: [{ type: "text", text: "continue", synthetic: true }],
+        })
+        expect((await Session.get(session.id)).current?.agent).toBe("plan")
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("a spawned session inherits current from its spawner at create", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

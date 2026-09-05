@@ -228,6 +228,10 @@ export namespace SessionCompaction {
         time: {
           created: Date.now(),
         },
+        // The nudge is infrastructure, not a human prompt, so it must not count
+        // toward the title, the prompt ordinal, or any "last real user message"
+        // lookup.
+        synthetic: true,
         ...MessageV2.inherit(userMessage),
       })
       await Session.updatePart({

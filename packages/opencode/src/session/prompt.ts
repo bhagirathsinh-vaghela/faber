@@ -1218,11 +1218,16 @@ export namespace SessionPrompt {
       system: input.system,
       ...resolved,
     }
-    // Persist whatever this turn resolved to, so the next message (real or
+    // Persist what a REAL send resolved to, so the next message (real or
     // synthetic) runs as the same parameters without re-deriving them.
-    // A resolved model is the marker of a real turn worth persisting; a session
-    // whose agent names no model has nothing to inherit forward.
+    // A synthetic mint (a resume prompt, a task/job result) carries no params of
+    // its own and must only READ current: writing it would rewrite the session's
+    // agent to the default whenever a non-default-agent turn is resumed. A
+    // resolved model is the marker of a real turn; a session whose agent names no
+    // model has nothing to inherit forward.
+    const syntheticMint = input.parts.length > 0 && input.parts.every((part) => "synthetic" in part && part.synthetic)
     if (
+      !syntheticMint &&
       resolved.model &&
       (current?.agent !== resolved.agent ||
         current?.model?.modelID !== resolved.model.modelID ||
@@ -1636,11 +1641,12 @@ export namespace SessionPrompt {
     return hasReminder(msg, CONCISE_MARKER)
   }
 
-  // One reverse walk to the last plan-exit, tallying what the plan-reminder
-  // cadence needs: assistant turns since the last reminder (stop counting once a
-  // reminder is seen), total reminders since the exit, and whether an exit was
-  // hit. turnsSinceReminder counts only up to the first reminder because that is
-  // "turns since the LAST reminder"; totalReminders keeps counting to the exit.
+  // One reverse walk tallying what the plan-reminder cadence needs:
+  // turnsSinceReminder counts assistant turns back to the FIRST reminder (that is
+  // "since the LAST reminder"), so it stops accruing once a reminder is seen.
+  // totalReminders counts every reminder back to the exit. hadPlanExit reports
+  // whether the NEWEST marker is an exit: a reminder newer than an exit hides it,
+  // so the flag tracks the first marker seen, not merely the presence of an exit.
   export function planScan(messages: MessageV2.WithParts[]) {
     let turnsSinceReminder = 0
     let totalReminders = 0
@@ -1649,7 +1655,7 @@ export namespace SessionPrompt {
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       if (msg.info.role === "user" && hasReminder(msg, PLAN_EXIT_MARKER)) {
-        hadPlanExit = true
+        if (!seenReminder) hadPlanExit = true
         break
       }
       if (msg.info.role === "user" && hasReminder(msg, PLAN_REMINDER_MARKER)) {

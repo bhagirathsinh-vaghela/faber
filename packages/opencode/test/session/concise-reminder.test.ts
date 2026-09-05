@@ -71,11 +71,11 @@ describe("hasConciseReminder", () => {
   })
 })
 
-// The reminder rides the typed prompt that opens a turn, and ONLY there. It is
-// due when the newest message is a fresh typed prompt without the reminder yet
-// — so it attaches once, to a message not yet on the wire. It never fires
-// mid-turn (which would append to a message already sent and re-hash the
-// prefix), and never onto a synthetic message.
+// The reminder rides the message that opens a turn, and ONLY there. It is due
+// when the newest message is a turn-opener (typed or synthetic) without the
+// reminder yet, so it attaches once, to a message not yet on the wire. It never
+// fires mid-turn, which would append to a message already sent and re-hash the
+// prefix.
 describe("conciseDue", () => {
   test("a fresh typed prompt with no reminder is due", () => {
     const prompt = user({ texts: [{ text: "start" }] })
@@ -128,7 +128,8 @@ describe("planScan", () => {
 
   test("counts assistant turns only since the LAST reminder, but all reminders to the exit", () => {
     // oldest -> newest: exit, R1, A, A, R2, A
-    // turnsSinceReminder = 1 (only the A after R2), totalReminders = 2 (R1 + R2), hadPlanExit = true
+    // turnsSinceReminder = 1 (only the A after R2); totalReminders = 2 (R1 + R2).
+    // hadPlanExit = false: a reminder (R2) is newer than the exit, hiding it.
     const msgs = [
       user({ texts: [{ text: "exit turn" }, PLAN_EXIT] }),
       user({ texts: [{ text: "t1" }, PLAN_REMINDER] }),
@@ -137,23 +138,32 @@ describe("planScan", () => {
       user({ texts: [{ text: "t2" }, PLAN_REMINDER] }),
       assistant(),
     ]
-    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 1, totalReminders: 2, hadPlanExit: true })
+    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 1, totalReminders: 2, hadPlanExit: false })
   })
 
-  test("stops at the exit boundary: reminders before the exit are not counted", () => {
-    // oldest -> newest: R (before exit, ignored), exit, R1, A
+  test("an exit newer than every reminder is seen; older reminders past it are not counted", () => {
+    // oldest -> newest: R (past the exit, ignored), R1, A, exit
+    // Walk hits exit first (newest): hadPlanExit = true, and it stops there, so
+    // the reminders older than the exit are never counted.
     const msgs = [
       user({ texts: [{ text: "old" }, PLAN_REMINDER] }),
-      user({ texts: [{ text: "exit" }, PLAN_EXIT] }),
       user({ texts: [{ text: "t1" }, PLAN_REMINDER] }),
       assistant(),
+      user({ texts: [{ text: "exit" }, PLAN_EXIT] }),
     ]
-    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 1, totalReminders: 1, hadPlanExit: true })
+    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 0, totalReminders: 0, hadPlanExit: true })
   })
 
   test("assistant turns before any reminder are not counted as since-last-reminder", () => {
     // newest-first walk hits A, A, then R: turnsSinceReminder counts those 2 A's (they are AFTER the reminder)
     const msgs = [user({ texts: [{ text: "t" }, PLAN_REMINDER] }), assistant(), assistant()]
     expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 2, totalReminders: 1, hadPlanExit: false })
+  })
+
+  test("a reminder newer than an exit hides it: hadPlanExit is false", () => {
+    // oldest -> newest: exit, R. The newest marker is the reminder, so the exit
+    // is hidden and hadPlanExit stays false.
+    const msgs = [user({ texts: [{ text: "exit" }, PLAN_EXIT] }), user({ texts: [{ text: "t" }, PLAN_REMINDER] })]
+    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 0, totalReminders: 1, hadPlanExit: false })
   })
 })
