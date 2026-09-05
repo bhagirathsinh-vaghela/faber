@@ -151,18 +151,7 @@ async function doInject(
   const notification = buildNotification(task, output, error, duration, status)
 
   const existingMessages = await Session.messages({ sessionID: task.parentSessionID })
-
-  const messageID = Identifier.ascending("message")
-  const userMsg: MessageV2.User = {
-    id: messageID,
-    sessionID: task.parentSessionID,
-    role: "user",
-    time: { created: Date.now() },
-    ...(await MessageV2.currentParams(task.parentSessionID, existingMessages)),
-    synthetic: true,
-    promptIndex: MessageV2.nextPromptIndex(existingMessages),
-  }
-  await Session.updateMessage(userMsg)
+  const messageID = await MessageV2.mintSyntheticMessage(task.parentSessionID, existingMessages)
 
   await Session.updatePart({
     id: Identifier.ascending("part"),
@@ -227,17 +216,7 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
 
   const existingMessages = await Session.messages({ sessionID })
 
-  const messageID = Identifier.ascending("message")
-  const userMsg: MessageV2.User = {
-    id: messageID,
-    sessionID,
-    role: "user",
-    time: { created: Date.now() },
-    ...(await MessageV2.currentParams(sessionID, existingMessages)),
-    synthetic: true,
-    promptIndex: MessageV2.nextPromptIndex(existingMessages),
-  }
-  await Session.updateMessage(userMsg)
+  const messageID = await MessageV2.mintSyntheticMessage(sessionID, existingMessages)
 
   for (const p of pending) {
     const task = BackgroundTask.get(p.taskId) ?? buildMinimalTask(p)

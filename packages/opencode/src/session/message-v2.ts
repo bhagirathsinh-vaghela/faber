@@ -777,6 +777,27 @@ export namespace MessageV2 {
     return messages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0) + 1
   }
 
+  // Write the synthetic user message a delivered result rides on and return its
+  // id, so the caller attaches its own part(s). The envelope is identical for
+  // every delivery (a job result, a task result, a batch of them): it inherits
+  // the session's params, marks itself synthetic so the prompt count and title
+  // skip it, and takes the next wire position. `messages` is the pre-mint history
+  // nextPromptIndex reads, so the caller loads it before calling.
+  export async function mintSyntheticMessage(sessionID: string, messages: WithParts[]) {
+    const { Session } = await import(".")
+    const id = Identifier.ascending("message")
+    await Session.updateMessage({
+      id,
+      sessionID,
+      role: "user",
+      time: { created: Date.now() },
+      ...(await currentParams(sessionID, messages)),
+      synthetic: true,
+      promptIndex: nextPromptIndex(messages),
+    })
+    return id
+  }
+
   // A message the human typed, as opposed to one the loop minted (a task/job
   // result, a compaction, a resume prompt). The single predicate for "was this
   // the user's own voice", used by the prompt count, the title, and every

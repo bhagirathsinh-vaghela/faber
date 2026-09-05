@@ -48,17 +48,7 @@ export namespace BackgroundDeliver {
         : undefined
     const text = BackgroundNotify.render(job, await BackgroundJob.output(job.id), kind, Date.now(), logAge)
     const messages = await Session.messages({ sessionID: job.sessionID })
-    const messageID = Identifier.ascending("message")
-
-    await Session.updateMessage({
-      id: messageID,
-      sessionID: job.sessionID,
-      role: "user",
-      time: { created: Date.now() },
-      ...(await MessageV2.currentParams(job.sessionID, messages)),
-      synthetic: true,
-      promptIndex: MessageV2.nextPromptIndex(messages),
-    })
+    const messageID = await MessageV2.mintSyntheticMessage(job.sessionID, messages)
 
     await Session.updatePart({
       id: Identifier.ascending("part"),

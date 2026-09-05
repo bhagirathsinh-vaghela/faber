@@ -115,3 +115,45 @@ describe("conciseDue", () => {
     expect(SessionPrompt.conciseDue([prompt])).toBe(true)
   })
 })
+
+const PLAN_REMINDER = { text: "<!-- plan-mode-reminder -->\nplan on", synthetic: true }
+const PLAN_EXIT = { text: "<!-- plan-mode-exit -->\nback to build", synthetic: true }
+
+describe("planScan", () => {
+  test("no plan history: assistants counted, no reminders, no exit", () => {
+    // No reminder/exit boundary, so the walk counts every assistant turn.
+    const msgs = [user({ texts: [{ text: "hi" }] }), assistant(), assistant()]
+    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 2, totalReminders: 0, hadPlanExit: false })
+  })
+
+  test("counts assistant turns only since the LAST reminder, but all reminders to the exit", () => {
+    // oldest -> newest: exit, R1, A, A, R2, A
+    // turnsSinceReminder = 1 (only the A after R2), totalReminders = 2 (R1 + R2), hadPlanExit = true
+    const msgs = [
+      user({ texts: [{ text: "exit turn" }, PLAN_EXIT] }),
+      user({ texts: [{ text: "t1" }, PLAN_REMINDER] }),
+      assistant(),
+      assistant(),
+      user({ texts: [{ text: "t2" }, PLAN_REMINDER] }),
+      assistant(),
+    ]
+    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 1, totalReminders: 2, hadPlanExit: true })
+  })
+
+  test("stops at the exit boundary: reminders before the exit are not counted", () => {
+    // oldest -> newest: R (before exit, ignored), exit, R1, A
+    const msgs = [
+      user({ texts: [{ text: "old" }, PLAN_REMINDER] }),
+      user({ texts: [{ text: "exit" }, PLAN_EXIT] }),
+      user({ texts: [{ text: "t1" }, PLAN_REMINDER] }),
+      assistant(),
+    ]
+    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 1, totalReminders: 1, hadPlanExit: true })
+  })
+
+  test("assistant turns before any reminder are not counted as since-last-reminder", () => {
+    // newest-first walk hits A, A, then R: turnsSinceReminder counts those 2 A's (they are AFTER the reminder)
+    const msgs = [user({ texts: [{ text: "t" }, PLAN_REMINDER] }), assistant(), assistant()]
+    expect(SessionPrompt.planScan(msgs)).toEqual({ turnsSinceReminder: 2, totalReminders: 1, hadPlanExit: false })
+  })
+})

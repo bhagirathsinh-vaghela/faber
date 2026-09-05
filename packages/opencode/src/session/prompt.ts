@@ -1636,6 +1636,32 @@ export namespace SessionPrompt {
     return hasReminder(msg, CONCISE_MARKER)
   }
 
+  // One reverse walk to the last plan-exit, tallying what the plan-reminder
+  // cadence needs: assistant turns since the last reminder (stop counting once a
+  // reminder is seen), total reminders since the exit, and whether an exit was
+  // hit. turnsSinceReminder counts only up to the first reminder because that is
+  // "turns since the LAST reminder"; totalReminders keeps counting to the exit.
+  export function planScan(messages: MessageV2.WithParts[]) {
+    let turnsSinceReminder = 0
+    let totalReminders = 0
+    let hadPlanExit = false
+    let seenReminder = false
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.info.role === "user" && hasReminder(msg, PLAN_EXIT_MARKER)) {
+        hadPlanExit = true
+        break
+      }
+      if (msg.info.role === "user" && hasReminder(msg, PLAN_REMINDER_MARKER)) {
+        totalReminders++
+        seenReminder = true
+        continue
+      }
+      if (msg.info.role === "assistant" && !seenReminder) turnsSinceReminder++
+    }
+    return { turnsSinceReminder, totalReminders, hadPlanExit }
+  }
+
   // The reminder rides the message that opens a turn, and ONLY there. It is due
   // when the turn-opener does not already carry the reminder, so it lands once,
   // at turn start, on a message not yet sent. A mid-turn re-fire would append to
@@ -1668,22 +1694,31 @@ export namespace SessionPrompt {
     return result
   }
 
-  async function persistReminder(userMessage: MessageV2.WithParts, text: string, marker: string) {
+  // Persist a synthetic, internal text block onto an existing message and mirror
+  // it into the in-memory parts the rest of the turn reads before the next
+  // reload. Every injector that rides a block on the turn-opener shares this, so
+  // the persist-then-mirror contract lives in one place.
+  async function appendSyntheticPart(userMessage: MessageV2.WithParts, text: string) {
     const userInfo = userMessage.info as MessageV2.User
-    const wrapped = text.includes("<system-reminder>")
-      ? `${marker}\n${text}`
-      : `${marker}\n<system-reminder>\n${text}\n</system-reminder>`
     const part: MessageV2.TextPart = {
       id: Identifier.ascending("part"),
       messageID: userInfo.id,
       sessionID: userInfo.sessionID,
       type: "text",
-      text: wrapped,
+      text,
       synthetic: true,
       internal: true,
     }
     await Session.updatePart(part)
     userMessage.parts.push(part)
+    return part
+  }
+
+  async function persistReminder(userMessage: MessageV2.WithParts, text: string, marker: string) {
+    const wrapped = text.includes("<system-reminder>")
+      ? `${marker}\n${text}`
+      : `${marker}\n<system-reminder>\n${text}\n</system-reminder>`
+    await appendSyntheticPart(userMessage, wrapped)
   }
 
   // Inject the progressive-disclosure MCP catalog as durable history when this
@@ -1726,18 +1761,7 @@ export namespace SessionPrompt {
 
     const userMessage = MessageV2.turnOpener(input.messages)
     if (!userMessage) return
-    const userInfo = userMessage.info as MessageV2.User
-    const part: MessageV2.TextPart = {
-      id: Identifier.ascending("part"),
-      messageID: userInfo.id,
-      sessionID: userInfo.sessionID,
-      type: "text",
-      text: catalog,
-      synthetic: true,
-      internal: true,
-    }
-    await Session.updatePart(part)
-    userMessage.parts.push(part)
+    await appendSyntheticPart(userMessage, catalog)
     await Session.update(input.session.id, (draft) => void (draft.mcpCatalogText = catalog), { touch: false })
     input.session.mcpCatalogText = catalog
   }
@@ -1763,21 +1787,7 @@ export namespace SessionPrompt {
 
     const userMessage = MessageV2.turnOpener(input.messages)
     if (!userMessage) return
-    const userInfo = userMessage.info as MessageV2.User
-    const part: MessageV2.TextPart = {
-      id: Identifier.ascending("part"),
-      messageID: userInfo.id,
-      sessionID: userInfo.sessionID,
-      type: "text",
-      text: catalog,
-      // Written for the model and appended to the USER'S OWN message, so
-      // without this the transcript draws the catalog where the typed prompt
-      // should be.
-      internal: true,
-      synthetic: true,
-    }
-    await Session.updatePart(part)
-    userMessage.parts.push(part)
+    await appendSyntheticPart(userMessage, catalog)
   }
 
   // Announce a date or branch that has moved since the model was last told. The
@@ -1808,22 +1818,7 @@ export namespace SessionPrompt {
       date: known.date === date ? undefined : date,
       branch: known.branch === branch ? undefined : branch,
     })
-    const userInfo = userMessage.info as MessageV2.User
-    const part: MessageV2.TextPart = {
-      id: Identifier.ascending("part"),
-      messageID: userInfo.id,
-      sessionID: userInfo.sessionID,
-      type: "text",
-      text,
-      // Machinery, and it lands on the USER'S OWN message rather than a
-      // message of its own. The transcript picks one part to draw per message,
-      // so without this flag a block written for the model is chosen over the
-      // prompt the user typed, and the typed text becomes unreachable.
-      internal: true,
-      synthetic: true,
-    }
-    await Session.updatePart(part)
-    userMessage.parts.push(part)
+    await appendSyntheticPart(userMessage, text)
     await Session.update(
       input.session.id,
       (draft) => {
@@ -1912,29 +1907,7 @@ export namespace SessionPrompt {
     // Check if this user message already has a plan reminder (e.g. from a previous loop iteration)
     if (hasReminder(userMessage, PLAN_REMINDER_MARKER)) return input.messages
 
-    // Count assistant turns since last plan reminder and total reminders since last exit
-    let turnsSinceReminder = 0
-    let totalReminders = 0
-    let hadPlanExit = false
-    for (let i = input.messages.length - 1; i >= 0; i--) {
-      const msg = input.messages[i]
-      if (msg.info.role === "user" && hasReminder(msg, PLAN_EXIT_MARKER)) {
-        hadPlanExit = true
-        break
-      }
-      if (msg.info.role === "user" && hasReminder(msg, PLAN_REMINDER_MARKER)) {
-        break
-      }
-      if (msg.info.role === "assistant") {
-        turnsSinceReminder++
-      }
-    }
-    // Count total plan reminders since last exit for full/sparse cycling
-    for (let i = input.messages.length - 1; i >= 0; i--) {
-      const msg = input.messages[i]
-      if (msg.info.role === "user" && hasReminder(msg, PLAN_EXIT_MARKER)) break
-      if (msg.info.role === "user" && hasReminder(msg, PLAN_REMINDER_MARKER)) totalReminders++
-    }
+    const { turnsSinceReminder, totalReminders, hadPlanExit } = planScan(input.messages)
 
     const isEnteringPlan = !lastAssistant || lastAssistant.info.agent !== "plan"
 
