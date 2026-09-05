@@ -99,10 +99,15 @@ describe("conciseDue", () => {
     expect(SessionPrompt.conciseDue([first, assistant(), second])).toBe(true)
   })
 
-  test("a synthetic user message at the tail is never due", () => {
+  test("a synthetic result that opens a turn is due (synthetic-blind)", () => {
     const prompt = user({ texts: [{ text: "start" }, reminder] })
     const delivered = user({ synthetic: true, texts: [{ text: "job result", synthetic: true }] })
-    expect(SessionPrompt.conciseDue([prompt, assistant(), delivered])).toBe(false)
+    expect(SessionPrompt.conciseDue([prompt, assistant(), delivered])).toBe(true)
+  })
+
+  test("a synthetic opener already carrying the reminder is not due", () => {
+    const delivered = user({ synthetic: true, texts: [{ text: "job result", synthetic: true }, reminder] })
+    expect(SessionPrompt.conciseDue([delivered])).toBe(false)
   })
 
   test("a fresh typed prompt is due even after a reminded prior turn", () => {

@@ -183,6 +183,27 @@ describe("session.message-v2.isHumanTyped", () => {
   })
 })
 
+describe("session.message-v2.isTurnOpener", () => {
+  test("true for the newest user message", () => {
+    const opener = plainUser("u2", "second")
+    const msgs = [plainUser("u1", "first"), opener]
+    expect(MessageV2.isTurnOpener(msgs, opener)).toBe(true)
+  })
+
+  test("false for an earlier user message", () => {
+    const earlier = plainUser("u1", "first")
+    const msgs = [earlier, plainUser("u2", "second")]
+    expect(MessageV2.isTurnOpener(msgs, earlier)).toBe(false)
+  })
+
+  test("synthetic-blind: a synthetic newest user message is the opener", () => {
+    const synthetic = plainUser("u2", "job result")
+    synthetic.info.synthetic = true
+    const msgs = [plainUser("u1", "typed"), synthetic]
+    expect(MessageV2.isTurnOpener(msgs, synthetic)).toBe(true)
+  })
+})
+
 describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with no parts", () => {
     const input: MessageV2.WithParts[] = [

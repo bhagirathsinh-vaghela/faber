@@ -768,6 +768,22 @@ export namespace MessageV2 {
     return msg.info.role === "user" && !msg.info.synthetic
   }
 
+  // The message the current processing loop was entered for: the newest user
+  // message, whatever opened this turn. Real-vs-synthetic blind on purpose (a
+  // synthetic result delivered to an idle session opens a turn exactly as a
+  // typed prompt does; that axis is isHumanTyped's job). Every injected part
+  // (catalogs, session-context, the concise and plan reminders) rides the
+  // opener and only there. An opener is a not-yet-sent message, so anything
+  // appended to it stays out of every already-sent block and cannot re-hash the
+  // cached prefix; a mid-turn message is never an opener and never receives one.
+  export function turnOpener(messages: WithParts[]) {
+    return messages.findLast((m) => m.info.role === "user")
+  }
+
+  export function isTurnOpener(messages: WithParts[], msg: WithParts) {
+    return turnOpener(messages)?.info.id === msg.info.id
+  }
+
   export const parts = fn(Identifier.schema("message"), async (messageID) => {
     return sizedParts(messageID).then((x) => x.parts)
   })

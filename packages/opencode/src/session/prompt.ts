@@ -762,7 +762,7 @@ export namespace SessionPrompt {
       using _ = defer(() => InstructionPrompt.clear(processor.message.id))
 
       // Check if user explicitly invoked an agent via @ in this turn
-      const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
+      const lastUserMsg = MessageV2.turnOpener(msgs)
       const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
 
       const tools = await resolveTools({
@@ -1648,17 +1648,17 @@ export namespace SessionPrompt {
     return msg.parts.some((p) => p.type === "text" && p.synthetic && p.text.includes(CONCISE_MARKER))
   }
 
-  // The reminder rides the human-typed prompt that opens a turn, and ONLY there.
-  // It is due when the newest message is a fresh typed prompt (non-synthetic
-  // user) that does not already carry the reminder — i.e. exactly once, at turn
-  // start, on a message not yet sent. A mid-turn re-fire would append to a
-  // message already on the wire (the turn's first message stays `findLast(user)`
-  // through the whole tool loop), mutating a sent block and re-hashing the
-  // prefix behind the rolling marker every call. Freezing the reminder to the
-  // typed prompt keeps every sent block byte-identical for the life of the turn.
+  // The reminder rides the message that opens a turn, and ONLY there. It is due
+  // when the turn-opener does not already carry the reminder, so it lands once,
+  // at turn start, on a message not yet sent. A mid-turn re-fire would append to
+  // a message already on the wire (the opener stays `findLast(user)` through the
+  // whole tool loop), mutating a sent block and re-hashing the prefix behind the
+  // rolling marker every call. Freezing the reminder to the opener keeps every
+  // sent block byte-identical for the life of the turn. Synthetic-blind: a
+  // result that opens an idle turn gets it too.
   export function conciseDue(messages: MessageV2.WithParts[]) {
     const last = messages[messages.length - 1]
-    if (!last || last.info.role !== "user" || last.info.synthetic) return false
+    if (!last || !MessageV2.isTurnOpener(messages, last)) return false
     return !hasConciseReminder(last)
   }
 
@@ -1736,7 +1736,7 @@ export namespace SessionPrompt {
       return
     }
 
-    const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
+    const userMessage = MessageV2.turnOpener(input.messages)
     if (!userMessage) return
     const userInfo = userMessage.info as MessageV2.User
     const part: MessageV2.TextPart = {
@@ -1773,7 +1773,7 @@ export namespace SessionPrompt {
     )
     if (present) return
 
-    const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
+    const userMessage = MessageV2.turnOpener(input.messages)
     if (!userMessage) return
     const userInfo = userMessage.info as MessageV2.User
     const part: MessageV2.TextPart = {
@@ -1814,7 +1814,7 @@ export namespace SessionPrompt {
     }
     if (known.date === date && known.branch === branch) return
 
-    const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
+    const userMessage = MessageV2.turnOpener(input.messages)
     if (!userMessage) return
     const text = SystemPrompt.sessionContextUpdate({
       date: known.date === date ? undefined : date,
@@ -1858,7 +1858,7 @@ export namespace SessionPrompt {
     await insertAgentCatalog(input)
     await insertSessionContext(input)
 
-    const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
+    const userMessage = MessageV2.turnOpener(input.messages)
     if (!userMessage) return input.messages
 
     // The concision rules live in the cached system prompt, which a long turn
