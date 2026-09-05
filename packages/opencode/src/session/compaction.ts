@@ -95,19 +95,6 @@ export namespace SessionCompaction {
     }
   }
 
-  // Whether real work was in flight when the compaction request landed, which is
-  // what decides if the summary should be followed by a continuation. The
-  // compaction request itself is the last user message, so the question is about
-  // the one BEFORE it: unanswered means a turn was mid-flight and its remaining
-  // work would otherwise be dropped at the summary. Keyed on the work rather
-  // than on who asked, so a manual /compact during a busy turn resumes and any
-  // compaction at idle correctly does nothing.
-  function interrupted(msgs: MessageV2.WithParts[], parentID: string) {
-    const prior = msgs.findLast((msg) => msg.info.role === "user" && msg.info.id !== parentID)
-    if (!prior) return false
-    return !MessageV2.answered(msgs, prior.info.id)
-  }
-
   export async function process(input: {
     parentID: string
     messages: MessageV2.WithParts[]
@@ -233,7 +220,7 @@ export namespace SessionCompaction {
       model,
     })
 
-    if (result === "continue" && interrupted(input.messages, input.parentID)) {
+    if (result === "continue") {
       const continueMsg = await Session.updateMessage({
         id: Identifier.ascending("message"),
         role: "user",
