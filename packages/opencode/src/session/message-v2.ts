@@ -738,16 +738,38 @@ export namespace MessageV2 {
       .catch(() => undefined)
   }
 
-  export const lastModel = fn(Identifier.schema("session"), (sessionID) => current(sessionID).then((x) => x?.model))
-
   export const lastVariant = fn(Identifier.schema("session"), (sessionID) => current(sessionID).then((x) => x?.variant))
 
-  // The model a session resolves to, falling through to the provider default so
-  // the caller always has one. The bare lastModel is nullable; this is the form
-  // every consumer that needs a usable model shares.
-  export async function model(sessionID: string) {
+  // The session's stored model when it still resolves against the provider, else
+  // the default, with a flag saying which and the stored per-model variant. A
+  // stored model the config has since dropped must not be forwarded: a mint that
+  // stamps it makes the next loop iteration call getModel on a model that no
+  // longer exists and throw, aborting the turn. `variant` is resolved from the
+  // SAME current record as the model, so a caller pairs the two consistently, and
+  // drops the variant with the model when it fell back. A caller that has already
+  // read `current` passes it in, so agent/model/variant all come from one read.
+  const UNREAD = Symbol("unread")
+  export async function validModel(
+    sessionID: string,
+    stored: Awaited<ReturnType<typeof current>> | typeof UNREAD = UNREAD,
+  ) {
     const { Provider } = await import("@/provider/provider")
-    return (await lastModel(sessionID)) ?? (await Provider.defaultModel())
+    const record = stored === UNREAD ? await current(sessionID) : stored
+    const valid = record?.model
+      ? await Provider.getModel(record.model.providerID, record.model.modelID).then(
+          () => true,
+          () => false,
+        )
+      : false
+    if (valid) return { model: record!.model!, valid: true as const, variant: record!.variant }
+    return { model: await Provider.defaultModel(), valid: false as const, variant: undefined }
+  }
+
+  // The model a session resolves to, falling through to the provider default so
+  // the caller always has one, and never a stored model the provider has dropped.
+  // The form every consumer that needs a usable model shares.
+  export async function model(sessionID: string) {
+    return (await validModel(sessionID)).model
   }
 
   // The per-turn parameters a synthetic message inherits from the turn it
@@ -773,23 +795,29 @@ export namespace MessageV2 {
   // delivery must not crash the turn on a stale model. A dropped model takes its
   // per-model variant with it.
   export async function currentParams(sessionID: string, messages: WithParts[]) {
-    const { Provider } = await import("@/provider/provider")
     const { Agent } = await import("@/agent/agent")
+    // One read of current for all three params, so agent, model, and variant come
+    // from a single snapshot a concurrent write cannot split.
     const stored = await current(sessionID)
     // The agent, like the model below, falls back to the configured default
     // (which honours cfg.default_agent). defaultAgent throws on a misconfigured
     // default; this is a synthetic delivery that must never crash the turn, so it
     // degrades to the built-in "build" rather than propagating the throw.
     const agent = stored?.agent ?? (await Agent.defaultAgent().catch(() => "build"))
-    const valid = stored?.model
-      ? await Provider.getModel(stored.model.providerID, stored.model.modelID).then(
-          () => true,
-          () => false,
-        )
-      : false
-    return valid
-      ? { agent, model: stored!.model!, variant: stored!.variant }
-      : { agent, model: await Provider.defaultModel().catch(() => UNKNOWN_MODEL), variant: undefined }
+    // validModel validates that same record's model (with its variant) or falls
+    // back to the default, dropping the variant with a dropped model. Guarded
+    // against a total provider outage, which validModel would otherwise throw
+    // on — a synthetic delivery must not crash even then.
+    const resolved = await validModel(sessionID, stored).catch(() => ({
+      model: UNKNOWN_MODEL,
+      valid: false as const,
+      variant: undefined,
+    }))
+    return {
+      agent,
+      model: resolved.model,
+      variant: resolved.variant,
+    }
   }
 
   // The wire block position for the next synthetic message minted into a session:
@@ -827,6 +855,15 @@ export namespace MessageV2 {
   // "last real user message" lookup, so the definition lives in one place.
   export function isHumanTyped(msg: WithParts) {
     return msg.info.role === "user" && !msg.info.synthetic
+  }
+
+  // A titleable prompt: human-typed AND carrying an ordinal. A human-typed
+  // message with no ordinal is an infrastructure switch minted outside the
+  // ordinal counter (a plan_enter/plan_exit mode switch); it is not a prompt the
+  // title generator counts or bills against. Both the trigger and the request
+  // that follows it share this, so the two never key off different messages.
+  export function isOrdinalPrompt(msg: WithParts) {
+    return isHumanTyped(msg) && (msg.info as User).ordinal !== undefined
   }
 
   // The message the current processing loop was entered for: the newest user

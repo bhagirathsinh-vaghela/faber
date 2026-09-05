@@ -61,14 +61,19 @@ export namespace SessionRetry {
 
   export function retryable(error: ReturnType<NamedError["toObject"]>) {
     if (MessageV2.APIError.isInstance(error)) {
-      // A server error (>= 500) is transient and retryable, whatever the
-      // provider's isRetryable flag or the body's error `type` says. Anthropic's
+      // A server error (>= 500) is treated as transient and force-retried, whatever
+      // the provider's isRetryable flag or the body's error `type` says. Anthropic's
       // mid-stream error path stamps a fault as statusCode 500 with
       // isRetryable:false even when the body reads {"type":"rate_limit_error"}:
       // a server fault mislabeled, not a real rate limit (a real one is HTTP 429
-      // with retry-after and rate-limit headers, so statusCode < 500).
+      // with retry-after and rate-limit headers, so statusCode < 500). 501 (Not
+      // Implemented) and 505 (HTTP Version Not Supported) are the two 5xx that are
+      // never transient — the server answers them identically every time — so they
+      // are held OUT of the forced-retry set and burn no attempts on their own. A
+      // provider that still marks such a response isRetryable is honoured below;
+      // this only removes the blanket 5xx assumption for them.
       const status = error.data.statusCode
-      const serverError = status !== undefined && status >= 500
+      const serverError = status !== undefined && status >= 500 && status !== 501 && status !== 505
       if (!serverError && !error.data.isRetryable) return undefined
       return error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message
     }

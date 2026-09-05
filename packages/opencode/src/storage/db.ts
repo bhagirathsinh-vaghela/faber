@@ -48,6 +48,14 @@ export namespace Db {
   // session is deleted. No schema FK enforces this (the tables predate one, and
   // adding it means a live table rebuild), so the sweep is the GC. Warms the
   // three facades first so every table exists.
+  //
+  // Each delete is skipped when its OWNER table is empty. An empty owner never
+  // happens on a populated store (a live write always persists a message with its
+  // parts and a session with its messages), so skipping costs nothing there — but
+  // it turns the one catastrophic case into a no-op: a sweep that runs against a
+  // half-populated store (an interrupted or reordered migration, an owner table
+  // not yet imported) would otherwise read "no owners" as "every child is an
+  // orphan" and delete the lot.
   export async function sweepOrphans() {
     const [{ Parts }, { Messages }, { Sessions }] = await Promise.all([
       import("./parts"),
@@ -60,8 +68,13 @@ export namespace Db {
       Sessions.listProject("__warm__"),
     ])
     const db = await open()
-    const parts = db.run(`DELETE FROM part WHERE message_id NOT IN (SELECT id FROM message)`).changes
-    const messages = db.run(`DELETE FROM message WHERE session_id NOT IN (SELECT id FROM session)`).changes
+    const empty = (table: string) => db.query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM ${table}) AS n`).get()!.n === 0
+    const parts = empty("message")
+      ? 0
+      : db.run(`DELETE FROM part WHERE message_id NOT IN (SELECT id FROM message)`).changes
+    const messages = empty("session")
+      ? 0
+      : db.run(`DELETE FROM message WHERE session_id NOT IN (SELECT id FROM session)`).changes
     return { parts, messages }
   }
 

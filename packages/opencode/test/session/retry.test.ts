@@ -144,6 +144,26 @@ describe("session.retry.retryable", () => {
     }).toObject() as MessageV2.APIError
     expect(SessionRetry.retryable(error)).toBeUndefined()
   })
+
+  test("retries a transient 503 marked non-retryable", () => {
+    const error = new MessageV2.APIError({
+      message: "service unavailable",
+      isRetryable: false,
+      statusCode: 503,
+    }).toObject() as MessageV2.APIError
+    expect(SessionRetry.retryable(error)).toBe("service unavailable")
+  })
+
+  test("does not retry a 501/505 (never transient) marked non-retryable", () => {
+    for (const statusCode of [501, 505]) {
+      const error = new MessageV2.APIError({
+        message: "nope",
+        isRetryable: false,
+        statusCode,
+      }).toObject() as MessageV2.APIError
+      expect(SessionRetry.retryable(error)).toBeUndefined()
+    }
+  })
 })
 
 describe("session.message-v2.fromError", () => {

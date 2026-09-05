@@ -161,4 +161,63 @@ describe("Db.sweepOrphans", () => {
     expect(await Parts.one(ownedMsg, ownedPart.id)).toEqual(ownedPart)
     expect((await Messages.read(ownedMsg)).id).toBe(ownedMsg)
   })
+
+  test("does not reap parts when the message table is empty (interrupted-migration guard)", async () => {
+    const { Db } = await import("../../src/storage/db")
+    const db = await Db.open()
+    // Simulate a store where parts are present but the owner (message) table has
+    // not been populated — an interrupted or reordered migration. The sweep must
+    // read "no owners" as "skip", never as "every part is an orphan". Snapshot and
+    // restore the message table so this shared-DB test leaves no residue.
+    const saved = db.query<{ id: string; session_id: string; time_created: number; json: string; length: number }, []>(
+      `SELECT id, session_id, time_created, json, length FROM message`,
+    ).all()
+    const survivor = text("msg_guard_ghost", "prt_0000000000000018000000000c", "survive", "ses_guard_ghost")
+    await Parts.put(survivor)
+    try {
+      db.run(`DELETE FROM message`)
+      const swept = await Db.sweepOrphans()
+      expect(swept.parts).toBe(0)
+      expect((await Parts.list("msg_guard_ghost")).parts).toEqual([survivor])
+    } finally {
+      const restore = db.query<void, [string, string, number, string, number]>(
+        `INSERT OR IGNORE INTO message (id, session_id, time_created, json, length) VALUES (?, ?, ?, ?, ?)`,
+      )
+      for (const m of saved) restore.run(m.id, m.session_id, m.time_created, m.json, m.length)
+      await Parts.remove("msg_guard_ghost", survivor.id)
+    }
+  })
+
+  test("does not reap messages when the session table is empty (interrupted-migration guard)", async () => {
+    const { Messages } = await import("../../src/storage/messages")
+    const { Db } = await import("../../src/storage/db")
+    const db = await Db.open()
+    // The messages half of the same guard: messages present, owner (session)
+    // table not yet populated. The sweep must skip, not treat every message as an
+    // orphan. Snapshot and restore the session table so this leaves no residue.
+    const saved = db.query<
+      { id: string; project_id: string; time_created: number; time_updated: number; json: string },
+      []
+    >(`SELECT id, project_id, time_created, time_updated, json FROM session`).all()
+    await Messages.put({
+      id: "msg_guard_survivor",
+      sessionID: "ses_guard_orphan",
+      role: "user",
+      time: { created: 1 },
+      agent: "build",
+      model: { providerID: "anthropic", modelID: "claude" },
+    } as MessageV2.User)
+    try {
+      db.run(`DELETE FROM session`)
+      const swept = await Db.sweepOrphans()
+      expect(swept.messages).toBe(0)
+      expect((await Messages.read("msg_guard_survivor")).id).toBe("msg_guard_survivor")
+    } finally {
+      const restore = db.query<void, [string, string, number, number, string]>(
+        `INSERT OR IGNORE INTO session (id, project_id, time_created, time_updated, json) VALUES (?, ?, ?, ?, ?)`,
+      )
+      for (const s of saved) restore.run(s.id, s.project_id, s.time_created, s.time_updated, s.json)
+      db.run(`DELETE FROM message WHERE id = ?`, ["msg_guard_survivor"])
+    }
+  })
 })

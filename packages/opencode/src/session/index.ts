@@ -351,6 +351,7 @@ export namespace Session {
       const session = await createNext({
         directory: Instance.directory,
         title,
+        current: original.current,
       })
       const msgs = await messages({ sessionID: input.sessionID })
       const idMap = new Map<string, string>()
@@ -398,6 +399,11 @@ export namespace Session {
     // resolves the parent under this, so a helper working in another project
     // still reports home.
     spawnedFrom?: string
+    // Established parameters to seed onto the new session (a fork carries the
+    // original's, so its first no-override send continues on the same agent/
+    // model/variant instead of snapping to the default). The spawn seed below
+    // takes precedence when both apply.
+    current?: Info["current"]
   }) {
     const branch = Instance.project.vcs === "git" ? await Vcs.branch() : undefined
     // A spawned helper runs as its spawner, so it starts from the spawner's
@@ -418,7 +424,7 @@ export namespace Session {
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
-      ...(seeded && { current: seeded }),
+      ...((seeded || input.current) && { current: seeded || input.current }),
       // The link to the spawner, kept so a later reader can trace the origin.
       // `directory` is the PARENT's, since a session resolves under its own
       // project; the helper's own directory would miss whenever the two differ.
@@ -537,6 +543,17 @@ export namespace Session {
         info: result,
       })
     return result
+  }
+
+  // Record an agent switch (plan_enter/plan_exit) on the session's established
+  // parameters. The switch mints a user message carrying the new agent, but a
+  // later synthetic mint reads current, not that message, so without this a
+  // delivered result after the switch would run under the pre-switch agent.
+  // Only the agent changes; model/variant carry across the switch.
+  // A session with no current yet has nothing to switch — the next real send
+  // establishes it.
+  export function setAgent(id: string, agent: string) {
+    return update(id, (draft) => void (draft.current && (draft.current.agent = agent)), { touch: false })
   }
 
   export function markUnseen(id: string) {
@@ -679,7 +696,17 @@ export namespace Session {
         info: session,
       })
     } catch (e) {
+      // A delete that fails must surface, not report success by swallowing. The
+      // three-level row delete is one transaction, so a throw at or before it
+      // leaves the session's rows wholly intact. The index/recent/event steps run
+      // AFTER the commit; a throw there (a synchronous Deleted subscriber) rethrows
+      // with the rows already gone, so a surfaced error does not by itself prove
+      // the session survived. A partway TREE failure (a child throws) can leave
+      // earlier children deleted and later ones plus the parent intact; each
+      // deleted child is itself whole, so this is a recoverable partial, not a
+      // source of orphan rows.
       log.error(e)
+      throw e
     }
   })
 

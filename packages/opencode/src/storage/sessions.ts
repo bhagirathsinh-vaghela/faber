@@ -1,5 +1,6 @@
 import path from "path"
 import { lazy } from "../util/lazy"
+import { Lock } from "../util/lock"
 import { Storage } from "./storage"
 import { Db } from "./db"
 import type { Session } from "../session"
@@ -56,9 +57,14 @@ export namespace Sessions {
   }
 
   // Read-modify-write, throwing NotFoundError when the session is absent, like
-  // Storage.update (which reads the file first).
+  // Storage.update (which reads the file first). `normalize` awaits a lazy
+  // import between the read and the write, so two concurrent updates on one
+  // session would both read the same blob and the later write would drop the
+  // earlier mutation. A per-id write lock closes that window, the way the file
+  // backend's Lock.write did.
   export async function update(sessionID: string, fn: (draft: Session.Info) => void) {
     const q = await open()
+    using _ = await Lock.write("session/" + sessionID)
     const stored = q.get.get(sessionID)
     if (!stored) throw new Storage.NotFoundError({ message: `Session not found: ${sessionID}` })
     const draft = await normalize(stored.json)

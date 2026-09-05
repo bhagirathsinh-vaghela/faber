@@ -48,6 +48,7 @@ export const PlanExitTool = Tool.define("plan_exit", {
       variant: await MessageV2.lastVariant(ctx.sessionID),
     }
     await Session.updateMessage(userMsg)
+    await Session.setAgent(ctx.sessionID, "build")
     await Session.updatePart({
       id: Identifier.ascending("part"),
       messageID: userMsg.id,
@@ -107,6 +108,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
       variant: await MessageV2.lastVariant(ctx.sessionID),
     }
     await Session.updateMessage(userMsg)
+    await Session.setAgent(ctx.sessionID, "plan")
     await Session.updatePart({
       id: Identifier.ascending("part"),
       messageID: userMsg.id,

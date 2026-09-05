@@ -11,7 +11,6 @@ import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { SessionProcessor } from "./processor"
 import { fn } from "@/util/fn"
-import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { SystemPrompt } from "./system"
@@ -111,7 +110,7 @@ export namespace SessionCompaction {
     // instead rides in the trailing user message, and allowedTools: [] is the
     // runtime guard that blocks any tool the model attempts.
     const snapshot = await SessionPin.get(input.sessionID)
-    const agent = snapshot.agents[userMessage.agent] ?? (await Agent.get(userMessage.agent))
+    const agent = await SessionPrompt.resolveAgent(userMessage.agent, snapshot)
     const model = await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await Session.updateMessage({
       id: Identifier.ascending("message"),

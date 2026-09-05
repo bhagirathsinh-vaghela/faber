@@ -60,6 +60,26 @@ describe("Sessions", () => {
     await expect(Sessions.read(s.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
   })
 
+  test("concurrent updates on one session all survive (no lost update)", async () => {
+    const s = session("ses_race", "proj_a")
+    await Sessions.write(s)
+
+    // Each update reads the current total and adds one. `normalize` awaits a
+    // lazy import between the read and the write, so without a per-id lock the
+    // calls interleave and increments are lost. Fire many at once and expect
+    // every one to land.
+    const count = 50
+    await Promise.all(
+      Array.from({ length: count }, () =>
+        Sessions.update(s.id, (draft) => {
+          draft.total.input += 1
+        }),
+      ),
+    )
+
+    expect((await Sessions.read(s.id)).total.input).toBe(count)
+  })
+
   test("an old record missing tokens/total/cost reads back with the schema defaults", async () => {
     const old = {
       id: "ses_old",

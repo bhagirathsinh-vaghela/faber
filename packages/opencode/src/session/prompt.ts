@@ -719,7 +719,7 @@ export namespace SessionPrompt {
       }
 
       // normal processing
-      const agent = snapshot.agents[lastUser.agent] ?? (await Agent.get(lastUser.agent))
+      const agent = await resolveAgent(lastUser.agent, snapshot)
       const maxSteps = agent.steps ?? Infinity
       const isLastStep = step >= maxSteps
       msgs = await insertReminders({
@@ -1189,6 +1189,25 @@ export namespace SessionPrompt {
     return tools
   }
 
+  // Resolve a candidate agent NAME to a live agent, falling through to the
+  // configured default (then the built-in "build" when the default itself is
+  // misconfigured) whenever the name does not resolve. Agent.get returns
+  // undefined — not a throw — for an unknown name, and a name can be stale: a
+  // persisted message or session.current names an agent config has since
+  // dropped. Every site that turns a name into an agent it will dereference goes
+  // through here, so the fall-through is defined once rather than copied.
+  export async function resolveAgent(name: string | undefined, snapshot: SessionPin.Snapshot): Promise<Agent.Info> {
+    const resolved =
+      (name ? snapshot.agents[name] : undefined) ??
+      (name ? await Agent.get(name) : undefined) ??
+      (await Agent.get(await Agent.defaultAgent().catch(() => "build")))
+    // The default itself can be unresolvable (build disabled and every other
+    // primary agent hidden or a subagent). Fail with a descriptive error rather
+    // than returning undefined for callers to dereference into an opaque TypeError.
+    if (!resolved) throw new Error(`no resolvable agent (requested "${name ?? "<default>"}", default unavailable)`)
+    return resolved
+  }
+
   async function createUserMessage(input: PromptInput, joined?: Promise<ReturnType<typeof MessageV2.inherit>>) {
     const snapshot = await SessionPin.get(input.sessionID)
     const current = (await Session.get(input.sessionID)).current
@@ -1197,7 +1216,7 @@ export namespace SessionPrompt {
     // current fallback a send that names no agent (a restart-resume prompt, any
     // synthetic mint) would snap a non-default-agent session back to the default.
     const agentName = input.agent ?? current?.agent ?? snapshot.defaultAgent
-    const agent = (agentName ? snapshot.agents[agentName] : undefined) ?? (await Agent.get(agentName ?? (await Agent.defaultAgent())))
+    const agent = await resolveAgent(agentName, snapshot)
     // A prompt that joined a running turn adopts that turn's parameters — not the
     // picker values the client echoed since. Changing them is a conscious
     // idle-time act: interrupt, change, then send. An idle send reads the
@@ -1973,7 +1992,7 @@ export namespace SessionPrompt {
     if (session.revert) {
       await SessionRevert.cleanup(session)
     }
-    const agent = (await SessionPin.get(input.sessionID)).agents[input.agent] ?? (await Agent.get(input.agent))
+    const agent = await resolveAgent(input.agent, await SessionPin.get(input.sessionID))
     const model = input.model ?? agent.model ?? (await MessageV2.model(input.sessionID))
     const userMsg: MessageV2.User = {
       id: input.messageID ?? Identifier.ascending("message"),
@@ -2482,7 +2501,10 @@ export namespace SessionPrompt {
   export function titleTrigger(session: Session.Info, history: MessageV2.WithParts[]) {
     if (session.parentID) return
     if (!generatorOwns(session)) return
-    const latest = history.findLast(MessageV2.isHumanTyped)
+    // The last titleable prompt. Skipping ordinal-less infra switches (a plan
+    // mode switch) is what stops one from reading as "no title" and suppressing
+    // the title on the turn after a switch.
+    const latest = history.findLast(MessageV2.isOrdinalPrompt)
     if (!latest) return
     // The message's own ordinal, not a count of what this turn can see: a
     // re-entered loop (a task result arriving, the compaction route) reaches
@@ -2502,7 +2524,9 @@ export namespace SessionPrompt {
   }) {
     const ordinal = titleTrigger(input.session, input.history)
     if (!ordinal) return
-    const latestUser = input.history.findLast(MessageV2.isHumanTyped)!
+    // The same titleable prompt titleTrigger keyed on, so the title request bills
+    // against the real prompt's params, not an ordinal-less infra switch.
+    const latestUser = input.history.findLast(MessageV2.isOrdinalPrompt)!
 
     const content = titleInput(input.history)
     if (!content) return

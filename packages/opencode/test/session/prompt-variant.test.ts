@@ -64,7 +64,7 @@ describe("session.prompt agent variant", () => {
     })
   })
 
-  test("uses default model when no last message exists", async () => {
+  test("resolves the agent's configured model on a fresh no-override send", async () => {
     await using tmp = await tmpdir({
       git: true,
       config: {
@@ -82,7 +82,9 @@ describe("session.prompt agent variant", () => {
       fn: async () => {
         const session = await Session.create({})
 
-        // First prompt without model in fresh session - uses default model (not agent's)
+        // No explicit model and no prior turn, so resolution falls through
+        // input.model and current.model to the build agent's configured model
+        // (the provider default is only the last resort after agent.model).
         const first = await SessionPrompt.prompt({
           sessionID: session.id,
           agent: "build",
@@ -90,9 +92,7 @@ describe("session.prompt agent variant", () => {
           parts: [{ type: "text", text: "hello" }],
         })
         if (first.info.role !== "user") throw new Error("expected user message")
-        // lastModel() returns Provider.defaultModel() when no messages exist
-        expect(first.info.model?.providerID).toBeDefined()
-        expect(first.info.model?.modelID).toBeDefined()
+        expect(first.info.model).toEqual({ providerID: "openai", modelID: "gpt-5.2" })
 
         await Session.remove(session.id)
       },

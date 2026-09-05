@@ -4,7 +4,6 @@ import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
 import { Session } from "."
 import { MessageV2 } from "./message-v2"
-import { Agent } from "@/agent/agent"
 import { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { SystemPrompt } from "./system"
@@ -403,7 +402,7 @@ export namespace SessionPing {
 
     const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
     const snapshot = await SessionPin.get(sessionID)
-    const agent = snapshot.agents[lastUser.agent] ?? (await Agent.get(lastUser.agent))
+    const agent = await SessionPrompt.resolveAgent(lastUser.agent, snapshot)
     const instructions = snapshot.instructions
 
     const sessionMessages = clone(msgs)

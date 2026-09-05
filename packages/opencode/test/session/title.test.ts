@@ -248,6 +248,16 @@ describe("session title trigger", () => {
   test("stays quiet when no prompt carries an ordinal", () => {
     expect(SessionPrompt.titleTrigger(session(), history([undefined]))).toBeUndefined()
   })
+
+  test("still fires when a plan-switch (ordinal-less) message trails the opening prompt", () => {
+    // plan_enter/plan_exit mint a human-typed user message with no ordinal. It
+    // must not intercept the trigger and suppress the title on the switch turn.
+    expect(SessionPrompt.titleTrigger(session(), history([1, undefined]))).toBe(1)
+  })
+
+  test("still fires at the third prompt across an intervening plan switch", () => {
+    expect(SessionPrompt.titleTrigger(session({ titleOrdinal: 1 }), history([1, 2, undefined, 3]))).toBe(3)
+  })
 })
 
 describe("session prompt ordinal", () => {

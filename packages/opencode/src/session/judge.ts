@@ -34,11 +34,6 @@ export namespace SessionJudge {
    * the model weighs the caller's rules alone.
    */
   export async function run(input: Input) {
-    const model = input.model
-      ? await Provider.getModel(input.model.providerID, input.model.modelID)
-      : await Provider.getSmallModel("anthropic")
-    if (!model) throw new Error("no model available for judge")
-
     // An enforcement check must never outlive the tool call it guards, so the
     // call carries its own deadline rather than inheriting an open-ended one.
     const deadline = new AbortController()
@@ -63,6 +58,14 @@ export namespace SessionJudge {
     }
 
     try {
+      // Model resolution is inside the try so a provider/registry failure here
+      // fails open like any other, rather than throwing to the caller — the
+      // "enforcement never ends the turn" guarantee covers the whole call.
+      const model = input.model
+        ? await Provider.getModel(input.model.providerID, input.model.modelID)
+        : await Provider.getSmallModel("anthropic")
+      if (!model) throw new Error("no model available for judge")
+
       const { stream } = await LLM.stream({
         agent,
         user: {
@@ -93,6 +96,11 @@ export namespace SessionJudge {
         retries: 1,
       })
 
+      // Drive the stream to completion explicitly. text/usage resolve off the
+      // collected steps but do NOT themselves consume the stream; only
+      // finishReason (or this call) drains it. Consuming here means the reads
+      // below cannot hang on an undrained stream if the awaited set ever changes.
+      await stream.consumeStream()
       // Settle text, usage, and finishReason together so a text rejection does
       // not leave the other two unhandled (a process-level unhandledRejection).
       const [verdict, usage, finish] = await Promise.all([stream.text, stream.usage, stream.finishReason])
