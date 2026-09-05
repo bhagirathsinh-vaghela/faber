@@ -46,13 +46,22 @@ export namespace Sessions {
     await open().then((q) => q.put.run(...row(session)))
   }
 
-  // Read-modify-write. Throws NotFoundError when the session is absent, matching
+  // Run the stored blob through the schema so its `.default(...)` clauses fill
+  // fields a pre-feature record never had (tokens, total, cost). A bare cast
+  // would leave them undefined, and a mutator like `draft.total.input += x` then
+  // throws on an old session. Lazy import breaks the storage -> session cycle.
+  async function normalize(json: string): Promise<Session.Info> {
+    const { Session } = await import("../session")
+    return Session.Info.parse(JSON.parse(json))
+  }
+
+  // Read-modify-write, throwing NotFoundError when the session is absent, like
   // Storage.update (which reads the file first).
   export async function update(sessionID: string, fn: (draft: Session.Info) => void) {
     const q = await open()
     const stored = q.get.get(sessionID)
     if (!stored) throw new Storage.NotFoundError({ message: `Session not found: ${sessionID}` })
-    const draft = JSON.parse(stored.json) as Session.Info
+    const draft = await normalize(stored.json)
     fn(draft)
     q.put.run(...row(draft))
     return draft
@@ -61,12 +70,12 @@ export namespace Sessions {
   export async function read(sessionID: string) {
     const stored = await open().then((q) => q.get.get(sessionID))
     if (!stored) throw new Storage.NotFoundError({ message: `Session not found: ${sessionID}` })
-    return JSON.parse(stored.json) as Session.Info
+    return normalize(stored.json)
   }
 
   export async function listProject(projectID: string) {
     const rows = await open().then((q) => q.listProject.all(projectID))
-    return rows.map((r) => JSON.parse(r.json) as Session.Info)
+    return Promise.all(rows.map((r) => normalize(r.json)))
   }
 
   export async function remove(sessionID: string) {
@@ -101,7 +110,7 @@ export namespace Sessions {
       const s = (await Bun.file(path.join(dir, entry)).json().catch(() => undefined)) as Session.Info | undefined
       if (!s?.id || !s.projectID || !s.time?.created || !s.time?.updated) continue
       batch.push(s)
-      if (batch.length >= 5000) {
+      if (batch.length >= Db.MIGRATE_CHUNK) {
         flush(batch)
         batch = []
       }

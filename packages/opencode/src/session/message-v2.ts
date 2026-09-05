@@ -761,6 +761,11 @@ export namespace MessageV2 {
   // The model stamped when a session has never had a real send establish one.
   export const UNKNOWN_MODEL = { providerID: "unknown", modelID: "unknown" }
 
+  // The agent shown for a subtask whose record names none. An honest "unknown"
+  // rather than a plausible real agent, matching UNKNOWN_MODEL, so a display
+  // projection never claims a subtask ran as an agent it may not have.
+  export const UNKNOWN_AGENT = "unknown"
+
   // The parameters a synthetic mint runs as: the session's persistent pick,
   // each resolved through config so a name the config has since dropped is not
   // used. The model is checked against the provider (getModel throws for a model
@@ -769,7 +774,13 @@ export namespace MessageV2 {
   // per-model variant with it.
   export async function currentParams(sessionID: string, messages: WithParts[]) {
     const { Provider } = await import("@/provider/provider")
+    const { Agent } = await import("@/agent/agent")
     const stored = await current(sessionID)
+    // The agent, like the model below, falls back to the configured default
+    // (which honours cfg.default_agent). defaultAgent throws on a misconfigured
+    // default; this is a synthetic delivery that must never crash the turn, so it
+    // degrades to the built-in "build" rather than propagating the throw.
+    const agent = stored?.agent ?? (await Agent.defaultAgent().catch(() => "build"))
     const valid = stored?.model
       ? await Provider.getModel(stored.model.providerID, stored.model.modelID).then(
           () => true,
@@ -777,8 +788,8 @@ export namespace MessageV2 {
         )
       : false
     return valid
-      ? { agent: stored!.agent ?? "build", model: stored!.model!, variant: stored!.variant }
-      : { agent: stored?.agent ?? "build", model: (await Provider.defaultModel().catch(() => UNKNOWN_MODEL)), variant: undefined }
+      ? { agent, model: stored!.model!, variant: stored!.variant }
+      : { agent, model: await Provider.defaultModel().catch(() => UNKNOWN_MODEL), variant: undefined }
   }
 
   // The wire block position for the next synthetic message minted into a session:

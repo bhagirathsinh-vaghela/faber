@@ -101,8 +101,6 @@ export namespace Parts {
     return open().then((q) => q.removeSession)
   }
 
-  const MIGRATE_CHUNK = 5000
-
   // Import the legacy `part/<messageID>/<partID>.json` tree into the table. Run
   // with the server DOWN so no concurrent write races the glob — quiescence is
   // the correctness guarantee, not a lock. Idempotent via INSERT OR IGNORE on the
@@ -139,7 +137,7 @@ export namespace Parts {
       readable++
       const json = JSON.stringify(part)
       batch.push({ id: part.id, messageID: part.messageID, sessionID: part.sessionID, json, length: Buffer.byteLength(json) })
-      if (batch.length >= MIGRATE_CHUNK) {
+      if (batch.length >= Db.MIGRATE_CHUNK) {
         flush(batch)
         batch = []
       }

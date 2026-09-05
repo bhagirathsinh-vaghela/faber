@@ -17,6 +17,11 @@ import { Storage } from "./storage"
 // WAL is a local-filesystem journal mode: pointing Global.Path.data at NFS would
 // corrupt it. Keep storage on local disk.
 export namespace Db {
+  // Rows per migration transaction: one fsync's worth, small enough that a
+  // 272k-file import never holds gigabytes of pending rows in memory. Shared so
+  // all three facades' migrators chunk identically.
+  export const MIGRATE_CHUNK = 5000
+
   export const open = lazy(async () => {
     // Wait for the storage dir to exist (migrations that fill these tables from
     // the legacy JSON tree run as a standalone command, not here).

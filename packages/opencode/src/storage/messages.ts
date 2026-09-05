@@ -114,7 +114,7 @@ export namespace Messages {
       const m = (await Bun.file(path.join(dir, entry)).json().catch(() => undefined)) as MessageV2.Info | undefined
       if (!m?.id || !m.sessionID || !m.time?.created) continue
       batch.push(m)
-      if (batch.length >= 5000) {
+      if (batch.length >= Db.MIGRATE_CHUNK) {
         flush(batch)
         batch = []
       }

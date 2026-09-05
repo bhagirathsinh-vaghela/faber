@@ -59,4 +59,28 @@ describe("Sessions", () => {
     await Sessions.remove(s.id)
     await expect(Sessions.read(s.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
   })
+
+  test("an old record missing tokens/total/cost reads back with the schema defaults", async () => {
+    const old = {
+      id: "ses_old",
+      slug: "ses_old",
+      projectID: "proj_a",
+      directory: "/tmp",
+      title: "old",
+      version: "0.0.0",
+      time: { created: 1, updated: 1 },
+    } as unknown as Session.Info
+    await Sessions.write(old)
+
+    const read = await Sessions.read(old.id)
+    expect(read.total).toEqual({ input: 0, output: 0, cacheWrite: 0 })
+    expect(read.cost).toBe(0)
+    expect(read.tokens.input).toBe(0)
+
+    // A mutator like the finish-step usage write must not throw on the old record.
+    const updated = await Sessions.update(old.id, (draft) => {
+      draft.total.input += 5
+    })
+    expect(updated.total.input).toBe(5)
+  })
 })

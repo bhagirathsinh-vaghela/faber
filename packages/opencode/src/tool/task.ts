@@ -282,7 +282,9 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
       continue
     }
     const model = child.current.model
-    const agentName = child.current.agent ?? "build"
+    // defaultAgent throws on a misconfigured default; a resume must not abort the
+    // whole loop for a config fault, so degrade to the built-in "build".
+    const agentName = child.current.agent ?? (await Agent.defaultAgent().catch(() => "build"))
     const agent = await Agent.get(agentName).catch(() => undefined)
     if (!agent) {
       log.error("cannot resume subtask, agent gone", { child: child.id, agent: agentName })
@@ -348,7 +350,7 @@ export async function subtasksForSession(parentSessionID: string): Promise<Backg
       time: { created: child.time.created, ...(last?.time.completed ? { completed: last.time.completed } : {}) },
       subagent: {
         sessionID: child.id,
-        agent: child.current?.agent ?? "build",
+        agent: child.current?.agent ?? MessageV2.UNKNOWN_AGENT,
         prompt: "",
         model: child.current?.model ?? MessageV2.UNKNOWN_MODEL,
       },
