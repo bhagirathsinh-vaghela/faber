@@ -288,6 +288,39 @@ export namespace Session {
         info: Info,
       }),
     ),
+    // The per-step token/cost refresh fires many times a turn (once per
+    // step, plus once on the parent of a subtask). Broadcasting the whole ~2.5KB
+    // Info each time is the session stream's dominant recurring cost, and the SSE
+    // stream is uncompressed by design (compressing text/event-stream buffers and
+    // breaks flush). This carries ONLY the aggregates that change on that path.
+    // The values are absolute, not deltas, so a dropped event self-heals on the
+    // next one (no base-state to desync, unlike a JSON Patch). Live per-step
+    // token counts already reach the client on the assistant message via
+    // message.updated; this covers the session-lifetime total/cost the
+    // record uniquely holds.
+    TotalsUpdated: BusEvent.define(
+      "session.totals-updated",
+      z.object({
+        sessionID: z.string(),
+        total: Info.shape.total,
+        cost: Info.shape.cost,
+      }),
+    ),
+    // The per-step cache-anchor refresh (dispatch time + cache markers + system
+    // block count) also fires once per step, so it has the same full-record cost
+    // as the token path and gets the same lean treatment. Only the TUI reads
+    // these fields (cache.lastRequestAt for its countdown, cacheMarkers for its
+    // debug line); the web dock reads its countdown from the ping hub instead, so
+    // the web client can ignore this event entirely while the TUI applies it.
+    CacheUpdated: BusEvent.define(
+      "session.cache-updated",
+      z.object({
+        sessionID: z.string(),
+        cache: Info.shape.cache,
+        cacheMarkers: Info.shape.cacheMarkers,
+        systemBlockCount: Info.shape.systemBlockCount,
+      }),
+    ),
     Deleted: BusEvent.define(
       "session.deleted",
       z.object({
@@ -543,6 +576,39 @@ export namespace Session {
         info: result,
       })
     return result
+  }
+
+  // The per-step token/cost refresh. Persists the record (still the source
+  // of truth) but broadcasts the lean TotalsUpdated event instead of the full
+  // ~2.5KB session.updated, since this runs many times a turn on an uncompressed
+  // SSE stream. Writes through the storage layer directly (no time.updated bump);
+  // the sidebar sorts on time.updated but pins a busy session to the top for the
+  // turn, so a totals refresh does not need to re-bump it. No no-op guard: every
+  // caller here has real new numbers, and the aggregates are small enough that a
+  // serialize-to-diff would cost more than it saves.
+  export async function updateTotals(id: string, editor: (session: Info) => void) {
+    const session = await Sessions.update(id, editor)
+    indexed(session)
+    Bus.publish(Event.TotalsUpdated, {
+      sessionID: id,
+      total: session.total,
+      cost: session.cost,
+    })
+    return session
+  }
+
+  // Lean cache-anchor refresh, the CacheUpdated counterpart to updateTotals.
+  // This write intentionally does NOT bump time.updated.
+  export async function updateCache(id: string, editor: (session: Info) => void) {
+    const session = await Sessions.update(id, editor)
+    indexed(session)
+    Bus.publish(Event.CacheUpdated, {
+      sessionID: id,
+      cache: session.cache,
+      cacheMarkers: session.cacheMarkers,
+      systemBlockCount: session.systemBlockCount,
+    })
+    return session
   }
 
   // Record an agent switch (plan_enter/plan_exit) on the session's established

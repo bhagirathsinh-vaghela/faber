@@ -540,9 +540,19 @@ export default function Layout(props: ParentProps) {
     })
   })
 
-  function sortSessions(now: number) {
+  function sortSessions(now: number, directory: string) {
     const oneMinuteAgo = now - 60 * 1000
     return (a: Session, b: Session) => {
+      // A working session pins to the top for the whole turn. time.updated is
+      // bumped once at turn start and no longer per step (the per-step token/cache
+      // writes went lean and skip the bump), so on a turn past 60s the recency
+      // tier below would otherwise let a freshly-touched peer overtake the session
+      // that is actively working. busyShown is the same predicate the row's own
+      // spinner uses (a turn OR a running background job), so a spinning row and
+      // its sort position never disagree.
+      const aBusy = busyShown(globalSync.busy(directory, a.id))
+      const bBusy = busyShown(globalSync.busy(directory, b.id))
+      if (aBusy !== bBusy) return aBusy ? -1 : 1
       const aUpdated = a.time.updated ?? a.time.created
       const bUpdated = b.time.updated ?? b.time.created
       const aRecent = aUpdated > oneMinuteAgo
@@ -588,16 +598,18 @@ export default function Layout(props: ParentProps) {
 
   const workspaceKey = (directory: string) => directory.replace(/[\\/]+$/, "")
 
-  // Session lists re-derive on every session.updated (~6/turn: time.updated,
-  // cost, title), but the rendered order rarely moves. Keying the list memos on
-  // the ordered id sequence suppresses a new array (and the <For> reconcile it
-  // drives) when only the churny fields changed and the order held.
+  // Session lists re-derive on every session.updated (title, seen, summary and
+  // other lifecycle fields; the per-step token/cache churn rides lean events
+  // that do not carry a full record), but the rendered order rarely moves.
+  // Keying the list memos on the ordered id sequence suppresses a new array (and
+  // the <For> reconcile it drives) when only the churny fields changed and the
+  // order held.
   const sameOrder = (a: Session[], b: Session[]) => a.length === b.length && a.every((s, i) => s.id === b[i].id)
 
   const currentSessions = createMemo(() => {
     const project = currentProject()
     if (!project) return [] as Session[]
-    const compare = sortSessions(Date.now())
+    const compare = sortSessions(Date.now(), project.worktree)
     const [projectStore] = globalSync.child(project.worktree)
     return projectStore.session
       .filter((session) => session.directory === projectStore.path.directory)
@@ -2164,7 +2176,7 @@ export default function Layout(props: ParentProps) {
         workspaceStore.session
           .filter((session) => session.directory === workspaceStore.path.directory)
           .filter((session) => !session.parentID && !session.time?.archived)
-          .toSorted(sortSessions(Date.now())),
+          .toSorted(sortSessions(Date.now(), props.project.worktree)),
       [] as Session[],
       { equals: sameOrder },
     )

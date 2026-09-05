@@ -128,7 +128,11 @@ export namespace SessionProcessor {
             // Anchor the cache TTL to request dispatch time (parent sessions only) —
             // every request that reaches Anthropic restarts the 5m cache window.
             const dispatchedAt = Date.now()
-            await Session.update(input.sessionID, (draft) => {
+            // updateCache, not update: this fires once per step, so it broadcasts
+            // the lean CacheUpdated event rather than the whole record. Only the
+            // TUI reads these fields; the web dock takes its countdown from the
+            // ping hub.
+            await Session.updateCache(input.sessionID, (draft) => {
               draft.cacheMarkers = cacheMarkers
               draft.systemBlockCount = systemBlockCount
               if (!draft.parentID) draft.cache = { lastRequestAt: dispatchedAt }
@@ -378,7 +382,13 @@ export namespace SessionProcessor {
                   input.assistantMessage.tokens = usage.tokens
                   const weightedInput = SessionPricing.weightedInput(usage.tokens)
                   const weightedOutput = usage.tokens.output + usage.tokens.reasoning
-                  const updated = await Session.update(input.sessionID, (draft) => {
+                  // updateTotals, not update: this fires once per step (and again
+                  // for the parent of a subtask), so it broadcasts the lean
+                  // TotalsUpdated event rather than the full session record. The
+                  // live per-step token counts reach the client on the assistant
+                  // message via message.updated; the session record uniquely holds
+                  // the lifetime total/cost, which this carries.
+                  const updated = await Session.updateTotals(input.sessionID, (draft) => {
                     draft.tokens.input = usage.tokens.input
                     draft.tokens.cacheRead = usage.tokens.cache.read
                     draft.tokens.cacheWrite = usage.tokens.cache.write
@@ -392,7 +402,7 @@ export namespace SessionProcessor {
                     draft.cost += stepCost
                   })
                   if (updated.parentID) {
-                    await Session.update(updated.parentID, (draft) => {
+                    await Session.updateTotals(updated.parentID, (draft) => {
                       draft.total.input += weightedInput
                       draft.total.output += weightedOutput
                       draft.total.cacheWrite += usage.tokens.cache.write

@@ -512,7 +512,13 @@ export namespace SessionPing {
           // Keepalive pings are real API charges, so they count toward the same
           // session total as a normal turn, priced by the same function.
           const stepCost = await usage.cost
-          await Session.update(sessionID, (draft) => {
+          // updateTotals, not update: a ping refreshes only tokens/total/cost,
+          // the same field set as the per-step turn path, so it broadcasts the
+          // lean TotalsUpdated event rather than the whole record. A ping writes
+          // no message, so there is no message.updated here — but the live dock
+          // reads lifetime total/cost off the record, which the lean event
+          // carries.
+          await Session.updateTotals(sessionID, (draft) => {
             draft.tokens.input = usage.tokens.input
             draft.tokens.cacheRead = usage.tokens.cache.read
             draft.tokens.cacheWrite = usage.tokens.cache.write

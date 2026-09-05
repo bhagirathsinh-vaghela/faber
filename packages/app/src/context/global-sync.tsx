@@ -1102,6 +1102,36 @@ function createGlobalSync() {
         setStore("session", reconcile(trimmed, { key: "id" }))
         break
       }
+      case "session.totals-updated": {
+        // The lean per-step counterpart to session.updated: apply the absolute
+        // total/cost onto the cached record in place, path-targeting the
+        // leaves so the row's identity is stable (no array rebuild, no remount).
+        // A record not in the store is a no-op — the values are absolute, so the
+        // next full fetch or open carries the current numbers with no desync to
+        // recover (unlike a delta patch, a missed event costs nothing).
+        const props = event.properties
+        const found = Binary.search(store.session, props.sessionID, (s) => s.id)
+        if (!found.found) break
+        // total/cost are typed optional (schema .default), but the server always
+        // sends real values. Guard anyway so a future wire that omits them can
+        // never blank the dock.
+        if (props.total !== undefined) setStore("session", found.index, "total", props.total)
+        if (props.cost !== undefined) setStore("session", found.index, "cost", props.cost)
+        break
+      }
+      case "session.cache-updated": {
+        // The lean per-step counterpart for the cache anchor (TUI-only fields).
+        // The web dock reads none of these, so applying them keeps the cached
+        // record complete without driving any web render. No-op when absent, same
+        // as totals.
+        const props = event.properties
+        const found = Binary.search(store.session, props.sessionID, (s) => s.id)
+        if (!found.found) break
+        setStore("session", found.index, "cache", props.cache)
+        setStore("session", found.index, "cacheMarkers", props.cacheMarkers)
+        setStore("session", found.index, "systemBlockCount", props.systemBlockCount)
+        break
+      }
       case "session.deleted": {
         const sessionID = event.properties.info.id
         const result = Binary.search(store.session, sessionID, (s) => s.id)

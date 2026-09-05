@@ -12328,6 +12328,32 @@
               "at"
             ]
           },
+          "current": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "model": {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "providerID",
+                  "modelID"
+                ]
+              },
+              "variant": {
+                "type": "string"
+              }
+            }
+          },
           "summary": {
             "type": "object",
             "properties": {
@@ -12650,6 +12676,102 @@
             },
             "required": [
               "info"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.totals-updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.totals-updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "total": {
+                "default": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheWrite": 0
+                },
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number"
+                  },
+                  "output": {
+                    "type": "number"
+                  },
+                  "cacheWrite": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "input",
+                  "output",
+                  "cacheWrite"
+                ]
+              },
+              "cost": {
+                "default": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "sessionID"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.cache-updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.cache-updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "cache": {
+                "type": "object",
+                "properties": {
+                  "lastRequestAt": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "lastRequestAt"
+                ]
+              },
+              "cacheMarkers": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "systemBlockCount": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "sessionID"
             ]
           }
         },
@@ -13503,6 +13625,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.totals-updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.cache-updated"
           },
           {
             "$ref": "#/components/schemas/Event.session.deleted"

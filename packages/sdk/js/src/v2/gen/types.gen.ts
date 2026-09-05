@@ -1111,6 +1111,31 @@ export type EventSessionUpdated = {
   }
 }
 
+export type EventSessionTotalsUpdated = {
+  type: "session.totals-updated"
+  properties: {
+    sessionID: string
+    total?: {
+      input: number
+      output: number
+      cacheWrite: number
+    }
+    cost?: number
+  }
+}
+
+export type EventSessionCacheUpdated = {
+  type: "session.cache-updated"
+  properties: {
+    sessionID: string
+    cache?: {
+      lastRequestAt: number
+    }
+    cacheMarkers?: Array<number>
+    systemBlockCount?: number
+  }
+}
+
 export type EventSessionDeleted = {
   type: "session.deleted"
   properties: {
@@ -1350,6 +1375,8 @@ export type Event =
   | EventSessionWorking
   | EventSessionCreated
   | EventSessionUpdated
+  | EventSessionTotalsUpdated
+  | EventSessionCacheUpdated
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError

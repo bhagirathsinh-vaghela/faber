@@ -232,6 +232,23 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
 
+        case "session.totals-updated": {
+          const match = Binary.search(store.session, event.properties.sessionID, (s) => s.id)
+          if (!match.found) break
+          if (event.properties.total !== undefined) setStore("session", match.index, "total", event.properties.total)
+          if (event.properties.cost !== undefined) setStore("session", match.index, "cost", event.properties.cost)
+          break
+        }
+
+        case "session.cache-updated": {
+          const match = Binary.search(store.session, event.properties.sessionID, (s) => s.id)
+          if (!match.found) break
+          setStore("session", match.index, "cache", event.properties.cache)
+          setStore("session", match.index, "cacheMarkers", event.properties.cacheMarkers)
+          setStore("session", match.index, "systemBlockCount", event.properties.systemBlockCount)
+          break
+        }
+
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
           break
