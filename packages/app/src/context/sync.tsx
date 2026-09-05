@@ -36,6 +36,10 @@ export const {
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
+    // In-flight GET /session/:id, so the two effects that both open a session
+    // (the route-change sync and the first-connect reconnect sync, which race on
+    // a fresh open) share ONE record fetch instead of each issuing its own.
+    const inflightSession = new Map<string, Promise<void>>()
     // Sessions whose reconnect heal landed while a load was already running, so
     // it has to be re-run once that load settles.
     const pendingHeal = new Set<string>()
@@ -50,6 +54,49 @@ export const {
       const match = Binary.search(store.session, sessionID, (s) => s.id)
       if (match.found) return store.session[match.index]
       return undefined
+    }
+
+    // One GET /session/:id per open, doing BOTH jobs the open needs from it:
+    // it is the server's arm-on-attach hook for the cache-ping daemon
+    // (idempotent, self-stops if the window is dead), AND its result fills the
+    // store when the record is missing. `getSession` returning undefined means
+    // "not cached", never "does not exist", so a load path that can leave the
+    // record out (a message-only heal, an eviction that kept the transcript)
+    // resolves the miss through this rather than reading it as absent. Coalesced
+    // into the single fetch the open already made, so a cold open costs one
+    // record round-trip, not two (the record is 2.5KB, so this matters on
+    // cellular). Errors are swallowed: arming is best-effort and a failed fill
+    // just leaves the miss to the next open.
+    const armAndFillSession = (directory: string, client: typeof sdk.client, setStore: Setter, sessionID: string) => {
+      const key = keyFor(directory, sessionID)
+      const existing = inflightSession.get(key)
+      if (existing) return existing
+      // Single-flight: store the promise, delete on settle (in finally, so a
+      // caller arriving just after this resolves starts a fresh fetch rather
+      // than joining a dead one). Errors are swallowed: arming is best-effort
+      // and a failed fill just leaves the miss to the next open.
+      const promise = retry(() => client.session.get({ sessionID }))
+        .then((session) => {
+          const record = session.data
+          if (!record) return
+          // bootstrap:false — a pure read of current store state, never a
+          // trigger for the per-directory fan-out (the child already exists by
+          // the time a fetch settles).
+          const store = globalSync.child(directory, { bootstrap: false })[0]
+          if (Binary.search(store.session, sessionID, (s) => s.id).found) return
+          setStore(
+            "session",
+            produce((draft) => {
+              const match = Binary.search(draft, sessionID, (s) => s.id)
+              if (match.found) draft[match.index] = record
+              else draft.splice(match.index, 0, record)
+            }),
+          )
+        })
+        .catch(() => {})
+        .finally(() => inflightSession.delete(key))
+      inflightSession.set(key, promise)
+      return promise
     }
 
     const limitFor = (count: number) => {
@@ -358,13 +405,13 @@ export const {
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
 
-          // Re-arm the cache-ping daemon on every open. GET /session/:id is the
-          // server's arm-on-attach hook (idempotent, self-stops if the cache
-          // window is dead). It fires here UNCONDITIONALLY — before the cached
-          // early-return below and independent of the data-load path, which
-          // skips the fetch when the session is already in the store. Without
-          // this, reopening an already-loaded recent session never re-armed.
-          void client.session.get({ sessionID }).catch(() => {})
+          // Re-arm the cache-ping daemon on every open AND fill the record if it
+          // is missing, from ONE GET /session/:id. Fires UNCONDITIONALLY (before
+          // the cached early-return below): arming is needed on every open, even
+          // when the record is already cached, or reopening a loaded recent
+          // session never re-arms. The promise is reused by both load paths
+          // below so no path issues a second record fetch.
+          const sessionReq = armAndFillSession(directory, client, setStore, sessionID)
 
           // Subscribe-before-snapshot: make sure the server has
           // this session in our event-interest set BEFORE we read its snapshot,
@@ -381,7 +428,15 @@ export const {
           // the whole loaded window; it falls back to a full load when there is
           // no delta boundary yet.
           if (force && hydrated) {
-            return deltaMessages({ directory, client, setStore, sessionID, limit: meta.limit[key]! })
+            // deltaMessages touches only message/part, never session. A record
+            // absent while messages are hydrated would otherwise never be
+            // filled on this path, leaving getSession a permanent miss (blank
+            // title). Wait on the session fetch (which fills it) alongside the
+            // message heal, reusing that one fetch rather than issuing another.
+            return Promise.all([
+              sessionReq,
+              deltaMessages({ directory, client, setStore, sessionID, limit: meta.limit[key]! }),
+            ]).then(() => {})
           }
 
           if (hasSession && hasMessages && hydrated) return
@@ -393,24 +448,6 @@ export const {
           // fresh bootstrap paints the tail first; a hydrated/resume load keeps
           // whatever was already loaded
           const initial = hydrated ? full : Math.min(tail, full)
-
-          const sessionReq = hasSession
-            ? Promise.resolve()
-            : retry(() => client.session.get({ sessionID })).then((session) => {
-                const data = session.data
-                if (!data) return
-                setStore(
-                  "session",
-                  produce((draft) => {
-                    const match = Binary.search(draft, sessionID, (s) => s.id)
-                    if (match.found) {
-                      draft[match.index] = data
-                      return
-                    }
-                    draft.splice(match.index, 0, data)
-                  }),
-                )
-              })
 
           const messagesReq =
             hasMessages && hydrated
