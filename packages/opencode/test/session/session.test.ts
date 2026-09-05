@@ -72,6 +72,42 @@ describe("session.started event", () => {
   })
 })
 
+describe("session.remove", () => {
+  test("drops the session, its messages, and its parts together", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const session = await Session.create({})
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: messageID,
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "build",
+          model: { providerID: "anthropic", modelID: "claude-x" },
+        } as MessageV2.User)
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID,
+          sessionID: session.id,
+          type: "text",
+          text: "hello",
+        })
+
+        await Session.remove(session.id)
+
+        const { Parts } = await import("../../src/storage/parts")
+        const { Messages } = await import("../../src/storage/messages")
+        const { Sessions } = await import("../../src/storage/sessions")
+        expect((await Parts.list(messageID)).parts).toEqual([])
+        expect(await Messages.read(messageID).catch(() => undefined)).toBeUndefined()
+        expect(await Sessions.read(session.id).catch(() => undefined)).toBeUndefined()
+      },
+    })
+  })
+})
+
 describe("session index", () => {
   async function ids() {
     const result: string[] = []

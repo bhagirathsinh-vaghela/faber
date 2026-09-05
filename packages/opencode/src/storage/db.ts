@@ -30,4 +30,13 @@ export namespace Db {
     db.run("PRAGMA foreign_keys = ON")
     return db
   })
+
+  // Run writes as one atomic unit on the shared connection, so a crash between
+  // them cannot leave a record half-deleted (an orphan part whose message is
+  // gone, a session row with no transcript). The callback runs synchronously
+  // inside bun:sqlite's transaction; a caller awaits its statements ready first.
+  export async function transaction(fn: () => void) {
+    const db = await open()
+    db.transaction(fn)()
+  }
 }

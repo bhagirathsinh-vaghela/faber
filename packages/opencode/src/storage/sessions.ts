@@ -73,6 +73,10 @@ export namespace Sessions {
     await open().then((q) => q.remove.run(sessionID))
   }
 
+  export async function removeQuery() {
+    return open().then((q) => q.remove)
+  }
+
   // Import the legacy `session/<projectID>/<sessionID>.json` tree into the table.
   // Same contract as Parts.migrate: server DOWN, INSERT OR IGNORE (idempotent),
   // non-destructive. Returns { scanned, inserted }.

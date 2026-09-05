@@ -14,6 +14,7 @@ import { Storage } from "../storage/storage"
 import { Parts } from "../storage/parts"
 import { Messages } from "../storage/messages"
 import { Sessions } from "../storage/sessions"
+import { Db } from "../storage/db"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionRecent } from "./recent"
@@ -659,11 +660,19 @@ export namespace Session {
         await remove(child.id)
       }
       await unshare(sessionID).catch(() => {})
-      // Drop the whole session in three indexed statements (parts, messages, the
-      // session row) rather than a file unlink per record.
-      await Parts.removeSession(sessionID)
-      await Messages.removeSession(sessionID)
-      await Sessions.remove(sessionID)
+      // Drop the whole session (parts, messages, the session row) in ONE
+      // transaction, so a crash between the levels cannot leave orphan parts or a
+      // session row with no transcript.
+      const [parts, messages, session_] = await Promise.all([
+        Parts.removeSessionQuery(),
+        Messages.removeSessionQuery(),
+        Sessions.removeQuery(),
+      ])
+      await Db.transaction(() => {
+        parts.run(sessionID)
+        messages.run(sessionID)
+        session_.run(sessionID)
+      })
       index().entries.delete(sessionID)
       void SessionRecent.remove(sessionID)
       Bus.publish(Event.Deleted, {

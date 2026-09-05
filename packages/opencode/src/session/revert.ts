@@ -117,9 +117,11 @@ export namespace SessionRevert {
     const [preserve, remove] = splitWhen(msgs, (x) => x.info.id === messageID)
     msgs = preserve
     for (const msg of remove) {
-      await Messages.remove(msg.info.id)
-      // Cascade the message's parts: an orphan row is never swept.
+      // Parts first: a crash between the two would otherwise leave the message's
+      // parts as orphan rows (the message that owns them is already gone), and
+      // nothing sweeps an orphan part.
       await Parts.removeMessage(msg.info.id)
+      await Messages.remove(msg.info.id)
       await Bus.publish(MessageV2.Event.Removed, { sessionID: sessionID, messageID: msg.info.id })
     }
     const last = preserve.at(-1)

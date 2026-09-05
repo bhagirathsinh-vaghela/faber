@@ -95,6 +95,12 @@ export namespace Parts {
     await open().then((q) => q.removeSession.run(sessionID))
   }
 
+  // The prepared DELETE, so Session.remove can drop parts, messages, and the
+  // session row in one transaction instead of three awaits a crash can interleave.
+  export async function removeSessionQuery() {
+    return open().then((q) => q.removeSession)
+  }
+
   const MIGRATE_CHUNK = 5000
 
   // Import the legacy `part/<messageID>/<partID>.json` tree into the table. Run

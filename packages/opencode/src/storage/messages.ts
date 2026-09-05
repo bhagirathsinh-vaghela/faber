@@ -90,6 +90,10 @@ export namespace Messages {
     await open().then((q) => q.removeSession.run(sessionID))
   }
 
+  export async function removeSessionQuery() {
+    return open().then((q) => q.removeSession)
+  }
+
   // Import the legacy `message/<sessionID>/<messageID>.json` tree into the table.
   // Same contract as Parts.migrate: server DOWN, INSERT OR IGNORE (idempotent),
   // non-destructive. Returns { scanned, inserted }.
