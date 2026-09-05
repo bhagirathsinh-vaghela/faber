@@ -124,6 +124,26 @@ describe("session.retry.retryable", () => {
     const error = wrap("not-json")
     expect(SessionRetry.retryable(error)).toBeUndefined()
   })
+
+  test("retries a 500 even when the provider marks it non-retryable", () => {
+    // Anthropic's mid-stream fault: statusCode 500, isRetryable false, and a body
+    // mislabeled as a rate limit. A server error is transient and must retry.
+    const error = new MessageV2.APIError({
+      message: `{"type":"rate_limit_error","message":"Rate limited"}`,
+      isRetryable: false,
+      statusCode: 500,
+    }).toObject() as MessageV2.APIError
+    expect(SessionRetry.retryable(error)).toBe(`{"type":"rate_limit_error","message":"Rate limited"}`)
+  })
+
+  test("does not retry a real 429 that the provider marks non-retryable", () => {
+    const error = new MessageV2.APIError({
+      message: "rate limited",
+      isRetryable: false,
+      statusCode: 429,
+    }).toObject() as MessageV2.APIError
+    expect(SessionRetry.retryable(error)).toBeUndefined()
+  })
 })
 
 describe("session.message-v2.fromError", () => {
