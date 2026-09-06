@@ -38,14 +38,14 @@ export const DialogPending: Component = () => {
     const sessionID = params.id
     if (!sessionID) return
     const res = await sdk.client.background.getPending({ sessionID })
-    setPending(reconcile(res.data ?? [], { key: "taskId" }))
+    setPending(reconcile(res.data ?? [], { key: "subagentId" }))
   })
 
-  const unsub = sdk.event.on("background.task.result_pending", (evt) => {
+  const unsub = sdk.event.on("background.subagent.result_pending", (evt) => {
     if (evt.properties.sessionID !== params.id) return
     setPending(
       produce((list) => {
-        if (!list.some((p) => p.taskId === evt.properties.pending.taskId)) list.push(evt.properties.pending)
+        if (!list.some((p) => p.subagentId === evt.properties.pending.subagentId)) list.push(evt.properties.pending)
       }),
     )
   })
@@ -53,18 +53,18 @@ export const DialogPending: Component = () => {
 
   const items = createMemo(() => pending)
 
-  const toggle = (taskId: string) => {
+  const toggle = (subagentId: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(taskId)) next.delete(taskId)
-      else next.add(taskId)
+      if (next.has(subagentId)) next.delete(subagentId)
+      else next.add(subagentId)
       return next
     })
   }
 
   const toggleAll = () => {
     const all = items()
-    setSelected((prev) => (prev.size === all.length ? new Set<string>() : new Set(all.map((p) => p.taskId))))
+    setSelected((prev) => (prev.size === all.length ? new Set<string>() : new Set(all.map((p) => p.subagentId))))
   }
 
   const acceptSelected = async () => {
@@ -76,7 +76,7 @@ export const DialogPending: Component = () => {
     for (let i = 0; i < ids.length; i++) {
       await sdk.client.background.acceptPending({
         sessionID: params.id!,
-        taskId: ids[i],
+        subagentId: ids[i],
         triggerLLM: i === ids.length - 1,
       })
     }
@@ -96,9 +96,9 @@ export const DialogPending: Component = () => {
         class="flex-1 min-h-0 [&_[data-slot=list-search-wrapper]]:sr-only [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
         search={{ autofocus: true }}
         emptyMessage={language.t("dialog.pending.empty")}
-        key={(x) => x.taskId}
+        key={(x) => x.subagentId}
         items={items}
-        onSelect={(p) => p && toggle(p.taskId)}
+        onSelect={(p) => p && toggle(p.subagentId)}
         onKeyEvent={(event, p) => {
           if (event.ctrlKey && event.key.toLowerCase() === "a") {
             event.preventDefault()
@@ -117,13 +117,13 @@ export const DialogPending: Component = () => {
         {(p) => (
           <div class="w-full flex items-center gap-2">
             <Icon
-              name={selected().has(p.taskId) ? "circle-check" : "circle-x"}
-              class={selected().has(p.taskId) ? "text-success" : "text-text-weak opacity-40"}
+              name={selected().has(p.subagentId) ? "circle-check" : "circle-x"}
+              class={selected().has(p.subagentId) ? "text-success" : "text-text-weak opacity-40"}
             />
             <div class="flex-1 min-w-0 flex flex-col text-left">
               <span class="truncate font-normal">{p.description}</span>
               <span class="truncate text-text-weak font-normal">
-                {(p.agent ?? p.type) + " · " + elapsed(p.duration)}
+                {(p.agent ?? "subagent") + " · " + elapsed(p.duration)}
               </span>
             </div>
           </div>

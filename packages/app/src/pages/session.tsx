@@ -71,7 +71,7 @@ import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { useStash } from "@/context/stash"
 import { DialogStash } from "@/components/dialog-stash"
-import { DialogTasks } from "@/components/dialog-tasks"
+import { DialogSubagents } from "@/components/dialog-subagents"
 import { DialogOverview } from "@/components/dialog-overview"
 import { DialogPending } from "@/components/dialog-pending"
 import { useComments, type LineComment } from "@/context/comments"
@@ -1323,13 +1323,13 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogStash />),
     },
     {
-      id: "task.list",
-      title: language.t("command.task.list"),
-      description: language.t("command.task.list.description"),
+      id: "subagent.list",
+      title: language.t("command.subagent.list"),
+      description: language.t("command.subagent.list.description"),
       category: language.t("command.category.session"),
       keybind: "alt+a",
       disabled: !params.id,
-      onSelect: () => dialog.show(() => <DialogTasks parentID={info()?.parentID} />),
+      onSelect: () => dialog.show(() => <DialogSubagents parentID={info()?.parentID} />),
     },
     {
       // Overrides the layout-level Ctrl+Tab while a session is open (session
@@ -1341,7 +1341,7 @@ export default function Page() {
       keybind: "ctrl+tab",
       onSelect: () => {
         const parent = info()?.parentID
-        if (parent) return dialog.show(() => <DialogTasks sessionID={parent} parentID={parent} switcher />)
+        if (parent) return dialog.show(() => <DialogSubagents sessionID={parent} parentID={parent} switcher />)
         dialog.show(() => <DialogOverview advance switcher />)
       },
     },
@@ -1352,14 +1352,14 @@ export default function Page() {
       keybind: "ctrl+shift+tab",
       onSelect: () => {
         const parent = info()?.parentID
-        if (parent) return dialog.show(() => <DialogTasks sessionID={parent} parentID={parent} switcher />)
+        if (parent) return dialog.show(() => <DialogSubagents sessionID={parent} parentID={parent} switcher />)
         dialog.show(() => <DialogOverview switcher />)
       },
     },
     {
-      id: "task.pending",
-      title: language.t("command.task.pending"),
-      description: language.t("command.task.pending.description"),
+      id: "subagent.pending",
+      title: language.t("command.subagent.pending"),
+      description: language.t("command.subagent.pending.description"),
       category: language.t("command.category.session"),
       keybind: "alt+d",
       disabled: !params.id,

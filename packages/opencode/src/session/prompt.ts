@@ -351,8 +351,8 @@ export namespace SessionPrompt {
         if (!part.text.trim()) continue
         const lead = part.backgroundJobResult
           ? "A background job you started has finished while you were working:"
-          : part.backgroundTaskResult
-            ? "A background task you delegated has finished while you were working:"
+          : part.backgroundSubagentResult
+            ? "A background subagent you delegated has finished while you were working:"
             : part.synthetic
               ? undefined
               : "The user sent the following message:"
@@ -514,7 +514,7 @@ export namespace SessionPrompt {
       // TODO: centralize "invoke tool" logic
       if (task?.type === "subagent") {
         const taskTool = await AgentTool.init()
-        const taskModel = task.model ? await Provider.getModel(task.model.providerID, task.model.modelID) : model
+        const subagentModel = task.model ? await Provider.getModel(task.model.providerID, task.model.modelID) : model
         const assistantMessage = (await Session.updateMessage({
           id: Identifier.ascending("message"),
           role: "assistant",
@@ -533,8 +533,8 @@ export namespace SessionPrompt {
             reasoning: 0,
             cache: { read: 0, write: 0 },
           },
-          modelID: taskModel.id,
-          providerID: taskModel.providerID,
+          modelID: subagentModel.id,
+          providerID: subagentModel.providerID,
           time: {
             created: Date.now(),
           },
@@ -682,7 +682,7 @@ export namespace SessionPrompt {
             messageID: summaryUserMsg.id,
             sessionID,
             type: "text",
-            text: "Summarize the task tool output above and continue with your task.",
+            text: "Summarize the agent tool output above and continue with your task.",
             synthetic: true,
             internal: true,
           } satisfies MessageV2.TextPart)
@@ -1583,7 +1583,7 @@ export namespace SessionPrompt {
               // An extra space is added here. Otherwise the 'Use' gets appended
               // to user's last word; making a combined word
               text:
-                " Use the above message and context to generate a prompt and call the task tool with subagent: " +
+                " Use the above message and context to generate a prompt and call the agent tool with subagent: " +
                 part.name +
                 hint,
             },
@@ -1794,7 +1794,7 @@ export namespace SessionPrompt {
     input.session.mcpCatalogText = catalog
   }
 
-  // Repo-scoped subagents ride here instead of in the task tool's description,
+  // Repo-scoped subagents ride here instead of in the agent tool's description,
   // which sits in tools[] ahead of every cache marker (see AgentCatalog). The
   // block is appended once per session and then carried as durable history.
   async function insertAgentCatalog(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
@@ -1883,7 +1883,7 @@ export namespace SessionPrompt {
       if (concise) await persistReminder(userMessage, CONCISE, CONCISE_MARKER)
     }
 
-    // A subagent reaches for the task tool, gets a denial back, and only then
+    // A subagent reaches for the agent tool, gets a denial back, and only then
     // does the work itself, having spent a turn learning it. The tool stays in
     // the schema either way (removing it would move the tools[] bytes the whole
     // prefix hashes), so the cheap fix is telling it up front.
@@ -2292,7 +2292,7 @@ export namespace SessionPrompt {
     }
     template = template.trim()
 
-    const taskModel = await (async () => {
+    const subagentModel = await (async () => {
       if (command.model) {
         return Provider.parseModel(command.model)
       }
@@ -2307,7 +2307,7 @@ export namespace SessionPrompt {
     })()
 
     try {
-      await Provider.getModel(taskModel.providerID, taskModel.modelID)
+      await Provider.getModel(subagentModel.providerID, subagentModel.modelID)
     } catch (e) {
       if (Provider.ModelNotFoundError.isInstance(e)) {
         const { providerID, modelID, suggestions } = e.data
@@ -2341,10 +2341,10 @@ export namespace SessionPrompt {
             description: command.description ?? "",
             command: input.command,
             model: {
-              providerID: taskModel.providerID,
-              modelID: taskModel.modelID,
+              providerID: subagentModel.providerID,
+              modelID: subagentModel.modelID,
             },
-            // TODO: how can we make task tool accept a more complex input?
+            // TODO: how can we make agent tool accept a more complex input?
             prompt: templateParts.find((y) => y.type === "text")?.text ?? "",
           },
         ]
@@ -2355,7 +2355,7 @@ export namespace SessionPrompt {
       ? input.model
         ? Provider.parseModel(input.model)
         : await MessageV2.model(input.sessionID)
-      : taskModel
+      : subagentModel
 
     await Plugin.trigger(
       "command.execute.before",

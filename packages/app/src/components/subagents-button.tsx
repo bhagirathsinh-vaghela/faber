@@ -14,8 +14,8 @@ export function SubagentsButton(props: { class?: string }) {
       iconSize="medium"
       variant="ghost"
       class={`shrink-0 p-0 ${props.class ?? ""}`}
-      onClick={() => command.trigger("task.list")}
-      aria-label={language.t("command.task.list")}
+      onClick={() => command.trigger("subagent.list")}
+      aria-label={language.t("command.subagent.list")}
     />
   )
 }

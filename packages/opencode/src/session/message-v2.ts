@@ -60,15 +60,14 @@ export namespace MessageV2 {
   })
   export type PatchPart = z.infer<typeof PatchPart>
 
-  export const BackgroundTaskResult = z.object({
-    taskId: z.string(),
-    type: z.enum(["subagent", "shell"]),
+  export const BackgroundSubagentResult = z.object({
+    subagentId: z.string(),
     description: z.string(),
     status: z.enum(["completed", "failed", "cancelled"]),
     agent: z.string().optional(),
     duration: z.number(),
   })
-  export type BackgroundTaskResult = z.infer<typeof BackgroundTaskResult>
+  export type BackgroundSubagentResult = z.infer<typeof BackgroundSubagentResult>
 
   // A shell job's result, kept apart from a subagent task's. They share a
   // shape and nothing else: a task has an agent and a session it reasoned in,
@@ -100,7 +99,7 @@ export namespace MessageV2 {
     // notice too — both of which ARE for the reader. A transcript hides this;
     // the model still receives it.
     internal: z.boolean().optional(),
-    backgroundTaskResult: BackgroundTaskResult.optional(),
+    backgroundSubagentResult: BackgroundSubagentResult.optional(),
     backgroundJobResult: BackgroundJobResult.optional(),
     time: z
       .object({

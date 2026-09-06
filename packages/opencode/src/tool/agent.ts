@@ -1,5 +1,5 @@
 import { Tool } from "./tool"
-import DESCRIPTION from "./task.txt"
+import DESCRIPTION from "./agent.txt"
 import z from "zod"
 import { Session } from "../session"
 import { Bus } from "../bus"
@@ -10,15 +10,14 @@ import { SessionPrompt } from "../session/prompt"
 import { SessionRevert } from "../session/revert"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
-import { BackgroundTask } from "@/background"
-import { BackgroundNotify } from "@/background/notify"
+import { BackgroundSubagent } from "@/background"
 import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 
-const log = Log.create({ service: "task-tool" })
+const log = Log.create({ service: "subagent-tool" })
 
 interface BackgroundSubagentInput {
-  task: BackgroundTask.Info
+  task: BackgroundSubagent.Info
   abort: AbortController
   session: Session.Info
   agent: Agent.Info
@@ -44,7 +43,7 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
     const part = evt.properties.part
     if (part.state.status === "completed") toolCount++
 
-    BackgroundTask.updateProgress(task.id, {
+    BackgroundSubagent.updateProgress(task.id, {
       toolCount,
       tokens: { input: 0, output: 0 },
       currentActivity: part.state.status === "running" ? `Running ${part.tool}...` : `Completed ${part.tool}`,
@@ -71,9 +70,9 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
     abort.signal.removeEventListener("abort", handleCancel)
 
     // If cancelled by user while prompt was completing, inject cancellation instead
-    const currentAfterComplete = BackgroundTask.get(task.id)
+    const currentAfterComplete = BackgroundSubagent.get(task.id)
     if (currentAfterComplete?.status === "cancelled") {
-      log.info("background subagent cancelled by user (completed race)", { taskId: task.id })
+      log.info("background subagent cancelled by user (completed race)", { subagentId: task.id })
       const duration = (task.time.completed ?? Date.now()) - task.time.created
       await doInject(task, "", undefined, duration, true, "cancelled")
       return
@@ -81,7 +80,7 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
 
     const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
 
-    BackgroundTask.complete(task.id, "completed", { output: text })
+    BackgroundSubagent.complete(task.id, "completed", { output: text })
 
     await injectCompletionResult(task, text, undefined, input.forceInject)
   } catch (error) {
@@ -89,33 +88,32 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
     abort.signal.removeEventListener("abort", handleCancel)
 
     // If already cancelled (by user via TUI), inject directly bypassing auto-inject check
-    const current = BackgroundTask.get(task.id)
+    const current = BackgroundSubagent.get(task.id)
     if (current?.status === "cancelled") {
-      log.info("background subagent cancelled by user", { taskId: task.id })
+      log.info("background subagent cancelled by user", { subagentId: task.id })
       const duration = (task.time.completed ?? Date.now()) - task.time.created
       await doInject(task, "", undefined, duration, true, "cancelled")
       return
     }
 
     const errorMsg = error instanceof Error ? error.message : String(error)
-    log.error("background subagent failed", { taskId: task.id, error: errorMsg })
+    log.error("background subagent failed", { subagentId: task.id, error: errorMsg })
 
-    BackgroundTask.complete(task.id, "failed", { output: "", error: errorMsg })
+    BackgroundSubagent.complete(task.id, "failed", { output: "", error: errorMsg })
 
     await injectCompletionResult(task, "", errorMsg, input.forceInject)
   }
 }
 
-async function injectCompletionResult(task: BackgroundTask.Info, output: string, error?: string, force?: boolean) {
+async function injectCompletionResult(task: BackgroundSubagent.Info, output: string, error?: string, force?: boolean) {
   const duration = (task.time.completed ?? Date.now()) - task.time.created
-  const autoInject = force || (await BackgroundTask.getAutoInject(task.parentSessionID))
+  const autoInject = force || (await BackgroundSubagent.getAutoInject(task.parentSessionID))
 
   // If autoInject is disabled, queue the result instead
   if (!autoInject) {
-    BackgroundTask.addPending(task.parentSessionID, {
-      taskId: task.id,
+    BackgroundSubagent.addPending(task.parentSessionID, {
+      subagentId: task.id,
       parentSessionID: task.parentSessionID,
-      type: task.type,
       description: task.description,
       agent: task.subagent?.agent,
       output,
@@ -123,8 +121,8 @@ async function injectCompletionResult(task: BackgroundTask.Info, output: string,
       completedAt: Date.now(),
       duration,
     })
-    log.info("queued background task result (autoInject disabled)", {
-      taskId: task.id,
+    log.info("queued background subagent result (autoInject disabled)", {
+      subagentId: task.id,
       parentSessionID: task.parentSessionID,
     })
     return
@@ -135,7 +133,7 @@ async function injectCompletionResult(task: BackgroundTask.Info, output: string,
 }
 
 async function doInject(
-  task: BackgroundTask.Info,
+  task: BackgroundSubagent.Info,
   output: string,
   error: string | undefined,
   duration: number,
@@ -160,9 +158,8 @@ async function doInject(
     type: "text",
     text: notification,
     synthetic: true,
-    backgroundTaskResult: {
-      taskId: task.id,
-      type: task.type,
+    backgroundSubagentResult: {
+      subagentId: task.id,
       description: task.description,
       status,
       agent: task.subagent?.agent,
@@ -170,41 +167,41 @@ async function doInject(
     },
   })
 
-  log.info("injected background task result", { taskId: task.id, parentSessionID: task.parentSessionID })
+  log.info("injected background subagent result", { subagentId: task.id, parentSessionID: task.parentSessionID })
 
-  // Trigger LLM to respond to the task result (only for auto-inject)
-  // The TASK RESULT user message we just created will be used by the loop
+  // Trigger LLM to respond to the subagent result (only for auto-inject)
+  // The subagent-result user message we just created will be used by the loop
   if (autoTriggerLLM) {
     SessionPrompt.loop(task.parentSessionID).catch((err) => {
-      log.error("failed to prompt after task result injection", { taskId: task.id, error: err })
+      log.error("failed to prompt after subagent result injection", { subagentId: task.id, error: err })
     })
   }
 }
 
 // Export for accepting pending results from TUI
-export async function acceptPendingResult(sessionID: string, taskId: string, triggerLLM = false): Promise<boolean> {
-  log.info("acceptPendingResult called", { sessionID, taskId, triggerLLM })
-  const pending = BackgroundTask.popPending(sessionID, taskId)
+export async function acceptPendingResult(sessionID: string, subagentId: string, triggerLLM = false): Promise<boolean> {
+  log.info("acceptPendingResult called", { sessionID, subagentId, triggerLLM })
+  const pending = BackgroundSubagent.popPending(sessionID, subagentId)
   if (!pending) {
-    log.warn("acceptPendingResult: no pending result found", { sessionID, taskId })
+    log.warn("acceptPendingResult: no pending result found", { sessionID, subagentId })
     return false
   }
 
-  log.info("acceptPendingResult: found pending", { taskId, description: pending.description })
+  log.info("acceptPendingResult: found pending", { subagentId, description: pending.description })
 
-  const task = BackgroundTask.get(taskId) ?? buildMinimalTask(pending)
+  const task = BackgroundSubagent.get(subagentId) ?? buildMinimalTask(pending)
   await doInject(task, pending.output, pending.error, pending.duration, triggerLLM)
-  log.info("acceptPendingResult: injection complete", { taskId })
+  log.info("acceptPendingResult: injection complete", { subagentId })
   return true
 }
 
 export async function acceptAllPending(sessionID: string, triggerLLM = false): Promise<number> {
-  const pending = BackgroundTask.clearPending(sessionID)
+  const pending = BackgroundSubagent.clearPending(sessionID)
   if (pending.length === 0) return 0
 
   if (pending.length === 1) {
     const p = pending[0]
-    const task = BackgroundTask.get(p.taskId) ?? buildMinimalTask(p)
+    const task = BackgroundSubagent.get(p.subagentId) ?? buildMinimalTask(p)
     await doInject(task, p.output, p.error, p.duration, triggerLLM)
     return 1
   }
@@ -219,7 +216,7 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
   const messageID = await MessageV2.mintSyntheticMessage(sessionID, existingMessages)
 
   for (const p of pending) {
-    const task = BackgroundTask.get(p.taskId) ?? buildMinimalTask(p)
+    const task = BackgroundSubagent.get(p.subagentId) ?? buildMinimalTask(p)
     const status: "completed" | "failed" = p.error ? "failed" : "completed"
     const notification = buildNotification(task, p.output, p.error, p.duration)
     await Session.updatePart({
@@ -229,21 +226,20 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
       type: "text",
       text: notification,
       synthetic: true,
-      backgroundTaskResult: {
-        taskId: task.id,
-        type: task.type,
+      backgroundSubagentResult: {
+        subagentId: task.id,
         description: task.description,
         status,
         agent: task.subagent?.agent,
         duration: p.duration,
       },
     })
-    log.info("injected background task result into merged message", { taskId: task.id, sessionID })
+    log.info("injected background subagent result into merged message", { subagentId: task.id, sessionID })
   }
 
   if (triggerLLM) {
     SessionPrompt.loop(sessionID).catch((err) => {
-      log.error("failed to prompt after merged task result injection", { error: err })
+      log.error("failed to prompt after merged subagent result injection", { error: err })
     })
   }
 
@@ -255,7 +251,7 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
 // parent's continue prompt can promise the subagent is alive and the parent then
 // waits for the injection rather than re-launching the work.
 //
-// The BackgroundTask record that linked a subagent to its parent lived in memory
+// The BackgroundSubagent record that linked a subagent to its parent lived in memory
 // and died with the restart, so this rebuilds it from the child session's
 // persisted state: the parent is the caller, the description is the child's
 // title, and the agent/model come off the child's own last real user message
@@ -274,7 +270,7 @@ export async function resumeSubagents(parentSessionID: string): Promise<number> 
     if (!(await SessionPing.interrupted(child.id))) continue
 
     // No resolvable model means the re-drive would throw and deliver a failed
-    // result: skip it rather than resume into a guaranteed failure. A task-tool
+    // result: skip it rather than resume into a guaranteed failure. An agent-tool
     // subagent always carries a model on its prompt, so this only guards a
     // malformed child.
     if (!child.current?.model) {
@@ -291,9 +287,8 @@ export async function resumeSubagents(parentSessionID: string): Promise<number> 
       continue
     }
 
-    const { task, abort } = BackgroundTask.create({
+    const { subagent: task, abort } = BackgroundSubagent.create({
       parentSessionID,
-      type: "subagent",
       description: child.title,
       subagent: { sessionID: child.id, agent: agentName, prompt: "", model },
     })
@@ -313,7 +308,7 @@ export const SUBAGENT_RESUME_TEXT =
   "Pardon the interruption — the server restarted and your turn was cut off. Continue what you were doing and finish the task you were given; your result is still awaited by the session that launched you."
 
 // The subagents of a session, durable across a restart. The in-memory
-// BackgroundTask store is lost on restart, so a dialog reading it alone shows
+// BackgroundSubagent store is lost on restart, so a dialog reading it alone shows
 // nothing that ran before the restart and can double-count a child whose task
 // was recreated by a resume. The child SESSIONS are durable (on disk, linked by
 // parentID), so this is the source of truth: every subagent child is a subagent,
@@ -323,14 +318,14 @@ export const SUBAGENT_RESUME_TEXT =
 // Status comes off the child's last assistant turn: no message yet is pending,
 // a turn still open is running, a finished turn is completed. This is a
 // projection, so it is rebuilt from disk every call rather than mutated.
-export async function subagentsForSession(parentSessionID: string): Promise<BackgroundTask.Info[]> {
+export async function subagentsForSession(parentSessionID: string): Promise<BackgroundSubagent.Info[]> {
   const live = new Map(
-    BackgroundTask.list(parentSessionID)
+    BackgroundSubagent.list(parentSessionID)
       .filter((t) => t.subagent?.sessionID)
       .map((t) => [t.subagent!.sessionID, t] as const),
   )
   const children = await Session.children(parentSessionID)
-  const result: BackgroundTask.Info[] = []
+  const result: BackgroundSubagent.Info[] = []
   for (const child of children) {
     const held = live.get(child.id)
     if (held) {
@@ -340,11 +335,11 @@ export async function subagentsForSession(parentSessionID: string): Promise<Back
     const messages = await Session.messages({ sessionID: child.id })
     const assistants = messages.filter((m) => m.info.role === "assistant")
     const last = assistants.at(-1)?.info as MessageV2.Assistant | undefined
-    const status: BackgroundTask.Status = last === undefined ? "running" : last.time.completed ? "completed" : "running"
+    const status: BackgroundSubagent.Status =
+      last === undefined ? "running" : last.time.completed ? "completed" : "running"
     result.push({
       id: child.id,
       parentSessionID,
-      type: "subagent",
       status,
       description: child.title,
       time: { created: child.time.created, ...(last?.time.completed ? { completed: last.time.completed } : {}) },
@@ -360,11 +355,10 @@ export async function subagentsForSession(parentSessionID: string): Promise<Back
   return result.sort((a, b) => b.time.created - a.time.created)
 }
 
-function buildMinimalTask(p: BackgroundTask.PendingResult): BackgroundTask.Info {
+function buildMinimalTask(p: BackgroundSubagent.PendingResult): BackgroundSubagent.Info {
   return {
-    id: p.taskId,
+    id: p.subagentId,
     parentSessionID: p.parentSessionID,
-    type: p.type,
     status: p.error ? "failed" : "completed",
     description: p.description,
     time: { created: p.completedAt - p.duration, completed: p.completedAt },
@@ -373,7 +367,7 @@ function buildMinimalTask(p: BackgroundTask.PendingResult): BackgroundTask.Info 
 }
 
 function buildNotification(
-  task: BackgroundTask.Info,
+  task: BackgroundSubagent.Info,
   output: string,
   error: string | undefined,
   duration: number,
@@ -387,20 +381,15 @@ function buildNotification(
         ? `ERROR: ${error}`
         : output
   return [
-    `<background-task-result>`,
-    `task_id: ${task.id}`,
-    `type: ${task.type}`,
+    `<background-subagent-result>`,
+    `subagent_id: ${task.id}`,
     `status: ${status}`,
     `duration: ${Math.round(duration / 1000)}s`,
-    task.type === "subagent"
-      ? `agent: ${task.subagent?.agent}`
-      : // Collapse blank lines so a multi-line command cannot forge the
-        // header/body separator the reader splits on.
-        `command: ${BackgroundNotify.collapse(task.shell?.command ?? "")}`,
+    `agent: ${task.subagent?.agent}`,
     `session_id: ${task.subagent?.sessionID ?? ""}`,
     ``,
     body,
-    `</background-task-result>`,
+    `</background-subagent-result>`,
   ].join("\n")
 }
 
@@ -411,7 +400,7 @@ const parameters = z
     summary: z
       .string()
       .describe(
-        "A one-sentence TL;DR of what the subagent is being asked to do, so the main thread and user can see the ask without reading the full prompt. ALWAYS provide this when invoking the Task tool. MUST faithfully reflect the prompt — do not editorialize or add intent the prompt does not contain.",
+        "A one-sentence TL;DR of what the subagent is being asked to do, so the main thread and user can see the ask without reading the full prompt. ALWAYS provide this when invoking the agent tool. MUST faithfully reflect the prompt — do not editorialize or add intent the prompt does not contain.",
       )
       .optional(),
     subagent_type: z.string().describe("The type of specialized agent to use for this task"),
@@ -420,7 +409,7 @@ const parameters = z
       .describe(
         "The named tool preset the subagent runs with. Must be one of the toolsets listed in this tool's description.",
       ),
-    session_id: z.string().describe("Existing Task session to continue").optional(),
+    session_id: z.string().describe("Existing subagent session to continue").optional(),
     include_context: z
       .boolean()
       .describe(
@@ -441,9 +430,9 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
     ? agents.filter((a) => PermissionNext.evaluate("agent", a.name, caller.permission).action !== "deny")
     : agents
 
-  // Repo-scoped agents are listed in a durable message block instead (see
-  // TaskAgents.build), keeping this description equal across projects so the
-  // tools[] prefix Anthropic hashes first can be shared between them.
+  // Repo-scoped agents are listed in a durable message block instead, keeping
+  // this description equal across projects so the tools[] prefix Anthropic
+  // hashes first can be shared between them.
   const scoped = await Config.projectAgents()
   const toolsets = snapshot?.toolsets ?? (await Agent.toolsets())
   const description = DESCRIPTION.replace(
@@ -547,9 +536,8 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
 
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
 
-      const { task, abort } = BackgroundTask.create({
+      const { subagent: task, abort } = BackgroundSubagent.create({
         parentSessionID: ctx.sessionID,
-        type: "subagent",
         description: params.description,
         subagent: {
           sessionID: session.id,
@@ -573,7 +561,7 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
         title: params.description,
         metadata: {
           status: "async_launched",
-          taskId: task.id,
+          subagentId: task.id,
           sessionId: session.id,
           model,
           toolset: params.toolset,
@@ -581,11 +569,11 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
           summary: params.summary,
         } as Record<string, unknown>,
         output: [
-          `Background task started: ${params.description}`,
+          `Background subagent started: ${params.description}`,
           `agent: ${agent.name}`,
           `toolset: ${params.toolset} (${allowed.join(", ")})`,
           ...(params.summary ? [`summary: ${params.summary}`] : []),
-          `task_id: ${task.id}`,
+          `subagent_id: ${task.id}`,
           `session_id: ${session.id}`,
           ``,
           `<system-reminder>`,

@@ -4,7 +4,7 @@
 // renderer pulls in the markdown stack, which needs a DOM, so a test reaching
 // these through it cannot run headless.
 
-export function stripTaskMeta(text: string): string {
+export function stripSubagentMeta(text: string): string {
   return text
     .split("\n")
     .filter((line) => {
@@ -12,13 +12,12 @@ export function stripTaskMeta(text: string): string {
       // The opaque IDs carry nothing a reader can act on. Everything else
       // (agent, toolset, summary, status, duration) is surfaced as styled
       // fields, so it comes OUT of the raw body and renders as UI instead.
-      if (trimmed.startsWith("task_id:")) return false
+      if (trimmed.startsWith("subagent_id:")) return false
       if (trimmed.startsWith("session_id:")) return false
-      if (trimmed.startsWith("Background task started:")) return false
+      if (trimmed.startsWith("Background subagent started:")) return false
       if (trimmed.startsWith("agent:")) return false
       if (trimmed.startsWith("toolset:")) return false
       if (trimmed.startsWith("summary:")) return false
-      if (trimmed.startsWith("type: subagent")) return false
       if (trimmed.startsWith("status:")) return false
       if (trimmed.startsWith("duration:")) return false
       if (trimmed === "Results will be delivered when the task completes.") return false
@@ -30,16 +29,16 @@ export function stripTaskMeta(text: string): string {
 
 // Split at the writer's own separator, for the reason `stripJobResult` does: a
 // task whose output contains a line beginning `status:` loses it otherwise.
-export function stripTaskResult(text: string): string {
-  const match = text.match(/<background-task-result>([\s\S]*?)<\/background-task-result>/)
-  if (!match) return stripTaskMeta(text)
+export function stripSubagentResult(text: string): string {
+  const match = text.match(/<background-subagent-result>([\s\S]*?)<\/background-subagent-result>/)
+  if (!match) return stripSubagentMeta(text)
   const envelope = match[1].replace(/^\n/, "")
   const separator = envelope.indexOf("\n\n")
-  return (separator === -1 ? stripTaskMeta(envelope) : envelope.slice(separator + 2)).trim()
+  return (separator === -1 ? stripSubagentMeta(envelope) : envelope.slice(separator + 2)).trim()
 }
 
 // The job header's field lines, dropped by prefix. This is the FALLBACK for a
-// malformed envelope with no separator, mirroring stripTaskMeta: the writer
+// malformed envelope with no separator, mirroring stripSubagentMeta: the writer
 // always emits the blank line, so the separator split below is the real path
 // and this only runs when it is absent. Prefix-matching would wrongly delete an
 // output line shaped like a field, which is exactly why it is not the primary

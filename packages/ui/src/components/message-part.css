@@ -4,7 +4,7 @@
    cue. Reuses the session-scroller thumb style (--border-weak-base) for a
    subtle, consistent bar. */
 [data-component="tool-output"][data-scrollable],
-[data-component="task-result"][data-scrollable],
+[data-component="subagent-result"][data-scrollable],
 [data-component="job-result"][data-scrollable],
 [data-component="notice-body"][data-scrollable],
 [data-component="edit-content"],
@@ -433,7 +433,7 @@
 /* The meta row stays OUTSIDE the scroller so a collapsed box, which clips to
    one line, shows the summary rather than the top of a scrolled body. Only the
    body scrolls. */
-[data-component="task-result"],
+[data-component="subagent-result"],
 [data-component="job-result"],
 [data-component="notice-result"] {
   display: flex;
@@ -678,13 +678,13 @@ a[data-component="tool-action"]:hover {
   }
 }
 
-[data-component="task-tools"] {
+[data-component="subagent-tools"] {
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 
-  [data-slot="task-tool-item"] {
+  [data-slot="subagent-tool-item"] {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -696,7 +696,7 @@ a[data-component="tool-action"]:hover {
     }
   }
 
-  [data-slot="task-tool-title"] {
+  [data-slot="subagent-tool-title"] {
     font-family: var(--font-family-sans);
     font-size: var(--font-size-small);
     font-weight: var(--font-weight-medium);
@@ -704,7 +704,7 @@ a[data-component="tool-action"]:hover {
     color: var(--text-weak);
   }
 
-  [data-slot="task-tool-subtitle"] {
+  [data-slot="subagent-tool-subtitle"] {
     font-family: var(--font-family-sans);
     font-size: var(--font-size-small);
     font-weight: var(--font-weight-regular);

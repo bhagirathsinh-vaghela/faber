@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { stripJobResult, stripTaskResult } from "../util/envelope"
+import { stripJobResult, stripSubagentResult } from "../util/envelope"
 
 // The writer emits a fixed header block, one blank line, then the output. The
 // card reads the body back out. Recognising header lines instead of splitting
@@ -72,12 +72,11 @@ describe("stripJobResult", () => {
   })
 })
 
-describe("stripTaskResult", () => {
+describe("stripSubagentResult", () => {
   test("keeps an output line that looks like a header field", () => {
     const text = [
-      `<background-task-result>`,
-      `task_id: t1`,
-      `type: subagent`,
+      `<background-subagent-result>`,
+      `subagent_id: t1`,
       `status: completed`,
       `duration: 3s`,
       `agent: build`,
@@ -85,9 +84,9 @@ describe("stripTaskResult", () => {
       ``,
       `status: still here`,
       `the finding`,
-      `</background-task-result>`,
+      `</background-subagent-result>`,
     ].join("\n")
-    const body = stripTaskResult(text)
+    const body = stripSubagentResult(text)
     expect(body).toContain("status: still here")
     expect(body).toContain("the finding")
   })

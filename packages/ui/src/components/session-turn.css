@@ -195,7 +195,7 @@
        the clip lands wherever the body's first line happens to sit, so a
        collapsed job read "line 3 of output" instead of its status and command. */
     [data-component="job-result"],
-    [data-component="task-result"],
+    [data-component="subagent-result"],
     [data-component="notice-result"] {
       display: flex !important;
       flex-direction: row !important;
@@ -253,7 +253,7 @@
       padding-right: 44px;
     }
 
-    /* Text clamps to a single line. Covers user prompts and task-result bodies. */
+    /* Text clamps to a single line. Covers user prompts and subagent-result bodies. */
     [data-slot="user-message-text"] {
       display: -webkit-box;
       -webkit-line-clamp: 1;
@@ -339,7 +339,7 @@
        this element at once — so the one-liner card rules above still match and
        each !important they set must be un-set here for the body to return. */
     [data-component="job-result"],
-    [data-component="task-result"],
+    [data-component="subagent-result"],
     [data-component="notice-result"] {
       display: block !important;
 

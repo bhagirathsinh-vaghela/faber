@@ -477,7 +477,8 @@ export function SessionTurn(
   const boxKey = () => {
     const parts = stickyParts()
     if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundJobResult)) return "job_result"
-    if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundTaskResult)) return "task_result"
+    if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundSubagentResult))
+      return "subagent_result"
     // A message the system wrote on its own, e.g. the supervisor's continue
     // prompt after a restart. Machinery the model reads carries `internal` and
     // is excluded by that flag rather than by matching its text.

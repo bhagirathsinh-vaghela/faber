@@ -57,7 +57,7 @@ export function Home() {
       },
     },
     {
-      title: "Toggle auto-inject default for background tasks",
+      title: "Toggle auto-inject default for background subagents",
       value: "home.background.auto_inject_default",
       keybind: "background_auto_inject_toggle",
       category: "System",

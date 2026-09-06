@@ -155,7 +155,7 @@ export namespace Session {
       titleOrdinal: z.number().optional(),
       // Real user prompts seen, stamped on the message at creation. Counting
       // persisted history instead would shrink at every compaction and count
-      // the infrastructure messages (compaction requests, task-result
+      // the infrastructure messages (compaction requests, subagent-result
       // injections) that filterCompacted leaves in place.
       prompts: z.number().optional(),
       version: z.string(),

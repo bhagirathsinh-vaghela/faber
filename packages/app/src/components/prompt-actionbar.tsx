@@ -14,7 +14,7 @@ import { DialogMcpCorpus } from "@/components/dialog-mcp-corpus"
 // (packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx): pending
 // (subagents running), available (results awaiting accept), auto-inject (whether
 // completed results inject automatically), and questions (pending count).
-// Counts stay live via the background.task.* events the
+// Counts stay live via the background.subagent.* events the
 // TUI also listens to; auto-inject toggles through background.toggleAutoInject.
 export function PromptActionBar() {
   const sdk = useSDK()
@@ -53,16 +53,16 @@ export function PromptActionBar() {
     refresh()
 
     const unsubs = [
-      sdk.event.on("background.task.created", (evt) => {
-        if (evt.properties.task.parentSessionID === params.id) setRunning((n) => n + 1)
+      sdk.event.on("background.subagent.created", (evt) => {
+        if (evt.properties.subagent.parentSessionID === params.id) setRunning((n) => n + 1)
       }),
-      sdk.event.on("background.task.completed", (evt) => {
+      sdk.event.on("background.subagent.completed", (evt) => {
         if (evt.properties.parentSessionID === params.id) setRunning((n) => Math.max(0, n - 1))
       }),
-      sdk.event.on("background.task.result_pending", (evt) => {
+      sdk.event.on("background.subagent.result_pending", (evt) => {
         if (evt.properties.sessionID === params.id) setAvailable((n) => n + 1)
       }),
-      sdk.event.on("background.task.auto_inject_changed", (evt) => {
+      sdk.event.on("background.subagent.auto_inject_changed", (evt) => {
         if (evt.properties.sessionID === params.id) setAutoInject(evt.properties.autoInject)
       }),
     ]
@@ -97,7 +97,7 @@ export function PromptActionBar() {
     () => `${language.t("actionbar.autoinject.tooltip")} (${command.keybind("background.autoinject.toggle")})`,
   )
   const availableTip = createMemo(
-    () => `${language.t("actionbar.available.tooltip")} (${command.keybind("task.pending")})`,
+    () => `${language.t("actionbar.available.tooltip")} (${command.keybind("subagent.pending")})`,
   )
   const questionsTip = createMemo(
     () => `${language.t("actionbar.questions.tooltip")} (${command.keybind("question.list")})`,
@@ -123,7 +123,7 @@ export function PromptActionBar() {
         <Show when={local.dock.isVisible("available")}>
           <Chip
             accent={available() > 0 ? "usage-cache-write" : "usage-context-start"}
-            onClick={() => command.trigger("task.pending", "keybind")}
+            onClick={() => command.trigger("subagent.pending", "keybind")}
             tooltip={availableTip()}
           >
             <span class="text-text-base">available</span> {available()}

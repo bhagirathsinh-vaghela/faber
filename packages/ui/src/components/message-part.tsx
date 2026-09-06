@@ -28,7 +28,7 @@ import {
   QuestionInfo,
 } from "@opencode-ai/sdk/v2"
 import { legacyInternal, typed } from "../util/internal"
-import { stripJobResult, stripTaskMeta, stripTaskResult } from "../util/envelope"
+import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/envelope"
 import { jobAccent, jobGlyph, jobLabel, jobStatusColor } from "../util/job-status"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
@@ -237,7 +237,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
     case "agent":
       return {
         icon: "task",
-        title: i18n.t("ui.tool.agent", { type: input.subagent_type || "task" }),
+        title: i18n.t("ui.tool.agent", { type: input.subagent_type || "agent" }),
         subtitle: input.description,
       }
     case "bash":
@@ -300,23 +300,23 @@ export function registerPartComponent(type: string, component: PartComponent) {
 }
 
 function taskResultPart(parts: PartType[]): TextPart | undefined {
-  return parts.find((p) => p.type === "text" && (p as TextPart).backgroundTaskResult) as TextPart | undefined
+  return parts.find((p) => p.type === "text" && (p as TextPart).backgroundSubagentResult) as TextPart | undefined
 }
 
 const TASK_ACCENT = "var(--box-accent-task)"
-function taskAccent(status: string): string {
+function subagentAccent(status: string): string {
   // `--syntax-critical` rather than `--color-text-error`, which is unset in the
   // shipped themes: an unresolvable accent leaves the box drawing its default
   // white border, so a failed task read as an ordinary message.
   return status === "failed" ? "var(--syntax-critical)" : TASK_ACCENT
 }
 
-function stripTaskOutput(text: string): string {
+function stripSubagentOutput(text: string): string {
   const cleaned = text
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
     .replace(/<task_metadata>[\s\S]*?<\/task_metadata>/g, "")
     .trim()
-  return stripTaskMeta(cleaned)
+  return stripSubagentMeta(cleaned)
 }
 
 // Ring-dot separator, same as the assistant footer chip line.
@@ -329,37 +329,36 @@ function TaskDot() {
   )
 }
 
-function taskStatusColor(status: string): string {
+function subagentStatusColor(status: string): string {
   if (status === "failed") return "var(--syntax-critical)"
   if (status === "cancelled") return "var(--text-weak)"
   return "var(--syntax-string)"
 }
 
-function taskDuration(ms: number): string {
+function subagentDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
 }
 
-// Fields matched to the footer chip line: agent=type, subagent kind=constant,
-// status=state color, duration=number. Every field the reader saw before stays,
-// now colored by its semantic token instead of flat gray.
-function TaskResultDisplay(props: { part: TextPart }) {
-  const meta = () => props.part.backgroundTaskResult!
-  const content = createMemo(() => stripTaskResult(props.part.text))
+// The footer chip line: agent name, the literal kind, status, and duration,
+// each colored by its own semantic token.
+function SubagentResultDisplay(props: { part: TextPart }) {
+  const meta = () => props.part.backgroundSubagentResult!
+  const content = createMemo(() => stripSubagentResult(props.part.text))
   const fields = createMemo(() => {
     const m = meta()
     const result: { color: string; text: string; mono?: boolean }[] = []
     if (m.agent) result.push({ color: "var(--syntax-type)", text: m.agent })
-    result.push({ color: "var(--syntax-constant)", text: m.type })
-    result.push({ color: taskStatusColor(m.status), text: m.status })
-    result.push({ color: "var(--syntax-primitive)", text: taskDuration(m.duration) })
+    result.push({ color: "var(--syntax-constant)", text: "subagent" })
+    result.push({ color: subagentStatusColor(m.status), text: m.status })
+    result.push({ color: "var(--syntax-primitive)", text: subagentDuration(m.duration) })
     return result
   })
   return (
-    <div data-component="task-result" data-scrollable>
+    <div data-component="subagent-result" data-scrollable>
       <div
-        data-slot="task-result-meta"
+        data-slot="subagent-result-meta"
         class="mb-2 flex flex-row flex-wrap items-center font-mono"
         style={{ "font-size": "11px", "line-height": "1.2" }}
       >
@@ -502,7 +501,7 @@ function JobResultDisplay(props: { part: TextPart }) {
     // Absent while a job runs, and absent for a watchdog kill, which never
     // reaches the job's own exit write.
     if (m.exit !== undefined) result.push({ color: "var(--text-weak)", text: `exit ${m.exit}` })
-    result.push({ color: "var(--text-weak)", text: taskDuration(m.duration) })
+    result.push({ color: "var(--text-weak)", text: subagentDuration(m.duration) })
     return result
   })
   return (
@@ -543,18 +542,18 @@ export function Message(props: MessageProps) {
     <Switch>
       <Match when={props.message.role === "user" && taskResultPart(props.parts)}>
         {(part) => (
-          <Show when={props.boxed} fallback={<TaskResultDisplay part={part()} />}>
+          <Show when={props.boxed} fallback={<SubagentResultDisplay part={part()} />}>
             <MessageBox
               message={props.message}
-              label={i18n.t("ui.tool.task.box.done", {
-                duration: taskDuration(part().backgroundTaskResult!.duration ?? 0),
+              label={i18n.t("ui.tool.subagent.box.done", {
+                duration: subagentDuration(part().backgroundSubagentResult!.duration ?? 0),
               })}
-              accent={taskAccent(part().backgroundTaskResult!.status)}
+              accent={subagentAccent(part().backgroundSubagentResult!.status)}
               action={props.action}
               onJump={props.onJump}
               jumpHint={props.jumpHint}
             >
-              <TaskResultDisplay part={part()} />
+              <SubagentResultDisplay part={part()} />
             </MessageBox>
           </Show>
         )}
@@ -1498,7 +1497,7 @@ ToolRegistry.register({
           iconSize="small"
           variant="secondary"
           data-slot="tool-action"
-          title={i18n.t("ui.tool.task.open")}
+          title={i18n.t("ui.tool.subagent.open")}
           onClick={(e) => {
             e.stopPropagation()
             jumpToChild()
@@ -1511,13 +1510,14 @@ ToolRegistry.register({
     const dispatchMarkdown = createMemo(() => {
       const lines: string[] = []
       const push = (label: string, value: string) => lines.push(`**${label}** ${value}`)
-      if (props.input.description) push(i18n.t("ui.tool.task.label.task"), props.input.description)
-      if (props.metadata.summary) push(i18n.t("ui.tool.task.label.summary"), props.metadata.summary as string)
-      push(i18n.t("ui.tool.task.label.agent"), `\`${props.input.subagent_type || props.tool}\``)
-      if (props.metadata.toolset) push(i18n.t("ui.tool.task.label.toolset"), `\`${props.metadata.toolset as string}\``)
+      if (props.input.description) push(i18n.t("ui.tool.subagent.label.instruction"), props.input.description)
+      if (props.metadata.summary) push(i18n.t("ui.tool.subagent.label.summary"), props.metadata.summary as string)
+      push(i18n.t("ui.tool.subagent.label.agent"), `\`${props.input.subagent_type || props.tool}\``)
+      if (props.metadata.toolset)
+        push(i18n.t("ui.tool.subagent.label.toolset"), `\`${props.metadata.toolset as string}\``)
       const tools = props.metadata.tools
       if (Array.isArray(tools) && tools.length)
-        push(i18n.t("ui.tool.task.label.tools"), tools.map((t) => `\`${t}\``).join(" "))
+        push(i18n.t("ui.tool.subagent.label.tools"), tools.map((t) => `\`${t}\``).join(" "))
       return lines.join("\n\n")
     })
 
@@ -1608,12 +1608,13 @@ ToolRegistry.register({
               trigger={{
                 title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
                 subtitle: props.input.description,
-                args: props.metadata.status === "async_launched" ? [i18n.t("ui.tool.task.box.launched")] : undefined,
+                args:
+                  props.metadata.status === "async_launched" ? [i18n.t("ui.tool.subagent.box.launched")] : undefined,
               }}
             >
               <Switch>
                 {/* A real inline result (rare/future sync path) wins. */}
-                <Match when={props.output && stripTaskOutput(props.output)}>
+                <Match when={props.output && stripSubagentOutput(props.output)}>
                   {(body) => (
                     <div data-slot="tool-body">
                       <CopyButton content={() => body()} />
@@ -1634,7 +1635,7 @@ ToolRegistry.register({
                 {/* Args still streaming (prompt/description being written): show
                       a live counter instead of an empty box. */}
                 <Match when={props.status === "pending"}>
-                  <ToolStreaming label={i18n.t("ui.tool.task.preparing")} />
+                  <ToolStreaming label={i18n.t("ui.tool.subagent.preparing")} />
                 </Match>
               </Switch>
             </BasicTool>

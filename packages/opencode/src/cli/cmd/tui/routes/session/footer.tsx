@@ -39,7 +39,7 @@ export function Footer() {
 
   // Listen for auto-inject changes
   sdk.event.listen((e) => {
-    if (e.details.type === "background.task.auto_inject_changed") {
+    if (e.details.type === "background.subagent.auto_inject_changed") {
       if (route.data.type === "session" && e.details.properties.sessionID === route.data.sessionID) {
         setAutoInject(e.details.properties.autoInject)
       }

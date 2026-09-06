@@ -40,27 +40,27 @@ export function DialogPending(props: { sessionID: string; pending: PendingResult
 
   const [selected, setSelected] = createSignal<Set<string>>(new Set())
 
-  const toggleSelection = (taskId: string) => {
+  const toggleSelection = (subagentId: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(taskId)) next.delete(taskId)
-      else next.add(taskId)
+      if (next.has(subagentId)) next.delete(subagentId)
+      else next.add(subagentId)
       return next
     })
   }
 
   const selectAll = () => {
-    setSelected(new Set(props.pending.map((p) => p.taskId)))
+    setSelected(new Set(props.pending.map((p) => p.subagentId)))
   }
 
   const options = createMemo(() =>
     props.pending.map((pending) => {
-      const isSelected = selected().has(pending.taskId)
+      const isSelected = selected().has(pending.subagentId)
       return {
         title: pending.description,
-        value: pending.taskId,
+        value: pending.subagentId,
         description: `${getRelativeTime(pending.completedAt)} · ${formatDuration(pending.duration)}`,
-        footer: pending.agent ?? pending.type,
+        footer: pending.agent,
         gutter: <text fg={isSelected ? theme.success : theme.text}>{isSelected ? "●" : "○"}</text>,
       }
     }),
@@ -76,7 +76,7 @@ export function DialogPending(props: { sessionID: string; pending: PendingResult
       const isLast = i === ids.length - 1
       await sdk.client.background.acceptPending({
         sessionID: props.sessionID,
-        taskId: ids[i],
+        subagentId: ids[i],
         triggerLLM: isLast,
       })
     }

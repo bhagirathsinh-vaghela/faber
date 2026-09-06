@@ -3673,9 +3673,9 @@ export class Mcp extends HeyApiClient {
 
 export class Background extends HeyApiClient {
   /**
-   * List background tasks
+   * List background subagents
    *
-   * Get a list of all background tasks, optionally filtered by session.
+   * Get a list of all background subagents, optionally filtered by session.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3703,9 +3703,9 @@ export class Background extends HeyApiClient {
   }
 
   /**
-   * Get background task
+   * Get background subagent
    *
-   * Get a specific background task by ID.
+   * Get a specific background subagent by ID.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3733,9 +3733,9 @@ export class Background extends HeyApiClient {
   }
 
   /**
-   * Cancel background task
+   * Cancel background subagent
    *
-   * Cancel a running background task.
+   * Cancel a running background subagent.
    */
   public cancel<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3862,7 +3862,7 @@ export class Background extends HeyApiClient {
   /**
    * Get pending results
    *
-   * Get all pending background task results for a session.
+   * Get all pending background subagent results for a session.
    */
   public getPending<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3892,12 +3892,12 @@ export class Background extends HeyApiClient {
   /**
    * Accept pending result
    *
-   * Accept and inject a pending background task result into the session.
+   * Accept and inject a pending background subagent result into the session.
    */
   public acceptPending<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
-      taskId: string
+      subagentId: string
       directory?: string
       triggerLLM?: boolean
     },
@@ -3909,7 +3909,7 @@ export class Background extends HeyApiClient {
         {
           args: [
             { in: "path", key: "sessionID" },
-            { in: "path", key: "taskId" },
+            { in: "path", key: "subagentId" },
             { in: "query", key: "directory" },
             { in: "body", key: "triggerLLM" },
           ],
@@ -3917,7 +3917,7 @@ export class Background extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).post<BackgroundAcceptPendingResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/pending/{taskId}/accept",
+      url: "/background/session/{sessionID}/pending/{subagentId}/accept",
       ...options,
       ...params,
       headers: {
@@ -3931,7 +3931,7 @@ export class Background extends HeyApiClient {
   /**
    * Accept all pending results
    *
-   * Accept and inject all pending background task results into the session.
+   * Accept and inject all pending background subagent results into the session.
    */
   public acceptAllPending<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3968,13 +3968,13 @@ export class Background extends HeyApiClient {
   /**
    * Dismiss pending results
    *
-   * Dismiss (discard) pending background task results without injecting them.
+   * Dismiss (discard) pending background subagent results without injecting them.
    */
   public dismissPending<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
-      taskIds?: Array<string>
+      subagentIds?: Array<string>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3985,7 +3985,7 @@ export class Background extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
-            { in: "body", key: "taskIds" },
+            { in: "body", key: "subagentIds" },
           ],
         },
       ],

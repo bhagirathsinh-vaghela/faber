@@ -423,7 +423,7 @@ export namespace Agent {
    * Named tool presets a subagent may run with. Built-in presets are merged
    * with config `subagent_toolsets` (config wins on name collision), so users
    * can add presets or override built-ins without a rebuild. The parent agent
-   * picks one by name via the Task tool's `toolset` param; the runtime stamps
+   * picks one by name via the agent tool's `toolset` param; the runtime stamps
    * the resolved list onto the subagent session and rejects any tool not on it.
    */
   export async function toolsets(): Promise<Record<string, string[]>> {

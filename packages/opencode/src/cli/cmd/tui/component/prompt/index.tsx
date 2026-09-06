@@ -115,28 +115,28 @@ export function Prompt(props: PromptProps) {
   })
 
   // Listen for auto-inject changes
-  sdk.event.on("background.task.auto_inject_changed", (evt) => {
+  sdk.event.on("background.subagent.auto_inject_changed", (evt) => {
     if (props.sessionID && evt.properties.sessionID === props.sessionID) {
       setAutoInject(evt.properties.autoInject)
     }
   })
 
-  // Listen for task created (increment running)
-  sdk.event.on("background.task.created", (evt) => {
-    if (props.sessionID && evt.properties.task.parentSessionID === props.sessionID) {
+  // Listen for subagent created (increment running)
+  sdk.event.on("background.subagent.created", (evt) => {
+    if (props.sessionID && evt.properties.subagent.parentSessionID === props.sessionID) {
       setRunningCount((prev) => prev + 1)
     }
   })
 
-  // Listen for task completed (decrement running)
-  sdk.event.on("background.task.completed", (evt) => {
+  // Listen for subagent completed (decrement running)
+  sdk.event.on("background.subagent.completed", (evt) => {
     if (props.sessionID && evt.properties.parentSessionID === props.sessionID) {
       setRunningCount((prev) => Math.max(0, prev - 1))
     }
   })
 
   // Listen for pending results (increment results count)
-  sdk.event.on("background.task.result_pending", (evt) => {
+  sdk.event.on("background.subagent.result_pending", (evt) => {
     if (props.sessionID && evt.properties.sessionID === props.sessionID) {
       setResultsCount((prev) => prev + 1)
     }

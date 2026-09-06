@@ -67,7 +67,7 @@ import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
-import { DialogTasks } from "@tui/component/dialog-tasks"
+import { DialogSubagents } from "@tui/component/dialog-subagents"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
@@ -657,7 +657,7 @@ export function Session() {
           await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
         const revert = session()?.revert?.messageID
         const allMsgs = messages()
-        // Find last non-synthetic user message (skip TASK RESULT messages)
+        // Find last non-synthetic user message (skip subagent-result messages)
         const message = allMsgs.findLast((x) => (!revert || x.id < revert) && x.role === "user" && x.synthetic !== true)
         if (!message) return
         sdk.client.session
@@ -1041,15 +1041,14 @@ export function Session() {
     },
     {
       title: "Subagent list",
-      value: "session.tasks",
-      keybind: "task_list",
+      value: "session.subagents",
+      keybind: "subagent_list",
       category: "Session",
       slash: {
-        name: "tasks",
-        aliases: ["subagents"],
+        name: "subagents",
       },
       onSelect: (dialog) => {
-        dialog.replace(() => <DialogTasks />)
+        dialog.replace(() => <DialogSubagents />)
       },
     },
     {
@@ -1589,8 +1588,8 @@ function UserMessage(props: {
   const ctx = use()
   const local = useLocal()
   const text = createMemo(() => props.parts.flatMap((x) => (x.type === "text" && !x.synthetic ? [x] : []))[0])
-  const backgroundTaskResult = createMemo(() => {
-    const part = props.parts.find((x) => x.type === "text" && x.backgroundTaskResult)
+  const backgroundSubagentResult = createMemo(() => {
+    const part = props.parts.find((x) => x.type === "text" && x.backgroundSubagentResult)
     return part?.type === "text" ? part : undefined
   })
   const files = createMemo(() => props.parts.flatMap((x) => (x.type === "file" ? [x] : [])))
@@ -1625,12 +1624,12 @@ function UserMessage(props: {
 
   return (
     <>
-      <Show when={backgroundTaskResult()}>
-        {(taskResult) => {
-          const result = taskResult().backgroundTaskResult!
-          const taskColor = createMemo(() => (result.status === "completed" ? theme.warning : theme.error))
-          const taskTintedBg = createMemo(() => {
-            const accent = taskColor()
+      <Show when={backgroundSubagentResult()}>
+        {(subagentResult) => {
+          const result = subagentResult().backgroundSubagentResult!
+          const subagentColor = createMemo(() => (result.status === "completed" ? theme.warning : theme.error))
+          const subagentTintedBg = createMemo(() => {
+            const accent = subagentColor()
             const panel = theme.backgroundPanel
             return RGBA.fromInts(
               Math.round((panel.r * 0.88 + accent.r * 0.12) * 255),
@@ -1643,10 +1642,10 @@ function UserMessage(props: {
             <box
               id={props.message.id}
               border={["top", "bottom", "left", "right"]}
-              borderColor={taskColor()}
+              borderColor={subagentColor()}
               customBorderChars={AgentBorder.customBorderChars}
               marginTop={props.index === 0 ? 0 : 1}
-              backgroundColor={hover() ? theme.backgroundElement : taskTintedBg()}
+              backgroundColor={hover() ? theme.backgroundElement : subagentTintedBg()}
               onMouseOver={() => setHover(true)}
               onMouseOut={() => setHover(false)}
               onMouseUp={props.onMouseUp}
@@ -1657,30 +1656,30 @@ function UserMessage(props: {
               flexShrink={0}
             >
               <box flexDirection="row" gap={1} marginBottom={1}>
-                <text fg={taskColor()}>{"◈"}</text>
-                <text fg={taskColor()}>
-                  <span style={{ bold: true }}>{`#${props.index} TASK RESULT`}</span>
+                <text fg={subagentColor()}>{"◈"}</text>
+                <text fg={subagentColor()}>
+                  <span style={{ bold: true }}>{`#${props.index} SUBAGENT RESULT`}</span>
                   {result.agent ? <span style={{ bold: false }}>{` │ ${result.description}`}</span> : null}
                 </text>
                 <text fg={theme.textMuted}>
-                  <span style={{ bg: taskColor(), fg: theme.background, bold: true, underline: true }}>
+                  <span style={{ bg: subagentColor(), fg: theme.background, bold: true, underline: true }}>
                     {"(" + formatTime(props.message.time.created) + ")"}
                   </span>
                 </text>
               </box>
               <text fg={theme.text}>
                 {(() => {
-                  const fullText = taskResult().text
+                  const fullText = subagentResult().text
                   // Extract content between XML tags and clean metadata
-                  const match = fullText.match(/<background-task-result>([\s\S]*?)<\/background-task-result>/)
+                  const match = fullText.match(/<background-subagent-result>([\s\S]*?)<\/background-subagent-result>/)
                   if (!match) return fullText
 
                   const content = match[1]
                   const lines = content.split("\n")
                   const cleanedLines = lines.filter((line) => {
                     const trimmed = line.trim()
-                    // Remove task_id and session_id lines
-                    if (trimmed.startsWith("task_id:")) return false
+                    // Remove subagent_id and session_id lines
+                    if (trimmed.startsWith("subagent_id:")) return false
                     if (trimmed.startsWith("session_id:")) return false
                     // Keep other metadata and actual content
                     return true
@@ -1693,7 +1692,7 @@ function UserMessage(props: {
           )
         }}
       </Show>
-      <Show when={text() && !backgroundTaskResult()}>
+      <Show when={text() && !backgroundSubagentResult()}>
         <box
           id={props.message.id}
           border={["top", "bottom", "left", "right"]}
@@ -2434,14 +2433,14 @@ function AgentBlockTool(props: {
               <text fg={accentColor()}>#{props.toolIndex!}</text>
             </Show>
             <text fg={accentColor()}>
-              <span style={{ fontWeight: "bold" }}>TASK OUTPUT</span>
+              <span style={{ fontWeight: "bold" }}>SUBAGENT OUTPUT</span>
             </text>
             <text fg={theme.textMuted}>│</text>
             <text fg={theme.textMuted}>{props.title}</text>
           </box>
         }
       >
-        <Spinner color={accentColor()}>TASK OUTPUT │ {props.title}</Spinner>
+        <Spinner color={accentColor()}>SUBAGENT OUTPUT │ {props.title}</Spinner>
       </Show>
       {props.children}
       <Show when={error()}>
@@ -2741,7 +2740,7 @@ function Task(props: ToolProps<typeof AgentTool>) {
     const lines = cleaned.split("\n")
     const filteredLines = lines.filter((line) => {
       const trimmed = line.trim()
-      if (trimmed.startsWith("task_id:")) return false
+      if (trimmed.startsWith("subagent_id:")) return false
       if (trimmed.startsWith("session_id:")) return false
       if (trimmed === "Results will be delivered when the task completes.") return false
       return true

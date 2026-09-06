@@ -283,9 +283,8 @@ export type TextPart = {
   synthetic?: boolean
   ignored?: boolean
   internal?: boolean
-  backgroundTaskResult?: {
-    taskId: string
-    type: "subagent" | "shell"
+  backgroundSubagentResult?: {
+    subagentId: string
     description: string
     status: "completed" | "failed" | "cancelled"
     agent?: string
@@ -832,10 +831,9 @@ export type EventJobUpdated = {
   }
 }
 
-export type BackgroundTask = {
+export type BackgroundSubagent = {
   id: string
   parentSessionID: string
-  type: "subagent" | "shell"
   status: "running" | "completed" | "failed" | "cancelled"
   description: string
   time: {
@@ -860,11 +858,6 @@ export type BackgroundTask = {
       modelID: string
     }
   }
-  shell?: {
-    command: string
-    workdir?: string
-    timeout?: number
-  }
   result?: {
     output: string
     error?: string
@@ -872,17 +865,17 @@ export type BackgroundTask = {
   }
 }
 
-export type EventBackgroundTaskCreated = {
-  type: "background.task.created"
+export type EventBackgroundSubagentCreated = {
+  type: "background.subagent.created"
   properties: {
-    task: BackgroundTask
+    subagent: BackgroundSubagent
   }
 }
 
-export type EventBackgroundTaskProgress = {
-  type: "background.task.progress"
+export type EventBackgroundSubagentProgress = {
+  type: "background.subagent.progress"
   properties: {
-    taskId: string
+    subagentId: string
     parentSessionID: string
     progress: {
       toolCount: number
@@ -896,10 +889,10 @@ export type EventBackgroundTaskProgress = {
   }
 }
 
-export type EventBackgroundTaskCompleted = {
-  type: "background.task.completed"
+export type EventBackgroundSubagentCompleted = {
+  type: "background.subagent.completed"
   properties: {
-    taskId: string
+    subagentId: string
     parentSessionID: string
     status: "completed" | "failed" | "cancelled"
     result?: {
@@ -910,14 +903,13 @@ export type EventBackgroundTaskCompleted = {
   }
 }
 
-export type EventBackgroundTaskResultPending = {
-  type: "background.task.result_pending"
+export type EventBackgroundSubagentResultPending = {
+  type: "background.subagent.result_pending"
   properties: {
     sessionID: string
     pending: {
-      taskId: string
+      subagentId: string
       parentSessionID: string
-      type: "subagent" | "shell"
       description: string
       agent?: string
       output: string
@@ -928,8 +920,8 @@ export type EventBackgroundTaskResultPending = {
   }
 }
 
-export type EventBackgroundTaskAutoInjectChanged = {
-  type: "background.task.auto_inject_changed"
+export type EventBackgroundSubagentAutoInjectChanged = {
+  type: "background.subagent.auto_inject_changed"
   properties: {
     sessionID: string
     autoInject: boolean
@@ -1363,11 +1355,11 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventJobUpdated
-  | EventBackgroundTaskCreated
-  | EventBackgroundTaskProgress
-  | EventBackgroundTaskCompleted
-  | EventBackgroundTaskResultPending
-  | EventBackgroundTaskAutoInjectChanged
+  | EventBackgroundSubagentCreated
+  | EventBackgroundSubagentProgress
+  | EventBackgroundSubagentCompleted
+  | EventBackgroundSubagentResultPending
+  | EventBackgroundSubagentAutoInjectChanged
   | EventTodoUpdated
   | EventSessionPingArmed
   | EventSessionCompacted
@@ -1803,7 +1795,7 @@ export type KeybindsConfig = {
   /**
    * Show subagent list
    */
-  task_list?: string
+  subagent_list?: string
   /**
    * Show pending questions
    */
@@ -1833,11 +1825,11 @@ export type KeybindsConfig = {
    */
   tips_toggle?: string
   /**
-   * Accept pending background task results
+   * Accept pending background subagent results
    */
   accept_pending_results?: string
   /**
-   * Toggle auto-inject for background task results
+   * Toggle auto-inject for background subagent results
    */
   background_auto_inject_toggle?: string
   /**
@@ -2305,7 +2297,7 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.
+   * Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the agent tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.
    */
   subagent_toolsets?: {
     [key: string]: Array<string>
@@ -2405,7 +2397,7 @@ export type Config = {
   }
   background?: {
     /**
-     * Auto-inject background task results when they complete (default: false)
+     * Auto-inject background subagent results when they complete (default: false)
      */
     auto_inject?: boolean
   }
@@ -2695,9 +2687,8 @@ export type TextPartInput = {
   synthetic?: boolean
   ignored?: boolean
   internal?: boolean
-  backgroundTaskResult?: {
-    taskId: string
-    type: "subagent" | "shell"
+  backgroundSubagentResult?: {
+    subagentId: string
     description: string
     status: "completed" | "failed" | "cancelled"
     agent?: string
@@ -6177,9 +6168,9 @@ export type BackgroundListData = {
 
 export type BackgroundListResponses = {
   /**
-   * List of background tasks
+   * List of background subagents
    */
-  200: Array<BackgroundTask>
+  200: Array<BackgroundSubagent>
 }
 
 export type BackgroundListResponse = BackgroundListResponses[keyof BackgroundListResponses]
@@ -6188,7 +6179,7 @@ export type BackgroundGetData = {
   body?: never
   path: {
     /**
-     * Task ID
+     * Subagent ID
      */
     id: string
   }
@@ -6200,16 +6191,16 @@ export type BackgroundGetData = {
 
 export type BackgroundGetErrors = {
   /**
-   * Task not found
+   * Subagent not found
    */
   404: unknown
 }
 
 export type BackgroundGetResponses = {
   /**
-   * Background task
+   * Background subagent
    */
-  200: BackgroundTask
+  200: BackgroundSubagent
 }
 
 export type BackgroundGetResponse = BackgroundGetResponses[keyof BackgroundGetResponses]
@@ -6218,7 +6209,7 @@ export type BackgroundCancelData = {
   body?: never
   path: {
     /**
-     * Task ID
+     * Subagent ID
      */
     id: string
   }
@@ -6230,7 +6221,7 @@ export type BackgroundCancelData = {
 
 export type BackgroundCancelResponses = {
   /**
-   * Task cancelled
+   * Subagent cancelled
    */
   200: {
     success: boolean
@@ -6339,9 +6330,8 @@ export type BackgroundGetPendingResponses = {
    * Pending results
    */
   200: Array<{
-    taskId: string
+    subagentId: string
     parentSessionID: string
-    type: "subagent" | "shell"
     description: string
     agent?: string
     output: string
@@ -6366,14 +6356,14 @@ export type BackgroundAcceptPendingData = {
      */
     sessionID: string
     /**
-     * Task ID
+     * Subagent ID
      */
-    taskId: string
+    subagentId: string
   }
   query?: {
     directory?: string
   }
-  url: "/background/session/{sessionID}/pending/{taskId}/accept"
+  url: "/background/session/{sessionID}/pending/{subagentId}/accept"
 }
 
 export type BackgroundAcceptPendingResponses = {
@@ -6421,9 +6411,9 @@ export type BackgroundAcceptAllPendingResponse =
 export type BackgroundDismissPendingData = {
   body?: {
     /**
-     * Task IDs to dismiss (all if not specified)
+     * Subagent IDs to dismiss (all if not specified)
      */
-    taskIds?: Array<string>
+    subagentIds?: Array<string>
   }
   path: {
     /**

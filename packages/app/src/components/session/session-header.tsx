@@ -144,7 +144,7 @@ export function SessionHeader() {
               <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
                 <JobsButton />
               </Tooltip>
-              <Tooltip value={language.t("command.task.list")} placement="top" gutter={8}>
+              <Tooltip value={language.t("command.subagent.list")} placement="top" gutter={8}>
                 <SubagentsButton />
               </Tooltip>
               <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
@@ -203,7 +203,7 @@ export function SessionHeader() {
                   <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
                     <JobsButton />
                   </Tooltip>
-                  <Tooltip value={language.t("command.task.list")} placement="top" gutter={8}>
+                  <Tooltip value={language.t("command.subagent.list")} placement="top" gutter={8}>
                     <SubagentsButton />
                   </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>

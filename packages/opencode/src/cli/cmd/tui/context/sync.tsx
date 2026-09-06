@@ -362,7 +362,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
 
-        case "background.task.result_pending": {
+        case "background.subagent.result_pending": {
           const { sessionID } = event.properties
           setStore("background_pending", sessionID, (prev) => (prev ?? 0) + 1)
           break

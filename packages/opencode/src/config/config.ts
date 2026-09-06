@@ -117,7 +117,7 @@ export namespace Config {
     result.mode = result.mode || {}
     result.plugin = result.plugin || []
     // Agents a single repo contributes. They are announced in a durable message
-    // block rather than in the task tool's description, which rides in tools[]
+    // block rather than in the agent tool's description, which rides in tools[]
     // at the front of Anthropic's prefix hash and so has to read the same from
     // every project.
     const projectAgents = new Set<string>()
@@ -963,7 +963,7 @@ export namespace Config {
       session_child_cycle_reverse: z.string().optional().default("<leader>left").describe("Previous child session"),
       session_parent: z.string().optional().default("<leader>up").describe("Go to parent session"),
       session_child_cancel: z.string().optional().default("<leader>x").describe("Cancel running subagent"),
-      task_list: z.string().optional().default("alt+a").describe("Show subagent list"),
+      subagent_list: z.string().optional().default("alt+a").describe("Show subagent list"),
       question_list: z.string().optional().default("<leader>?").describe("Show pending questions"),
       question_dismiss: z.string().optional().default("none").describe("Dismiss pending question permanently"),
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
@@ -975,12 +975,12 @@ export namespace Config {
         .string()
         .optional()
         .default("<leader>z")
-        .describe("Accept pending background task results"),
+        .describe("Accept pending background subagent results"),
       background_auto_inject_toggle: z
         .string()
         .optional()
         .default("alt+i")
-        .describe("Toggle auto-inject for background task results"),
+        .describe("Toggle auto-inject for background subagent results"),
       paste_mode_toggle: z
         .string()
         .optional()
@@ -1180,7 +1180,7 @@ export namespace Config {
         .record(z.string(), z.array(z.string()))
         .optional()
         .describe(
-          "Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
+          "Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the agent tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
         ),
       provider: z
         .record(z.string(), Provider)
@@ -1295,7 +1295,7 @@ export namespace Config {
           auto_inject: z
             .boolean()
             .optional()
-            .describe("Auto-inject background task results when they complete (default: false)"),
+            .describe("Auto-inject background subagent results when they complete (default: false)"),
         })
         .optional(),
       pricing: z

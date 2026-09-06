@@ -8,15 +8,15 @@ import { Spinner } from "@opencode-ai/ui/spinner"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useSDK } from "@/context/sdk"
 import { useLanguage } from "@/context/language"
-import type { BackgroundTask } from "@opencode-ai/sdk/v2/client"
+import type { BackgroundSubagent } from "@opencode-ai/sdk/v2/client"
 import { base64Encode } from "@opencode-ai/util/encode"
 
-function duration(task: BackgroundTask): string {
+function duration(task: BackgroundSubagent): string {
   const end = task.time.completed ?? Date.now()
   return `${Math.round((end - task.time.created) / 1000)}s`
 }
 
-function StatusIcon(props: { status: BackgroundTask["status"] }) {
+function StatusIcon(props: { status: BackgroundSubagent["status"] }) {
   return (
     <Show when={props.status !== "running"} fallback={<Spinner />}>
       <Icon
@@ -31,7 +31,7 @@ function StatusIcon(props: { status: BackgroundTask["status"] }) {
 // the parent so its children — the current session's siblings — are shown).
 // `parentID` is the target of the "Parent session" escape button, passed by the
 // caller (which already holds the session record) rather than looked up here.
-export const DialogTasks: Component<{ sessionID?: string; parentID?: string; switcher?: boolean }> = (props) => {
+export const DialogSubagents: Component<{ sessionID?: string; parentID?: string; switcher?: boolean }> = (props) => {
   const sdk = useSDK()
   const params = useParams()
   const navigate = useNavigate()
@@ -42,11 +42,11 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
   const parentID = () => props.parentID
 
   // Same pattern as PromptActionBar: one seed fetch on mount, then keep the list
-  // live off the background.task.* events. NOT createResource — a resource is
+  // live off the background.subagent.* events. NOT createResource — a resource is
   // Suspense-coupled, so its pending state (on open and on every refetch) trips
   // the <Suspense> around <Session> and flickers the whole transcript. A plain
   // store fed by events never suspends, exactly like the overview's recent_hub.
-  const [tasks, setTasks] = createStore<BackgroundTask[]>([])
+  const [tasks, setTasks] = createStore<BackgroundSubagent[]>([])
 
   // The server list is the source of truth: it merges the durable child sessions
   // with the in-memory tasks, deduped by child session, so it survives a restart
@@ -71,29 +71,29 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
   onMount(refetch)
 
   const unsubs = [
-    sdk.event.on("background.task.created", (evt) => {
-      if (evt.properties.task.parentSessionID === source()) void refetch()
+    sdk.event.on("background.subagent.created", (evt) => {
+      if (evt.properties.subagent.parentSessionID === source()) void refetch()
     }),
-    sdk.event.on("background.task.progress", (evt) => {
+    sdk.event.on("background.subagent.progress", (evt) => {
       if (evt.properties.parentSessionID !== source()) return
-      // Progress carries the in-memory task id, which a disk-derived row cannot
-      // match; write it where the row IS the live task, and let the periodic
-      // refetch carry it otherwise.
+      // Progress carries the in-memory subagent id, which a disk-derived row
+      // cannot match; write it where the row IS the live subagent, and let the
+      // periodic refetch carry it otherwise.
       setTasks(
         produce((list) => {
-          const t = list.find((x) => x.id === evt.properties.taskId)
+          const t = list.find((x) => x.id === evt.properties.subagentId)
           if (t) t.progress = evt.properties.progress
         }),
       )
     }),
-    sdk.event.on("background.task.completed", (evt) => {
+    sdk.event.on("background.subagent.completed", (evt) => {
       if (evt.properties.parentSessionID === source()) void refetch()
     }),
   ]
   onCleanup(() => unsubs.forEach((u) => u()))
 
-  const running = language.t("dialog.tasks.section.running")
-  const completed = language.t("dialog.tasks.section.completed")
+  const running = language.t("dialog.subagents.section.running")
+  const completed = language.t("dialog.subagents.section.completed")
 
   // Both sections chronological by launch time (newest first).
   const items = createMemo(() =>
@@ -104,7 +104,7 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
     }),
   )
 
-  const select = (task: BackgroundTask | undefined) => {
+  const select = (task: BackgroundSubagent | undefined) => {
     if (!task?.subagent?.sessionID) return
     dialog.close()
     navigate(`/${base64Encode(sdk.directory)}/session/${task.subagent.sessionID}`)
@@ -117,9 +117,9 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
     navigate(`/${base64Encode(sdk.directory)}/session/${id}`)
   }
 
-  // Cancelling emits background.task.completed (status "cancelled"), which the
-  // listener above folds into the store — no manual refetch.
-  const cancel = (task: BackgroundTask) => sdk.client.background.cancel({ id: task.id })
+  // Cancelling emits background.subagent.completed (status "cancelled"), which
+  // the listener above folds into the store — no manual refetch.
+  const cancel = (task: BackgroundSubagent) => sdk.client.background.cancel({ id: task.id })
 
   const [parentFocused, setParentFocused] = createSignal(false)
 
@@ -129,7 +129,7 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
   // session as between root sessions. `armed` from mount so a single tap+release
   // commits; a bare Control keyup on a non-switcher open never navigates.
   let listRef: ListRef | undefined
-  const [highlight, setHighlight] = createSignal<BackgroundTask | undefined>(items()[0])
+  const [highlight, setHighlight] = createSignal<BackgroundSubagent | undefined>(items()[0])
   if (props.switcher) {
     let armed = true
     const cycle = (event: KeyboardEvent) => {
@@ -155,7 +155,7 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
   }
 
   return (
-    <Dialog title={language.t("dialog.tasks.title")}>
+    <Dialog title={language.t("dialog.subagents.title")}>
       <Show when={parentID()}>
         <button
           type="button"
@@ -167,7 +167,7 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
           onBlur={() => setParentFocused(false)}
         >
           <Icon name="arrow-left" />
-          <span class="truncate">{language.t("dialog.tasks.parent")}</span>
+          <span class="truncate">{language.t("dialog.subagents.parent")}</span>
         </button>
       </Show>
       <List
@@ -199,7 +199,7 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
             <div class="flex-1 min-w-0 flex flex-col text-left">
               <span class="truncate font-normal">{task.description}</span>
               <span class="truncate text-text-weak font-normal">
-                {(task.subagent?.agent ?? task.type) + " · " + duration(task)}
+                {(task.subagent?.agent ?? "subagent") + " · " + duration(task)}
               </span>
             </div>
           </div>

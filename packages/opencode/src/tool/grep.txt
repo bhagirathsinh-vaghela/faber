@@ -12,4 +12,4 @@
 - Use context (with output_mode "content") to include surrounding lines for each match
 - Use head_limit and offset to paginate results across all output modes
 - Use this tool when you need to find files containing specific patterns
-- When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead
+- When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the agent tool instead

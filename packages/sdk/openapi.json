@@ -6912,17 +6912,17 @@
             "description": "Filter by parent session ID"
           }
         ],
-        "summary": "List background tasks",
-        "description": "Get a list of all background tasks, optionally filtered by session.",
+        "summary": "List background subagents",
+        "description": "Get a list of all background subagents, optionally filtered by session.",
         "responses": {
           "200": {
-            "description": "List of background tasks",
+            "description": "List of background subagents",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/BackgroundTask"
+                    "$ref": "#/components/schemas/BackgroundSubagent"
                   }
                 }
               }
@@ -6955,24 +6955,24 @@
               "type": "string"
             },
             "required": true,
-            "description": "Task ID"
+            "description": "Subagent ID"
           }
         ],
-        "summary": "Get background task",
-        "description": "Get a specific background task by ID.",
+        "summary": "Get background subagent",
+        "description": "Get a specific background subagent by ID.",
         "responses": {
           "200": {
-            "description": "Background task",
+            "description": "Background subagent",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BackgroundTask"
+                  "$ref": "#/components/schemas/BackgroundSubagent"
                 }
               }
             }
           },
           "404": {
-            "description": "Task not found"
+            "description": "Subagent not found"
           }
         },
         "x-codeSamples": [
@@ -7001,14 +7001,14 @@
               "type": "string"
             },
             "required": true,
-            "description": "Task ID"
+            "description": "Subagent ID"
           }
         ],
-        "summary": "Cancel background task",
-        "description": "Cancel a running background task.",
+        "summary": "Cancel background subagent",
+        "description": "Cancel a running background subagent.",
         "responses": {
           "200": {
-            "description": "Task cancelled",
+            "description": "Subagent cancelled",
             "content": {
               "application/json": {
                 "schema": {
@@ -7225,7 +7225,7 @@
           }
         ],
         "summary": "Get pending results",
-        "description": "Get all pending background task results for a session.",
+        "description": "Get all pending background subagent results for a session.",
         "responses": {
           "200": {
             "description": "Pending results",
@@ -7236,18 +7236,11 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "taskId": {
+                      "subagentId": {
                         "type": "string"
                       },
                       "parentSessionID": {
                         "type": "string"
-                      },
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "subagent",
-                          "shell"
-                        ]
                       },
                       "description": {
                         "type": "string"
@@ -7269,9 +7262,8 @@
                       }
                     },
                     "required": [
-                      "taskId",
+                      "subagentId",
                       "parentSessionID",
-                      "type",
                       "description",
                       "output",
                       "completedAt",
@@ -7291,7 +7283,7 @@
         ]
       }
     },
-    "/background/session/{sessionID}/pending/{taskId}/accept": {
+    "/background/session/{sessionID}/pending/{subagentId}/accept": {
       "post": {
         "operationId": "background.acceptPending",
         "parameters": [
@@ -7313,16 +7305,16 @@
           },
           {
             "in": "path",
-            "name": "taskId",
+            "name": "subagentId",
             "schema": {
               "type": "string"
             },
             "required": true,
-            "description": "Task ID"
+            "description": "Subagent ID"
           }
         ],
         "summary": "Accept pending result",
-        "description": "Accept and inject a pending background task result into the session.",
+        "description": "Accept and inject a pending background subagent result into the session.",
         "responses": {
           "200": {
             "description": "Result accepted",
@@ -7388,7 +7380,7 @@
           }
         ],
         "summary": "Accept all pending results",
-        "description": "Accept and inject all pending background task results into the session.",
+        "description": "Accept and inject all pending background subagent results into the session.",
         "responses": {
           "200": {
             "description": "All results accepted",
@@ -7454,7 +7446,7 @@
           }
         ],
         "summary": "Dismiss pending results",
-        "description": "Dismiss (discard) pending background task results without injecting them.",
+        "description": "Dismiss (discard) pending background subagent results without injecting them.",
         "responses": {
           "200": {
             "description": "Results dismissed",
@@ -7481,8 +7473,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "taskIds": {
-                    "description": "Task IDs to dismiss (all if not specified)",
+                  "subagentIds": {
+                    "description": "Subagent IDs to dismiss (all if not specified)",
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -9954,18 +9946,11 @@
           "internal": {
             "type": "boolean"
           },
-          "backgroundTaskResult": {
+          "backgroundSubagentResult": {
             "type": "object",
             "properties": {
-              "taskId": {
+              "subagentId": {
                 "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "subagent",
-                  "shell"
-                ]
               },
               "description": {
                 "type": "string"
@@ -9986,8 +9971,7 @@
               }
             },
             "required": [
-              "taskId",
-              "type",
+              "subagentId",
               "description",
               "status",
               "duration"
@@ -11688,7 +11672,7 @@
           "properties"
         ]
       },
-      "BackgroundTask": {
+      "BackgroundSubagent": {
         "type": "object",
         "properties": {
           "id": {
@@ -11696,13 +11680,6 @@
           },
           "parentSessionID": {
             "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "subagent",
-              "shell"
-            ]
           },
           "status": {
             "type": "string",
@@ -11799,23 +11776,6 @@
               "model"
             ]
           },
-          "shell": {
-            "type": "object",
-            "properties": {
-              "command": {
-                "type": "string"
-              },
-              "workdir": {
-                "type": "string"
-              },
-              "timeout": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "command"
-            ]
-          },
           "result": {
             "type": "object",
             "properties": {
@@ -11837,28 +11797,27 @@
         "required": [
           "id",
           "parentSessionID",
-          "type",
           "status",
           "description",
           "time"
         ]
       },
-      "Event.background.task.created": {
+      "Event.background.subagent.created": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "background.task.created"
+            "const": "background.subagent.created"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "task": {
-                "$ref": "#/components/schemas/BackgroundTask"
+              "subagent": {
+                "$ref": "#/components/schemas/BackgroundSubagent"
               }
             },
             "required": [
-              "task"
+              "subagent"
             ]
           }
         },
@@ -11867,17 +11826,17 @@
           "properties"
         ]
       },
-      "Event.background.task.progress": {
+      "Event.background.subagent.progress": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "background.task.progress"
+            "const": "background.subagent.progress"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "taskId": {
+              "subagentId": {
                 "type": "string"
               },
               "parentSessionID": {
@@ -11919,7 +11878,7 @@
               }
             },
             "required": [
-              "taskId",
+              "subagentId",
               "parentSessionID",
               "progress"
             ]
@@ -11930,17 +11889,17 @@
           "properties"
         ]
       },
-      "Event.background.task.completed": {
+      "Event.background.subagent.completed": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "background.task.completed"
+            "const": "background.subagent.completed"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "taskId": {
+              "subagentId": {
                 "type": "string"
               },
               "parentSessionID": {
@@ -11973,7 +11932,7 @@
               }
             },
             "required": [
-              "taskId",
+              "subagentId",
               "parentSessionID",
               "status"
             ]
@@ -11984,12 +11943,12 @@
           "properties"
         ]
       },
-      "Event.background.task.result_pending": {
+      "Event.background.subagent.result_pending": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "background.task.result_pending"
+            "const": "background.subagent.result_pending"
           },
           "properties": {
             "type": "object",
@@ -12000,18 +11959,11 @@
               "pending": {
                 "type": "object",
                 "properties": {
-                  "taskId": {
+                  "subagentId": {
                     "type": "string"
                   },
                   "parentSessionID": {
                     "type": "string"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "subagent",
-                      "shell"
-                    ]
                   },
                   "description": {
                     "type": "string"
@@ -12033,9 +11985,8 @@
                   }
                 },
                 "required": [
-                  "taskId",
+                  "subagentId",
                   "parentSessionID",
-                  "type",
                   "description",
                   "output",
                   "completedAt",
@@ -12054,12 +12005,12 @@
           "properties"
         ]
       },
-      "Event.background.task.auto_inject_changed": {
+      "Event.background.subagent.auto_inject_changed": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "background.task.auto_inject_changed"
+            "const": "background.subagent.auto_inject_changed"
           },
           "properties": {
             "type": "object",
@@ -13591,19 +13542,22 @@
             "$ref": "#/components/schemas/Event.question.rejected"
           },
           {
-            "$ref": "#/components/schemas/Event.background.task.created"
+            "$ref": "#/components/schemas/Event.job.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.background.task.progress"
+            "$ref": "#/components/schemas/Event.background.subagent.created"
           },
           {
-            "$ref": "#/components/schemas/Event.background.task.completed"
+            "$ref": "#/components/schemas/Event.background.subagent.progress"
           },
           {
-            "$ref": "#/components/schemas/Event.background.task.result_pending"
+            "$ref": "#/components/schemas/Event.background.subagent.completed"
           },
           {
-            "$ref": "#/components/schemas/Event.background.task.auto_inject_changed"
+            "$ref": "#/components/schemas/Event.background.subagent.result_pending"
+          },
+          {
+            "$ref": "#/components/schemas/Event.background.subagent.auto_inject_changed"
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
@@ -13679,9 +13633,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.stash.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.job.updated"
           }
         ]
       },
@@ -14202,7 +14153,7 @@
             "default": "<leader>x",
             "type": "string"
           },
-          "task_list": {
+          "subagent_list": {
             "description": "Show subagent list",
             "default": "alt+a",
             "type": "string"
@@ -14243,12 +14194,12 @@
             "type": "string"
           },
           "accept_pending_results": {
-            "description": "Accept pending background task results",
+            "description": "Accept pending background subagent results",
             "default": "<leader>z",
             "type": "string"
           },
           "background_auto_inject_toggle": {
-            "description": "Toggle auto-inject for background task results",
+            "description": "Toggle auto-inject for background subagent results",
             "default": "alt+i",
             "type": "string"
           },
@@ -15188,7 +15139,7 @@
             }
           },
           "subagent_toolsets": {
-            "description": "Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
+            "description": "Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the agent tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -15431,7 +15382,7 @@
             "type": "object",
             "properties": {
               "auto_inject": {
-                "description": "Auto-inject background task results when they complete (default: false)",
+                "description": "Auto-inject background subagent results when they complete (default: false)",
                 "type": "boolean"
               }
             }
@@ -16188,18 +16139,11 @@
           "internal": {
             "type": "boolean"
           },
-          "backgroundTaskResult": {
+          "backgroundSubagentResult": {
             "type": "object",
             "properties": {
-              "taskId": {
+              "subagentId": {
                 "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "subagent",
-                  "shell"
-                ]
               },
               "description": {
                 "type": "string"
@@ -16220,8 +16164,7 @@
               }
             },
             "required": [
-              "taskId",
-              "type",
+              "subagentId",
               "description",
               "status",
               "duration"

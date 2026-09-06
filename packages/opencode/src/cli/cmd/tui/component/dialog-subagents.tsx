@@ -17,7 +17,7 @@ function StatusGutter(props: { status: string }) {
   return <text fg={theme.error}>{"\u2757"}</text>
 }
 
-export function DialogTasks() {
+export function DialogSubagents() {
   const sdk = useSDK()
   const route = useRoute()
   const [tab, setTab] = createSignal<Tab>("running")
@@ -63,7 +63,7 @@ export function DialogTasks() {
       ]
     }
     return items.map((t) => {
-      const agent = t.subagent?.agent ?? t.type
+      const agent = t.subagent?.agent ?? "subagent"
       const duration = t.time.completed
         ? `${Math.round((t.time.completed - t.time.created) / 1000)}s`
         : `${Math.round((Date.now() - t.time.created) / 1000)}s`

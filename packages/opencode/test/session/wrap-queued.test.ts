@@ -11,7 +11,7 @@ type PartInput = {
   synthetic?: boolean
   internal?: boolean
   backgroundJobResult?: MessageV2.BackgroundJobResult
-  backgroundTaskResult?: MessageV2.BackgroundTaskResult
+  backgroundSubagentResult?: MessageV2.BackgroundSubagentResult
 }
 
 function user(parts: PartInput[]) {
@@ -34,7 +34,7 @@ function user(parts: PartInput[]) {
       ...(part.synthetic ? { synthetic: true } : {}),
       ...(part.internal ? { internal: true } : {}),
       ...(part.backgroundJobResult ? { backgroundJobResult: part.backgroundJobResult } : {}),
-      ...(part.backgroundTaskResult ? { backgroundTaskResult: part.backgroundTaskResult } : {}),
+      ...(part.backgroundSubagentResult ? { backgroundSubagentResult: part.backgroundSubagentResult } : {}),
     })) as MessageV2.Part[],
   }
 }
@@ -56,9 +56,8 @@ const jobResult: MessageV2.BackgroundJobResult = {
   log: "",
   duration: 1200,
 }
-const taskResult: MessageV2.BackgroundTaskResult = {
-  taskId: "prt_x",
-  type: "subagent",
+const taskResult: MessageV2.BackgroundSubagentResult = {
+  subagentId: "prt_x",
   description: "audit",
   status: "completed",
   duration: 3400,
@@ -73,10 +72,12 @@ describe("wrapQueued frames what joined the turn", () => {
     expect(body(msg)).toContain("Please address this and continue")
   })
 
-  test("a delivered subagent result is framed as a finished background task", () => {
-    const msg = user([{ text: "<background-task-result>...", synthetic: true, backgroundTaskResult: taskResult }])
+  test("a delivered subagent result is framed as a finished background subagent", () => {
+    const msg = user([
+      { text: "<background-subagent-result>...", synthetic: true, backgroundSubagentResult: taskResult },
+    ])
     SessionPrompt.wrapQueued([msg], floor)
-    expect(body(msg)).toContain("A background task you delegated has finished")
+    expect(body(msg)).toContain("A background subagent you delegated has finished")
   })
 
   test("a typed prompt is framed as the user's message", () => {
