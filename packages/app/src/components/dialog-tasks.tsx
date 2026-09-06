@@ -137,9 +137,7 @@ export const DialogTasks: Component<{ sessionID?: string; parentID?: string; swi
       event.preventDefault()
       event.stopPropagation()
       armed = true
-      listRef?.onKeyDown(
-        new KeyboardEvent("keydown", { key: event.shiftKey ? "ArrowUp" : "ArrowDown", bubbles: true }),
-      )
+      listRef?.onKeyDown(new KeyboardEvent("keydown", { key: event.shiftKey ? "ArrowUp" : "ArrowDown", bubbles: true }))
     }
     const commit = (event: KeyboardEvent) => {
       if (event.key !== "Control" || !armed) return

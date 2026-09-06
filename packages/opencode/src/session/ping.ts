@@ -138,8 +138,8 @@ export namespace SessionPing {
       " A question or permission you were waiting on, or a tool call part-way through, is gone and will never return — redo whatever still matters."
     const alive =
       subtasks === 1
-        ? " The subtask you launched was resumed too and will report its result back as before, so do NOT re-launch it; wait for it as you were."
-        : ` The ${subtasks} subtasks you launched were resumed too and will report their results back as before, so do NOT re-launch them; wait for them as you were.`
+        ? " The subagent you launched was resumed too and will report its result back as before, so do NOT re-launch it; wait for it as you were."
+        : ` The ${subtasks} subagents you launched were resumed too and will report their results back as before, so do NOT re-launch them; wait for them as you were.`
     return head + dead + (subtasks > 0 ? alive : "")
   }
 

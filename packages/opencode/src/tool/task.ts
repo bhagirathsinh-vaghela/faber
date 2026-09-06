@@ -301,7 +301,7 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
     // A continue prompt, not the original: the child resumes its cut-off turn
     // rather than re-running its instructions from the top. The same wrapper
     // carries the completion into an injection for the parent.
-    const promptParts = await SessionPrompt.resolvePromptParts(SUBTASK_RESUME_TEXT)
+    const promptParts = await SessionPrompt.resolvePromptParts(SUBAGENT_RESUME_TEXT)
     void runSubagentInBackground({ task, abort, session: child, agent, model, promptParts, forceInject: true })
     resumed++
     log.info("resumed interrupted subtask", { child: child.id, parent: parentSessionID })
@@ -309,7 +309,7 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
   return resumed
 }
 
-export const SUBTASK_RESUME_TEXT =
+export const SUBAGENT_RESUME_TEXT =
   "Pardon the interruption — the server restarted and your turn was cut off. Continue what you were doing and finish the task you were given; your result is still awaited by the session that launched you."
 
 // The subtasks of a session, durable across a restart. The in-memory

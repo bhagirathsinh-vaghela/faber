@@ -1611,32 +1611,32 @@ ToolRegistry.register({
                 args: props.metadata.status === "async_launched" ? [i18n.t("ui.tool.task.box.launched")] : undefined,
               }}
             >
-                <Switch>
-                  {/* A real inline result (rare/future sync path) wins. */}
-                  <Match when={props.output && stripTaskOutput(props.output)}>
-                    {(body) => (
-                      <div data-slot="tool-body">
-                        <CopyButton content={() => body()} />
-                        <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
-                          <Markdown text={body()} complete />
-                        </div>
+              <Switch>
+                {/* A real inline result (rare/future sync path) wins. */}
+                <Match when={props.output && stripTaskOutput(props.output)}>
+                  {(body) => (
+                    <div data-slot="tool-body">
+                      <CopyButton content={() => body()} />
+                      <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
+                        <Markdown text={body()} complete />
                       </div>
-                    )}
-                  </Match>
-                  {/* Background dispatch: no inline result, so lay out what was
+                    </div>
+                  )}
+                </Match>
+                {/* Background dispatch: no inline result, so lay out what was
                       launched as labeled fields. The real result lands as a
                       separate result box below. */}
-                  <Match when={props.metadata.status === "async_launched"}>
-                    <div data-slot="task-output-dispatch">
-                      <Markdown text={dispatchMarkdown()} complete />
-                    </div>
-                  </Match>
-                  {/* Args still streaming (prompt/description being written): show
+                <Match when={props.metadata.status === "async_launched"}>
+                  <div data-slot="task-output-dispatch">
+                    <Markdown text={dispatchMarkdown()} complete />
+                  </div>
+                </Match>
+                {/* Args still streaming (prompt/description being written): show
                       a live counter instead of an empty box. */}
-                  <Match when={props.status === "pending"}>
-                    <ToolStreaming label={i18n.t("ui.tool.task.preparing")} />
-                  </Match>
-                </Switch>
+                <Match when={props.status === "pending"}>
+                  <ToolStreaming label={i18n.t("ui.tool.task.preparing")} />
+                </Match>
+              </Switch>
             </BasicTool>
           </Match>
         </Switch>

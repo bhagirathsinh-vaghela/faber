@@ -1797,11 +1797,11 @@ export type KeybindsConfig = {
    */
   session_parent?: string
   /**
-   * Cancel running subtask
+   * Cancel running subagent
    */
   session_child_cancel?: string
   /**
-   * Show subtask list
+   * Show subagent list
    */
   task_list?: string
   /**

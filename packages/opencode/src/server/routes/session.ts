@@ -927,7 +927,7 @@ export const SessionRoutes = lazy(() =>
       describeRoute({
         summary: "Resume a session after a restart",
         description:
-          "Resume a root session whose turn a restart cut off, together with the subtasks it had in flight. The subtasks come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subtask graph.",
+          "Resume a root session whose turn a restart cut off, together with the subagents it had in flight. The subagents come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subagent graph.",
         operationId: "session.restore",
         responses: {
           204: {

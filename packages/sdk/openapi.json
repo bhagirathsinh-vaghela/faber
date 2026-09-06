@@ -3452,7 +3452,7 @@
           }
         ],
         "summary": "Resume a session after a restart",
-        "description": "Resume a root session whose turn a restart cut off, together with the subtasks it had in flight. The subtasks come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subtask graph.",
+        "description": "Resume a root session whose turn a restart cut off, together with the subagents it had in flight. The subagents come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subagent graph.",
         "responses": {
           "204": {
             "description": "Resume accepted"
@@ -14198,12 +14198,12 @@
             "type": "string"
           },
           "session_child_cancel": {
-            "description": "Cancel running subtask",
+            "description": "Cancel running subagent",
             "default": "<leader>x",
             "type": "string"
           },
           "task_list": {
-            "description": "Show subtask list",
+            "description": "Show subagent list",
             "default": "alt+a",
             "type": "string"
           },
