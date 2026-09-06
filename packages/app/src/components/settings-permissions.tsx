@@ -55,8 +55,8 @@ const ITEMS = [
   },
   {
     id: "agent",
-    title: "settings.permissions.tool.task.title",
-    description: "settings.permissions.tool.task.description",
+    title: "settings.permissions.tool.agent.title",
+    description: "settings.permissions.tool.agent.description",
   },
   {
     id: "skill",

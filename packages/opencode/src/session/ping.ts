@@ -178,7 +178,7 @@ export namespace SessionPing {
           // restored, cut or not: a subagent under a parent that finished its own
           // turn is still work worth recovering, and its injection simply wakes
           // the idle parent. The warm /restore path does the same, so both entry
-          // points agree. Dynamic import breaks the tool/task -> session cycle.
+          // points agree. Dynamic import breaks the tool/agent -> session cycle.
           const { resumeSubagents } = await import("@/tool/agent")
           const subagents = await resumeSubagents(session.id)
           const cut = await interrupted(session.id)
