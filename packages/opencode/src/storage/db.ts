@@ -68,7 +68,8 @@ export namespace Db {
       Sessions.listProject("__warm__"),
     ])
     const db = await open()
-    const empty = (table: string) => db.query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM ${table}) AS n`).get()!.n === 0
+    const empty = (table: string) =>
+      db.query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM ${table}) AS n`).get()!.n === 0
     const parts = empty("message")
       ? 0
       : db.run(`DELETE FROM part WHERE message_id NOT IN (SELECT id FROM message)`).changes

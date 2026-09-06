@@ -452,22 +452,19 @@
   }
 }
 
-/* Dispatched badge in the TASK OUTPUT header, pinned right. */
-[data-slot="task-output-status"] {
-  margin-left: auto;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--syntax-constant) 15%, transparent);
-  color: var(--syntax-constant);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: normal;
-  text-transform: none;
+/* Dispatch fields render as one markdown block (bold labels + code pills)
+   inside the subagent tool box's collapsible body. Inset to align with the
+   trigger row (12px) like every other tool body; tighten the stacked lines. */
+[data-slot="task-output-dispatch"] {
+  padding: 8px 12px;
 }
 
-/* Dispatch fields render as one markdown block (bold labels + code pills),
-   so it themes with the rest of the UI. Tighten the stacked label lines. */
 [data-slot="task-output-dispatch"] [data-component="markdown"] p {
   margin: 0 0 4px;
+}
+
+[data-slot="task-output-dispatch"] [data-component="markdown"] p:last-child {
+  margin-bottom: 0;
 }
 
 /* Live "args still streaming" affordance (write/edit/patch/task pending state):
@@ -482,13 +479,6 @@
   border-top: 1px solid var(--border-weaker-base);
   font-size: 12px;
   line-height: 16px;
-}
-
-/* Inside the task-output accent box (which already has its own padding), drop
-   the inset so it doesn't double up — just a little top gap under the header. */
-[data-component="task-output"] [data-slot="tool-streaming"] {
-  padding: 4px 0 2px;
-  border-top: none;
 }
 
 [data-slot="tool-streaming"] .tool-streaming-label {

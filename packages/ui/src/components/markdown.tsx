@@ -88,7 +88,7 @@ function remarkCallouts() {
       if (node.name === "check") {
         node.data = { ...node.data, hName: "details", hProperties: { className: ["callout", "check"] } }
         const hasLabel = body[0]?.data?.directiveLabel
-        const question = hasLabel ? body[0].children ?? [] : []
+        const question = hasLabel ? (body[0].children ?? []) : []
         const answer = hasLabel ? body.slice(1) : body
         const summary = { type: "summary", data: { hName: "summary" }, children: [strong(label), ...question] }
         node.children = [summary, ...answer]
@@ -438,7 +438,13 @@ export function Markdown(
       <SolidMarkdown
         renderingStrategy="reconcile"
         skipHtml
-        remarkPlugins={[remarkGfm, [remarkMath, MATH_OPTIONS], remarkBreaks, remarkDirectiveContainerOnly, remarkCallouts]}
+        remarkPlugins={[
+          remarkGfm,
+          [remarkMath, MATH_OPTIONS],
+          remarkBreaks,
+          remarkDirectiveContainerOnly,
+          remarkCallouts,
+        ]}
         rehypePlugins={rehype()}
         components={components(labels, theme, complete)}
       >

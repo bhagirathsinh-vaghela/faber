@@ -76,5 +76,4 @@ export namespace BackgroundDeliver {
     }
     return true
   }
-
 }

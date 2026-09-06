@@ -130,13 +130,21 @@ export namespace Parts {
       scanned++
       // The part's own id/messageID come from the file body, not the path, so a
       // renamed file can't desync the row's keys.
-      const part = (await Bun.file(path.join(dir, entry)).json().catch(() => undefined)) as MessageV2.Part | undefined
+      const part = (await Bun.file(path.join(dir, entry))
+        .json()
+        .catch(() => undefined)) as MessageV2.Part | undefined
       // Skip a part missing any NOT NULL key: one such file must not abort the
       // whole chunk transaction on a 272k-file import.
       if (!part?.id || !part.messageID || !part.sessionID) continue
       readable++
       const json = JSON.stringify(part)
-      batch.push({ id: part.id, messageID: part.messageID, sessionID: part.sessionID, json, length: Buffer.byteLength(json) })
+      batch.push({
+        id: part.id,
+        messageID: part.messageID,
+        sessionID: part.sessionID,
+        json,
+        length: Buffer.byteLength(json),
+      })
       if (batch.length >= Db.MIGRATE_CHUNK) {
         flush(batch)
         batch = []

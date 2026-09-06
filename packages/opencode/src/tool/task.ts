@@ -368,9 +368,7 @@ function buildMinimalTask(p: BackgroundTask.PendingResult): BackgroundTask.Info 
     status: p.error ? "failed" : "completed",
     description: p.description,
     time: { created: p.completedAt - p.duration, completed: p.completedAt },
-    subagent: p.agent
-      ? { sessionID: "", agent: p.agent, prompt: "", model: MessageV2.UNKNOWN_MODEL }
-      : undefined,
+    subagent: p.agent ? { sessionID: "", agent: p.agent, prompt: "", model: MessageV2.UNKNOWN_MODEL } : undefined,
   }
 }
 

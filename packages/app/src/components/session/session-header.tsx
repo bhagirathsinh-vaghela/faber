@@ -17,6 +17,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { Keybind } from "@opencode-ai/ui/keybind"
 import { JobsButton } from "@/components/jobs-button"
+import { SubagentsButton } from "@/components/subagents-button"
 
 export function SessionHeader() {
   const layout = useLayout()
@@ -143,6 +144,9 @@ export function SessionHeader() {
               <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
                 <JobsButton />
               </Tooltip>
+              <Tooltip value={language.t("command.task.list")} placement="top" gutter={8}>
+                <SubagentsButton />
+              </Tooltip>
               <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                 <IconButton
                   icon="circle-ban-sign"
@@ -198,6 +202,9 @@ export function SessionHeader() {
                   </Show>
                   <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
                     <JobsButton />
+                  </Tooltip>
+                  <Tooltip value={language.t("command.task.list")} placement="top" gutter={8}>
+                    <SubagentsButton />
                   </Tooltip>
                   <Tooltip value={language.t("session.stop")} placement="top" gutter={8}>
                     <IconButton

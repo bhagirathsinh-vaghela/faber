@@ -94,9 +94,7 @@ describe("toolDenial — read-only MCP subtask (explore-mcp)", () => {
   test("an MCP write tool is denied", async () => {
     const set = await toolset("explore-mcp")
     const denial = SessionPrompt.toolDenial(set, WRITE_KEY, {}, { readOnly: false })
-    expect(denial).toBe(
-      `Tool "${WRITE_KEY}" is not available for this task. Available tools: ${set.join(", ")}`,
-    )
+    expect(denial).toBe(`Tool "${WRITE_KEY}" is not available for this task. Available tools: ${set.join(", ")}`)
   })
 
   test("mcp_search is allowed", async () => {

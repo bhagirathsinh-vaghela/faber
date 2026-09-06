@@ -143,7 +143,11 @@ export namespace SessionBusy {
         directory: "global",
         payload: {
           type: ServerEvent.Busy.type,
-          properties: { sessions: { [sessionID]: { directory, busy: f.busy, busySelf: f.busySelf, busyDescendant: f.busyDescendant } } },
+          properties: {
+            sessions: {
+              [sessionID]: { directory, busy: f.busy, busySelf: f.busySelf, busyDescendant: f.busyDescendant },
+            },
+          },
         },
       })
       if (f.busy) working.set(sessionID, { busy: f.busy, busySelf: f.busySelf, busyDescendant: f.busyDescendant })

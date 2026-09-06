@@ -41,6 +41,7 @@ import { TextShimmer } from "./text-shimmer"
 import { Button } from "./button"
 import { Card } from "./card"
 import { Icon } from "./icon"
+import { IconButton } from "./icon-button"
 import { Checkbox } from "./checkbox"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
@@ -536,6 +537,7 @@ function JobResultDisplay(props: { part: TextPart }) {
 
 export function Message(props: MessageProps) {
   const boxDefaults = useBoxDefaults()
+  const i18n = useI18n()
   const debugInternal = () => boxDefaults?.showInternal?.() ?? false
   return (
     <Switch>
@@ -544,7 +546,9 @@ export function Message(props: MessageProps) {
           <Show when={props.boxed} fallback={<TaskResultDisplay part={part()} />}>
             <MessageBox
               message={props.message}
-              label="TASK RESULT"
+              label={i18n.t("ui.tool.task.box.done", {
+                duration: taskDuration(part().backgroundTaskResult!.duration ?? 0),
+              })}
               accent={taskAccent(part().backgroundTaskResult!.status)}
               action={props.action}
               onJump={props.onJump}
@@ -1480,13 +1484,27 @@ ToolRegistry.register({
       })
     }
 
-    // Navigate into the subtask's child session. Rendered as a real button in
-    // the trigger's action slot (right of the title) — a SIBLING of the trigger
-    // button, never a clickable subtitle nested inside it (invalid HTML / a11y).
+    // Rendered in the trigger's action slot (a SIBLING of the trigger button,
+    // never nested inside it — invalid HTML / a11y).
     const jumpToChild = () => {
       const sessionId = childSessionId()
       if (sessionId && data.navigateToSession) data.navigateToSession(sessionId)
     }
+
+    const openButton = () =>
+      childSessionId() ? (
+        <IconButton
+          icon="square-arrow-top-right"
+          iconSize="small"
+          variant="secondary"
+          data-slot="tool-action"
+          title={i18n.t("ui.tool.task.open")}
+          onClick={(e) => {
+            e.stopPropagation()
+            jumpToChild()
+          }}
+        />
+      ) : undefined
 
     // Dispatch fields as one markdown block so it themes like the rest of the
     // UI: bold labels, code pills for the agent/toolset/tool identifiers.
@@ -1528,7 +1546,23 @@ ToolRegistry.register({
     }
 
     return (
-      <div data-component="tool-part-wrapper" data-permission={!!childPermission()}>
+      <div
+        data-component="tool-part-wrapper"
+        data-permission={!!childPermission()}
+        // The subagent box is a tool box, but amber (the subagent accent) rather
+        // than the neutral tool grey. Point the tool tokens the wrapper's
+        // collapsible reads at the task tokens, so it inherits every tool-box
+        // metric (padding, radius, chevron alignment) and only the color differs.
+        style={
+          childPermission()
+            ? undefined
+            : {
+                "--box-accent-tool": TASK_ACCENT,
+                "--box-border-tool": "var(--box-border-task)",
+                "--box-bg-tool": "var(--box-bg-task)",
+              }
+        }
+      >
         <Switch>
           <Match when={childPermission()}>
             <>
@@ -1539,26 +1573,10 @@ ToolRegistry.register({
                     icon="task"
                     tool="task"
                     defaultOpen={true}
+                    preArrowAction={openButton()}
                     trigger={{
                       title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
-                      titleClass: "capitalize",
                       subtitle: props.input.description,
-                      action: childSessionId() ? (
-                        <button
-                          data-component="icon-button"
-                          data-size="normal"
-                          data-variant="secondary"
-                          data-slot="tool-action"
-                          type="button"
-                          title="Open subtask session"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            jumpToChild()
-                          }}
-                        >
-                          <Icon name="square-arrow-top-right" size="small" />
-                        </button>
-                      ) : undefined,
                     }}
                   />
                 }
@@ -1581,62 +1599,45 @@ ToolRegistry.register({
             </>
           </Match>
           <Match when={true}>
-            <div
-              data-component="task-output"
-              class="accent-box"
-              style={{
-                "--box-accent": TASK_ACCENT,
-                "--box-border": "var(--box-border-task)",
-                "--box-bg": "var(--box-bg-task)",
-                padding: "0.5rem 0.75rem",
+            <BasicTool
+              icon="task"
+              tool="task"
+              sessionID={props.sessionID}
+              boxID={props.boxID}
+              preArrowAction={openButton()}
+              trigger={{
+                title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
+                subtitle: props.input.description,
+                args: props.metadata.status === "async_launched" ? [i18n.t("ui.tool.task.box.launched")] : undefined,
               }}
             >
-              <div
-                data-slot="task-output-header"
-                style={{
-                  display: "flex",
-                  "align-items": "center",
-                  gap: "0.5rem",
-                  "margin-bottom": "0.375rem",
-                  color: TASK_ACCENT,
-                  "font-size": "11px",
-                  "font-weight": "600",
-                  "letter-spacing": "0.04em",
-                }}
-              >
-                <span>{"\u25c8"}</span>
-                <span>TASK OUTPUT</span>
-                <Show when={props.metadata.status === "async_launched"}>
-                  <span data-slot="task-output-status">{i18n.t("ui.tool.task.dispatched")}</span>
-                </Show>
-              </div>
-              <Switch>
-                {/* A real inline result (rare/future sync path) wins. */}
-                <Match when={props.output && stripTaskOutput(props.output)}>
-                  {(body) => (
-                    <div data-slot="tool-body">
-                      <CopyButton content={() => body()} />
-                      <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
-                        <Markdown text={body()} complete />
+                <Switch>
+                  {/* A real inline result (rare/future sync path) wins. */}
+                  <Match when={props.output && stripTaskOutput(props.output)}>
+                    {(body) => (
+                      <div data-slot="tool-body">
+                        <CopyButton content={() => body()} />
+                        <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
+                          <Markdown text={body()} complete />
+                        </div>
                       </div>
+                    )}
+                  </Match>
+                  {/* Background dispatch: no inline result, so lay out what was
+                      launched as labeled fields. The real result lands as a
+                      separate result box below. */}
+                  <Match when={props.metadata.status === "async_launched"}>
+                    <div data-slot="task-output-dispatch">
+                      <Markdown text={dispatchMarkdown()} complete />
                     </div>
-                  )}
-                </Match>
-                {/* Background dispatch: no inline result, so lay out what was
-                    launched as labeled fields. The real result lands as a
-                    separate TASK RESULT box below. */}
-                <Match when={props.metadata.status === "async_launched"}>
-                  <div data-slot="task-output-dispatch">
-                    <Markdown text={dispatchMarkdown()} complete />
-                  </div>
-                </Match>
-                {/* Args still streaming (prompt/description being written): show
-                    a live counter instead of an empty box. */}
-                <Match when={props.status === "pending"}>
-                  <ToolStreaming label={i18n.t("ui.tool.task.preparing")} />
-                </Match>
-              </Switch>
-            </div>
+                  </Match>
+                  {/* Args still streaming (prompt/description being written): show
+                      a live counter instead of an empty box. */}
+                  <Match when={props.status === "pending"}>
+                    <ToolStreaming label={i18n.t("ui.tool.task.preparing")} />
+                  </Match>
+                </Switch>
+            </BasicTool>
           </Match>
         </Switch>
       </div>

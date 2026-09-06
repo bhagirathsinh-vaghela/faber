@@ -111,7 +111,9 @@ export namespace Messages {
     let batch = [] as MessageV2.Info[]
     for await (const entry of new Bun.Glob("message/*/*.json").scan({ cwd: dir, onlyFiles: true })) {
       scanned++
-      const m = (await Bun.file(path.join(dir, entry)).json().catch(() => undefined)) as MessageV2.Info | undefined
+      const m = (await Bun.file(path.join(dir, entry))
+        .json()
+        .catch(() => undefined)) as MessageV2.Info | undefined
       if (!m?.id || !m.sessionID || !m.time?.created) continue
       batch.push(m)
       if (batch.length >= Db.MIGRATE_CHUNK) {

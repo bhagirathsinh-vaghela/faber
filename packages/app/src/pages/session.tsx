@@ -72,6 +72,7 @@ import { usePrompt } from "@/context/prompt"
 import { useStash } from "@/context/stash"
 import { DialogStash } from "@/components/dialog-stash"
 import { DialogTasks } from "@/components/dialog-tasks"
+import { DialogOverview } from "@/components/dialog-overview"
 import { DialogPending } from "@/components/dialog-pending"
 import { useComments, type LineComment } from "@/context/comments"
 import { useQuestion } from "@/context/question"
@@ -1328,7 +1329,32 @@ export default function Page() {
       category: language.t("command.category.session"),
       keybind: "alt+a",
       disabled: !params.id,
-      onSelect: () => dialog.show(() => <DialogTasks />),
+      onSelect: () => dialog.show(() => <DialogTasks parentID={info()?.parentID} />),
+    },
+    {
+      // Overrides the layout-level Ctrl+Tab while a session is open (session
+      // commands register later, so they win the keybind). In a subagent
+      // session, cycle its siblings; otherwise fall back to the session switcher.
+      id: "session.switcher",
+      title: language.t("command.session.switcher"),
+      category: language.t("command.category.session"),
+      keybind: "ctrl+tab",
+      onSelect: () => {
+        const parent = info()?.parentID
+        if (parent) return dialog.show(() => <DialogTasks sessionID={parent} parentID={parent} switcher />)
+        dialog.show(() => <DialogOverview advance switcher />)
+      },
+    },
+    {
+      id: "session.switcher.reverse",
+      title: language.t("command.session.switcher.reverse"),
+      category: language.t("command.category.session"),
+      keybind: "ctrl+shift+tab",
+      onSelect: () => {
+        const parent = info()?.parentID
+        if (parent) return dialog.show(() => <DialogTasks sessionID={parent} parentID={parent} switcher />)
+        dialog.show(() => <DialogOverview switcher />)
+      },
     },
     {
       id: "task.pending",
@@ -2681,15 +2707,17 @@ export default function Page() {
                           >
                             <div class="h-(--control-height) flex items-center gap-1">
                               <Show when={info()?.parentID}>
-                                <IconButton
-                                  tabIndex={-1}
-                                  icon="arrow-left"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    navigate(`/${params.dir}/session/${info()?.parentID}`)
-                                  }}
-                                  aria-label={language.t("common.goBack")}
-                                />
+                                <Tooltip value={language.t("session.back.subagent")} placement="bottom" gutter={8}>
+                                  <IconButton
+                                    tabIndex={-1}
+                                    icon="arrow-left"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      navigate(`/${params.dir}/session/${info()?.parentID}`)
+                                    }}
+                                    aria-label={language.t("session.back.subagent")}
+                                  />
+                                </Tooltip>
                               </Show>
                               <Show when={info()?.title}>
                                 <Show

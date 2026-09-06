@@ -113,7 +113,9 @@ export namespace Sessions {
     // otherwise never matches, since Bun.Glob skips dot-dirs by default.
     for await (const entry of new Bun.Glob("session/**/*.json").scan({ cwd: dir, onlyFiles: true, dot: true })) {
       scanned++
-      const s = (await Bun.file(path.join(dir, entry)).json().catch(() => undefined)) as Session.Info | undefined
+      const s = (await Bun.file(path.join(dir, entry))
+        .json()
+        .catch(() => undefined)) as Session.Info | undefined
       if (!s?.id || !s.projectID || !s.time?.created || !s.time?.updated) continue
       batch.push(s)
       if (batch.length >= Db.MIGRATE_CHUNK) {

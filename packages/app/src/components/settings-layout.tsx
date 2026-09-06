@@ -11,10 +11,10 @@ import { SettingsRow } from "./settings-row"
 // key matches the tool name used at the render site.
 const BOX_TYPES: { key: string; label: string }[] = [
   { key: "user", label: "User message" },
-  { key: "task_result", label: "Task result" },
+  { key: "task_result", label: "Subagent result" },
   { key: "job_result", label: "Job result" },
   { key: "system_notice", label: "System notice" },
-  { key: "task", label: "Task" },
+  { key: "task", label: "Subagent" },
   { key: "bash", label: "Bash" },
   { key: "edit", label: "Edit" },
   { key: "write", label: "Write" },

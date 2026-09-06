@@ -13,7 +13,7 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
   {
     title: "Header",
     fields: [
-      { id: "agent", label: "Agent" },
+      { id: "agent", label: "Mode" },
       { id: "model", label: "Model" },
       { id: "variant", label: "Variant" },
       { id: "duration", label: "Duration (footer only)" },
@@ -35,9 +35,9 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
     ],
   },
   {
-    title: "Tasks",
+    title: "Subagents",
     fields: [
-      { id: "pending", label: "Pending (subtasks running)" },
+      { id: "pending", label: "Pending (subagents running)" },
       { id: "available", label: "Available (results to accept)" },
       { id: "auto-inject", label: "Auto-inject" },
       { id: "mcp", label: "MCP tools" },

@@ -47,6 +47,13 @@ export interface BasicToolProps {
   // and non-fenced tools render their own via the tool-body slot. This prop is
   // kept for non-tool callers (e.g. MessageBox) that have no separate body.
   copy?: () => string
+  // A control rendered immediately to the LEFT of the collapse chevron (and
+  // right of the title/args), as a sibling of the trigger button so it is not an
+  // interactive element nested in a <button>. When set, the chevron moves out of
+  // the trigger into this same cluster so it keeps its rightmost spot with the
+  // control just before it. Other callers (no preArrowAction) keep the chevron
+  // inside the trigger unchanged.
+  preArrowAction?: JSX.Element
 }
 
 export function BasicTool(props: BasicToolProps) {
@@ -85,7 +92,9 @@ export function BasicTool(props: BasicToolProps) {
     setOpen(value)
   }
 
-  const hasActions = () => (isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action) || props.copy
+  const arrowShows = () => !!body() && !props.hideDetails && !props.locked
+  const hasActions = () =>
+    (isTriggerTitle(props.trigger) && (props.trigger as TriggerTitle).action) || props.copy || props.preArrowAction
 
   return (
     <Collapsible open={open()} onOpenChange={handleOpenChange}>
@@ -144,7 +153,10 @@ export function BasicTool(props: BasicToolProps) {
                 <Match when={true}>{props.trigger as JSX.Element}</Match>
               </Switch>
             </div>
-            <Show when={body() && !props.hideDetails && !props.locked}>
+            {/* With a preArrowAction the chevron moves to the sibling cluster
+                below so the action can sit to its left; otherwise it stays here
+                at the trigger's right edge, unchanged. */}
+            <Show when={arrowShows() && !props.preArrowAction}>
               <Collapsible.Arrow />
             </Show>
           </div>
@@ -158,6 +170,12 @@ export function BasicTool(props: BasicToolProps) {
             </Show>
             <Show when={props.copy}>
               <CopyButton content={props.copy!} class="basic-tool-copy" />
+            </Show>
+            {props.preArrowAction}
+            {/* Out here the arrow is a sibling of the trigger, so unlike the
+                in-trigger arrow it must carry its own toggle to stay clickable. */}
+            <Show when={arrowShows() && props.preArrowAction}>
+              <Collapsible.Arrow onClick={() => handleOpenChange(!open())} />
             </Show>
           </div>
         </Show>

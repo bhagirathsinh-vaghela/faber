@@ -169,9 +169,12 @@ describe("Db.sweepOrphans", () => {
     // not been populated — an interrupted or reordered migration. The sweep must
     // read "no owners" as "skip", never as "every part is an orphan". Snapshot and
     // restore the message table so this shared-DB test leaves no residue.
-    const saved = db.query<{ id: string; session_id: string; time_created: number; json: string; length: number }, []>(
-      `SELECT id, session_id, time_created, json, length FROM message`,
-    ).all()
+    const saved = db
+      .query<
+        { id: string; session_id: string; time_created: number; json: string; length: number },
+        []
+      >(`SELECT id, session_id, time_created, json, length FROM message`)
+      .all()
     const survivor = text("msg_guard_ghost", "prt_0000000000000018000000000c", "survive", "ses_guard_ghost")
     await Parts.put(survivor)
     try {
@@ -195,10 +198,12 @@ describe("Db.sweepOrphans", () => {
     // The messages half of the same guard: messages present, owner (session)
     // table not yet populated. The sweep must skip, not treat every message as an
     // orphan. Snapshot and restore the session table so this leaves no residue.
-    const saved = db.query<
-      { id: string; project_id: string; time_created: number; time_updated: number; json: string },
-      []
-    >(`SELECT id, project_id, time_created, time_updated, json FROM session`).all()
+    const saved = db
+      .query<
+        { id: string; project_id: string; time_created: number; time_updated: number; json: string },
+        []
+      >(`SELECT id, project_id, time_created, time_updated, json FROM session`)
+      .all()
     await Messages.put({
       id: "msg_guard_survivor",
       sessionID: "ses_guard_orphan",
