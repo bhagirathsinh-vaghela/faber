@@ -4,7 +4,7 @@ import { Log } from "@/util/log"
 // only when its directory has none. A session is a "user" of its directory's
 // instance while it is busy (a turn is running) or ping-armed (its cache is
 // being kept warm). Both axes are tracked here, keyed by directory; children
-// share their parent's directory, so a busy subtask keeps the parent's
+// share their parent's directory, so a busy subagent keeps the parent's
 // instance alive through the same entry.
 //
 // This is the instance-lifetime source of truth, deliberately NOT derived from

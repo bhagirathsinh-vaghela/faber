@@ -11,32 +11,32 @@ const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
 
 // The continue prompt is the load-bearing half of the resume contract: it is
-// what makes a resumed parent WAIT for its subtask's injection rather than
-// re-launch the work. The clause must appear exactly when subtasks came back,
+// what makes a resumed parent WAIT for its subagent's injection rather than
+// re-launch the work. The clause must appear exactly when subagents came back,
 // and say "do not re-launch".
 describe("SessionPing.continueText", () => {
-  test("no subtask clause when none were resumed", () => {
+  test("no subagent clause when none were resumed", () => {
     const text = SessionPing.continueText(0)
     expect(text).toContain("your turn was cut off")
     expect(text).not.toContain("re-launch")
-    expect(text).not.toContain("subtask")
+    expect(text).not.toContain("subagent")
   })
 
-  test("singular clause tells the parent to wait for its one subtask", () => {
+  test("singular clause tells the parent to wait for its one subagent", () => {
     const text = SessionPing.continueText(1)
-    expect(text).toContain("The subtask you launched was resumed")
+    expect(text).toContain("The subagent you launched was resumed")
     expect(text).toContain("do NOT re-launch it")
     expect(text).toContain("wait for it")
   })
 
   test("plural clause names the count and forbids re-launch", () => {
     const text = SessionPing.continueText(3)
-    expect(text).toContain("The 3 subtasks you launched were resumed")
+    expect(text).toContain("The 3 subagents you launched were resumed")
     expect(text).toContain("do NOT re-launch them")
   })
 })
 
-// The real filter resumeSubtasks keys on. `SessionPing.interrupted` is called
+// The real filter resumeSubagents keys on. `SessionPing.interrupted` is called
 // directly (not reimplemented) so a change to its discriminator is caught here:
 // a cut turn has no completion stamp (resume), a finished or user-stopped one
 // does (skip, since the abort tail stamps it the same as a clean finish).
@@ -79,12 +79,12 @@ describe("SessionPing.interrupted", () => {
     })
   })
 
-  // A subtask dialog reads this: it merges the durable child sessions with the
+  // A subagent dialog reads this: it merges the durable child sessions with the
   // in-memory tasks, deduped by child session, so it survives a restart and
   // never double-counts a resumed child. With no in-memory tasks (the
   // post-restart state), it is entirely disk-derived: a finished child reads
   // completed, a cut child running, and each appears exactly once.
-  test("subtasksForSession derives status from the child sessions on disk", async () => {
+  test("subagentsForSession derives status from the child sessions on disk", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -92,8 +92,8 @@ describe("SessionPing.interrupted", () => {
         const cut = await child(parent.id, false)
         const done = await child(parent.id, true)
 
-        const { subtasksForSession } = await import("../../src/tool/task")
-        const tasks = await subtasksForSession(parent.id)
+        const { subagentsForSession } = await import("../../src/tool/task")
+        const tasks = await subagentsForSession(parent.id)
         const byChild = new Map(tasks.map((t) => [t.subagent?.sessionID, t]))
 
         expect(tasks.length).toBe(2)

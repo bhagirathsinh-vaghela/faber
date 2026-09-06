@@ -31,8 +31,8 @@ const ContextInfo = (props: { context: Accessor<string | undefined>; cost: Acces
 }
 
 export function Header(props: {
-  subtaskRunning?: boolean
-  subtaskStatus?: "running" | "completed" | "failed" | "cancelled" | null
+  subagentRunning?: boolean
+  subagentStatus?: "running" | "completed" | "failed" | "cancelled" | null
 }) {
   const route = useRouteData("session")
   const sync = useSync()
@@ -126,7 +126,7 @@ export function Header(props: {
                     Next <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle")}</span>
                   </text>
                 </box>
-                <Show when={props.subtaskRunning}>
+                <Show when={props.subagentRunning}>
                   <box
                     onMouseOver={() => setHover("cancel")}
                     onMouseOut={() => setHover(null)}
@@ -138,19 +138,19 @@ export function Header(props: {
                     </text>
                   </box>
                 </Show>
-                <Show when={!props.subtaskRunning && props.subtaskStatus}>
+                <Show when={!props.subagentRunning && props.subagentStatus}>
                   <text
                     fg={
-                      props.subtaskStatus === "completed"
+                      props.subagentStatus === "completed"
                         ? theme.success
-                        : props.subtaskStatus === "cancelled"
+                        : props.subagentStatus === "cancelled"
                           ? theme.warning
                           : theme.error
                     }
                   >
-                    {props.subtaskStatus === "completed"
+                    {props.subagentStatus === "completed"
                       ? "\u2714 completed"
-                      : props.subtaskStatus === "cancelled"
+                      : props.subagentStatus === "cancelled"
                         ? "\u2718 cancelled"
                         : "\u2757 failed"}
                   </text>

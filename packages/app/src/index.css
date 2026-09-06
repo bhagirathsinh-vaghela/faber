@@ -301,7 +301,7 @@
    the last box and the dock. The busy cue in both modes (zen and normal). Shares
    the tool streaming bar's shape + traveling band (opacity + transform only,
    dodging the Lightning CSS custom-property @keyframes bug), and tints with the
-   --stream-accent (agent color, set inline). While a subtask runs, a task-accent
+   --stream-accent (agent color, set inline). While a subagent runs, a task-accent
    fill cross-fades over the base so the color oscillates. */
 /* Pill-shaped surround behind the busy bar. The bar itself is only 6px tall and
    sits high in the dock over the scrolling transcript, so an opaque bar alone

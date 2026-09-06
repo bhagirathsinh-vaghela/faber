@@ -902,7 +902,7 @@ export namespace MCP {
   // connected server advertises `readOnlyHint === true` for the tool; an absent
   // or false hint is treated as a WRITE. That fail-safe means an unclassified
   // tool is DENIED by a read-only grant, never wrongly allowed — a write tool
-  // can never reach a subtask through the read-only toolset.
+  // can never reach a subagent through the read-only toolset.
   export async function readOnly(key: string): Promise<boolean> {
     const s = await state()
     for (const clientName of Object.keys(s.clients)) {

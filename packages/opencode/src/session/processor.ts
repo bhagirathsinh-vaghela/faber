@@ -383,7 +383,7 @@ export namespace SessionProcessor {
                   const weightedInput = SessionPricing.weightedInput(usage.tokens)
                   const weightedOutput = usage.tokens.output + usage.tokens.reasoning
                   // updateTotals, not update: this fires once per step (and again
-                  // for the parent of a subtask), so it broadcasts the lean
+                  // for the parent of a subagent), so it broadcasts the lean
                   // TotalsUpdated event rather than the full session record. The
                   // live per-step token counts reach the client on the assistant
                   // message via message.updated; the session record uniquely holds

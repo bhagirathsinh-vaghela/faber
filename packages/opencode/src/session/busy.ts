@@ -18,8 +18,8 @@ import z from "zod"
 // A session is busy for two independent reasons, and the parent indicators
 // animate differently for each:
 //   - self:        this session's OWN turn is in flight.
-//   - descendants: some session anywhere BELOW it (subtask, or subtask of a
-//                  subtask — full subtree) has its own turn in flight.
+//   - descendants: some session anywhere BELOW it (subagent, or subagent of a
+//                  subagent — full subtree) has its own turn in flight.
 // The projection carries `busy` = self || descendants and `busySelf` = self, so
 // the client derives descendants as `busy && !busySelf` where it needs the
 // distinction.
@@ -136,7 +136,7 @@ export namespace SessionBusy {
       // client's handler already writes to its store. Stamped "global" (like
       // recent.updated) because that handler lives only in the client's global
       // dispatch branch; the entry carries its own directory for store routing.
-      // This makes a directly-opened subtask's indicator edge-triggered like a
+      // This makes a directly-opened subagent's indicator edge-triggered like a
       // root's, rather than waiting for the 5s reconcile tick. Rides the same
       // transition guard, so it fires once per busy on/off, not per step.
       GlobalBus.emit("event", {
@@ -188,7 +188,7 @@ export namespace SessionBusy {
 
   // Level-triggered reconcile snapshot for the 5s tick, scoped to ONE open
   // session's subtree (the only thing the tick heals: the open session + its
-  // descendant subtasks, whose children the hub can't carry). Given the open
+  // descendant subagents, whose children the hub can't carry). Given the open
   // session id and its directory, walk the edge map for every descendant in that
   // directory and return FULL facts for the open id + each descendant (busy AND
   // idle) — authoritative by construction, so the client writes each straight

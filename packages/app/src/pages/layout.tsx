@@ -1663,7 +1663,7 @@ export default function Layout(props: ParentProps) {
     const directory = decode64(dir)
     if (!directory) return
     const [activeStore] = globalSync.child(directory)
-    // Don't mark seen while the session is working (own turn or a subtask) —
+    // Don't mark seen while the session is working (own turn or a subagent) —
     // effective busy from the one operative store.
     if (activeStore.session_busy[id]?.busy) return
     void globalSDK.client.session.seen({ directory, sessionID: id })

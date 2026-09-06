@@ -91,7 +91,7 @@ type State = {
   }
   // The single live busy source, keyed by sessionID, fed by the always-global
   // `session.busy` event. `busy` = effective (own turn OR any in-flight
-  // descendant subtask, full subtree); `busySelf` = own turn only. Every
+  // descendant subagent, full subtree); `busySelf` = own turn only. Every
   // consumer (overview, sidebar, open session, dock, title, SessionTurn) reads
   // this — no more recent_hub-vs-session_status split. recent_hub still carries
   // busy for the durable list, but the live flip everyone animates off is here.

@@ -6,7 +6,7 @@ import { Instance } from "../../src/project/instance"
 import type { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
-// The MCP-capable subtask toolsets and the sentinel grant live in two places:
+// The MCP-capable subagent toolsets and the sentinel grant live in two places:
 // Agent.BUILTIN_TOOLSETS names the presets (with the MCP sentinels), and
 // SessionPrompt.toolDenial enforces them at execute time. These assert both,
 // and — the load-bearing invariant — that a ROOT session (allowedTools
@@ -36,7 +36,7 @@ async function toolset(name: string): Promise<Session.AllowedTool[]> {
 }
 
 describe("Agent.toolsets presets", () => {
-  test("question is absent from every built-in subtask preset", async () => {
+  test("question is absent from every built-in subagent preset", async () => {
     const sets = await withInstance(() => Agent.toolsets())
     for (const [name, tools] of Object.entries(sets)) {
       expect(tools, `preset "${name}" must not grant question`).not.toContain("question")
@@ -68,7 +68,7 @@ describe("Agent.toolsets presets", () => {
 
 describe("toolDenial — root/parent session denies NOTHING", () => {
   // A root session has allowedTools undefined and toolDenial returns undefined
-  // (allowed) for it. This is the whole safety boundary: the subtask presets
+  // (allowed) for it. This is the whole safety boundary: the subagent presets
   // never reach a parent, so a parent keeps question, write, and all MCP.
   test("native tools (question, write) are allowed", () => {
     expect(SessionPrompt.toolDenial(undefined, "question", {})).toBeUndefined()
@@ -85,7 +85,7 @@ describe("toolDenial — root/parent session denies NOTHING", () => {
   })
 })
 
-describe("toolDenial — read-only MCP subtask (explore-mcp)", () => {
+describe("toolDenial — read-only MCP subagent (explore-mcp)", () => {
   test("an MCP read tool is allowed", async () => {
     const set = await toolset("explore-mcp")
     expect(SessionPrompt.toolDenial(set, READ_KEY, {}, { readOnly: true })).toBeUndefined()
@@ -109,7 +109,7 @@ describe("toolDenial — read-only MCP subtask (explore-mcp)", () => {
   })
 })
 
-describe("toolDenial — write-capable MCP subtask (general-mcp)", () => {
+describe("toolDenial — write-capable MCP subagent (general-mcp)", () => {
   test("an MCP read tool is allowed", async () => {
     const set = await toolset("general-mcp")
     expect(SessionPrompt.toolDenial(set, READ_KEY, {}, { readOnly: true })).toBeUndefined()
@@ -132,7 +132,7 @@ describe("toolDenial — write-capable MCP subtask (general-mcp)", () => {
   })
 })
 
-describe("toolDenial — non-MCP subtask (explore/general) denies all MCP", () => {
+describe("toolDenial — non-MCP subagent (explore/general) denies all MCP", () => {
   test("an MCP read tool is denied even though it is read-only", async () => {
     const set = await toolset("explore")
     const denial = SessionPrompt.toolDenial(set, READ_KEY, {}, { readOnly: true })
@@ -169,7 +169,7 @@ describe("cache stability — the sentinel can never reach tools[]", () => {
 
 describe("toolDenial — sentinel is inert for native tools", () => {
   // A native tool passes no mcp descriptor, so the sentinel never matches its
-  // id. A write-capable subtask still denies a native tool that is not on its
+  // id. A write-capable subagent still denies a native tool that is not on its
   // list (proving the sentinel grants MCP keys only, not native ids).
   test("general-mcp still denies a native tool it does not list", async () => {
     const set = await toolset("general-mcp")

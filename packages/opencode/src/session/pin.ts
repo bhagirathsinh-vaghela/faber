@@ -260,7 +260,7 @@ export namespace SessionPin {
     built.set(Instance.directory, digest)
   }
 
-  // Subtasks must see the exact prompt state of their parent — a disk change
+  // Subagents must see the exact prompt state of their parent — a disk change
   // between parent turn and child spawn would otherwise split them.
   export function adopt(childID: string, parentID: string) {
     if (pins.has(childID)) return

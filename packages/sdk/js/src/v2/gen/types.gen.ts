@@ -306,11 +306,11 @@ export type TextPart = {
   }
 }
 
-export type SubtaskPart = {
+export type SubagentPart = {
   id: string
   sessionID: string
   messageID: string
-  type: "subtask"
+  type: "subagent"
   prompt: string
   description: string
   agent: string
@@ -532,7 +532,7 @@ export type CompactionPart = {
 
 export type Part =
   | TextPart
-  | SubtaskPart
+  | SubagentPart
   | ReasoningPart
   | FilePart
   | ToolPart
@@ -2217,7 +2217,7 @@ export type Config = {
       description?: string
       agent?: string
       model?: string
-      subtask?: boolean
+      subagent?: boolean
     }
   }
   /**
@@ -2305,7 +2305,7 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Named tool presets a subtask may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.
+   * Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.
    */
   subagent_toolsets?: {
     [key: string]: Array<string>
@@ -2738,9 +2738,9 @@ export type AgentPartInput = {
   }
 }
 
-export type SubtaskPartInput = {
+export type SubagentPartInput = {
   id?: string
-  type: "subtask"
+  type: "subagent"
   prompt: string
   description: string
   agent: string
@@ -2875,7 +2875,7 @@ export type Command = {
   model?: string
   source?: "command" | "mcp" | "skill"
   template: string
-  subtask?: boolean
+  subagent?: boolean
   hints: Array<string>
 }
 
@@ -4385,7 +4385,7 @@ export type SessionPromptData = {
     }
     system?: string
     variant?: string
-    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubagentPartInput>
   }
   path: {
     /**
@@ -4572,7 +4572,7 @@ export type SessionPromptAsyncData = {
     }
     system?: string
     variant?: string
-    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubagentPartInput>
   }
   path: {
     /**

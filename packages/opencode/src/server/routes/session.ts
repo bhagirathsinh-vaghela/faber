@@ -101,7 +101,7 @@ export const SessionRoutes = lazy(() =>
       describeRoute({
         summary: "Get session busy state",
         description:
-          "Busy facts for every currently-busy session in this instance (own turn or any subtask). Bootstrap for clients that read the session.working event; absent sessions are idle.",
+          "Busy facts for every currently-busy session in this instance (own turn or any subagent). Bootstrap for clients that read the session.working event; absent sessions are idle.",
         operationId: "session.busy",
         responses: {
           200: {
@@ -947,19 +947,19 @@ export const SessionRoutes = lazy(() =>
         c.header("Content-Type", "application/json")
         return stream(c, async () => {
           const sessionID = c.req.valid("param").sessionID
-          const { resumeSubtasks } = await import("../../tool/task")
-          const subtasks = await resumeSubtasks(sessionID)
+          const { resumeSubagents } = await import("../../tool/task")
+          const subagents = await resumeSubagents(sessionID)
           // Only a parent whose OWN turn was cut gets the continue prompt: it is
-          // the one that might re-issue and so must be told its subtasks are
+          // the one that might re-issue and so must be told its subagents are
           // alive. A parent that is busy only because of a running descendant has
           // no interrupted turn to continue; prompting it would start a spurious
-          // one. Its resumed subtasks inject and wake it on their own.
+          // one. Its resumed subagents inject and wake it on their own.
           if (!(await SessionPing.interrupted(sessionID))) return
           await new Promise<void>((resolve) => {
             void SessionPrompt.promptAsync(
               {
                 sessionID,
-                parts: [{ type: "text", text: SessionPing.continueText(subtasks), synthetic: true }],
+                parts: [{ type: "text", text: SessionPing.continueText(subagents), synthetic: true }],
               },
               resolve,
             ).catch(() => resolve())

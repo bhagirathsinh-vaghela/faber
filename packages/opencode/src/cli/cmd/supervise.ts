@@ -187,10 +187,10 @@ export const SuperviseCommand = cmd({
     async function resume(sessions: SessionRef[]) {
       const results = []
       for (const s of sessions) {
-        // The restore route resumes the session AND its restart-cut subtasks as a
+        // The restore route resumes the session AND its restart-cut subagents as a
         // unit, then prompts the parent with the continue text that tells it the
-        // subtasks are alive. The supervisor does not build the prompt or know the
-        // subtask graph; that is server-side, where the disk state lives.
+        // subagents are alive. The supervisor does not build the prompt or know the
+        // subagent graph; that is server-side, where the disk state lives.
         const res = await fetch(
           `http://127.0.0.1:${PORT}/session/${s.sessionID}/restore?directory=${encodeURIComponent(s.directory)}`,
           {

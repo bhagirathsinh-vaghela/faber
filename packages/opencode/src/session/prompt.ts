@@ -26,7 +26,7 @@ import PROMPT_PLAN_REENTRY from "../session/prompt/plan-reentry.txt"
 import PROMPT_PLAN_SUBAGENT from "../session/prompt/plan-subagent.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
-import SUBTASK from "../session/prompt/subtask.txt"
+import SUBAGENT from "../session/prompt/subagent.txt"
 import { defer } from "../util/defer"
 import { clone } from "remeda"
 import { ToolRegistry } from "../tool/registry"
@@ -158,7 +158,7 @@ export namespace SessionPrompt {
           .meta({
             ref: "AgentPartInput",
           }),
-        MessageV2.SubtaskPart.omit({
+        MessageV2.SubagentPart.omit({
           messageID: true,
           sessionID: true,
         })
@@ -166,7 +166,7 @@ export namespace SessionPrompt {
             id: true,
           })
           .meta({
-            ref: "SubtaskPartInput",
+            ref: "SubagentPartInput",
           }),
       ]),
     ),
@@ -468,7 +468,7 @@ export namespace SessionPrompt {
         msgs.flatMap((msg) => msg.parts.flatMap(fileStamps)),
       )
 
-      // A compaction or subtask part is satisfied when a finished assistant
+      // A compaction or subagent part is satisfied when a finished assistant
       // message links back to the message that holds it (both branches set the
       // assistant's parentID to that message's id). Keying "done" on this link
       // instead of on sort position makes it immune to ID inversion: a mis-timed
@@ -480,7 +480,7 @@ export namespace SessionPrompt {
 
       let lastUser: MessageV2.User | undefined
       let lastFinished: MessageV2.Assistant | undefined
-      let tasks: (MessageV2.CompactionPart | MessageV2.SubtaskPart)[] = []
+      let tasks: (MessageV2.CompactionPart | MessageV2.SubagentPart)[] = []
       for (let i = msgs.length - 1; i >= 0; i--) {
         const msg = msgs[i]
         if (!lastUser && msg.info.role === "user") lastUser = msg.info as MessageV2.User
@@ -488,7 +488,7 @@ export namespace SessionPrompt {
           lastFinished = msg.info as MessageV2.Assistant
         if (lastUser && lastFinished) break
         if (satisfied.has(msg.info.id)) continue
-        const task = msg.parts.filter((part) => part.type === "compaction" || part.type === "subtask")
+        const task = msg.parts.filter((part) => part.type === "compaction" || part.type === "subagent")
         tasks.push(...task)
       }
 
@@ -510,9 +510,9 @@ export namespace SessionPrompt {
       const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
       const task = tasks.pop()
 
-      // pending subtask
+      // pending subagent
       // TODO: centralize "invoke tool" logic
-      if (task?.type === "subtask") {
+      if (task?.type === "subagent") {
         const taskTool = await TaskTool.init()
         const taskModel = task.model ? await Provider.getModel(task.model.providerID, task.model.modelID) : model
         const assistantMessage = (await Session.updateMessage({
@@ -539,7 +539,7 @@ export namespace SessionPrompt {
             created: Date.now(),
           },
         })) as MessageV2.Assistant
-        // Internal subtask path (no LLM to pick a toolset): map the agent name
+        // Internal subagent path (no LLM to pick a toolset): map the agent name
         // to a built-in toolset, defaulting to "general" (full tools) for
         // custom agents, which preserves their pre-toolset unrestricted access.
         const toolsets = await Agent.toolsets()
@@ -611,7 +611,7 @@ export namespace SessionPrompt {
         }
         const result = await taskTool.execute(taskArgs, taskCtx).catch((error) => {
           executionError = error
-          log.error("subtask execution failed", { error, agent: task.agent, description: task.description })
+          log.error("subagent execution failed", { error, agent: task.agent, description: task.description })
           return undefined
         })
         await Plugin.trigger(
@@ -1013,7 +1013,7 @@ export namespace SessionPrompt {
       input.agent,
       input.snapshot,
     )
-    // Effective allowlist: an explicit session allowlist (subtask/compaction)
+    // Effective allowlist: an explicit session allowlist (subagent/compaction)
     // wins; otherwise plan mode derives one that keeps every tool on the wire and
     // scopes edits to the plan files. Build agents get undefined (all allowed).
     const allowedTools =
@@ -1647,7 +1647,7 @@ export namespace SessionPrompt {
 
   const PLAN_REMINDER_MARKER = "<!-- plan-mode-reminder -->"
   const PLAN_EXIT_MARKER = "<!-- plan-mode-exit -->"
-  const SUBTASK_MARKER = "<!-- subtask-no-delegation -->"
+  const SUBAGENT_MARKER = "<!-- subagent-no-delegation -->"
   const CONCISE_MARKER = "<!-- concise-reminder -->"
   const CONCISE =
     "Keep replies concise: lead with the answer, no preamble, no recap. " +
@@ -1798,8 +1798,8 @@ export namespace SessionPrompt {
   // which sits in tools[] ahead of every cache marker (see AgentCatalog). The
   // block is appended once per session and then carried as durable history.
   async function insertAgentCatalog(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
-    // A subtask cannot spawn another subtask, so the list would be dead weight
-    // in its prompt, and a subtask started without include_context is meant to
+    // A subagent cannot spawn another subagent, so the list would be dead weight
+    // in its prompt, and a subagent started without include_context is meant to
     // begin from a blank conversation.
     if (input.session.parentID) return
     const scoped = await Config.projectAgents()
@@ -1875,7 +1875,7 @@ export namespace SessionPrompt {
     // The concision rules live in the cached system prompt, which a long turn
     // drifts from; re-stating the shape on each new turn holds it. The reminder
     // rides the typed prompt itself (a message not yet sent), so the prefix
-    // behind it stays byte-identical. A subtask's output is read by its parent
+    // behind it stays byte-identical. A subagent's output is read by its parent
     // model, not the user, so terseness tuned for a human reader would cost the
     // parent detail — hence the parentID guard.
     if (!input.session.parentID && conciseDue(input.messages)) {
@@ -1883,7 +1883,7 @@ export namespace SessionPrompt {
       if (concise) await persistReminder(userMessage, CONCISE, CONCISE_MARKER)
     }
 
-    // A subtask reaches for the task tool, gets a denial back, and only then
+    // A subagent reaches for the task tool, gets a denial back, and only then
     // does the work itself, having spent a turn learning it. The tool stays in
     // the schema either way (removing it would move the tools[] bytes the whole
     // prefix hashes), so the cheap fix is telling it up front.
@@ -1893,9 +1893,9 @@ export namespace SessionPrompt {
     // the tail of the prefix every time. Presence is checked across the whole
     // conversation, not just the message being answered, since later turns
     // carry their own fresh message.
-    if (input.session.parentID && !input.messages.some((m) => hasReminder(m, SUBTASK_MARKER))) {
+    if (input.session.parentID && !input.messages.some((m) => hasReminder(m, SUBAGENT_MARKER))) {
       const first = input.messages.find((msg) => msg.info.role === "user") ?? userMessage
-      await persistReminder(first, SUBTASK, SUBTASK_MARKER)
+      await persistReminder(first, SUBAGENT, SUBAGENT_MARKER)
     }
 
     const plan = Session.plan(input.session)
@@ -2332,11 +2332,11 @@ export namespace SessionPrompt {
     }
 
     const templateParts = await resolvePromptParts(template)
-    const isSubtask = (agent.mode === "subagent" && command.subtask !== false) || command.subtask === true
-    const parts = isSubtask
+    const isSubagent = (agent.mode === "subagent" && command.subagent !== false) || command.subagent === true
+    const parts = isSubagent
       ? [
           {
-            type: "subtask" as const,
+            type: "subagent" as const,
             agent: agent.name,
             description: command.description ?? "",
             command: input.command,
@@ -2350,8 +2350,8 @@ export namespace SessionPrompt {
         ]
       : [...templateParts, ...(input.parts ?? [])]
 
-    const userAgent = isSubtask ? (input.agent ?? snapshot.defaultAgent ?? (await Agent.defaultAgent())) : agentName
-    const userModel = isSubtask
+    const userAgent = isSubagent ? (input.agent ?? snapshot.defaultAgent ?? (await Agent.defaultAgent())) : agentName
+    const userModel = isSubagent
       ? input.model
         ? Provider.parseModel(input.model)
         : await MessageV2.model(input.sessionID)
@@ -2432,7 +2432,7 @@ export namespace SessionPrompt {
   // Only the user's own prompts. An assistant's reply is mostly code and tool
   // output, so a raw conversation tail late in a session is a keyhole onto
   // whatever was being printed when the window closed rather than onto what the
-  // session is about. Subtask prompts count as text because a command
+  // session is about. Subagent prompts count as text because a command
   // invocation (/fix, /review) carries the request there and contributes no
   // text part at all.
   export function titleInput(history: MessageV2.WithParts[]) {
@@ -2440,7 +2440,7 @@ export namespace SessionPrompt {
       .filter(MessageV2.isHumanTyped)
       .flatMap((msg) =>
         msg.parts.flatMap((part) => {
-          if (part.type === "subtask") return [part.prompt]
+          if (part.type === "subagent") return [part.prompt]
           if (part.type !== "text" || part.synthetic || part.ignored) return []
           return [part.text]
         }),
@@ -2469,7 +2469,7 @@ export namespace SessionPrompt {
   async function placeholderTitle(sessionID: string, parts: MessageV2.Part[]) {
     const text = parts
       .flatMap((part) => {
-        if (part.type === "subtask") return [part.prompt]
+        if (part.type === "subagent") return [part.prompt]
         if (part.type !== "text" || part.synthetic || part.ignored) return []
         return [part.text]
       })
@@ -2489,7 +2489,7 @@ export namespace SessionPrompt {
 
   // The generator may replace only its own text. Equality proves the title on
   // screen is what it last wrote; anything else means a rename, a fork, a
-  // --title, or a subtask description owns the name. A session with no record
+  // --title, or a subagent description owns the name. A session with no record
   // at all is owned unless its title is still the default, which is what leaves
   // every session written before this existed alone.
   export function generatorOwns(session: Session.Info) {

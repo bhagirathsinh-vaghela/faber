@@ -12,7 +12,7 @@ import { DialogMcpCorpus } from "@/components/dialog-mcp-corpus"
 
 // The prompt action bar, ported from the TUI prompt footer
 // (packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx): pending
-// (subtasks running), available (results awaiting accept), auto-inject (whether
+// (subagents running), available (results awaiting accept), auto-inject (whether
 // completed results inject automatically), and questions (pending count).
 // Counts stay live via the background.task.* events the
 // TUI also listens to; auto-inject toggles through background.toggleAutoInject.

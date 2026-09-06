@@ -1,6 +1,6 @@
 // The colours a busy indicator cross-fades between, in one place.
 //
-// Three independent things can make a session busy — its own turn, a subtask
+// Three independent things can make a session busy — its own turn, a subagent
 // under it, a background command it is waiting on — and any combination of them
 // can run at once. Each contributes one colour, and every indicator fades
 // through all the contributing colours in lockstep, so the number of tints a
@@ -10,7 +10,7 @@
 // own render site can only express the states its author had in mind, so a new
 // busy cause reaches whichever copies get edited and silently omits the rest.
 
-// The task accent covers a subtask and the job accent a background command. The
+// The task accent covers a subagent and the job accent a background command. The
 // job indicator carries the gold indicator colour, distinct from the blue accent
 // its result card draws. Own turns carry the agent's own colour, which the
 // caller resolves and passes in.
@@ -24,7 +24,7 @@ export type BusyFacts = {
 }
 
 // Ordered by which colour a reader should see first when only one is showing:
-// the session's own turn is what they are watching, then a subtask, then a job.
+// the session's own turn is what they are watching, then a subagent, then a job.
 // The first entry is the base every overlay fades over.
 export function busyTints(facts: BusyFacts, agent: string | undefined) {
   const tints: string[] = []

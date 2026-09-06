@@ -259,7 +259,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   // The single busy read for this session, from the one operative store.
-  // working = effective (own OR any subtask, server-rolled full subtree).
+  // working = effective (own OR any subagent, server-rolled full subtree).
   const busy = createMemo(
     () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
@@ -2029,7 +2029,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // fails is unknown, not absent, so it never restores.
       if (err instanceof Error && (await wasReceived())) return
       if (sessionDirectory === projectDirectory) {
-        // Send failed before a turn began — undo the optimistic busy. No subtask
+        // Send failed before a turn began — undo the optimistic busy. No subagent
         // can exist yet, so clearing both facts is correct; the reconcile tick
         // backstops it regardless.
         sync.set("session_busy", session.id, { busy: false, busySelf: false, busyDescendant: false })

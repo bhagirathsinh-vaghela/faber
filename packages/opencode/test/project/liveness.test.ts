@@ -51,7 +51,7 @@ describe("Liveness refcount", () => {
   test("a busy child keeps its directory alive while the parent is idle", () => {
     const dir = "/liveness/child"
 
-    // Child and parent share one directory; the child is never armed (subtasks
+    // Child and parent share one directory; the child is never armed (subagents
     // don't ping), so it only ever holds the busy axis.
     Liveness.setBusy(dir, "ses_child", true)
     expect(Liveness.alive(dir)).toBe(true)

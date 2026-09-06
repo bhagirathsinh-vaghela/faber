@@ -56,7 +56,7 @@ export function DialogTasks() {
     if (items.length === 0) {
       return [
         {
-          title: tab() === "running" ? "No running subtasks" : "No completed subtasks",
+          title: tab() === "running" ? "No running subagents" : "No completed subagents",
           value: "",
           disabled: true,
         },
@@ -94,7 +94,7 @@ export function DialogTasks() {
   const title = createMemo(() => {
     const r = running().length
     const c = completed().length
-    return tab() === "running" ? `Subtasks · Running (${r})` : `Subtasks · Completed (${c})`
+    return tab() === "running" ? `Subagents · Running (${r})` : `Subagents · Completed (${c})`
   })
 
   return (

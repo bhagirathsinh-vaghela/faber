@@ -387,7 +387,7 @@ export type Part =
       id: string
       sessionID: string
       messageID: string
-      type: "subtask"
+      type: "subagent"
       prompt: string
       description: string
       agent: string
@@ -1217,7 +1217,7 @@ export type Config = {
       description?: string
       agent?: string
       model?: string
-      subtask?: boolean
+      subagent?: boolean
     }
   }
   watcher?: {
@@ -1436,9 +1436,9 @@ export type AgentPartInput = {
   }
 }
 
-export type SubtaskPartInput = {
+export type SubagentPartInput = {
   id?: string
-  type: "subtask"
+  type: "subagent"
   prompt: string
   description: string
   agent: string
@@ -1450,7 +1450,7 @@ export type Command = {
   agent?: string
   model?: string
   template: string
-  subtask?: boolean
+  subagent?: boolean
 }
 
 export type Model = {
@@ -2595,7 +2595,7 @@ export type SessionPromptData = {
     tools?: {
       [key: string]: boolean
     }
-    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubagentPartInput>
   }
   path: {
     /**
@@ -2690,7 +2690,7 @@ export type SessionPromptAsyncData = {
     tools?: {
       [key: string]: boolean
     }
-    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+    parts: Array<TextPartInput | FilePartInput | AgentPartInput | SubagentPartInput>
   }
   path: {
     /**

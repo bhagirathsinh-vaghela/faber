@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { BackgroundTask } from "../../background"
-import { acceptPendingResult, acceptAllPending, subtasksForSession } from "../../tool/task"
+import { acceptPendingResult, acceptAllPending, subagentsForSession } from "../../tool/task"
 import { lazy } from "../../util/lazy"
 
 export const BackgroundRoutes = lazy(() =>
@@ -36,7 +36,7 @@ export const BackgroundRoutes = lazy(() =>
         // survives a restart and cannot double-count a resumed child. The
         // unfiltered list has no parent to walk children under, so it stays the
         // in-memory view (a diagnostic, not the dialog's source).
-        if (query.sessionID) return c.json(await subtasksForSession(query.sessionID))
+        if (query.sessionID) return c.json(await subagentsForSession(query.sessionID))
         return c.json(BackgroundTask.list())
       },
     )

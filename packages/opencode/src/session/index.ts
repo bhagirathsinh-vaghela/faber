@@ -144,7 +144,7 @@ export namespace Session {
       // The exact text the generator last wrote. Ownership is decided by
       // comparing it to title: equal means the generator's own text is still
       // there and may be replaced, anything else means a rename (or a fork,
-      // --title, a subtask description) named this session and the generator
+      // --title, a subagent description) named this session and the generator
       // must not touch it. Absent alongside a non-default title says the same,
       // which is what protects sessions written before this existed.
       titleGenerated: z.string().optional(),
@@ -289,7 +289,7 @@ export namespace Session {
       }),
     ),
     // The per-step token/cost refresh fires many times a turn (once per
-    // step, plus once on the parent of a subtask). Broadcasting the whole ~2.5KB
+    // step, plus once on the parent of a subagent). Broadcasting the whole ~2.5KB
     // Info each time is the session stream's dominant recurring cost, and the SSE
     // stream is uncompressed by design (compressing text/event-stream buffers and
     // breaks flush). This carries ONLY the aggregates that change on that path.
@@ -704,7 +704,7 @@ export namespace Session {
   // ends up doing two of the three. A caller that wants the turn to survive
   // (the dock's turn-only stop) passes `turn: false`; nothing else varies.
   //
-  // Children first, because a subtask outliving the session that owns it keeps
+  // Children first, because a subagent outliving the session that owns it keeps
   // pinging a record nobody reads.
   export const stop = fn(
     z.object({
@@ -718,7 +718,7 @@ export namespace Session {
       for (const child of await children(input.sessionID)) {
         await SessionPing.stop(child.id)
         SessionPin.drop(child.id)
-        // A subtask owns background jobs of its own, and it outlives nothing
+        // A subagent owns background jobs of its own, and it outlives nothing
         // once its parent is stopped.
         await BackgroundJob.stopSession(child.id)
       }

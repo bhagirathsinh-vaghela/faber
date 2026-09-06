@@ -223,7 +223,7 @@ import type {
   SessionUpdateErrors,
   SessionUpdateResponses,
   StashEntry,
-  SubtaskPartInput,
+  SubagentPartInput,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -1268,7 +1268,7 @@ export class Session extends HeyApiClient {
   /**
    * Get session busy state
    *
-   * Busy facts for every currently-busy session in this instance (own turn or any subtask). Bootstrap for clients that read the session.working event; absent sessions are idle.
+   * Busy facts for every currently-busy session in this instance (own turn or any subagent). Bootstrap for clients that read the session.working event; absent sessions are idle.
    */
   public busy<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1800,7 +1800,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+      parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubagentPartInput>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1888,7 +1888,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
+      parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubagentPartInput>
     },
     options?: Options<never, ThrowOnError>,
   ) {

@@ -583,7 +583,7 @@ describe("session.llm.stream", () => {
   // The question-tool guidance rides in the session block, which sits ahead of
   // every conversation cache marker. Its presence must depend only on the
   // question tool being in the schema, never on a per-turn allowlist — otherwise
-  // a compaction or subtask turn forks the block and misses the whole cache. The
+  // a compaction or subagent turn forks the block and misses the whole cache. The
   // question tool stays in the schema across those turns (the allowlist gates it
   // at execute time), so the block is identical whether or not the turn may ask.
   test("session block is identical whether or not the question tool is present", async () => {
@@ -670,7 +670,7 @@ describe("session.llm.stream", () => {
 
         const withQuestion = await capture({ question: questionTool })
         const withoutQuestion = await capture({})
-        // A restricted turn (subtask/compaction) denies the question tool at
+        // A restricted turn (subagent/compaction) denies the question tool at
         // execute time while keeping it in the schema, so its block must equal a
         // normal turn's. A per-turn ask/deny signal must not fork the block, or
         // the whole message-region cache misses on that turn.

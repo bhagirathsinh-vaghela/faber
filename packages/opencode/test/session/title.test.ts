@@ -233,7 +233,7 @@ describe("session title trigger", () => {
     expect(SessionPrompt.titleTrigger(generated, history([3]))).toBe(3)
   })
 
-  test("stays quiet on a subtask session", () => {
+  test("stays quiet on a subagent session", () => {
     expect(SessionPrompt.titleTrigger(session({ parentID: "ses_parent" }), history([1]))).toBeUndefined()
   })
 

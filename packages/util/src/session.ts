@@ -1,4 +1,4 @@
-// `busy` is the effective flag (own turn OR any in-flight descendant subtask).
+// `busy` is the effective flag (own turn OR any in-flight descendant subagent).
 // `busySelf` (own turn only) is optional here so isAlive stays on the single
 // effective boolean; only the animation-picking components read busySelf,
 // deriving "busy because of a descendant" as `busy && !busySelf`.

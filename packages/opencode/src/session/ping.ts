@@ -125,22 +125,22 @@ export namespace SessionPing {
   // What a resumed parent is told about the restart. A question or permission it
   // was blocked on is a promise map that died with the process, and a tool
   // mid-execute is an orphaned running part, so both are gone and it must redo
-  // them. A SUBTASK is different: when the parent comes back, its restart-cut
-  // subtasks are resumed with it as a unit, so the prompt must tell the parent
+  // them. A SUBAGENT is different: when the parent comes back, its restart-cut
+  // subagents are resumed with it as a unit, so the prompt must tell the parent
   // they are ALIVE and to wait for their injection rather than re-launch the
-  // work. When no subtask came back, it keeps the "gone, redo" framing. The
+  // work. When no subagent came back, it keeps the "gone, redo" framing. The
   // count decides which clause, so the parent's belief matches what restore
   // actually did.
-  export function continueText(subtasks: number) {
+  export function continueText(subagents: number) {
     const head =
       "Pardon the interruption — the server needed a restart and your turn was cut off. Please continue what you were doing."
     const dead =
       " A question or permission you were waiting on, or a tool call part-way through, is gone and will never return — redo whatever still matters."
     const alive =
-      subtasks === 1
+      subagents === 1
         ? " The subagent you launched was resumed too and will report its result back as before, so do NOT re-launch it; wait for it as you were."
-        : ` The ${subtasks} subagents you launched were resumed too and will report their results back as before, so do NOT re-launch them; wait for them as you were.`
-    return head + dead + (subtasks > 0 ? alive : "")
+        : ` The ${subagents} subagents you launched were resumed too and will report their results back as before, so do NOT re-launch them; wait for them as you were.`
+    return head + dead + (subagents > 0 ? alive : "")
   }
 
   // A turn that never reached its own completion stamp. Every ordinary ending
@@ -166,7 +166,7 @@ export namespace SessionPing {
   // restores nothing — correctly, since neither a daemon nor a resumed turn has
   // a warm cache left to act on. It also keeps the blast radius honest, because
   // the persisted intent accumulates across every session ever left warm.
-  export async function restore(resume: (session: Session.Info, subtasks: number) => Promise<void>) {
+  export async function restore(resume: (session: Session.Info, subagents: number) => Promise<void>) {
     const entries = await SessionRecent.list()
     for (const entry of entries) {
       await Instance.provide({
@@ -174,19 +174,19 @@ export namespace SessionPing {
         fn: async () => {
           const session = await Session.get(entry.sessionID).catch(() => undefined)
           if (!session || session.parentID || !session.keepWarm || !warm(session)) return
-          // Resume the parent's restart-cut subtasks whenever the parent is
-          // restored, cut or not: a subtask under a parent that finished its own
+          // Resume the parent's restart-cut subagents whenever the parent is
+          // restored, cut or not: a subagent under a parent that finished its own
           // turn is still work worth recovering, and its injection simply wakes
           // the idle parent. The warm /restore path does the same, so both entry
           // points agree. Dynamic import breaks the tool/task -> session cycle.
-          const { resumeSubtasks } = await import("@/tool/task")
-          const subtasks = await resumeSubtasks(session.id)
+          const { resumeSubagents } = await import("@/tool/task")
+          const subagents = await resumeSubagents(session.id)
           const cut = await interrupted(session.id)
           // The continue prompt goes only to a parent whose OWN turn was cut: it
-          // is the one that might re-issue, so it needs telling the subtasks are
+          // is the one that might re-issue, so it needs telling the subagents are
           // alive and to wait. A non-cut parent is idle and re-issues nothing;
-          // the subtask injection wakes it on its own.
-          if (cut) return resume(session, subtasks)
+          // the subagent injection wakes it on its own.
+          if (cut) return resume(session, subagents)
           start(session.id)
         },
       }).catch((e) => log.error("restore failed", { sessionID: entry.sessionID, error: e }))
@@ -362,7 +362,7 @@ export namespace SessionPing {
   async function evaluate(sessionID: string): Promise<Next> {
     const session = await Session.get(sessionID).catch(() => undefined)
     if (!session) return { type: "idle" }
-    // Subtasks/child sessions never ping; if one somehow started, stop it.
+    // Subagents/child sessions never ping; if one somehow started, stop it.
     if (session.parentID) return { type: "stop" }
     // Stand down after too many consecutive misses (persistent network failure):
     // stay alive so an organic turn can re-arm via start(), but stop burning

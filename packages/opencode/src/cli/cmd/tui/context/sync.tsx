@@ -53,7 +53,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         [sessionID: string]: SessionStatus
       }
       // Busy facts per session, fed by the session.working event on /event and
-      // bootstrapped on attach. busy = effective (own turn OR any subtask);
+      // bootstrapped on attach. busy = effective (own turn OR any subagent);
       // busySelf = own turn only.
       session_busy: {
         [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }

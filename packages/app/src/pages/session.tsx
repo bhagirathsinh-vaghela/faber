@@ -861,14 +861,14 @@ export default function Page() {
     ),
   )
 
-  // The single busy read for this session: busy = effective (own OR any subtask,
+  // The single busy read for this session: busy = effective (own OR any subagent,
   // full subtree, computed server-side); busySelf = own turn only. No local
   // child scan — the server already rolled the subtree up.
   const busy = createMemo(
     () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
   )
-  // busy because a subtask runs (own turn may or may not also be running).
-  const subtaskBusy = createMemo(() => busy().busyDescendant)
+  // busy because a subagent runs (own turn may or may not also be running).
+  const subagentBusy = createMemo(() => busy().busyDescendant)
   // A running background job keeps the bar up too: work is still coming back,
   // so the bar going dark would say the session is done.
   const titleWorking = createMemo(() => busyShown(busy()))

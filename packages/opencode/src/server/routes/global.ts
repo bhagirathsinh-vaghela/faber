@@ -291,7 +291,7 @@ export const GlobalRoutes = lazy(() =>
 
           // Busy reconcile tick (independent of the 30s keepalive above). Level-
           // triggered safety net for the open session's subtree: recent.updated
-          // heals hub ROOTS, but subtask children are not in the hub, so their
+          // heals hub ROOTS, but subagent children are not in the hub, so their
           // busy state can only self-heal here. Quiescence-gated — we send only
           // while the scoped subtree has a busy session, plus ONE trailing all-
           // idle when it clears, then stay silent. So a client wakes only while
@@ -319,7 +319,7 @@ export const GlobalRoutes = lazy(() =>
             // to the per-directory handler, which has no case for it, and is
             // dropped. Each session entry carries its own directory, so per-entry
             // store routing is unaffected. A root also gets busy via the "global"
-            // recent hub, but a directly-opened subtask (not in the hub) has this
+            // recent hub, but a directly-opened subagent (not in the hub) has this
             // tick as its only channel — stamping the real directory hid its
             // indicators entirely.
             void send({

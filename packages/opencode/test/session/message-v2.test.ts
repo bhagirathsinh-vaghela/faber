@@ -291,7 +291,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("converts user text/file parts and injects compaction/subtask prompts", () => {
+  test("converts user text/file parts and injects compaction/subagent prompts", () => {
     const messageID = "m-user"
 
     const input: MessageV2.WithParts[] = [
@@ -337,7 +337,7 @@ describe("session.message-v2.toModelMessage", () => {
           },
           {
             ...basePart(messageID, "p7"),
-            type: "subtask",
+            type: "subagent",
             prompt: "prompt",
             description: "desc",
             agent: "agent",

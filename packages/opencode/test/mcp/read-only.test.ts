@@ -3,7 +3,7 @@ import { MCP } from "../../src/mcp/index"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 
-// MCP.readOnly classifies a tool for the read-only subtask grant. The MCP spec
+// MCP.readOnly classifies a tool for the read-only subagent grant. The MCP spec
 // makes annotations.readOnlyHint an optional hint that defaults to false, so the
 // classifier trusts it ONLY when a server advertises readOnlyHint === true and
 // treats everything else (hint absent, or false) as a WRITE. These drive a real

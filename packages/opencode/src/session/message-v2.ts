@@ -203,8 +203,8 @@ export namespace MessageV2 {
   })
   export type CompactionPart = z.infer<typeof CompactionPart>
 
-  export const SubtaskPart = PartBase.extend({
-    type: z.literal("subtask"),
+  export const SubagentPart = PartBase.extend({
+    type: z.literal("subagent"),
     prompt: z.string(),
     description: z.string(),
     agent: z.string(),
@@ -216,9 +216,9 @@ export namespace MessageV2 {
       .optional(),
     command: z.string().optional(),
   }).meta({
-    ref: "SubtaskPart",
+    ref: "SubagentPart",
   })
-  export type SubtaskPart = z.infer<typeof SubtaskPart>
+  export type SubagentPart = z.infer<typeof SubagentPart>
 
   export const RetryPart = PartBase.extend({
     type: z.literal("retry"),
@@ -376,7 +376,7 @@ export namespace MessageV2 {
   export const Part = z
     .discriminatedUnion("type", [
       TextPart,
-      SubtaskPart,
+      SubagentPart,
       ReasoningPart,
       FilePart,
       ToolPart,
@@ -570,7 +570,7 @@ export namespace MessageV2 {
               text: "What did we do so far?",
             })
           }
-          if (part.type === "subtask") {
+          if (part.type === "subagent") {
             userMessage.parts.push({
               type: "text",
               text: "The following tool was executed by the user",
@@ -783,9 +783,9 @@ export namespace MessageV2 {
   // The model stamped when a session has never had a real send establish one.
   export const UNKNOWN_MODEL = { providerID: "unknown", modelID: "unknown" }
 
-  // The agent shown for a subtask whose record names none. An honest "unknown"
+  // The agent shown for a subagent whose record names none. An honest "unknown"
   // rather than a plausible real agent, matching UNKNOWN_MODEL, so a display
-  // projection never claims a subtask ran as an agent it may not have.
+  // projection never claims a subagent ran as an agent it may not have.
   export const UNKNOWN_AGENT = "unknown"
 
   // The parameters a synthetic mint runs as: the session's persistent pick,

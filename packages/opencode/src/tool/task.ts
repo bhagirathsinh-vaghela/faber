@@ -24,7 +24,7 @@ interface BackgroundSubagentInput {
   agent: Agent.Info
   model: { modelID: string; providerID: string }
   promptParts: Awaited<ReturnType<typeof SessionPrompt.resolvePromptParts>>
-  // A resumed subtask MUST inject its result even when the parent's auto-inject
+  // A resumed subagent MUST inject its result even when the parent's auto-inject
   // resolves off: the restart wiped the per-session setting, and the parent was
   // told to WAIT for this injection rather than re-launch, so queueing it as a
   // pending result would strand it behind a parent that never asks.
@@ -250,21 +250,21 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
   return pending.length
 }
 
-// Resume the subtasks a restart cut off under a parent that is itself being
-// resumed. The parent and its in-flight subtask come back as a UNIT, so the
-// parent's continue prompt can promise the subtask is alive and the parent then
+// Resume the subagents a restart cut off under a parent that is itself being
+// resumed. The parent and its in-flight subagent come back as a UNIT, so the
+// parent's continue prompt can promise the subagent is alive and the parent then
 // waits for the injection rather than re-launching the work.
 //
-// The BackgroundTask record that linked a subtask to its parent lived in memory
+// The BackgroundTask record that linked a subagent to its parent lived in memory
 // and died with the restart, so this rebuilds it from the child session's
 // persisted state: the parent is the caller, the description is the child's
 // title, and the agent/model come off the child's own last real user message
-// (the same inheritance a fresh subtask resolves). The child is then re-driven
+// (the same inheritance a fresh subagent resolves). The child is then re-driven
 // through the ordinary subagent wrapper with a continue prompt, so completing
-// injects into the parent exactly as an uninterrupted subtask would have.
+// injects into the parent exactly as an uninterrupted subagent would have.
 //
-// Returns how many subtasks were resumed, so the caller can tell the parent.
-export async function resumeSubtasks(parentSessionID: string): Promise<number> {
+// Returns how many subagents were resumed, so the caller can tell the parent.
+export async function resumeSubagents(parentSessionID: string): Promise<number> {
   // Dynamic import: ping.ts dynamically imports this module, so a static import
   // back would close the cycle.
   const { SessionPing } = await import("../session/ping")
@@ -275,10 +275,10 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
 
     // No resolvable model means the re-drive would throw and deliver a failed
     // result: skip it rather than resume into a guaranteed failure. A task-tool
-    // subtask always carries a model on its prompt, so this only guards a
+    // subagent always carries a model on its prompt, so this only guards a
     // malformed child.
     if (!child.current?.model) {
-      log.error("cannot resume subtask, no model on record", { child: child.id })
+      log.error("cannot resume subagent, no model on record", { child: child.id })
       continue
     }
     const model = child.current.model
@@ -287,7 +287,7 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
     const agentName = child.current.agent ?? (await Agent.defaultAgent().catch(() => "build"))
     const agent = await Agent.get(agentName).catch(() => undefined)
     if (!agent) {
-      log.error("cannot resume subtask, agent gone", { child: child.id, agent: agentName })
+      log.error("cannot resume subagent, agent gone", { child: child.id, agent: agentName })
       continue
     }
 
@@ -304,7 +304,7 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
     const promptParts = await SessionPrompt.resolvePromptParts(SUBAGENT_RESUME_TEXT)
     void runSubagentInBackground({ task, abort, session: child, agent, model, promptParts, forceInject: true })
     resumed++
-    log.info("resumed interrupted subtask", { child: child.id, parent: parentSessionID })
+    log.info("resumed interrupted subagent", { child: child.id, parent: parentSessionID })
   }
   return resumed
 }
@@ -312,18 +312,18 @@ export async function resumeSubtasks(parentSessionID: string): Promise<number> {
 export const SUBAGENT_RESUME_TEXT =
   "Pardon the interruption — the server restarted and your turn was cut off. Continue what you were doing and finish the task you were given; your result is still awaited by the session that launched you."
 
-// The subtasks of a session, durable across a restart. The in-memory
+// The subagents of a session, durable across a restart. The in-memory
 // BackgroundTask store is lost on restart, so a dialog reading it alone shows
 // nothing that ran before the restart and can double-count a child whose task
 // was recreated by a resume. The child SESSIONS are durable (on disk, linked by
-// parentID), so this is the source of truth: every subagent child is a subtask,
+// parentID), so this is the source of truth: every subagent child is a subagent,
 // keyed by its session id, and an in-memory task for that child (which carries
 // live progress and the result) overrides the disk-derived shell when present.
 //
 // Status comes off the child's last assistant turn: no message yet is pending,
 // a turn still open is running, a finished turn is completed. This is a
 // projection, so it is rebuilt from disk every call rather than mutated.
-export async function subtasksForSession(parentSessionID: string): Promise<BackgroundTask.Info[]> {
+export async function subagentsForSession(parentSessionID: string): Promise<BackgroundTask.Info[]> {
   const live = new Map(
     BackgroundTask.list(parentSessionID)
       .filter((t) => t.subagent?.sessionID)
@@ -356,7 +356,7 @@ export async function subtasksForSession(parentSessionID: string): Promise<Backg
       },
     })
   }
-  // Newest first, so the most recent subtasks head the dialog.
+  // Newest first, so the most recent subagents head the dialog.
   return result.sort((a, b) => b.time.created - a.time.created)
 }
 
@@ -411,20 +411,20 @@ const parameters = z
     summary: z
       .string()
       .describe(
-        "A one-sentence TL;DR of what the subtask is being asked to do, so the main thread and user can see the ask without reading the full prompt. ALWAYS provide this when invoking the Task tool. MUST faithfully reflect the prompt — do not editorialize or add intent the prompt does not contain.",
+        "A one-sentence TL;DR of what the subagent is being asked to do, so the main thread and user can see the ask without reading the full prompt. ALWAYS provide this when invoking the Task tool. MUST faithfully reflect the prompt — do not editorialize or add intent the prompt does not contain.",
       )
       .optional(),
     subagent_type: z.string().describe("The type of specialized agent to use for this task"),
     toolset: z
       .string()
       .describe(
-        "The named tool preset the subtask runs with. Must be one of the toolsets listed in this tool's description.",
+        "The named tool preset the subagent runs with. Must be one of the toolsets listed in this tool's description.",
       ),
     session_id: z.string().describe("Existing Task session to continue").optional(),
     include_context: z
       .boolean()
       .describe(
-        "When true, the subtask inherits the parent conversation history for shared context and prompt cache reuse",
+        "When true, the subagent inherits the parent conversation history for shared context and prompt cache reuse",
       )
       .optional(),
     command: z.string().describe("The command that triggered this task").optional(),
@@ -468,7 +468,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           title: params.description,
           metadata: {} as Record<string, unknown>,
           output:
-            "Subtasks cannot spawn further subtasks. Execute the work directly using your available tools instead.",
+            "Subagents cannot spawn further subagents. Execute the work directly using your available tools instead.",
         }
       }
 
@@ -481,7 +481,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         }
       }
 
-      // Skip permission check when user explicitly invoked via @ or command subtask
+      // Skip permission check when user explicitly invoked via @ or command subagent
       if (!ctx.extra?.bypassAgentCheck) {
         await ctx.ask({
           permission: "task",

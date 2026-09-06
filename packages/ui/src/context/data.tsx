@@ -18,7 +18,7 @@ type Data = {
   session_status: {
     [sessionID: string]: SessionStatus
   }
-  // The one operative busy state: busy = effective (own turn OR any subtask,
+  // The one operative busy state: busy = effective (own turn OR any subagent,
   // full subtree, rolled up server-side); busySelf = own turn only. Every busy
   // indicator reads this; busySelf picks own-vs-delegating animation.
   //

@@ -687,7 +687,7 @@ export namespace Config {
     description: z.string().optional(),
     agent: z.string().optional(),
     model: z.string().optional(),
-    subtask: z.boolean().optional(),
+    subagent: z.boolean().optional(),
   })
   export type Command = z.infer<typeof Command>
 
@@ -1180,7 +1180,7 @@ export namespace Config {
         .record(z.string(), z.array(z.string()))
         .optional()
         .describe(
-          "Named tool presets a subtask may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
+          "Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
         ),
       provider: z
         .record(z.string(), Provider)

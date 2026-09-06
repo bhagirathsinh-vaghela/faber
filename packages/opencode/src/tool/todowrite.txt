@@ -1,6 +1,6 @@
 Use this tool to create and manage a structured task list for your current coding session.
 
-The list is your MEMORY, not a status display. Work that lives only in your reasoning is lost the moment your turn is cut off, a subtask returns and reroutes your attention, or the context compacts. Work that lives in the list survives all three and is picked up exactly where it was left. This is the single most reliable way to make sure nothing is silently dropped across a long or interrupted piece of work. Default to writing the list the moment a task has more than a couple of steps, spans more than one turn, or has any step that gates another. The cost is a few tokens; the payoff is that nothing is ever forgotten.
+The list is your MEMORY, not a status display. Work that lives only in your reasoning is lost the moment your turn is cut off, a subagent returns and reroutes your attention, or the context compacts. Work that lives in the list survives all three and is picked up exactly where it was left. This is the single most reliable way to make sure nothing is silently dropped across a long or interrupted piece of work. Default to writing the list the moment a task has more than a couple of steps, spans more than one turn, or has any step that gates another. The cost is a few tokens; the payoff is that nothing is ever forgotten.
 
 It also lets the user see the progress of their request. But the primary reason to keep it is durability: drain the list aggressively, mark one item in_progress at a time, and mark it completed the instant it is done.
 

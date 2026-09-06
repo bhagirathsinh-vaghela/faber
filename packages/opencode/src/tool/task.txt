@@ -5,16 +5,16 @@ Available agent types and the tools they have access to:
 
 When using the Task tool, you must specify a subagent_type parameter to select which agent type to use.
 
-ALWAYS provide a `summary` — a one-sentence TL;DR of what you are asking the subtask to do. It is shown to the user and the main thread so they can see the ask without reading the full prompt. The summary MUST faithfully reflect the prompt; do not editorialize or add intent the prompt does not contain.
+ALWAYS provide a `summary` — a one-sentence TL;DR of what you are asking the subagent to do. It is shown to the user and the main thread so they can see the ask without reading the full prompt. The summary MUST faithfully reflect the prompt; do not editorialize or add intent the prompt does not contain.
 
 ## Toolsets (required)
 
 Every Task call MUST specify a `toolset` — a named preset that restricts which
-tools the subtask can execute at runtime. Tools outside the chosen toolset are
-rejected even if the subtask tries to call them, so pick the NARROWEST toolset
-that still lets the subtask do its job. For a subtask that should only read and
+tools the subagent can execute at runtime. Tools outside the chosen toolset are
+rejected even if the subagent tries to call them, so pick the NARROWEST toolset
+that still lets the subagent do its job. For a subagent that should only read and
 return text (a drafter/researcher), pick a read-only toolset; only pick a
-write-capable toolset when the subtask must create or edit files.
+write-capable toolset when the subagent must create or edit files.
 
 Available toolsets and the tools they allow:
 {toolsets}
@@ -22,12 +22,12 @@ Available toolsets and the tools they allow:
 Passing a `toolset` name not in this list fails the call.
 
 When to use the Task tool:
-- Reach for a subtask when the work is many steps whose intermediate detail does not matter to you — only the result does — and you would rather not fill your own context with the reading, the fan-out, and the dead ends. The subtask does all of that elsewhere and hands back just the answer, so your working context stays clean. That context hygiene is the reason to delegate: a self-contained review, an investigation, a wide search, a multi-file analysis whose conclusion is all you need.
+- Reach for a subagent when the work is many steps whose intermediate detail does not matter to you — only the result does — and you would rather not fill your own context with the reading, the fan-out, and the dead ends. The subagent does all of that elsewhere and hands back just the answer, so your working context stays clean. That context hygiene is the reason to delegate: a self-contained review, an investigation, a wide search, a multi-file analysis whose conclusion is all you need.
 - When you are instructed to execute custom slash commands. Use the Task tool with the slash command invocation as the entire prompt. The slash command can take arguments. For example: Task(description="Check the file", prompt="/check-file path/to/file.py")
 
 When NOT to use the Task tool:
 - When you need the result THIS turn and would just wait for it anyway, or the work is a couple of trivial steps: doing it inline is simpler and cheaper, since there is little context to protect.
-- When you are already inside a subtask (it cannot launch another; nesting is capped as a safety bound against unbounded recursive fan-out): do the work inline in your own run. Running it inline lands its context cost on you instead of a child, which is accepted because your run is short-lived and produces the same result either way.
+- When you are already inside a subagent (it cannot launch another; nesting is capped as a safety bound against unbounded recursive fan-out): do the work inline in your own run. Running it inline lands its context cost on you instead of a child, which is accepted because your run is short-lived and produces the same result either way.
 - If you want to read a specific file path, use the Read or Glob tool instead of the Task tool, to find the match more quickly
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Task tool, to find the match more quickly
@@ -35,21 +35,21 @@ When NOT to use the Task tool:
 
 ## Context inheritance
 
-Set `include_context: true` to pass your full conversation history to the subtask. The subtask inherits everything you've seen — file contents, tool results, discussion — and shares your prompt cache prefix for cheaper API calls.
+Set `include_context: true` to pass your full conversation history to the subagent. The subagent inherits everything you've seen — file contents, tool results, discussion — and shares your prompt cache prefix for cheaper API calls.
 
 **Use include_context when:**
-- The subtask needs knowledge you've already gathered (file contents, codebase structure, prior findings)
-- You want to avoid re-explaining background or re-reading files the subtask will need
-- Research can be broken into independent questions — launch parallel context-inheriting subtasks in one message
+- The subagent needs knowledge you've already gathered (file contents, codebase structure, prior findings)
+- You want to avoid re-explaining background or re-reading files the subagent will need
+- Research can be broken into independent questions — launch parallel context-inheriting subagents in one message
 
 **Don't use include_context when:**
-- The subtask is self-contained (e.g., "run tests", "list files in /tmp")
+- The subagent is self-contained (e.g., "run tests", "list files in /tmp")
 - You want an independent perspective without your prior context biasing the result
 - The prompt is fully self-contained with all necessary details
 
-When include_context is false (default), the subtask starts with zero context. Brief it like a colleague who just walked into the room — explain what you're trying to accomplish, what you've learned, and give enough context for judgment calls.
+When include_context is false (default), the subagent starts with zero context. Brief it like a colleague who just walked into the room — explain what you're trying to accomplish, what you've learned, and give enough context for judgment calls.
 
-When include_context is true, the prompt is a *directive* — what to do, not what the situation is. The subtask already has your context, so be specific about scope rather than re-explaining background.
+When include_context is true, the prompt is a *directive* — what to do, not what the situation is. The subagent already has your context, so be specific about scope rather than re-explaining background.
 
 Usage notes:
 1. Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses

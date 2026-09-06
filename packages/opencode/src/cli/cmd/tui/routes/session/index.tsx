@@ -141,18 +141,20 @@ export function Session() {
       .filter((x) => x.parentID === parentID || x.id === parentID)
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
-  const [subtaskStatus, setSubtaskStatus] = createSignal<"running" | "completed" | "failed" | "cancelled" | null>(null)
-  const subtaskRunning = createMemo(() => subtaskStatus() === "running")
+  const [subagentStatus, setSubagentStatus] = createSignal<"running" | "completed" | "failed" | "cancelled" | null>(
+    null,
+  )
+  const subagentRunning = createMemo(() => subagentStatus() === "running")
   createEffect(() => {
     const parentID = session()?.parentID
     if (!parentID) {
-      setSubtaskStatus(null)
+      setSubagentStatus(null)
       return
     }
     const check = async () => {
       const tasks = await sdk.client.background.list({ sessionID: parentID })
       const task = (tasks.data ?? []).find((t) => t.subagent?.sessionID === route.sessionID)
-      setSubtaskStatus((task?.status as any) ?? null)
+      setSubagentStatus((task?.status as any) ?? null)
     }
     check()
     const interval = setInterval(check, 2000)
@@ -1038,13 +1040,13 @@ export function Session() {
       },
     },
     {
-      title: "Subtask list",
+      title: "Subagent list",
       value: "session.tasks",
       keybind: "task_list",
       category: "Session",
       slash: {
         name: "tasks",
-        aliases: ["subtasks"],
+        aliases: ["subagents"],
       },
       onSelect: (dialog) => {
         dialog.replace(() => <DialogTasks />)
@@ -1062,12 +1064,12 @@ export function Session() {
       },
     },
     {
-      title: "Cancel this subtask",
+      title: "Cancel this subagent",
       value: "session.child.cancel",
       keybind: "session_child_cancel",
       category: "Session",
       hidden: true,
-      enabled: subtaskRunning(),
+      enabled: subagentRunning(),
       onSelect: async (dialog) => {
         dialog.clear()
         const parentID = session()?.parentID
@@ -1078,7 +1080,7 @@ export function Session() {
         )
         if (running) {
           await sdk.client.background.cancel({ id: running.id })
-          setSubtaskStatus("cancelled")
+          setSubagentStatus("cancelled")
         }
       },
     },
@@ -1329,7 +1331,7 @@ export function Session() {
         <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
           <Show when={session()}>
             <Show when={(headerVisible() || session()?.parentID) && (!sidebarVisible() || !wide())}>
-              <Header subtaskRunning={subtaskRunning()} subtaskStatus={subtaskStatus()} />
+              <Header subagentRunning={subagentRunning()} subagentStatus={subagentStatus()} />
             </Show>
             <scrollbox
               ref={(r) => {

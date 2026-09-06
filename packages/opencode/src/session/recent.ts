@@ -39,11 +39,11 @@ export namespace SessionRecent {
       // lastActivity. Pings and views never reach here.
       updated: z.number(),
       // Effective busy: this session's own turn OR any in-flight descendant
-      // subtask (full subtree). The single boolean isAlive reads.
+      // subagent (full subtree). The single boolean isAlive reads.
       busy: z.boolean(),
       // This session's OWN turn only.
       busySelf: z.boolean(),
-      // Any descendant subtask's own turn is in flight (full subtree). With
+      // Any descendant subagent's own turn is in flight (full subtree). With
       // busySelf, lets the client pick own-only / both / delegating-only visuals
       // (busy+busySelf alone can't tell own-only from both).
       busyDescendant: z.boolean(),

@@ -76,7 +76,7 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
-  // Effective busy (own turn OR any subtask) from the one operative store;
+  // Effective busy (own turn OR any subagent) from the one operative store;
   // status above is retry DETAIL only now.
   const busy = createMemo(() => sync.data.session_busy?.[props.sessionID ?? ""]?.busy ?? false)
   const history = usePromptHistory()

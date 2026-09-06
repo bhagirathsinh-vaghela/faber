@@ -10,7 +10,7 @@ describe("busy tints", () => {
     expect(busyOverlays(facts, AGENT)).toEqual([])
   })
 
-  test("own turn + subtask: task accent crossfades over the agent base", () => {
+  test("own turn + subagent: task accent crossfades over the agent base", () => {
     const facts = { busySelf: true, busyDescendant: true }
     expect(busyBase(facts, AGENT)).toBe(AGENT)
     expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-task)"])

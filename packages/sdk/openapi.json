@@ -1794,7 +1794,7 @@
           }
         ],
         "summary": "Get session busy state",
-        "description": "Busy facts for every currently-busy session in this instance (own turn or any subtask). Bootstrap for clients that read the session.working event; absent sessions are idle.",
+        "description": "Busy facts for every currently-busy session in this instance (own turn or any subagent). Bootstrap for clients that read the session.working event; absent sessions are idle.",
         "responses": {
           "200": {
             "description": "Get session busy state",
@@ -3025,7 +3025,7 @@
                           "$ref": "#/components/schemas/AgentPartInput"
                         },
                         {
-                          "$ref": "#/components/schemas/SubtaskPartInput"
+                          "$ref": "#/components/schemas/SubagentPartInput"
                         }
                       ]
                     }
@@ -3409,7 +3409,7 @@
                           "$ref": "#/components/schemas/AgentPartInput"
                         },
                         {
-                          "$ref": "#/components/schemas/SubtaskPartInput"
+                          "$ref": "#/components/schemas/SubagentPartInput"
                         }
                       ]
                     }
@@ -10057,7 +10057,7 @@
           "text"
         ]
       },
-      "SubtaskPart": {
+      "SubagentPart": {
         "type": "object",
         "properties": {
           "id": {
@@ -10071,7 +10071,7 @@
           },
           "type": {
             "type": "string",
-            "const": "subtask"
+            "const": "subagent"
           },
           "prompt": {
             "type": "string"
@@ -10864,7 +10864,7 @@
             "$ref": "#/components/schemas/TextPart"
           },
           {
-            "$ref": "#/components/schemas/SubtaskPart"
+            "$ref": "#/components/schemas/SubagentPart"
           },
           {
             "$ref": "#/components/schemas/ReasoningPart"
@@ -15027,7 +15027,7 @@
                 "model": {
                   "type": "string"
                 },
-                "subtask": {
+                "subagent": {
                   "type": "boolean"
                 }
               },
@@ -15188,7 +15188,7 @@
             }
           },
           "subagent_toolsets": {
-            "description": "Named tool presets a subtask may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
+            "description": "Named tool presets a subagent may run with. Keys are preset names the parent agent picks via the Task tool's `toolset` param; values are the allowed tool ids. Merged with the built-in presets (explore, general); config wins on name collision.",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -16359,7 +16359,7 @@
           "name"
         ]
       },
-      "SubtaskPartInput": {
+      "SubagentPartInput": {
         "type": "object",
         "properties": {
           "id": {
@@ -16367,7 +16367,7 @@
           },
           "type": {
             "type": "string",
-            "const": "subtask"
+            "const": "subagent"
           },
           "prompt": {
             "type": "string"
@@ -16956,7 +16956,7 @@
               }
             ]
           },
-          "subtask": {
+          "subagent": {
             "type": "boolean"
           },
           "hints": {

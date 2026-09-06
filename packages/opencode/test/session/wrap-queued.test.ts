@@ -73,7 +73,7 @@ describe("wrapQueued frames what joined the turn", () => {
     expect(body(msg)).toContain("Please address this and continue")
   })
 
-  test("a delivered subtask result is framed as a finished background task", () => {
+  test("a delivered subagent result is framed as a finished background task", () => {
     const msg = user([{ text: "<background-task-result>...", synthetic: true, backgroundTaskResult: taskResult }])
     SessionPrompt.wrapQueued([msg], floor)
     expect(body(msg)).toContain("A background task you delegated has finished")

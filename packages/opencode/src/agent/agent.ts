@@ -341,7 +341,7 @@ export namespace Agent {
     return result.object
   }
 
-  // Sentinels that grant a subtask a CLASS of MCP tools rather than an
+  // Sentinels that grant a subagent a CLASS of MCP tools rather than an
   // enumerable id. MCP tool keys are dynamic (per configured server), so a
   // static toolset list cannot name them; a sentinel in the list is matched by
   // class at execute time in SessionPrompt.toolDenial. The `:` keeps them from
@@ -352,19 +352,19 @@ export namespace Agent {
   export const MCP_WRITE = "mcp:write"
 
   /**
-   * Built-in named tool presets. Subtasks always use the parent's
+   * Built-in named tool presets. Subagents always use the parent's
    * agent/model/tools for cache-identical prefixes, but tool execution is
    * restricted to the tools in the chosen preset — tools not in the list are
    * present in the schema but rejected at runtime.
    *
-   * `question` is absent from every subtask preset by design: a subtask runs
+   * `question` is absent from every subagent preset by design: a subagent runs
    * headless with no human to answer, so a `question` call would strand it
    * waiting on input that cannot arrive. (Removing it here does NOT restrict a
    * parent session, which carries no allowlist and is never gated by these.)
    *
    * The `-mcp` presets add an MCP sentinel: `explore-mcp` grants read-only MCP
    * tools, `general-mcp` grants all MCP tools. Both grant `mcp_search` so the
-   * subtask can disclose tool schemas (the catalog is name-tier). They are
+   * subagent can disclose tool schemas (the catalog is name-tier). They are
    * opt-in — a parent picks one by name; the plain `explore`/`general` presets
    * grant no MCP access, unchanged.
    */
@@ -420,11 +420,11 @@ export namespace Agent {
   }
 
   /**
-   * Named tool presets a subtask may run with. Built-in presets are merged
+   * Named tool presets a subagent may run with. Built-in presets are merged
    * with config `subagent_toolsets` (config wins on name collision), so users
    * can add presets or override built-ins without a rebuild. The parent agent
    * picks one by name via the Task tool's `toolset` param; the runtime stamps
-   * the resolved list onto the subtask session and rejects any tool not on it.
+   * the resolved list onto the subagent session and rejects any tool not on it.
    */
   export async function toolsets(): Promise<Record<string, string[]>> {
     const cfg = await Config.get()
