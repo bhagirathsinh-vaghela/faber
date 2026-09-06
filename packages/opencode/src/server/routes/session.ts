@@ -947,7 +947,7 @@ export const SessionRoutes = lazy(() =>
         c.header("Content-Type", "application/json")
         return stream(c, async () => {
           const sessionID = c.req.valid("param").sessionID
-          const { resumeSubagents } = await import("../../tool/task")
+          const { resumeSubagents } = await import("../../tool/agent")
           const subagents = await resumeSubagents(sessionID)
           // Only a parent whose OWN turn was cut gets the continue prompt: it is
           // the one that might re-issue and so must be told its subagents are

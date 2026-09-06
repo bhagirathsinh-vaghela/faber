@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { BackgroundTask } from "../../background"
-import { acceptPendingResult, acceptAllPending, subagentsForSession } from "../../tool/task"
+import { acceptPendingResult, acceptAllPending, subagentsForSession } from "../../tool/agent"
 import { lazy } from "../../util/lazy"
 
 export const BackgroundRoutes = lazy(() =>

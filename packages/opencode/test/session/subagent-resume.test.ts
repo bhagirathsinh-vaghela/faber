@@ -92,7 +92,7 @@ describe("SessionPing.interrupted", () => {
         const cut = await child(parent.id, false)
         const done = await child(parent.id, true)
 
-        const { subagentsForSession } = await import("../../src/tool/task")
+        const { subagentsForSession } = await import("../../src/tool/agent")
         const tasks = await subagentsForSession(parent.id)
         const byChild = new Map(tasks.map((t) => [t.subagent?.sessionID, t]))
 

@@ -234,7 +234,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
         title: i18n.t("ui.tool.webfetch"),
         subtitle: input.url,
       }
-    case "task":
+    case "agent":
       return {
         icon: "task",
         title: i18n.t("ui.tool.agent", { type: input.subagent_type || "task" }),
@@ -1442,7 +1442,7 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "task",
+  name: "agent",
   render(props) {
     const data = useData()
     const i18n = useI18n()
@@ -1571,7 +1571,7 @@ ToolRegistry.register({
                 fallback={
                   <BasicTool
                     icon="task"
-                    tool="task"
+                    tool="agent"
                     defaultOpen={true}
                     preArrowAction={openButton()}
                     trigger={{
@@ -1601,7 +1601,7 @@ ToolRegistry.register({
           <Match when={true}>
             <BasicTool
               icon="task"
-              tool="task"
+              tool="agent"
               sessionID={props.sessionID}
               boxID={props.boxID}
               preArrowAction={openButton()}

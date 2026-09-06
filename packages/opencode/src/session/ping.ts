@@ -179,7 +179,7 @@ export namespace SessionPing {
           // turn is still work worth recovering, and its injection simply wakes
           // the idle parent. The warm /restore path does the same, so both entry
           // points agree. Dynamic import breaks the tool/task -> session cycle.
-          const { resumeSubagents } = await import("@/tool/task")
+          const { resumeSubagents } = await import("@/tool/agent")
           const subagents = await resumeSubagents(session.id)
           const cut = await interrupted(session.id)
           // The continue prompt goes only to a parent whose OWN turn was cut: it

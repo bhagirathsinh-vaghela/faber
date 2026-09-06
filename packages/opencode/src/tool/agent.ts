@@ -431,14 +431,14 @@ const parameters = z
   })
   .strict()
 
-export const TaskTool = Tool.define("task", async (ctx) => {
+export const AgentTool = Tool.define("agent", async (ctx) => {
   const snapshot = ctx?.snapshot
   const agents = (snapshot?.agentList ?? (await Agent.list())).filter((a) => a.mode !== "primary")
 
   // Filter agents by permissions if agent provided
   const caller = ctx?.agent
   const accessibleAgents = caller
-    ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
+    ? agents.filter((a) => PermissionNext.evaluate("agent", a.name, caller.permission).action !== "deny")
     : agents
 
   // Repo-scoped agents are listed in a durable message block instead (see
@@ -484,7 +484,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       // Skip permission check when user explicitly invoked via @ or command subagent
       if (!ctx.extra?.bypassAgentCheck) {
         await ctx.ask({
-          permission: "task",
+          permission: "agent",
           patterns: [params.subagent_type],
           always: ["*"],
           metadata: {

@@ -54,7 +54,7 @@ const ITEMS = [
     description: "settings.permissions.tool.bash.description",
   },
   {
-    id: "task",
+    id: "agent",
     title: "settings.permissions.tool.task.title",
     description: "settings.permissions.tool.task.description",
   },

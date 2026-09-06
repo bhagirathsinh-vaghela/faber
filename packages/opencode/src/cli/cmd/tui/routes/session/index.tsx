@@ -53,7 +53,7 @@ import type { ListTool } from "@/tool/ls"
 import type { EditTool } from "@/tool/edit"
 import type { ApplyPatchTool } from "@/tool/apply_patch"
 import type { WebFetchTool } from "@/tool/webfetch"
-import type { TaskTool } from "@/tool/task"
+import type { AgentTool } from "@/tool/agent"
 import type { QuestionTool } from "@/tool/question"
 import type { SkillTool } from "@/tool/skill"
 import { useKeyboard, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
@@ -2166,7 +2166,7 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={props.part.tool === "edit"}>
           <Edit {...toolprops} />
         </Match>
-        <Match when={props.part.tool === "task"}>
+        <Match when={props.part.tool === "agent"}>
           <Task {...toolprops} />
         </Match>
         <Match when={props.part.tool === "apply_patch"}>
@@ -2703,7 +2703,7 @@ function WebSearch(props: ToolProps<any>) {
   )
 }
 
-function Task(props: ToolProps<typeof TaskTool>) {
+function Task(props: ToolProps<typeof AgentTool>) {
   const ctx = use()
   const { theme, syntax } = useTheme()
   const keybind = useKeybind()

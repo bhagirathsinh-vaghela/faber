@@ -116,7 +116,7 @@ export function Part(props: PartProps) {
               <Match when={props.part.type === "tool" && props.part.tool === "webfetch"}>
                 <IconGlobeAlt width={18} height={18} />
               </Match>
-              <Match when={props.part.type === "tool" && props.part.tool === "task"}>
+              <Match when={props.part.type === "tool" && props.part.tool === "agent"}>
                 <IconRobot width={18} height={18} />
               </Match>
               <Match when={true}>
@@ -270,7 +270,7 @@ export function Part(props: PartProps) {
                       state={props.part.state}
                     />
                   </Match>
-                  <Match when={props.part.tool === "task"}>
+                  <Match when={props.part.tool === "agent"}>
                     <TaskTool
                       id={props.part.id}
                       tool={props.part.tool}

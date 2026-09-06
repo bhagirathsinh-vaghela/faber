@@ -221,7 +221,7 @@ export function PermissionPrompt(props: { request: PermissionRequest }) {
                       description={("$ " + input().command) as string}
                     />
                   </Match>
-                  <Match when={props.request.permission === "task"}>
+                  <Match when={props.request.permission === "agent"}>
                     <TextBody
                       icon="#"
                       title={`${Locale.titlecase((input().subagent_type as string) ?? "Unknown")} Task`}

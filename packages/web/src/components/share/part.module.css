@@ -268,7 +268,7 @@
         width: 100%;
       }
     }
-    &[data-tool="task"] {
+    &[data-tool="agent"] {
       [data-component="tool-input"] {
         font-size: 0.75rem;
         line-height: 1.5;

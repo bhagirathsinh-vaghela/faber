@@ -50,7 +50,7 @@ import { Filesystem } from "../util/filesystem"
 import { NamedError } from "@opencode-ai/util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
-import { TaskTool } from "@/tool/task"
+import { AgentTool } from "@/tool/agent"
 import { Tool } from "@/tool/tool"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
@@ -513,7 +513,7 @@ export namespace SessionPrompt {
       // pending subagent
       // TODO: centralize "invoke tool" logic
       if (task?.type === "subagent") {
-        const taskTool = await TaskTool.init()
+        const taskTool = await AgentTool.init()
         const taskModel = task.model ? await Provider.getModel(task.model.providerID, task.model.modelID) : model
         const assistantMessage = (await Session.updateMessage({
           id: Identifier.ascending("message"),
@@ -550,7 +550,7 @@ export namespace SessionPrompt {
           sessionID: assistantMessage.sessionID,
           type: "tool",
           callID: ulid(),
-          tool: TaskTool.id,
+          tool: AgentTool.id,
           state: {
             status: "running",
             input: {
@@ -575,7 +575,7 @@ export namespace SessionPrompt {
         await Plugin.trigger(
           "tool.execute.before",
           {
-            tool: "task",
+            tool: "agent",
             sessionID,
             callID: part.id,
           },
@@ -617,7 +617,7 @@ export namespace SessionPrompt {
         await Plugin.trigger(
           "tool.execute.after",
           {
-            tool: "task",
+            tool: "agent",
             sessionID,
             callID: part.id,
           },
@@ -1565,7 +1565,7 @@ export namespace SessionPrompt {
 
         if (part.type === "agent") {
           // Check if this agent would be denied by task permission
-          const perm = PermissionNext.evaluate("task", part.name, agent.permission)
+          const perm = PermissionNext.evaluate("agent", part.name, agent.permission)
           const hint = perm.action === "deny" ? " . Invoked by user; guaranteed to exist." : ""
           return [
             {

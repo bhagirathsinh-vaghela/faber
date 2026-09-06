@@ -5,7 +5,7 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
-import { TaskTool } from "./task"
+import { AgentTool } from "./agent"
 import { TodoWriteTool, TodoReadTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WebFetchAnthropicTool } from "./webfetch-anthropic"
@@ -135,7 +135,7 @@ export namespace ToolRegistry {
       GrepTool,
       EditTool,
       WriteTool,
-      TaskTool,
+      AgentTool,
       isAnthropic ? WebFetchAnthropicTool : WebFetchTool,
       TodoWriteTool,
       // TodoReadTool,

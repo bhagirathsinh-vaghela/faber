@@ -1902,7 +1902,7 @@ export type PermissionConfig =
       grep?: PermissionRuleConfig
       list?: PermissionRuleConfig
       bash?: PermissionRuleConfig
-      task?: PermissionRuleConfig
+      agent?: PermissionRuleConfig
       external_directory?: PermissionRuleConfig
       todowrite?: PermissionActionConfig
       todoread?: PermissionActionConfig
