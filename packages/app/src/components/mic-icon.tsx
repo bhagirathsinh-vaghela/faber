@@ -1,5 +1,5 @@
 import { Icon } from "@opencode-ai/ui/icon"
-import { useLocal } from "@/context/local"
+import { useLocalOptional } from "@/context/local"
 import { agentColor } from "@/utils/agent"
 
 // Every mic in the app paints the same three states, and they were drifting as
@@ -9,10 +9,13 @@ import { agentColor } from "@/utils/agent"
 // land on, so it answers the question a second visible mic raises. Capturing
 // overrides it in critical red, since a live microphone outranks whose turn it
 // is. A mic that is neither is the plain icon.
+//
+// Local is optional: outside a session's LocalProvider there is no agent to
+// tint by, so it falls back to the plain interactive color.
 export function MicIcon(props: { targeted?: boolean; running?: boolean; class?: string }) {
-  const local = useLocal()
+  const local = useLocalOptional()
   const tint = () => {
-    const agent = local.agent.current()
+    const agent = local?.agent.current()
     return (agent && agentColor(agent.name, agent.color)) ?? "var(--icon-interactive-base)"
   }
   return (
