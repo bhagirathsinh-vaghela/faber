@@ -1737,6 +1737,18 @@ export namespace SessionPrompt {
   async function appendSyntheticPart(messages: MessageV2.WithParts[], text: string) {
     const opener = MessageV2.turnOpener(messages)
     if (!opener) return
+    // A block already sent has an assistant turn after it, and appending to it
+    // re-hashes the cached prefix behind that turn. The opener is unsent only
+    // when no assistant message follows it. Refuse the write otherwise: the
+    // funnel prevents naming a bad target, and this catches the target going
+    // stale under a future change, loudly, instead of billing a silent miss.
+    if (messages.some((m) => m.info.role === "assistant" && m.info.id > opener.info.id)) {
+      log.error("refused prompt injection onto an already-sent message", {
+        openerID: opener.info.id,
+        text: text.slice(0, 80),
+      })
+      return
+    }
     const info = opener.info as MessageV2.User
     const part: MessageV2.TextPart = {
       id: Identifier.ascending("part"),
