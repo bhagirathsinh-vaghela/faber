@@ -9,6 +9,7 @@ import { fn } from "@/util/fn"
 import { Parts } from "@/storage/parts"
 import { Messages } from "@/storage/messages"
 import { Db } from "@/storage/db"
+import { Instance } from "@/project/instance"
 import { ProviderTransform } from "@/provider/transform"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
@@ -913,25 +914,32 @@ export namespace MessageV2 {
   // where the re-read is expensive. ENTRY_MAX admits the largest single record
   // observed (~382KB) for the same reason — a rejected record is re-read from
   // disk on every pass forever, and the biggest turns are the costliest to redo.
-  const cache = new Map<string, { record: WithParts; size: number }>()
+  // Per-instance, so the budget below bounds ONE project and the whole map is
+  // released with its instance. Only a per-id uncache removes an entry, so a
+  // map living longer than the project that filled it is never reclaimed.
+  const state = Instance.state(() => ({
+    entries: new Map<string, { record: WithParts; size: number }>(),
+    bytes: 0,
+  }))
   const CACHE_MAX = 128 * 1024 * 1024
   const ENTRY_MAX = 1024 * 1024
-  let cached = 0
 
   export function uncache(messageID: string) {
-    const hit = cache.get(messageID)
+    const cache = state()
+    const hit = cache.entries.get(messageID)
     if (!hit) return
-    cached -= hit.size
-    cache.delete(messageID)
+    cache.bytes -= hit.size
+    cache.entries.delete(messageID)
   }
 
   function remember(record: WithParts, size: number) {
     if (size > ENTRY_MAX) return
     uncache(record.info.id)
-    cache.set(record.info.id, { record, size })
-    cached += size
-    for (const key of cache.keys()) {
-      if (cached <= CACHE_MAX) break
+    const cache = state()
+    cache.entries.set(record.info.id, { record, size })
+    cache.bytes += size
+    for (const key of cache.entries.keys()) {
+      if (cache.bytes <= CACHE_MAX) break
       uncache(key)
     }
   }
@@ -942,10 +950,12 @@ export namespace MessageV2 {
       messageID: Identifier.schema("message"),
     }),
     async (input): Promise<WithParts> => {
-      const hit = cache.get(input.messageID)
+      const cache = state()
+      const hit = cache.entries.get(input.messageID)
       if (hit) {
-        cache.delete(input.messageID)
-        cache.set(input.messageID, hit)
+        // Re-insert so the LRU eviction in `remember` sees this as most recent.
+        cache.entries.delete(input.messageID)
+        cache.entries.set(input.messageID, hit)
         return hit.record
       }
       const info = await Messages.readSized(input.messageID)
