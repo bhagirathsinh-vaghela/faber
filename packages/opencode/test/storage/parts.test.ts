@@ -226,3 +226,95 @@ describe("Db.sweepOrphans", () => {
     }
   })
 })
+
+// Records written before the delegation rename carry the old names, and every
+// reader now matches only the new ones — so without this an old session renders
+// its subagent calls as unlabelled generic tools with the raw envelope showing.
+describe("legacy delegation names", () => {
+  test("a tool part named task reads back as agent", async () => {
+    const msg = "msg_legacy_tool"
+    await Parts.put({
+      id: "prt_00000000000000200000000000",
+      messageID: msg,
+      sessionID: "ses_legacy",
+      type: "tool",
+      callID: "call_1",
+      tool: "task",
+      state: { status: "completed", input: {}, output: "done", title: "t", metadata: {}, time: { start: 1, end: 2 } },
+    } as unknown as MessageV2.Part)
+
+    const { parts } = await Parts.list(msg)
+    expect((parts[0] as MessageV2.ToolPart).tool).toBe("agent")
+  })
+
+  test("a text part's backgroundTaskResult reads back as backgroundSubagentResult", async () => {
+    const msg = "msg_legacy_result"
+    const result = { description: "audit", status: "completed", agent: "build", duration: 5 }
+    await Parts.put({
+      id: "prt_00000000000000210000000000",
+      messageID: msg,
+      sessionID: "ses_legacy",
+      type: "text",
+      text: "<background-task-result>\nbody\n</background-task-result>",
+      synthetic: true,
+      backgroundTaskResult: result,
+    } as unknown as MessageV2.Part)
+
+    const { parts } = await Parts.list(msg)
+    const text = parts[0] as MessageV2.TextPart & { backgroundTaskResult?: unknown }
+    expect(text.backgroundSubagentResult).toEqual(result as MessageV2.BackgroundSubagentResult)
+    expect(text.backgroundTaskResult).toBeUndefined()
+    expect(text.text).toBe("<background-subagent-result>\nbody\n</background-subagent-result>")
+  })
+
+  test("a current-name record is returned unchanged", async () => {
+    const msg = "msg_current"
+    const part = text(msg, "prt_00000000000000220000000000", "an ordinary message")
+    await Parts.put(part)
+
+    const { parts } = await Parts.list(msg)
+    expect(parts).toEqual([part])
+  })
+
+  test("a person's own words quoting the old envelope are left exactly as written", async () => {
+    const msg = "msg_quoting_prose"
+    const asked = "why does <background-task-result> still show in my transcript?"
+    await Parts.put(text(msg, "prt_00000000000000240000000000", asked))
+
+    const { parts } = await Parts.list(msg)
+    expect((parts[0] as MessageV2.TextPart).text).toBe(asked)
+  })
+
+  test("a text part carrying no text at all still reads back rather than vanishing", async () => {
+    const msg = "msg_no_text"
+    await Parts.put({
+      id: "prt_00000000000000250000000000",
+      messageID: msg,
+      sessionID: "ses_legacy",
+      type: "text",
+    } as unknown as MessageV2.Part)
+
+    const { parts } = await Parts.list(msg)
+    expect(parts.length).toBe(1)
+    expect(parts[0].id).toBe("prt_00000000000000250000000000")
+  })
+
+  test("a tool whose OUTPUT quotes the old envelope keeps that text verbatim", async () => {
+    const msg = "msg_quoted"
+    const output = "grep found <background-task-result> in the file"
+    await Parts.put({
+      id: "prt_00000000000000230000000000",
+      messageID: msg,
+      sessionID: "ses_legacy",
+      type: "tool",
+      callID: "call_2",
+      tool: "grep",
+      state: { status: "completed", input: {}, output, title: "t", metadata: {}, time: { start: 1, end: 2 } },
+    } as unknown as MessageV2.Part)
+
+    const { parts } = await Parts.list(msg)
+    const state = (parts[0] as MessageV2.ToolPart).state
+    expect(state.status).toBe("completed")
+    expect(state.status === "completed" && state.output).toBe(output)
+  })
+})

@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
 import { Storage } from "@/storage/storage"
+import { legacyOverrides } from "./overrides"
 import { fn } from "@/util/fn"
 import z from "zod"
 
@@ -42,8 +43,10 @@ export namespace AppearancePreference {
     Updated: BusEvent.define("appearance.preference.updated", Info),
   }
 
-  export async function get() {
-    return Storage.read<Info>(KEY).catch(() => EMPTY)
+  export async function get(): Promise<Info> {
+    return Storage.read<Info>(KEY)
+      .then((value) => legacyOverrides(value))
+      .catch(() => EMPTY)
   }
 
   export const set = fn(Info, async (input) => {

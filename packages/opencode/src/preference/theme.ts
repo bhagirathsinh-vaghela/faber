@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
 import { Storage } from "@/storage/storage"
+import { legacyOverrides } from "./overrides"
 import { fn } from "@/util/fn"
 import z from "zod"
 
@@ -38,8 +39,10 @@ export namespace ThemePreference {
     ActiveUpdated: BusEvent.define("theme.preference.active-updated", z.object({ active: z.string().nullable() })),
   }
 
-  export async function list() {
-    return Storage.read<Info[]>(KEY).catch(() => [] as Info[])
+  export async function list(): Promise<Info[]> {
+    return Storage.read<Info[]>(KEY)
+      .then((themes) => themes.map((theme) => legacyOverrides(theme)))
+      .catch(() => [] as Info[])
   }
 
   async function persist(themes: Info[]) {

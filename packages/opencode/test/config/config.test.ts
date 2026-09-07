@@ -1752,3 +1752,31 @@ describe("OPENCODE_DISABLE_PROJECT_CONFIG", () => {
     }
   })
 })
+
+// The delegation concept was renamed (task -> agent), inspired by Claude Code
+// keeping the old name as an alias; these prove the old keys still work,
+// because both stale keys fail SILENTLY and
+// destructively otherwise: a permission key lands in a namespace nothing
+// evaluates (so a denial stops denying), and a keybind key is rejected by a
+// strict schema that takes the WHOLE config file down with it.
+describe("legacy delegation vocabulary", () => {
+  test("a stale permission.task denies the agent tool, as permission.agent", () => {
+    expect(Config.Permission.parse({ task: "deny", bash: "allow" })).toEqual({ agent: "deny", bash: "allow" })
+  })
+
+  test("an explicit permission.agent wins, leaving a stale task key untranslated", () => {
+    expect(Config.Permission.parse({ task: "deny", agent: "allow" })).toEqual({ task: "deny", agent: "allow" })
+  })
+
+  test("a stale task_list keybind binds subagent_list instead of rejecting the config", () => {
+    expect(Config.Keybinds.parse({ task_list: "alt+a" }).subagent_list).toBe("alt+a")
+  })
+
+  test("an explicit subagent_list wins over a stale task_list", () => {
+    expect(Config.Keybinds.parse({ task_list: "alt+q", subagent_list: "alt+a" }).subagent_list).toBe("alt+a")
+  })
+
+  test("an unknown keybind is still rejected, so the alias did not loosen the schema", () => {
+    expect(() => Config.Keybinds.parse({ not_a_keybind: "alt+a" })).toThrow()
+  })
+})

@@ -629,10 +629,19 @@ export namespace Config {
   })
   export type PermissionRule = z.infer<typeof PermissionRule>
 
-  // Capture original key order before zod reorders, then rebuild in original order
+  // Capture original key order before zod reorders, then rebuild in original order.
+  // `task` is the delegation tool's former name, kept as an alias, inspired by
+  // Claude Code keeping `Task(...)` after its Agent rename. Without it
+  // the catchall keeps the stale key as a rule in a namespace nothing evaluates,
+  // so a config denying delegation silently stops denying it.
   const permissionPreprocess = (val: unknown) => {
     if (typeof val === "object" && val !== null && !Array.isArray(val)) {
-      return { __originalKeys: Object.keys(val), ...val }
+      const rest = val as Record<string, unknown>
+      const aliased = "task" in rest && !("agent" in rest)
+      const keys = Object.keys(rest).map((key) => (aliased && key === "task" ? "agent" : key))
+      if (!aliased) return { __originalKeys: keys, ...rest }
+      const { task, ...others } = rest
+      return { __originalKeys: keys, ...others, agent: task }
     }
     return val
   }
@@ -794,8 +803,21 @@ export namespace Config {
     })
   export type Agent = z.infer<typeof Agent>
 
+  // The schema is strict, so an unmigrated key rejects the WHOLE config file and
+  // every unrelated setting in it. `task_list` is the former name of the subagent
+  // list keybind; it maps forward rather than detonating the file.
+  const keybindsPreprocess = (val: unknown) => {
+    if (typeof val !== "object" || val === null || Array.isArray(val)) return val
+    const rest = val as Record<string, unknown>
+    if (!("task_list" in rest)) return val
+    const { task_list, ...others } = rest
+    return "subagent_list" in others ? others : { ...others, subagent_list: task_list }
+  }
+
   export const Keybinds = z
-    .object({
+    .preprocess(
+      keybindsPreprocess,
+      z.object({
       leader: z.string().optional().default("ctrl+x").describe("Leader key for keybind combinations"),
       app_exit: z.string().optional().default("ctrl+c,ctrl+d,<leader>q").describe("Exit the application"),
       editor_open: z.string().optional().default("<leader>e").describe("Open external editor"),
@@ -992,8 +1014,9 @@ export namespace Config {
         .default("none")
         .describe("Toggle auto-scroll lock to prevent scroll resuming"),
       header_toggle: z.string().optional().default("none").describe("Toggle session header bar"),
-    })
-    .strict()
+      })
+        .strict(),
+    )
     .meta({
       ref: "KeybindsConfig",
     })

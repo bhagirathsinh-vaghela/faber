@@ -80,7 +80,9 @@ export namespace Parts {
   export async function one(messageID: string, partID: string) {
     const row = await open().then((q) => q.one.get(messageID, partID))
     if (!row) throw new Storage.NotFoundError({ message: `Part not found: ${messageID}/${partID}` })
-    return JSON.parse(row.json) as MessageV2.Part
+    const parsed = tryParse(row.json)
+    if (!parsed) throw new Storage.NotFoundError({ message: `Part not readable: ${messageID}/${partID}` })
+    return parsed
   }
 
   export async function remove(messageID: string, partID: string) {
@@ -156,9 +158,35 @@ export namespace Parts {
 
   function tryParse(json: string): MessageV2.Part | undefined {
     try {
-      return JSON.parse(json) as MessageV2.Part
+      return legacy(JSON.parse(json) as MessageV2.Part)
     } catch {
       return undefined
     }
+  }
+
+  // A record written before the delegation concept was renamed carries the old
+  // names, and every reader now matches only the new ones — so an old record
+  // renders as an unlabelled generic tool with its raw envelope showing. The
+  // rename is normalised here, at the single boundary every part is read
+  // through, rather than in each renderer. Rewriting the stored rows instead
+  // would make the downgrade path lossy for no gain.
+  function legacy(part: MessageV2.Part) {
+    if (part.type === "tool" && (part.tool as string) === "task") part.tool = "agent"
+    if (part.type !== "text") return part
+    const text = part as MessageV2.TextPart & { backgroundTaskResult?: MessageV2.BackgroundSubagentResult }
+    if (text.backgroundTaskResult && !text.backgroundSubagentResult) {
+      text.backgroundSubagentResult = text.backgroundTaskResult
+      delete text.backgroundTaskResult
+    }
+    // Only a part that IS a delivered result carries the envelope. Rewriting any
+    // text holding those characters would edit what a person actually wrote, in
+    // every message quoting the old name — a transcript must show what was said.
+    if (!text.backgroundSubagentResult) return part
+    if (text.text?.includes("<background-task-result>")) {
+      text.text = text.text
+        .replaceAll("<background-task-result>", "<background-subagent-result>")
+        .replaceAll("</background-task-result>", "</background-subagent-result>")
+    }
+    return part
   }
 }
