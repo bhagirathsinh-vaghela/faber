@@ -2134,27 +2134,21 @@ export namespace SessionPrompt {
 
     let output = ""
 
-    proc.stdout?.on("data", (chunk) => {
-      output += chunk.toString()
-      if (part.state.status === "running") {
-        part.state.metadata = {
-          output: output,
-          description: "",
-        }
-        Session.updatePart(part)
-      }
-    })
+    // Both streams append to one `output` and persist one shared `part`, so the
+    // writes must not overlap: an un-awaited write captures the part as it is
+    // when the write actually runs, and two in flight can land newest-first,
+    // leaving the stale snapshot stored. Chaining keeps them ordered while
+    // still returning to the stream handler immediately.
+    let pending: Promise<unknown> = Promise.resolve()
+    const persist = (chunk: unknown) => {
+      output += String(chunk)
+      if (part.state.status !== "running") return
+      part.state.metadata = { output, description: "" }
+      pending = pending.then(() => Session.updatePart(part)).catch(() => {})
+    }
 
-    proc.stderr?.on("data", (chunk) => {
-      output += chunk.toString()
-      if (part.state.status === "running") {
-        part.state.metadata = {
-          output: output,
-          description: "",
-        }
-        Session.updatePart(part)
-      }
-    })
+    proc.stdout?.on("data", persist)
+    proc.stderr?.on("data", persist)
 
     let aborted = false
     let exited = false
