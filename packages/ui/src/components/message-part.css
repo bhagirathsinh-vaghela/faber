@@ -246,29 +246,9 @@
   transition: opacity 0.15s ease;
 }
 
-/* Message-role cards (user/assistant) render through the same TranscriptCard as
-   every other card and share its EXACT structure — box metrics, header padding,
-   min-height, pinning, margins all come from the base, identical to a tool card.
-   The ONLY per-role differences are colour and header type-scale: the accent
-   label + icon and the denser 11px/600/0.04em header. Nothing structural is
-   overridden here, so a role card centres and pins exactly like every other card.
-   The accent is the role token set on the wrapper (cobalt user / green assistant). */
+/* Role cards (user/assistant) carry a heavier summary so a collapsed prompt
+   reads with the same weight it has in the body. */
 [data-component="tool-part-wrapper"][data-role] {
-  /* Type scale only. The accent colour comes from the base, keyed on the card's
-     accent family, so a role card cannot end up coloured differently from any
-     other card that names the same family. */
-  [data-slot="transcript-card-title"] {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-  }
-
-  [data-slot="transcript-card-block-number"] {
-    font-size: 11px;
-  }
-
-  /* The collapsed prompt carries the same weight it has in the body, so
-     expanding the card changes what is shown and never how it reads. */
   [data-slot="transcript-card-subtitle"][data-summary="true"] {
     font-weight: var(--font-weight-semibold);
   }

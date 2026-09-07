@@ -277,16 +277,14 @@
   }
 
   [data-slot="transcript-card-title"] {
-    /* The title names the card, so it is never shortened to make room for the
-       summary beside it: the summary is the elastic part and yields instead. */
     flex-shrink: 0;
     white-space: nowrap;
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
+    font-size: 11px;
     font-style: normal;
-    font-weight: var(--font-weight-medium);
+    font-weight: 600;
     line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
+    letter-spacing: 0.04em;
     color: var(--text-base);
 
     &.capitalize {
