@@ -202,6 +202,24 @@ describe("session.message-v2.isTurnOpener", () => {
     const msgs = [plainUser("u1", "typed"), synthetic]
     expect(MessageV2.isTurnOpener(msgs, synthetic)).toBe(true)
   })
+
+  // The include_context shape: a subagent inherits the parent's whole
+  // conversation as its leading user messages, then the small fresh prompt at
+  // the tail. An injection rides the opener, so the opener MUST be the tail
+  // prompt and never the large leading message — the cache-safe placement the
+  // whole funnel exists to guarantee.
+  test("opener is the fresh tail prompt, not the large leading user message", () => {
+    const inherited = plainUser("u1", "x".repeat(100_000))
+    const spacer: MessageV2.WithParts = {
+      info: { ...assistantInfo("a1", "u1"), finish: "stop" } as MessageV2.Assistant,
+      parts: [{ ...basePart("a1", "a1-p"), type: "text", text: "..." }] as MessageV2.Part[],
+    }
+    const tail = plainUser("u2", "do the small task")
+    const msgs = [inherited, spacer, tail]
+    const opener = MessageV2.turnOpener(msgs)
+    expect(opener?.info.id).toBe(tail.info.id)
+    expect(MessageV2.isTurnOpener(msgs, inherited)).toBe(false)
+  })
 })
 
 describe("session.message-v2.toModelMessage", () => {

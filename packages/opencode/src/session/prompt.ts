@@ -1728,27 +1728,35 @@ export namespace SessionPrompt {
   // it into the in-memory parts the rest of the turn reads before the next
   // reload. Every injector that rides a block on the turn-opener shares this, so
   // the persist-then-mirror contract lives in one place.
-  async function appendSyntheticPart(userMessage: MessageV2.WithParts, text: string) {
-    const userInfo = userMessage.info as MessageV2.User
+  //
+  // The target is resolved here, never passed in: an injection rides the turn
+  // opener (the newest user message, a block not yet sent) and nowhere else.
+  // Because a non-tail target cannot be expressed, the cache-safe placement
+  // holds for every injection by construction. Returns the part, or undefined
+  // when there is no opener (no user message yet).
+  async function appendSyntheticPart(messages: MessageV2.WithParts[], text: string) {
+    const opener = MessageV2.turnOpener(messages)
+    if (!opener) return
+    const info = opener.info as MessageV2.User
     const part: MessageV2.TextPart = {
       id: Identifier.ascending("part"),
-      messageID: userInfo.id,
-      sessionID: userInfo.sessionID,
+      messageID: info.id,
+      sessionID: info.sessionID,
       type: "text",
       text,
       synthetic: true,
       internal: true,
     }
     await Session.updatePart(part)
-    userMessage.parts.push(part)
+    opener.parts.push(part)
     return part
   }
 
-  async function persistReminder(userMessage: MessageV2.WithParts, text: string, marker: string) {
+  async function persistReminder(messages: MessageV2.WithParts[], text: string, marker: string) {
     const wrapped = text.includes("<system-reminder>")
       ? `${marker}\n${text}`
       : `${marker}\n<system-reminder>\n${text}\n</system-reminder>`
-    await appendSyntheticPart(userMessage, wrapped)
+    await appendSyntheticPart(messages, wrapped)
   }
 
   // Inject the progressive-disclosure MCP catalog as durable history when this
@@ -1789,9 +1797,10 @@ export namespace SessionPrompt {
       return
     }
 
-    const userMessage = MessageV2.turnOpener(input.messages)
-    if (!userMessage) return
-    await appendSyntheticPart(userMessage, catalog)
+    // Record the injected catalog only when it was actually appended: the
+    // stored text is the recency anchor the next turn compares against, so
+    // recording without appending would suppress the injection forever.
+    if (!(await appendSyntheticPart(input.messages, catalog))) return
     await Session.update(input.session.id, (draft) => void (draft.mcpCatalogText = catalog), { touch: false })
     input.session.mcpCatalogText = catalog
   }
@@ -1815,9 +1824,7 @@ export namespace SessionPrompt {
     )
     if (present) return
 
-    const userMessage = MessageV2.turnOpener(input.messages)
-    if (!userMessage) return
-    await appendSyntheticPart(userMessage, catalog)
+    await appendSyntheticPart(input.messages, catalog)
   }
 
   // Announce a date or branch that has moved since the model was last told. The
@@ -1842,13 +1849,12 @@ export namespace SessionPrompt {
     }
     if (known.date === date && known.branch === branch) return
 
-    const userMessage = MessageV2.turnOpener(input.messages)
-    if (!userMessage) return
+    if (!MessageV2.turnOpener(input.messages)) return
     const text = SystemPrompt.sessionContextUpdate({
       date: known.date === date ? undefined : date,
       branch: known.branch === branch ? undefined : branch,
     })
-    await appendSyntheticPart(userMessage, text)
+    await appendSyntheticPart(input.messages, text)
     await Session.update(
       input.session.id,
       (draft) => {
@@ -1882,7 +1888,7 @@ export namespace SessionPrompt {
     // parent detail — hence the parentID guard.
     if (!input.session.parentID && conciseDue(input.messages)) {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
-      if (concise) await persistReminder(userMessage, CONCISE, CONCISE_MARKER)
+      if (concise) await persistReminder(input.messages, CONCISE, CONCISE_MARKER)
     }
 
     // A subagent reaches for the agent tool, gets a denial back, and only then
@@ -1890,14 +1896,13 @@ export namespace SessionPrompt {
     // the schema either way (removing it would move the tools[] bytes the whole
     // prefix hashes), so the cheap fix is telling it up front.
     //
-    // It rides the FIRST user message and is written once for the session: the
-    // fact never changes, and a block appended to each new turn would rewrite
-    // the tail of the prefix every time. Presence is checked across the whole
-    // conversation, not just the message being answered, since later turns
-    // carry their own fresh message.
+    // Written once for the session: the fact never changes, so the presence
+    // check spans the whole conversation, not just the message being answered.
+    // It rides the turn opener like every other injection, so under
+    // include_context (where messages[0] holds the whole copied conversation)
+    // it lands on the small new prompt at the tail, not in the cached prefix.
     if (input.session.parentID && !input.messages.some((m) => hasReminder(m, SUBAGENT_MARKER))) {
-      const first = input.messages.find((msg) => msg.info.role === "user") ?? userMessage
-      await persistReminder(first, SUBAGENT, SUBAGENT_MARKER)
+      await persistReminder(input.messages, SUBAGENT, SUBAGENT_MARKER)
     }
 
     const plan = Session.plan(input.session)
@@ -1909,7 +1914,7 @@ export namespace SessionPrompt {
       const exitText = renderTemplate(BUILD_SWITCH, {
         "${PLAN_FILE_INFO_EXIT}": exists ? ` The plan file is located at ${plan} if you need to reference it.` : "",
       })
-      await persistReminder(userMessage, exitText, PLAN_EXIT_MARKER)
+      await persistReminder(input.messages, exitText, PLAN_EXIT_MARKER)
       return input.messages
     }
 
@@ -1925,7 +1930,7 @@ export namespace SessionPrompt {
           const subagentText = renderTemplate(PROMPT_PLAN_SUBAGENT, {
             "${PLAN_FILE_INFO_SUBAGENT}": planFileInfoSubagent(parentPlan, parentPlanExists),
           })
-          await persistReminder(userMessage, subagentText, PLAN_REMINDER_MARKER)
+          await persistReminder(input.messages, subagentText, PLAN_REMINDER_MARKER)
         }
       }
       return input.messages
@@ -1944,13 +1949,13 @@ export namespace SessionPrompt {
     // Re-entry: entering plan mode again after a previous exit, with an existing plan file
     if (isEnteringPlan && hadPlanExit && exists) {
       const reentryText = renderTemplate(PROMPT_PLAN_REENTRY, { "${PLAN_FILE_PATH}": plan })
-      await persistReminder(userMessage, reentryText, PLAN_REMINDER_MARKER)
+      await persistReminder(input.messages, reentryText, PLAN_REMINDER_MARKER)
     }
 
     // First entry or re-entry: always inject full reminder
     if (isEnteringPlan) {
       const fullText = renderTemplate(PROMPT_PLAN, { "${PLAN_FILE_INFO}": planFileInfo(plan, exists) })
-      await persistReminder(userMessage, fullText, PLAN_REMINDER_MARKER)
+      await persistReminder(input.messages, fullText, PLAN_REMINDER_MARKER)
       return input.messages
     }
 
@@ -1961,10 +1966,10 @@ export namespace SessionPrompt {
     const isFull = (totalReminders + 1) % FULL_REMINDER_EVERY_N === 1
     if (isFull) {
       const fullText = renderTemplate(PROMPT_PLAN, { "${PLAN_FILE_INFO}": planFileInfo(plan, exists) })
-      await persistReminder(userMessage, fullText, PLAN_REMINDER_MARKER)
+      await persistReminder(input.messages, fullText, PLAN_REMINDER_MARKER)
     } else {
       const sparseText = renderTemplate(PROMPT_PLAN_SPARSE, { "${PLAN_FILE_PATH}": plan })
-      await persistReminder(userMessage, sparseText, PLAN_REMINDER_MARKER)
+      await persistReminder(input.messages, sparseText, PLAN_REMINDER_MARKER)
     }
 
     return input.messages
