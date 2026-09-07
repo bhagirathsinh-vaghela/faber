@@ -9966,6 +9966,9 @@
               "agent": {
                 "type": "string"
               },
+              "sessionID": {
+                "type": "string"
+              },
               "duration": {
                 "type": "number"
               }
@@ -16157,6 +16160,9 @@
                 ]
               },
               "agent": {
+                "type": "string"
+              },
+              "sessionID": {
                 "type": "string"
               },
               "duration": {

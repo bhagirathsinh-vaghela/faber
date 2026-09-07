@@ -288,6 +288,7 @@ export type TextPart = {
     description: string
     status: "completed" | "failed" | "cancelled"
     agent?: string
+    sessionID?: string
     duration: number
   }
   backgroundJobResult?: {
@@ -2692,6 +2693,7 @@ export type TextPartInput = {
     description: string
     status: "completed" | "failed" | "cancelled"
     agent?: string
+    sessionID?: string
     duration: number
   }
   backgroundJobResult?: {

@@ -65,15 +65,19 @@ export namespace MessageV2 {
     description: z.string(),
     status: z.enum(["completed", "failed", "cancelled"]),
     agent: z.string().optional(),
+    // The child session the subagent ran in, so the result card can link into
+    // it ("Open subagent session"). Optional: a result rebuilt from a minimal
+    // pending record may not carry it.
+    sessionID: z.string().optional(),
     duration: z.number(),
   })
   export type BackgroundSubagentResult = z.infer<typeof BackgroundSubagentResult>
 
-  // A shell job's result, kept apart from a subagent task's. They share a
-  // shape and nothing else: a task has an agent and a session it reasoned in,
-  // a job has a command, an exit code and a log. The states differ too, since
-  // only a job can be mid-run at delivery (a soft check-in) or killed by its
-  // own watchdog.
+  // A shell job's result, kept apart from a subagent's. They share a shape and
+  // nothing else: a subagent has an agent and a session it reasoned in, a job
+  // has a command, an exit code and a log. The states differ too, since only a
+  // job can be mid-run at delivery (a soft check-in) or killed by its own
+  // watchdog.
   export const BackgroundJobResult = z.object({
     jobId: z.string(),
     command: z.string(),

@@ -163,6 +163,7 @@ async function doInject(
       description: task.description,
       status,
       agent: task.subagent?.agent,
+      sessionID: task.subagent?.sessionID,
       duration,
     },
   })
@@ -231,6 +232,7 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
         description: task.description,
         status,
         agent: task.subagent?.agent,
+        sessionID: task.subagent?.sessionID,
         duration: p.duration,
       },
     })
@@ -395,7 +397,11 @@ function buildNotification(
 
 const parameters = z
   .object({
-    description: z.string().describe("A short (3-5 words) description of the task"),
+    description: z
+      .string()
+      .describe(
+        "A short identifier for this subagent, AT MOST 5 words (e.g. 'count repo files', 'audit auth flow'). It labels the subagent on both its launch card and its result card, so keep it terse and specific — it is how the user tells one subagent apart from another. Put the fuller ask in `summary`, not here.",
+      ),
     prompt: z.string().describe("The task for the agent to perform"),
     summary: z
       .string()
