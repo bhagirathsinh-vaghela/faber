@@ -122,6 +122,12 @@ export namespace SessionRevert {
       // nothing sweeps an orphan part.
       await Parts.removeMessage(msg.info.id)
       await Messages.remove(msg.info.id)
+      // The rows are gone, but MessageV2 serves reads from a cache keyed by
+      // messageID that only an explicit uncache evicts. Going through the
+      // storage facades skips the eviction Session.removePart and
+      // Session.updateMessage do for their own callers, so without this a
+      // reverted message keeps rendering until the process restarts.
+      MessageV2.uncache(msg.info.id)
       await Bus.publish(MessageV2.Event.Removed, { sessionID: sessionID, messageID: msg.info.id })
     }
     const last = preserve.at(-1)
@@ -129,6 +135,8 @@ export namespace SessionRevert {
       const partID = session.revert.partID
       const [preserveParts, removeParts] = splitWhen(last.parts, (x) => x.id === partID)
       last.parts = preserveParts
+      // The surviving message's cached entry still holds the trimmed parts.
+      if (removeParts.length) MessageV2.uncache(last.info.id)
       for (const part of removeParts) {
         await Parts.remove(last.info.id, part.id)
         await Bus.publish(MessageV2.Event.PartRemoved, {
