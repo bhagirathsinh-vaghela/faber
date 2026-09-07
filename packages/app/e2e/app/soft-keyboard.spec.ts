@@ -4,6 +4,21 @@ import { promptSelector } from "../selectors"
 test.describe("soft keyboard", () => {
   test.use({ hasTouch: true, isMobile: true })
 
+  // Playwright runs Desktop Chrome, so `(pointer: coarse)` reports false and the
+  // dock's coarse-only focus gating never engages. Force it true, since that is
+  // what decides whether the mic hands the caret to the editor (dock focuses it
+  // on a fine pointer, leaves it alone on a coarse one).
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const real = window.matchMedia.bind(window)
+      window.matchMedia = (query) => {
+        const list = real(query)
+        if (/pointer:\s*coarse|hover:\s*none/.test(query)) Object.defineProperty(list, "matches", { get: () => true })
+        return list
+      }
+    })
+  })
+
   test("a tap on the editor focuses it", async ({ page, gotoSession }) => {
     await gotoSession()
 
@@ -12,36 +27,23 @@ test.describe("soft keyboard", () => {
     await expect(editor).toBeFocused()
   })
 
-  test("focus taken outside a tap on the editor is refused", async ({ page, gotoSession }) => {
-    await gotoSession()
-
-    const editor = page.locator(promptSelector)
-    await page.evaluate((selector) => (document.querySelector(selector) as HTMLElement).focus(), promptSelector)
-    await expect(editor).not.toBeFocused()
-  })
-
-  test("a focus arriving after an earlier tap is still refused", async ({ page, gotoSession }) => {
-    await gotoSession()
-
-    const editor = page.locator(promptSelector)
-    await editor.tap()
-    await expect(editor).toBeFocused()
-
-    await page.evaluate((selector) => (document.querySelector(selector) as HTMLElement).blur(), promptSelector)
-    await expect(editor).not.toBeFocused()
-
-    await page.evaluate((selector) => (document.querySelector(selector) as HTMLElement).focus(), promptSelector)
-    await expect(editor).not.toBeFocused()
-  })
-
-  test("the mic leaves the editor unfocused", async ({ page, gotoSession }) => {
+  test("the mic does not focus the editor", async ({ page, gotoSession }) => {
     await gotoSession()
 
     const mic = page.locator('button[aria-label="Dictate"]')
     test.skip((await mic.count()) === 0, "dictation unsupported in this browser")
 
+    // A touch load leaves the editor unfocused (no keyboard rises on its own);
+    // the harness focuses it on open, so start from the real device state.
+    const editor = page.locator(promptSelector)
+    await editor.evaluate((el) => el.blur())
+    await expect(editor).not.toBeFocused()
+
+    // The label flips to "Stop dictation" once the tap starts dictation, so its
+    // disappearance proves the tap did something and "still unfocused" is not vacuous.
     await mic.tap()
-    await expect(page.locator(promptSelector)).not.toBeFocused()
+    await expect(mic).toHaveCount(0)
+    await expect(editor).not.toBeFocused()
   })
 
   test("the editor asks for a text keyboard", async ({ page, gotoSession }) => {

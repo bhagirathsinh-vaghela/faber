@@ -369,26 +369,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const coarse = createCoarsePointer()
   onMount(() => {
-    let armedByTap = false
-    const arm = (e: PointerEvent) => {
-      armedByTap = e.target instanceof Node && editorRef.contains(e.target)
-    }
-    const denyUntappedFocus = () => {
-      if (!coarse()) return
-      if (armedByTap) {
-        armedByTap = false
-        return
-      }
-      editorRef.blur()
-    }
-    document.addEventListener("pointerdown", arm, true)
-    editorRef.addEventListener("focusin", denyUntappedFocus)
-    onCleanup(() => {
-      document.removeEventListener("pointerdown", arm, true)
-      editorRef.removeEventListener("focusin", denyUntappedFocus)
-    })
-  })
-  onMount(() => {
     const caretToEndWhenTappedBelow = (e: MouseEvent) => {
       const contents = document.createRange()
       contents.selectNodeContents(editorRef)
