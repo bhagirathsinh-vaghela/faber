@@ -8,6 +8,7 @@ import { Snapshot } from "@/snapshot"
 import { fn } from "@/util/fn"
 import { Parts } from "@/storage/parts"
 import { Messages } from "@/storage/messages"
+import { Db } from "@/storage/db"
 import { ProviderTransform } from "@/provider/transform"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
@@ -1032,6 +1033,21 @@ export namespace MessageV2 {
           {
             providerID: ctx.providerID,
             message: e.message,
+          },
+          { cause: e },
+        ).toObject()
+      // A held write lock, reaching here only after Db.retry already waited it
+      // out. SQLite documents the busy family as "the lock was taken, try
+      // again" — nothing is wrong with the statement — so it is transient by
+      // definition and must not end a turn. Classified at this boundary because
+      // the driver's `code` still exists here; past it the error flattens to a
+      // message string and the code is unrecoverable.
+      case Db.busy(e):
+        return new MessageV2.APIError(
+          {
+            message: "Storage was busy",
+            isRetryable: true,
+            metadata: { code: (e as { code: string }).code },
           },
           { cause: e },
         ).toObject()
