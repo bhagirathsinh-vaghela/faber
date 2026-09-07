@@ -63,15 +63,6 @@
   background: var(--box-bg, var(--box-fill));
 }
 
-/* A streaming assistant box grows a token at a time. Without layout containment
-   each append reflows and repaints the whole transcript above it (the box's size
-   change escapes up the tree); containment confines relayout to the box so only
-   it repaints. Not `paint` — the box has no overflowing decoration to clip, and
-   layout alone removes the cross-box reflow. */
-[data-component="message-box"] {
-  contain: layout;
-}
-
 [data-component="user-message"] {
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
@@ -142,9 +133,9 @@
     word-break: break-word;
     overflow: hidden;
     font-weight: var(--font-weight-semibold);
-    /* No inner box: the text sits bare inside the outer MessageBox (one block,
-       one box). No background/border/radius here; padding only for the copy
-       button's absolute position. */
+    /* No inner box: the text sits bare inside the card (one block, one box). No
+       background/border/radius here; padding only for the copy button's absolute
+       position. */
     padding: 0 28px 0 0;
 
     [data-highlight="file"] {
@@ -215,17 +206,17 @@
     opacity: 0.45;
   }
 
-  /* "hover" mode: take NO space at rest so the header sits flush left, then
-     appear on hover/focus and push the identity to the right. display:none
-     removes it from flow entirely (opacity alone would reserve the width +
-     the parent flex gap, leaving a permanent hole). */
-  &[data-jump-hint="hover"] [data-slot="message-box-jump"] {
+  /* "hover" mode: takes no room at rest, so a card that is not being pointed at
+     starts its index at the very same inset as a card with no jump control at
+     all. Summoned by the ROW, like every other control on it: keying it on the
+     identity would move that identity out from under the pointer as the arrow
+     took its place, hiding the arrow and flickering at the refresh rate. */
+  &[data-jump-hint="hover"] {
     display: none;
   }
 
-  &[data-jump-hint="hover"]:hover [data-slot="message-box-jump"],
-  &[data-jump-hint="hover"]:focus-visible [data-slot="message-box-jump"] {
-    display: inline-flex;
+  [data-slot="transcript-card-identity"]:hover &[data-jump-hint="hover"] {
+    display: flex;
   }
 
   &[data-jump="true"]:hover [data-slot="message-box-jump"],
@@ -234,141 +225,64 @@
     color: var(--text-strong);
   }
 
-  /* No hover (touch): reveal the arrow at rest in both modes, since there is
-     no hover to trigger it. */
+  /* No hover (touch): the "rest" mode already keeps its arrow faintly visible; a
+     "hover" identity stays collapsed so the #N column aligns with every other
+     card on touch too (the whole pinned bar is tappable, so the jump arrow is a
+     fine-pointer convenience, not the only way in). */
   @media (hover: none) {
-    &[data-jump-hint="hover"] [data-slot="message-box-jump"] {
+    &[data-jump-hint="rest"] [data-slot="message-box-jump"] {
       display: inline-flex;
       opacity: 0.45;
     }
   }
 }
 
-/* Box title-bar actions live in the header flow (right-aligned cluster):
-   revert (user) then copy. Both reveal only on hover over the box's title bar
-   (pointer devices); on touch (hover: none) they stay visible. */
+/* Card title-bar actions live in the header flow (right-aligned cluster):
+   revert (user), speak (assistant), copy. All reveal only on hover over the
+   card's title bar (pointer devices); on touch (hover: none) they stay visible. */
 [data-slot="message-box-revert"],
 [data-slot="box-speak"],
 [data-slot="box-copy"] {
   transition: opacity 0.15s ease;
 }
 
-@media (hover: hover) {
-  [data-slot="message-box-revert"],
-  [data-component="message-box"] [data-slot="box-speak"],
-  [data-component="message-box"] [data-slot="box-copy"] {
-    opacity: 0;
+/* Message-role cards (user/assistant) render through the same TranscriptCard as
+   every other card and share its EXACT structure — box metrics, header padding,
+   min-height, pinning, margins all come from the base, identical to a tool card.
+   The ONLY per-role differences are colour and header type-scale: the accent
+   label + icon and the denser 11px/600/0.04em header. Nothing structural is
+   overridden here, so a role card centres and pins exactly like every other card.
+   The accent is the role token set on the wrapper (cobalt user / green assistant). */
+[data-component="tool-part-wrapper"][data-role] {
+  /* Type scale only. The accent colour comes from the base, keyed on the card's
+     accent family, so a role card cannot end up coloured differently from any
+     other card that names the same family. */
+  [data-slot="transcript-card-title"] {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
   }
 
-  [data-component="message-box"]:hover [data-slot="message-box-revert"],
-  [data-component="message-box"]:hover [data-slot="box-speak"],
-  [data-component="message-box"]:hover [data-slot="box-copy"],
-  [data-slot="box-speak"][data-speaking] {
-    opacity: 1;
+  [data-slot="transcript-card-block-number"] {
+    font-size: 11px;
   }
 
-  /* Tool box: copy hidden until the tool's title bar (the collapsible trigger)
-     is hovered. */
-  [data-component="tool-part-wrapper"] [data-slot="box-copy"] {
-    opacity: 0;
-  }
-
-  [data-component="tool-part-wrapper"] [data-slot="collapsible-trigger"]:hover [data-slot="box-copy"] {
-    opacity: 1;
-  }
-}
-
-/* Tool row: zero the trigger's vertical padding so the 24px inner tool-trigger
-   centers cleanly in the 32px row. With the base 6px padding it sat ~4px below
-   center (hugging the bottom). Scoped to tool rows so other collapsibles
-   (session turns) keep their padding. */
-[data-component="tool-part-wrapper"] [data-slot="collapsible-trigger"] {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* Tool body: always show the full content at its natural height. Kobalte only
-   re-measures --kb-collapsible-content-height when the open/closed state flips,
-   NOT when content grows. A tool that opens mid-stream with one line therefore
-   stayed locked to one line as its output streamed in, until a manual
-   collapse+expand forced a re-measure. Forcing auto height + visible overflow
-   on the open tool body bypasses the stale measurement so streaming output
-   grows the body live and it is fully expanded on its own. */
-[data-component="tool-part-wrapper"] [data-slot="collapsible-content"][data-expanded] {
-  height: auto !important;
-  overflow: visible;
-}
-
-/* The collapsible box uses overflow:clip (for its rounded corners on expand),
-   which also crops the trigger's 24px action/copy buttons top and bottom in the
-   32px row. Clip only horizontally on tool rows so the corners stay rounded but
-   the buttons' full border is visible; the content below still fits the width. */
-[data-component="tool-part-wrapper"] [data-component="collapsible"] {
-  overflow: clip visible;
-}
-
-[data-component="reasoning-part"] {
-  width: 100%;
-  color: var(--text-base);
-  line-height: var(--line-height-large);
-
-  [data-component="markdown"] {
-    margin-top: 24px;
-    font-style: italic !important;
-
-    p:has(strong) {
-      margin-top: 24px;
-      margin-bottom: 0;
-
-      &:first-child {
-        margin-top: 0;
-      }
-    }
+  /* The collapsed prompt carries the same weight it has in the body, so
+     expanding the card changes what is shown and never how it reads. */
+  [data-slot="transcript-card-subtitle"][data-summary="true"] {
+    font-weight: var(--font-weight-semibold);
   }
 }
 
-[data-component="tool-error"] {
-  display: flex;
-  align-items: start;
-  gap: 8px;
+/* The thinking card's body reads as an aside rather than an answer. Colour and
+   type only; the card supplies the box. */
+[data-component="tool-part-wrapper"] [data-component="markdown"][data-reasoning] {
+  font-style: italic;
+}
 
-  [data-slot="icon-svg"] {
-    color: var(--icon-critical-base);
-    margin-top: 4px;
-  }
-
-  [data-slot="message-part-tool-error-content"] {
-    display: flex;
-    align-items: start;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  [data-slot="message-part-tool-error-tool"] {
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-base);
-    line-height: var(--line-height-large);
-    color: var(--text-on-critical-weak);
-    white-space: nowrap;
-  }
-
-  [data-slot="message-part-tool-error-title"] {
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-base);
-    font-style: normal;
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
-    color: var(--text-on-critical-base);
-    white-space: nowrap;
-  }
-
-  [data-slot="message-part-tool-error-message"] {
-    color: var(--text-on-critical-weak);
-    max-height: 240px;
-    overflow-y: auto;
-    word-break: break-word;
-  }
+[data-slot="message-part-tool-error-message"] {
+  color: var(--text-on-critical-weak);
+  word-break: break-word;
 }
 
 /* Body-level copy for tools whose output is NOT a fenced code block (webfetch,
@@ -455,15 +369,15 @@
 /* Dispatch fields render as one markdown block (bold labels + code pills)
    inside the subagent tool box's collapsible body. Inset to align with the
    trigger row (12px) like every other tool body; tighten the stacked lines. */
-[data-slot="task-output-dispatch"] {
+[data-slot="subagent-output-dispatch"] {
   padding: 8px 12px;
 }
 
-[data-slot="task-output-dispatch"] [data-component="markdown"] p {
+[data-slot="subagent-output-dispatch"] [data-component="markdown"] p {
   margin: 0 0 4px;
 }
 
-[data-slot="task-output-dispatch"] [data-component="markdown"] p:last-child {
+[data-slot="subagent-output-dispatch"] [data-component="markdown"] p:last-child {
   margin-bottom: 0;
 }
 
@@ -560,72 +474,6 @@
   [data-slot="tool-streaming-bar-fill"] {
     animation: none;
     transform: translateX(41%);
-  }
-}
-
-[data-component="edit-trigger"],
-[data-component="write-trigger"] {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-
-  [data-slot="message-part-title-area"] {
-    flex-grow: 1;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  [data-slot="message-part-title"] {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-base);
-    font-style: normal;
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
-    color: var(--text-base);
-  }
-
-  [data-slot="message-part-title-text"] {
-    text-transform: capitalize;
-  }
-
-  [data-slot="message-part-title-filename"] {
-    /* No text-transform - preserve original filename casing */
-  }
-
-  [data-slot="message-part-path"] {
-    display: flex;
-    flex-grow: 1;
-    min-width: 0;
-  }
-
-  [data-slot="message-part-directory"] {
-    color: var(--text-weak);
-    text-overflow: ellipsis;
-    overflow: hidden;
-    white-space: nowrap;
-    direction: rtl;
-    text-align: left;
-  }
-
-  [data-slot="message-part-filename"] {
-    color: var(--text-strong);
-    flex-shrink: 0;
-  }
-
-  [data-slot="message-part-actions"] {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    justify-content: flex-end;
   }
 }
 
@@ -758,9 +606,7 @@ a[data-component="tool-action"]:hover {
 }
 
 [data-component="user-message"] [data-slot="user-message-text"],
-[data-component="message-box"],
-[data-component="reasoning-part"],
-[data-component="tool-error"],
+[data-slot="message-part-tool-error-message"],
 [data-component="tool-output"],
 [data-component="edit-content"],
 [data-component="write-content"],
@@ -787,7 +633,7 @@ a[data-component="tool-action"]:hover {
      keep the neutral shell. */
   & > [data-component="collapsible"] {
     /* Neutral grey, distinct from every message-box accent (user=cobalt,
-       assistant=green, task=amber, plan-agent=purple) — tools are secondary
+       assistant=green, subagent=amber, plan-agent=purple) — tools are secondary
        "steps" content, so grey lets them recede. Solid grey (not an alpha
        token) keeps the color-mix result opaque. */
     --box-accent: var(--box-accent-tool, var(--ink-dark-11, #b1b7b7));

@@ -31,7 +31,7 @@ import {
   Switch,
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
-import { legacyInternal, typed, Message, Part } from "./message-part"
+import { Message, Part } from "./message-part"
 import { busyBase, busyDelay, busyOverlays, busyShown } from "../util/busy-tint"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
@@ -40,7 +40,6 @@ import { Icon } from "./icon"
 import { Card } from "./card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
-import { IconButton } from "./icon-button"
 import { Spinner } from "./spinner"
 import { createStore } from "solid-js/store"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
@@ -461,57 +460,7 @@ export function SessionTurn(
 
   const [rootRef, setRootRef] = createSignal<HTMLDivElement | undefined>()
   const [stickyRef, setStickyRef] = createSignal<HTMLDivElement | undefined>()
-  // The sticky user message is ALWAYS collapsed to a one-line bar (see
-  // session-turn.css). Clicking it toggles the full message open IN FLOW (content
-  // below moves down); clicking again collapses it. Collapse is a constant, not
-  // scroll-driven: an earlier IntersectionObserver + ResizeObserver flipped it on
-  // and off as the box resized, which fed back into its own resize and flickered
-  // every frame. A constant cannot flicker.
-  // User prompt box open state is driven entirely by the client's per-mode
-  // collapse checkbox (box type "user"): ticked = collapsed, until the chevron
-  // overrides it.
   const boxDefaults = useBoxDefaults()
-  const collapsed = () => true
-  // An injected result is user-role but its own box type, so each kind
-  // collapses independently of typed user prompts and of the other.
-  const boxKey = () => {
-    const parts = stickyParts()
-    if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundJobResult)) return "job_result"
-    if (parts.some((part) => part?.type === "text" && (part as TextPart).backgroundSubagentResult))
-      return "subagent_result"
-    // A message the system wrote on its own, e.g. the supervisor's continue
-    // prompt after a restart. Machinery the model reads carries `internal` and
-    // is excluded by that flag rather than by matching its text.
-    //
-    // Debug mode drops that exclusion HERE TOO. Otherwise an internal part
-    // renders as its own box while being keyed "user", so its collapse
-    // behaviour follows the typed-prompt setting rather than its own.
-    // A part carrying the flag is judged by it; one without predates the flag
-    // and is recognised by `legacyInternal`, the renderer's own predicate, so a
-    // box's key and its visibility cannot disagree.
-    const debug = boxDefaults?.showInternal?.() ?? false
-    // Keyed on the same predicate the renderer gates its notice branch with: a
-    // message the user typed into is theirs, whatever an attachment wrote
-    // alongside it. Deciding this any other way here would key a box one way
-    // and draw it the other.
-    if (!debug && typed(parts.filter((part) => part !== undefined))) return "user"
-    const notice = parts.find((part) => {
-      if (part?.type !== "text") return false
-      const text = part as TextPart
-      if (!text.synthetic || !text.text.trim()) return false
-      return debug || (!text.internal && !legacyInternal(text))
-    })
-    if (notice) return "system_notice"
-    return "user"
-  }
-  const configuredOpen = () => (boxDefaults ? !boxDefaults.collapsed(boxKey(), boxDefaults.mode()) : true)
-  const [stuckOpen, setStuckOpen] = createBoxOpen({
-    sessionID: () => props.sessionID,
-    boxID: () => `${props.messageID}:sticky`,
-    fallback: configuredOpen,
-  })
-  const setStuckExpanded = (next: boolean | ((v: boolean) => boolean)) =>
-    setStuckOpen(typeof next === "function" ? next(stuckOpen()) : next)
 
   const updateStickyHeight = (height: number) => {
     const root = rootRef()
@@ -691,49 +640,16 @@ export function SessionTurn(
                         <Message message={msg()} parts={attachmentParts()} />
                       </div>
                     </Show>
-                    <div
-                      data-slot="session-turn-sticky"
-                      data-stuck={collapsed() ? "true" : undefined}
-                      data-stuck-expanded={collapsed() && stuckOpen() ? "true" : undefined}
-                      ref={setStickyRef}
-                    >
+                    <div data-slot="session-turn-sticky" ref={setStickyRef}>
+                      <div data-slot="session-turn-sticky-fade" aria-hidden="true" />
                       {/* User Message */}
-                      <div
-                        data-slot="session-turn-message-content"
-                        aria-live="off"
-                        onClick={(event) => {
-                          // While pinned, the whole one-liner toggles the overlay.
-                          // Ignore clicks on interactive children (revert/copy/etc)
-                          // and when the user is selecting text.
-                          if (!collapsed()) return
-                          if ((event.target as HTMLElement).closest("button,a,[role='button']")) return
-                          if (window.getSelection()?.toString()) return
-                          setStuckExpanded((v) => !v)
-                        }}
-                      >
+                      <div data-slot="session-turn-message-content" aria-live="off">
                         <Message
                           message={msg()}
                           parts={stickyParts()}
                           boxed
                           onJump={props.onJump}
                           jumpHint={props.jumpHint}
-                          action={
-                            /* Collapse/expand affordance, inline in the box's
-                               actions row. Uses IconButton (same as the copy
-                               button) so its size, hit area, and hover match. */
-                            <IconButton
-                              data-slot="session-turn-sticky-expand"
-                              icon="chevron-grabber-vertical"
-                              variant="secondary"
-                              type="button"
-                              aria-label={stuckOpen() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")}
-                              aria-expanded={stuckOpen()}
-                              onClick={(event: MouseEvent) => {
-                                event.stopPropagation()
-                                setStuckExpanded((v) => !v)
-                              }}
-                            />
-                          }
                         />
                       </div>
 

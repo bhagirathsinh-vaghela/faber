@@ -29,17 +29,17 @@ import {
 } from "@opencode-ai/sdk/v2"
 import { legacyInternal, typed } from "../util/internal"
 import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/envelope"
-import { jobAccent, jobGlyph, jobLabel, jobStatusColor } from "../util/job-status"
+import { jobAccent, jobLabel } from "../util/job-status"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
 import { Dialog } from "./dialog"
 import { useI18n } from "../context/i18n"
-import { BasicTool } from "./basic-tool"
+import { TranscriptCard, type CardAccent } from "./transcript-card"
+import { Collapsible } from "./collapsible"
 import { TextShimmer } from "./text-shimmer"
 import { Button } from "./button"
-import { Card } from "./card"
 import { Icon } from "./icon"
 import { IconButton } from "./icon-button"
 import { Checkbox } from "./checkbox"
@@ -52,7 +52,8 @@ import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { CopyButton } from "./copy-button"
 import { SpeakButton } from "./speak-button"
-import { useBoxDefaults } from "../context/box-defaults"
+import { createBoxOpen, useBoxDefaults } from "../context/box-defaults"
+import { messageTime } from "../util/time"
 
 interface Diagnostic {
   range: {
@@ -103,19 +104,12 @@ export interface MessageProps {
   // Completed-turn snapshot line, threaded from the page down to each
   // assistant text box. Absent while the turn is streaming.
   footer?: (message: AssistantMessage) => JSX.Element
-  // Extra control for the boxed header's actions row (sticky expand chevron).
-  action?: JSX.Element
   // When set, the box header's identity (◈ #N ROLE time) becomes a button that
   // scrolls this message into view. Used by the sticky user-message header.
   onJump?: () => void
   // How discoverable the jump affordance is: "hover" (default) reveals the arrow
-  // only on hover; "rest" keeps it faintly visible at rest. Threaded to MessageBox.
+  // only on hover; "rest" keeps it faintly visible at rest.
   jumpHint?: "rest" | "hover"
-}
-
-function messageTime(ms: number): string {
-  const d = new Date(ms)
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`
 }
 
 export interface MessagePartProps {
@@ -236,7 +230,7 @@ export function getToolInfo(tool: string, input: any = {}): ToolInfo {
       }
     case "agent":
       return {
-        icon: "task",
+        icon: "robot",
         title: i18n.t("ui.tool.agent", { type: input.subagent_type || "agent" }),
         subtitle: input.description,
       }
@@ -299,16 +293,35 @@ export function registerPartComponent(type: string, component: PartComponent) {
   PART_MAPPING[type] = component
 }
 
-function taskResultPart(parts: PartType[]): TextPart | undefined {
+function subagentResultPart(parts: PartType[]): TextPart | undefined {
   return parts.find((p) => p.type === "text" && (p as TextPart).backgroundSubagentResult) as TextPart | undefined
 }
 
-const TASK_ACCENT = "var(--box-accent-task)"
-function subagentAccent(status: string): string {
-  // `--syntax-critical` rather than `--color-text-error`, which is unset in the
-  // shipped themes: an unresolvable accent leaves the box drawing its default
-  // white border, so a failed task read as an ordinary message.
-  return status === "failed" ? "var(--syntax-critical)" : TASK_ACCENT
+// Navigate into a subagent's child session. Both the launch card and the result
+// card open the same child, so the guard lives in one place: no-op unless both
+// a target session and a navigator are present.
+function navigateToChildSession(nav: ((sessionID: string) => void) | undefined, sessionID: string | undefined) {
+  if (sessionID && nav) nav(sessionID)
+}
+
+// The result-box label per terminal status. A cancelled subagent must not read
+// as "Done"; each status names itself.
+const SUBAGENT_BOX_KEY = {
+  failed: "ui.tool.subagent.box.failed",
+  cancelled: "ui.tool.subagent.box.cancelled",
+  completed: "ui.tool.subagent.box.done",
+} as const
+function subagentBoxKey(status: string) {
+  return SUBAGENT_BOX_KEY[status as keyof typeof SUBAGENT_BOX_KEY] ?? SUBAGENT_BOX_KEY.completed
+}
+
+// The subagent's identifier shown on BOTH its launch card and its result card
+// so the two read as one pair. Capped so a long description cannot blow out the
+// header: at most 5 words, then an ellipsis.
+function subagentLabel(description: string): string {
+  const words = description.trim().split(/\s+/)
+  if (words.length <= 5) return words.join(" ")
+  return words.slice(0, 5).join(" ") + "\u2026"
 }
 
 function stripSubagentOutput(text: string): string {
@@ -320,7 +333,7 @@ function stripSubagentOutput(text: string): string {
 }
 
 // Ring-dot separator, same as the assistant footer chip line.
-function TaskDot() {
+function SubagentDot() {
   return (
     <span
       class="mx-2 inline-block size-[4px] rounded-full border align-middle"
@@ -329,352 +342,106 @@ function TaskDot() {
   )
 }
 
-function subagentStatusColor(status: string): string {
-  if (status === "failed") return "var(--syntax-critical)"
-  if (status === "cancelled") return "var(--text-weak)"
-  return "var(--syntax-string)"
-}
-
 function subagentDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
 }
 
-// The footer chip line: agent name, the literal kind, status, and duration,
-// each colored by its own semantic token.
-function SubagentResultDisplay(props: { part: TextPart }) {
-  const meta = () => props.part.backgroundSubagentResult!
-  const content = createMemo(() => stripSubagentResult(props.part.text))
-  const fields = createMemo(() => {
-    const m = meta()
-    const result: { color: string; text: string; mono?: boolean }[] = []
-    if (m.agent) result.push({ color: "var(--syntax-type)", text: m.agent })
-    result.push({ color: "var(--syntax-constant)", text: "subagent" })
-    result.push({ color: subagentStatusColor(m.status), text: m.status })
-    result.push({ color: "var(--syntax-primitive)", text: subagentDuration(m.duration) })
-    return result
-  })
-  return (
-    <div data-component="subagent-result" data-scrollable>
-      <div
-        data-slot="subagent-result-meta"
-        class="mb-2 flex flex-row flex-wrap items-center font-mono"
-        style={{ "font-size": "11px", "line-height": "1.2" }}
-      >
-        <For each={fields()}>
-          {(field, i) => (
-            <>
-              <Show when={i() > 0}>
-                <TaskDot />
-              </Show>
-              <span
-                class="font-medium"
-                classList={{ "max-w-[28ch] truncate": field.mono }}
-                style={{ color: field.color }}
-                title={field.mono ? field.text : undefined}
-              >
-                {field.text}
-              </span>
-            </>
-          )}
-        </For>
-      </div>
-      <Markdown text={content()} cacheKey={props.part.id} />
-    </div>
-  )
-}
-
-function jobResultPart(parts: PartType[]): TextPart | undefined {
-  return parts.find((p) => p.type === "text" && (p as TextPart).backgroundJobResult) as TextPart | undefined
-}
-
-// A message the system wrote ON ITS OWN, which the reader needs told about:
-// the supervisor's continue prompt after a restart is the one in practice. The
-// user branch renders only non-synthetic text, so without its own branch such
-// a message draws an empty box saying nothing about what happened.
-//
-// Machinery the model reads carries `internal`, so it is excluded by the flag
-// the writer set rather than by sniffing its text for a marker. Debug mode
-// drops that exclusion, which is the whole point of the mode.
-//
-// `legacyInternal` decides the same question for a part carrying no flag, and
-// lives in its own module so this renderer and the box classifier cannot
-// disagree. Re-exported for the classifier, which imports it from here.
-export { legacyInternal, typed }
-
-function noticePart(parts: PartType[], showInternal = false): TextPart | undefined {
-  if (taskResultPart(parts) || jobResultPart(parts)) return undefined
-  // A message the user typed into draws as their message, whatever synthetic
-  // parts an attachment added beside it. This branch is for a message with no
-  // typed text at all, which is the case the empty box was about.
-  if (!showInternal && typed(parts)) return undefined
-  const text = parts.find((p) => {
-    if (p.type !== "text") return false
-    const part = p as TextPart
-    if (!part.synthetic) return false
-    if (showInternal) return true
-    return !part.internal && !legacyInternal(part)
-  }) as TextPart | undefined
-  return text?.text.trim() ? text : undefined
-}
-
-// One line, so the collapsed box still says what happened. The full text stays
-// in the body for a reader who opens it.
-function noticeSummary(text: string): string {
-  const first =
-    text
-      .trim()
-      .split("\n")
-      .find((line) => line.trim().length > 0) ?? ""
-  const sentence = first.split(/(?<=[.!?])\s/)[0] ?? first
-  return sentence.length > 120 ? `${sentence.slice(0, 117)}...` : sentence
-}
-
-// The summary line renders BEFORE the body and outside any scroller, so a
-// collapsed box clipped to one line still shows it. A body that scrolls puts
-// its first line inside the scroller, where the clip lands on empty space.
-function NoticeDisplay(props: { part: TextPart }) {
-  const summary = createMemo(() => noticeSummary(props.part.text))
-  return (
-    <div data-component="notice-result">
-      <div
-        data-slot="notice-result-meta"
-        class="mb-2 flex flex-row flex-wrap items-center font-mono"
-        style={{ "font-size": "11px", "line-height": "1.2" }}
-      >
-        <span class="font-medium" style={{ color: "var(--syntax-constant)" }}>
-          ⚙ {summary()}
-        </span>
-      </div>
-      <div data-component="notice-body" data-scrollable>
-        <Markdown text={props.part.text} cacheKey={props.part.id} />
-      </div>
-    </div>
-  )
-}
-
-function compactionPart(parts: PartType[]): CompactionPart | undefined {
-  return parts.find((p) => p.type === "compaction") as CompactionPart | undefined
-}
-
-// The compaction request carries no text — its part is {type,auto} only — so
-// without its own branch the user box renders empty. Reuses the notice box
-// chrome (SYSTEM label, tool accent) so it reads like the supervisor's
-// continue prompt, the other message the system writes on its own.
-function CompactionDisplay(props: { part: CompactionPart }) {
-  const i18n = useI18n()
-  const text = createMemo(() =>
-    props.part.auto ? i18n.t("ui.message.compaction.auto") : i18n.t("ui.message.compaction.manual"),
-  )
-  return (
-    <div data-component="notice-result">
-      <div
-        data-slot="notice-result-meta"
-        class="flex flex-row flex-wrap items-center font-mono"
-        style={{ "font-size": "11px", "line-height": "1.2" }}
-      >
-        <span class="font-medium" style={{ color: "var(--syntax-constant)" }}>
-          ⚙ {text()}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-// A job's header answers what a reader asks of a finished command: what ran,
-// how it ended, and how long it took. The command leads, because it is what
-// identifies the block; the exit code follows the status, since a bare number
-// means nothing without it.
-function JobResultDisplay(props: { part: TextPart }) {
-  const meta = () => props.part.backgroundJobResult!
-  const content = createMemo(() => stripJobResult(props.part.text))
-  const fields = createMemo(() => {
-    const m = meta()
-    // Outcome first, because that is the glance. The command follows as the
-    // thing being identified, then the numbers a reader only wants once the
-    // outcome has their attention.
-    const result: { color: string; text: string; mono?: boolean }[] = [
-      { color: jobStatusColor(m.status), text: `${jobGlyph(m.status)} ${m.status}` },
-      { color: "var(--syntax-type)", text: m.command, mono: true },
-    ]
-    // Absent while a job runs, and absent for a watchdog kill, which never
-    // reaches the job's own exit write.
-    if (m.exit !== undefined) result.push({ color: "var(--text-weak)", text: `exit ${m.exit}` })
-    result.push({ color: "var(--text-weak)", text: subagentDuration(m.duration) })
-    return result
-  })
-  return (
-    <div data-component="job-result" data-scrollable>
-      <div
-        data-slot="job-result-meta"
-        class="mb-2 flex flex-row flex-wrap items-center font-mono"
-        style={{ "font-size": "11px", "line-height": "1.2" }}
-      >
-        <For each={fields()}>
-          {(field, i) => (
-            <>
-              <Show when={i() > 0}>
-                <TaskDot />
-              </Show>
-              <span
-                class="font-medium"
-                classList={{ "max-w-[40ch] truncate": field.mono }}
-                style={{ color: field.color }}
-                title={field.mono ? field.text : undefined}
-              >
-                {field.text}
-              </span>
-            </>
-          )}
-        </For>
-      </div>
-      <Markdown text={content()} cacheKey={props.part.id} />
-    </div>
-  )
-}
-
-export function Message(props: MessageProps) {
-  const boxDefaults = useBoxDefaults()
-  const i18n = useI18n()
-  const debugInternal = () => boxDefaults?.showInternal?.() ?? false
-  return (
-    <Switch>
-      <Match when={props.message.role === "user" && taskResultPart(props.parts)}>
-        {(part) => (
-          <Show when={props.boxed} fallback={<SubagentResultDisplay part={part()} />}>
-            <MessageBox
-              message={props.message}
-              label={i18n.t("ui.tool.subagent.box.done", {
-                duration: subagentDuration(part().backgroundSubagentResult!.duration ?? 0),
-              })}
-              accent={subagentAccent(part().backgroundSubagentResult!.status)}
-              action={props.action}
-              onJump={props.onJump}
-              jumpHint={props.jumpHint}
-            >
-              <SubagentResultDisplay part={part()} />
-            </MessageBox>
-          </Show>
-        )}
-      </Match>
-      <Match when={props.message.role === "user" && jobResultPart(props.parts)}>
-        {(part) => (
-          <Show when={props.boxed} fallback={<JobResultDisplay part={part()} />}>
-            <MessageBox
-              message={props.message}
-              label={jobLabel(part().backgroundJobResult!.status)}
-              accent={jobAccent(part().backgroundJobResult!.status)}
-              action={props.action}
-              onJump={props.onJump}
-              jumpHint={props.jumpHint}
-            >
-              <JobResultDisplay part={part()} />
-            </MessageBox>
-          </Show>
-        )}
-      </Match>
-      <Match when={props.message.role === "user" && noticePart(props.parts, debugInternal())}>
-        {(part) => (
-          <Show when={props.boxed} fallback={<NoticeDisplay part={part()} />}>
-            <MessageBox
-              message={props.message}
-              label={part().internal ? "INTERNAL" : "SYSTEM"}
-              accent="var(--box-accent-tool)"
-              action={props.action}
-              onJump={props.onJump}
-              jumpHint={props.jumpHint}
-            >
-              <NoticeDisplay part={part()} />
-            </MessageBox>
-          </Show>
-        )}
-      </Match>
-      <Match when={props.message.role === "user" && compactionPart(props.parts)}>
-        {(part) => (
-          <Show when={props.boxed} fallback={<CompactionDisplay part={part()} />}>
-            <MessageBox
-              message={props.message}
-              label="SYSTEM"
-              accent="var(--box-accent-tool)"
-              action={props.action}
-              onJump={props.onJump}
-              jumpHint={props.jumpHint}
-            >
-              <CompactionDisplay part={part()} />
-            </MessageBox>
-          </Show>
-        )}
-      </Match>
-      <Match when={props.message.role === "user" && props.message}>
-        {(userMessage) => (
-          <Show
-            when={props.boxed}
-            fallback={<UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
-          >
-            <MessageBox
-              message={userMessage() as UserMessage}
-              action={props.action}
-              onJump={props.onJump}
-              jumpHint={props.jumpHint}
-              copy={() =>
-                (props.parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined)
-                  ?.text ?? ""
-              }
-            >
-              <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />
-            </MessageBox>
-          </Show>
-        )}
-      </Match>
-      <Match when={props.message.role === "assistant" && props.message}>
-        {(assistantMessage) => (
-          <AssistantMessageDisplay
-            message={assistantMessage() as AssistantMessage}
-            parts={props.parts}
-            defaultOpen={props.defaultOpen}
-            footer={props.footer}
-          />
-        )}
-      </Match>
-    </Switch>
-  )
-}
-
-// TUI-style message box: rounded border + agent-tinted background + a
-// "◈ USER" / "◈ ASSISTANT" header. User boxes use the agent color;
-// assistant boxes use the success/green accent (mirrors the TUI).
-export function MessageBox(props: {
+// One card renderer for every injected user-message card (subagent result, job
+// result, notice, compaction). It wraps TranscriptCard in the same tool-part-wrapper
+// the live subagent LAUNCH card uses, so a result card is the SAME component and
+// CSS as the launch card — identical header, typography, chevron and box chrome
+// by construction, not by keeping two implementations in sync. `tokens` points
+// the wrapper's tool colours at the card's accent (subagent amber, job blue,
+// grey for system); `jump` is the optional scroll-to affordance in the sticky
+// context.
+function CardBox(props: {
   message: MessageType
-  numberKey?: string
-  label?: string
-  accent?: string
+  icon: IconProps["name"]
+  title: string
+  // Same three trigger slots the launch card uses, so a result card's header
+  // reads with the identical spacing and separators, not a pre-joined string.
+  subtitle?: string
+  args?: string[]
+  // The box-type key that drives the per-mode collapse default, matching the
+  // settings row for this card (subagent_result / job_result / system_notice /
+  // user / assistant).
+  tool: string
+  // The card's colour family, and an optional tone that overrides it when the
+  // card's state is not plain success. The base derives border, fill and header
+  // text from these, so a card names its colour once and cannot hold a partial
+  // set.
+  accent?: CardAccent
+  tone?: string
+  jump?: JSX.Element
+  // A card that stays open: its header is still the same button every other card
+  // has, it just cannot be collapsed, so no card type gets a header of a
+  // different KIND. The assistant card is the only caller.
+  locked?: boolean
+  // Title-bar controls, threaded to TranscriptCard's actions cluster. copy/speak
+  // are the assistant's; revert is the user's.
   copy?: () => string
   speak?: () => string
-  // Extra control rendered inline in the title-bar actions row, after copy
-  // (e.g. the collapse/expand chevron on sticky user messages).
-  action?: JSX.Element
-  // When set, the identity cluster (◈ #N ROLE time) becomes a button that
-  // scrolls this message into view.
-  onJump?: () => void
-  // Discoverability of the jump affordance: "hover" (default) hides the arrow
-  // until the header is hovered; "rest" keeps it faintly visible at rest and
-  // brightens it on hover. CSS keys both off this via data-jump-hint.
-  jumpHint?: "rest" | "hover"
+  revert?: JSX.Element
+  // The block index key. Defaults to the message id; the assistant card passes
+  // its part id so each text step numbers independently.
+  numberKey?: string
+  // The four injected cards nest their body in the launch card's padded dispatch
+  // slot; user/assistant supply their own body chrome, so they opt out with raw.
+  raw?: boolean
+  // Marks a message-role card (user/assistant) so its header keeps that role's
+  // own accent-coloured, 11px/600 styling instead of the neutral launch-card
+  // header — see the data-role rules in message-part.css. Absent on tool cards.
+  role?: "user" | "assistant"
+  summaryOnly?: boolean
   children: JSX.Element
 }) {
-  const data = useData()
-  const dialog = useDialog()
-  const isUser = props.message.role === "user"
+  const ctx = useData()
+  return (
+    <div data-component="tool-part-wrapper" data-role={props.role}>
+      <TranscriptCard
+        icon={props.icon}
+        tool={props.tool}
+        accent={props.accent}
+        tone={props.tone}
+        forceOpen={props.locked}
+        locked={props.locked}
+        blockNumber={ctx.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id)}
+        time={props.message.time.created}
+        sessionID={props.message.sessionID}
+        boxID={props.message.id}
+        bare={props.raw}
+        summaryOnly={props.summaryOnly}
+        trigger={{ title: props.title, subtitle: props.subtitle, args: props.args }}
+        jump={props.jump}
+        copy={props.copy}
+        speak={props.speak}
+        revert={props.revert}
+      >
+        <Show when={props.raw} fallback={<div data-slot="subagent-output-dispatch">{props.children}</div>}>
+          {props.children}
+        </Show>
+      </TranscriptCard>
+    </div>
+  )
+}
 
-  function confirmRevert() {
+// The undo control on a user card: a "Revert here" button that opens a confirm
+// dialog before rolling the session back to this message. Its own component (not
+// a TranscriptCard slot) because it owns the dialog + Enter-to-confirm lifecycle; the
+// card only positions it. Absent when the host cannot revert.
+function RevertButton(props: { message: MessageType }) {
+  const host = useData()
+  const dialog = useDialog()
+  function confirm() {
     const doRevert = () => {
       dialog.close()
-      data.revertMessage?.({ sessionID: props.message.sessionID, messageID: props.message.id })
+      host.revertMessage?.({ sessionID: props.message.sessionID, messageID: props.message.id })
     }
-    // Enter-to-confirm: Kobalte owns dialog focus, so a global keydown for the
+    // Kobalte owns dialog focus, so a document-level Enter listener for the
     // dialog's lifetime is more reliable than an element handler. Escape is
-    // handled natively by Kobalte.
+    // Kobalte's own.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Enter") return
       e.preventDefault()
@@ -682,7 +449,6 @@ export function MessageBox(props: {
       doRevert()
     }
     document.addEventListener("keydown", onKey)
-
     dialog.show(() => {
       onCleanup(() => document.removeEventListener("keydown", onKey))
       return (
@@ -706,121 +472,349 @@ export function MessageBox(props: {
       )
     })
   }
-  const number = createMemo(() => data.blockNumber(props.message.sessionID, props.numberKey ?? props.message.id))
-  const accent = props.accent ?? (isUser ? "var(--box-accent-user)" : "var(--box-accent-assistant)")
-  // User and assistant boxes each get explicit, independently-customizable
-  // border/bg tokens (user matches the assistant scheme with its own fixed
-  // token set — no per-agent color). A caller-supplied accent (props.accent)
-  // opts out and falls back to accent-derived border/bg in .accent-box.
-  const boxTokens = props.accent
-    ? {}
-    : isUser
-      ? { "--box-border": "var(--box-border-user)", "--box-bg": "var(--box-bg-user)" }
-      : { "--box-border": "var(--box-border-assistant)", "--box-bg": "var(--box-bg-assistant)" }
   return (
-    <div
-      data-component="message-box"
-      data-role={props.message.role}
-      class="accent-box"
-      style={{
-        // Scheme (accent border, no fill) comes from .accent-box; this box only
-        // supplies its accent + its own padding. Inter-box spacing comes from
-        // the turn list's `gap`, same as tool boxes — no own bottom margin.
-        "--box-accent": accent,
-        ...boxTokens,
-        padding: "0.5rem 0.75rem",
+    <Show when={host.revertMessage}>
+      <div data-slot="message-box-revert">
+        <Tooltip value="Cache-safe revert" placement="top" gutter={8}>
+          <Button variant="secondary" onClick={confirm}>
+            Revert here
+          </Button>
+        </Tooltip>
+      </div>
+    </Show>
+  )
+}
+
+// A terminal status that is not plain success carries its own colour instead of
+// the family's, so a failed card cannot read as a finished one. Success returns
+// nothing, leaving the family accent in place.
+function statusTone(status: string): string | undefined {
+  if (status === "failed" || status === "timeout") return "var(--syntax-critical)"
+  if (status === "cancelled" || status === "ended" || status === "running") return "var(--text-weak)"
+  return undefined
+}
+
+// The scroll-to-this-message control the sticky header shows, or nothing when
+// the card is not in a jump context. Sibling of the trigger (never nested). The
+// `hint` drives the arrow's discoverability via data-jump-hint (see the
+// message-box-identity CSS): "hover" hides it until hover/focus, "rest" keeps it
+// faint; on a coarse pointer (hover: none) both reveal it persistently. Omitting
+// the hint is what made the arrow always-on — it MUST be set.
+function jumpAction(onJump?: () => void, hint: "rest" | "hover" = "hover"): JSX.Element | undefined {
+  if (!onJump) return undefined
+  return (
+    <span
+      data-slot="message-box-identity"
+      data-jump="true"
+      data-jump-hint={hint}
+      role="button"
+      tabindex={0}
+      title="Scroll to this message"
+      onClick={(event: MouseEvent) => {
+        event.stopPropagation()
+        onJump()
+      }}
+      onKeyDown={(event: KeyboardEvent) => {
+        if (event.key !== "Enter" && event.key !== " ") return
+        event.preventDefault()
+        event.stopPropagation()
+        onJump()
       }}
     >
-      <div
-        data-slot="message-box-header"
-        style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "0.5rem",
-          "margin-bottom": "0.375rem",
-          color: accent,
-          "font-size": "11px",
-          "font-weight": "600",
-          "letter-spacing": "0.04em",
-        }}
-      >
-        <span
-          data-slot="message-box-identity"
-          // Sibling interactive control, not nested: the sticky bar's own click
-          // handler skips [role='button'], so the two never double-fire. Jump
-          // scrolls this message into view; the rest of the bar still toggles.
-          // The affordance (jump icon + hover state) lives in CSS, keyed on the
-          // role="button" this sets — the arrow reveals on hover to signal the
-          // cluster is clickable (see message-part.css).
-          data-jump={props.onJump ? "true" : undefined}
-          data-jump-hint={props.onJump ? (props.jumpHint ?? "hover") : undefined}
-          role={props.onJump ? "button" : undefined}
-          tabindex={props.onJump ? 0 : undefined}
-          title={props.onJump ? "Scroll to this message" : undefined}
-          onClick={
-            props.onJump
-              ? (event: MouseEvent) => {
-                  event.stopPropagation()
-                  props.onJump!()
-                }
-              : undefined
-          }
-          onKeyDown={
-            props.onJump
-              ? (event: KeyboardEvent) => {
-                  if (event.key !== "Enter" && event.key !== " ") return
-                  event.preventDefault()
-                  event.stopPropagation()
-                  props.onJump!()
-                }
-              : undefined
-          }
+      <span data-slot="message-box-jump" aria-hidden="true">
+        <Icon name="arrow-up" size="small" />
+      </span>
+    </span>
+  )
+}
+
+// The footer chip line: agent name, the literal kind, status, and duration,
+// each colored by its own semantic token.
+function SubagentResultDisplay(props: { part: TextPart }) {
+  const meta = () => props.part.backgroundSubagentResult!
+  const i18n = useI18n()
+  const ctx = useData()
+  // The main session is a glanceable index: show only an EXCERPT of the result;
+  // the full text lives in the child session, reached via the link below. Cap
+  // to the first few lines so a large result never dumps into the main thread.
+  const EXCERPT_LINES = 5
+  const excerpt = createMemo(() => {
+    const lines = stripSubagentResult(props.part.text).split("\n")
+    return { text: lines.slice(0, EXCERPT_LINES).join("\n").trim(), truncated: lines.length > EXCERPT_LINES }
+  })
+  const openSession = () => navigateToChildSession(ctx.navigateToSession, meta().sessionID)
+  return (
+    <div data-component="subagent-result" data-scrollable>
+      <Show when={excerpt().text}>
+        <Markdown text={excerpt().text} cacheKey={props.part.id} />
+      </Show>
+      <Show when={meta().sessionID}>
+        <Button
+          variant="ghost"
+          size="small"
+          data-slot="subagent-result-open"
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation()
+            openSession()
+          }}
         >
-          {/* Scroll-to signifier, left of the identity: a directional arrow that
-              reveals on hover (per the Slack/Discord jump-to-message pattern).
-              Decorative — the whole identity span is the one button. */}
-          <Show when={props.onJump}>
-            <span data-slot="message-box-jump" aria-hidden="true">
-              <Icon name="arrow-up" size="small" />
-            </span>
-          </Show>
-          <Show when={number() !== undefined}>
-            <span data-slot="message-box-number" style={{ color: "var(--color-text-weak)" }}>
-              {"#" + number()}
-            </span>
-          </Show>
-          <span data-slot="message-box-diamond">{"\u25c8"}</span>
-          <span data-slot="message-box-label">{props.label ?? (isUser ? "USER" : "ASSISTANT")}</span>
-          <span data-slot="message-box-time" style={{ color: "var(--color-text-weak)", "font-weight": "400" }}>
-            {messageTime(props.message.time.created)}
-          </span>
-        </span>
-        {/* Title-bar actions, pinned right: revert (user, hover-reveal) then
-            copy. Copy sits in the box's top-right corner for every box. */}
-        <div
-          data-slot="message-box-actions"
-          style={{ "margin-left": "auto", display: "flex", "align-items": "center", gap: "0.25rem" }}
-        >
-          <Show when={isUser && data.revertMessage}>
-            <div data-slot="message-box-revert">
-              <Tooltip value="Cache-safe revert" placement="top" gutter={8}>
-                <Button variant="secondary" onClick={confirmRevert}>
-                  Revert here
-                </Button>
-              </Tooltip>
-            </div>
-          </Show>
-          <Show when={props.speak}>
-            <SpeakButton content={props.speak!} />
-          </Show>
-          <Show when={props.copy}>
-            <CopyButton content={props.copy!} />
-          </Show>
-          {props.action}
-        </div>
-      </div>
-      {props.children}
+          {(excerpt().truncated ? "\u2026 " : "") + i18n.t("ui.tool.subagent.open")}
+        </Button>
+      </Show>
     </div>
+  )
+}
+
+function jobResultPart(parts: PartType[]): TextPart | undefined {
+  return parts.find((p) => p.type === "text" && (p as TextPart).backgroundJobResult) as TextPart | undefined
+}
+
+// The job card's fixed left-cluster title: the status label, then the exit code
+// and duration when present. The (long, variable) command rides the flexible
+// in-between arg, so it truncates there rather than blowing out this title.
+function jobHeaderMeta(job: NonNullable<TextPart["backgroundJobResult"]>): string {
+  const parts = [jobLabel(job.status)]
+  if (job.exit !== undefined) parts.push(`exit ${job.exit}`)
+  parts.push(subagentDuration(job.duration))
+  return parts.join(" · ")
+}
+
+// A message the system wrote ON ITS OWN, which the reader needs told about:
+// the supervisor's continue prompt after a restart is the one in practice. The
+// user branch renders only non-synthetic text, so without its own branch such
+// a message draws an empty box saying nothing about what happened.
+//
+// Machinery the model reads carries `internal`, so it is excluded by the flag
+// the writer set rather than by sniffing its text for a marker. Debug mode
+// drops that exclusion, which is the whole point of the mode.
+//
+// `legacyInternal` decides the same question for a part carrying no flag, and
+// lives in its own module so every caller reaches one answer.
+
+// A plain user message is worth a box only when it has something a reader can
+// see: text the user actually typed (non-synthetic) or a file attachment. A
+// message whose parts are all synthetic/internal machinery (e.g. the injected
+// plan-mode-switch notice, which is excluded from the notice branch outside
+// debug) would otherwise draw an empty box — the no-blank-box invariant. This
+// guards the plain-user catch-all so such a message renders nothing at all.
+function hasVisibleUserContent(parts: PartType[]): boolean {
+  return parts.some(
+    (p) => (p.type === "text" && !(p as TextPart).synthetic && (p as TextPart).text.trim()) || p.type === "file",
+  )
+}
+
+function noticePart(parts: PartType[], showInternal = false): TextPart | undefined {
+  if (subagentResultPart(parts) || jobResultPart(parts)) return undefined
+  // A message the user typed into draws as their message, whatever synthetic
+  // parts an attachment added beside it. This branch is for a message with no
+  // typed text at all, which is the case the empty box was about.
+  if (!showInternal && typed(parts)) return undefined
+  const text = parts.find((p) => {
+    if (p.type !== "text") return false
+    const part = p as TextPart
+    if (!part.synthetic) return false
+    if (showInternal) return true
+    return !part.internal && !legacyInternal(part)
+  }) as TextPart | undefined
+  return text?.text.trim() ? text : undefined
+}
+
+// The body as a single line, for a header that stands in for it while the card
+// is closed. Newlines collapse to spaces so the text keeps running; how much of
+// it fits is the row's business, not a character count's, so nothing is cut
+// here. The header clips what it cannot show, at whatever width it has.
+function noticeSummary(text: string): string {
+  return text.trim().replace(/\s+/g, " ")
+}
+
+// Kobalte unmounts a closed Collapsible's content, so a collapsed card shows its
+// header and nothing else. Without this the most-used card in the transcript —
+// and the pinned prompt bar it also draws — collapses to "USER" and a timestamp,
+// naming no turn. The header carries the summary the way a notice card does.
+function userSummary(parts: PartType[]): string | undefined {
+  const typed = parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined
+  if (!typed?.text.trim()) return undefined
+  return noticeSummary(typed.text)
+}
+
+// The summary line renders BEFORE the body and outside any scroller, so a
+// collapsed box clipped to one line still shows it. A body that scrolls puts
+// its first line inside the scroller, where the clip lands on empty space.
+function NoticeDisplay(props: { part: TextPart }) {
+  return (
+    <div data-component="notice-result">
+      <div data-component="notice-body" data-scrollable>
+        <Markdown text={props.part.text} cacheKey={props.part.id} />
+      </div>
+    </div>
+  )
+}
+
+function compactionPart(parts: PartType[]): CompactionPart | undefined {
+  return parts.find((p) => p.type === "compaction") as CompactionPart | undefined
+}
+
+// The compaction request carries no text — its part is {type,auto} only — so
+// without its own branch the user box renders empty. Reuses the notice box
+// chrome (SYSTEM label, tool accent) so it reads like the supervisor's
+// continue prompt, the other message the system writes on its own.
+function CompactionDisplay(props: { part: CompactionPart }) {
+  const i18n = useI18n()
+  const text = createMemo(() =>
+    props.part.auto ? i18n.t("ui.message.compaction.auto") : i18n.t("ui.message.compaction.manual"),
+  )
+  return (
+    <div data-component="notice-result">
+      <div data-component="notice-body" data-scrollable>
+        <Markdown text={text()} cacheKey={props.part.id} />
+      </div>
+    </div>
+  )
+}
+
+// A job's header answers what a reader asks of a finished command: what ran,
+// how it ended, and how long it took. The command leads, because it is what
+// identifies the block; the exit code follows the status, since a bare number
+// means nothing without it.
+function JobResultDisplay(props: { part: TextPart }) {
+  const meta = () => props.part.backgroundJobResult!
+  const content = createMemo(() => stripJobResult(props.part.text))
+  // Body: the command as the first line (mono, WRAPS fully — the header only
+  // shows it truncated in the in-between), then the output log. Status/exit/
+  // duration live in the card header, so the body does not repeat them.
+  return (
+    <div data-component="job-result" data-scrollable>
+      <div
+        data-slot="job-result-command"
+        class="mb-2 font-mono font-medium"
+        style={{ color: "var(--syntax-type)", "font-size": "11px", "line-height": "1.4", "word-break": "break-all" }}
+      >
+        {"$ " + meta().command}
+      </div>
+      <Show when={content().trim()}>
+        <Markdown text={content()} cacheKey={props.part.id} />
+      </Show>
+    </div>
+  )
+}
+
+export function Message(props: MessageProps) {
+  const boxDefaults = useBoxDefaults()
+  const i18n = useI18n()
+  const debugInternal = () => boxDefaults?.showInternal?.() ?? false
+  return (
+    <Switch>
+      <Match when={props.message.role === "user" && subagentResultPart(props.parts)}>
+        {(part) => (
+          <Show when={props.boxed} fallback={<SubagentResultDisplay part={part()} />}>
+            <CardBox
+              message={props.message}
+              icon="robot"
+              title={i18n.t(subagentBoxKey(part().backgroundSubagentResult!.status), {
+                label: subagentLabel(part().backgroundSubagentResult!.description),
+                duration: subagentDuration(part().backgroundSubagentResult!.duration ?? 0),
+              })}
+              accent="subagent"
+              tone={statusTone(part().backgroundSubagentResult!.status)}
+              tool="subagent_result"
+              jump={jumpAction(props.onJump, props.jumpHint)}
+            >
+              <SubagentResultDisplay part={part()} />
+            </CardBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "user" && jobResultPart(props.parts)}>
+        {(part) => (
+          <Show when={props.boxed} fallback={<JobResultDisplay part={part()} />}>
+            <CardBox
+              message={props.message}
+              icon="console"
+              title={jobHeaderMeta(part().backgroundJobResult!)}
+              args={[part().backgroundJobResult!.command]}
+              summaryOnly
+              accent="job"
+              tone={statusTone(part().backgroundJobResult!.status)}
+              tool="job_result"
+              jump={jumpAction(props.onJump, props.jumpHint)}
+            >
+              <JobResultDisplay part={part()} />
+            </CardBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "user" && noticePart(props.parts, debugInternal())}>
+        {(part) => (
+          <Show when={props.boxed} fallback={<NoticeDisplay part={part()} />}>
+            <CardBox
+              message={props.message}
+              icon="bell"
+              title={part().internal ? "INTERNAL" : "SYSTEM"}
+              args={[noticeSummary(part().text)]}
+              summaryOnly
+              tool="system_notice"
+              jump={jumpAction(props.onJump, props.jumpHint)}
+            >
+              <NoticeDisplay part={part()} />
+            </CardBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "user" && compactionPart(props.parts)}>
+        {(part) => (
+          <Show when={props.boxed} fallback={<CompactionDisplay part={part()} />}>
+            <CardBox
+              message={props.message}
+              icon="bell"
+              title={i18n.t("ui.compaction.title")}
+              args={[i18n.t("ui.compaction.reason")]}
+              tool="system_notice"
+              jump={jumpAction(props.onJump, props.jumpHint)}
+            >
+              <CompactionDisplay part={part()} />
+            </CardBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "user" && hasVisibleUserContent(props.parts) && props.message}>
+        {(userMessage) => (
+          <Show
+            when={props.boxed}
+            fallback={<UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
+          >
+            <CardBox
+              message={userMessage() as UserMessage}
+              icon="user"
+              title="USER"
+              subtitle={userSummary(props.parts)}
+              summaryOnly
+              tool="user"
+              role="user"
+              accent="user"
+              raw
+              jump={jumpAction(props.onJump, props.jumpHint)}
+              revert={<RevertButton message={userMessage() as UserMessage} />}
+              copy={() =>
+                (props.parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined)
+                  ?.text ?? ""
+              }
+            >
+              <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />
+            </CardBox>
+          </Show>
+        )}
+      </Match>
+      <Match when={props.message.role === "assistant" && props.message}>
+        {(assistantMessage) => (
+          <AssistantMessageDisplay
+            message={assistantMessage() as AssistantMessage}
+            parts={props.parts}
+            defaultOpen={props.defaultOpen}
+            footer={props.footer}
+          />
+        )}
+      </Match>
+    </Switch>
   )
 }
 
@@ -849,13 +843,6 @@ export function AssistantMessageDisplay(props: {
 export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
   const dialog = useDialog()
   const i18n = useI18n()
-  const [expanded, setExpanded] = createSignal(false)
-  // The user prompt always renders in full — no clamp, no collapse. canExpand is
-  // a constant false so the chevron/fade/reserved-padding never appear. It used
-  // to measure scrollHeight vs clientHeight in a ResizeObserver, but the reserved
-  // padding it toggled changed clientHeight, which re-flipped canExpand at the
-  // refresh rate (a visible flicker). Measurement removed entirely.
-  const canExpand = () => false
 
   const textPart = createMemo(
     () => props.parts?.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined,
@@ -885,13 +872,8 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     dialog.show(() => <ImagePreview src={url} alt={alt} />)
   }
 
-  const toggleExpanded = () => {
-    if (!canExpand()) return
-    setExpanded((value) => !value)
-  }
-
   return (
-    <div data-component="user-message" data-expanded={expanded()} data-can-expand={canExpand()}>
+    <div data-component="user-message">
       <Show when={attachments().length > 0}>
         <div data-slot="user-message-attachments">
           <For each={attachments()}>
@@ -925,19 +907,8 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
         </div>
       </Show>
       <Show when={text()}>
-        <div data-slot="user-message-text" onClick={toggleExpanded}>
+        <div data-slot="user-message-text">
           <HighlightedText text={text()} references={inlineFiles()} agents={agents()} />
-          <button
-            data-slot="user-message-expand"
-            type="button"
-            aria-label={expanded() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")}
-            onClick={(event) => {
-              event.stopPropagation()
-              toggleExpanded()
-            }}
-          >
-            <Icon name="chevron-down" size="small" />
-          </button>
         </div>
       </Show>
     </div>
@@ -1013,8 +984,11 @@ export interface ToolProps {
   forceOpen?: boolean
   locked?: boolean
   // The box's sequential index, shown inline in the header row. Threaded to
-  // BasicTool via {...props} so every tool renderer carries it without change.
+  // TranscriptCard via {...props} so every tool renderer carries it without change.
   blockNumber?: number
+  // The box's timestamp (ms), threaded the same way so every tool card shows it
+  // between the icon and title.
+  time?: number
   // Identity of this box's manual expand/collapse, threaded the same way.
   sessionID?: string
   boxID?: string
@@ -1077,7 +1051,7 @@ function GenericTool(props: ToolProps) {
   })
 
   return (
-    <BasicTool
+    <TranscriptCard
       {...props}
       icon="mcp"
       tool="mcp"
@@ -1088,7 +1062,7 @@ function GenericTool(props: ToolProps) {
           <Markdown text={body()} complete />
         </div>
       </Show>
-    </BasicTool>
+    </TranscriptCard>
   )
 }
 
@@ -1148,28 +1122,33 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   return (
     <div data-component="tool-part-wrapper" data-permission={showPermission()}>
       <Switch>
+        {/* A failed call is the SAME card as a successful one, wearing the error
+            accent — a tool must not change shape between its two outcomes. */}
         <Match when={part.state.status === "error" && part.state.error}>
           {(error) => {
-            const cleaned = error().replace(/^Error: /, "")
-            const [title, ...rest] = cleaned.split(": ")
+            const cleaned = () => error().replace(/^Error: /, "")
+            const head = () => cleaned().split(": ")[0]
+            const titled = () => head().length < 30
             return (
-              <Card variant="error">
-                <div data-component="tool-error">
-                  <Icon name="circle-ban-sign" size="small" />
-                  <div data-slot="message-part-tool-error-content">
-                    <div data-slot="message-part-tool-error-tool">{part.tool}</div>
-                    <Switch>
-                      <Match when={title && title.length < 30}>
-                        <div data-slot="message-part-tool-error-title">{title}</div>
-                        <span data-slot="message-part-tool-error-message">{rest.join(": ")}</span>
-                      </Match>
-                      <Match when={true}>
-                        <span data-slot="message-part-tool-error-message">{cleaned}</span>
-                      </Match>
-                    </Switch>
-                  </div>
-                </div>
-              </Card>
+              <TranscriptCard
+                icon="circle-ban-sign"
+                tool={part.tool}
+                blockNumber={data.blockNumber(props.message.sessionID, part.id)}
+                time={props.message.time.created}
+                sessionID={props.message.sessionID}
+                boxID={part.id}
+                bare
+                tone="var(--icon-critical-base)"
+                trigger={{
+                  title: part.tool,
+                  subtitle: titled() ? head() : undefined,
+                }}
+                copy={cleaned}
+              >
+                <span data-slot="message-part-tool-error-message">
+                  {titled() ? cleaned().slice(head().length + 2) : cleaned()}
+                </span>
+              </TranscriptCard>
             )
           }}
         </Match>
@@ -1188,6 +1167,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
             forceOpen={forceOpen()}
             locked={showPermission()}
             blockNumber={data.blockNumber(props.message.sessionID, part.id)}
+            time={props.message.time.created}
             sessionID={props.message.sessionID}
             boxID={part.id}
           />
@@ -1217,13 +1197,25 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   const displayText = () => (part.text ?? "").trim()
   const throttledText = createThrottledValue(displayText)
 
-  // Render an assistant text step in the same MessageBox as the turn's Response
-  // box (◈ ASSISTANT header, #N, copy button). A text block that is the current
-  // response and one that has demoted into the steps then look identical — only
-  // the position changes — so the block keeps its identity across the transition.
+  // Render an assistant text step as an ASSISTANT card (#N header, copy + speak).
+  // A text block that is the current response and one that has demoted into the
+  // steps then look identical — only the position changes — so the block keeps
+  // its identity across the transition.
   return (
     <Show when={throttledText()}>
-      <MessageBox message={props.message} numberKey={part.id} copy={displayText} speak={displayText}>
+      <CardBox
+        message={props.message}
+        icon="assistant"
+        title="ASSISTANT"
+        tool="assistant"
+        role="assistant"
+        accent="assistant"
+        locked
+        raw
+        numberKey={part.id}
+        copy={displayText}
+        speak={displayText}
+      >
         <Markdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
         {/* Snapshot line under every assistant text box, matching the Response
             box. Gate on this block's OWN completion, not the whole turn: an
@@ -1232,21 +1224,32 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
         <Show when={props.footer && (props.message as AssistantMessage).time.completed}>
           {props.footer!(props.message as AssistantMessage)}
         </Show>
-      </MessageBox>
+      </CardBox>
     </Show>
   )
 }
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
+  const i18n = useI18n()
   const part = props.part as ReasoningPart
   const text = () => part.text.trim()
   const throttledText = createThrottledValue(text)
 
   return (
     <Show when={throttledText()}>
-      <div data-component="reasoning-part">
+      <CardBox
+        message={props.message}
+        icon="brain"
+        title={i18n.t("ui.reasoning.title")}
+        subtitle={noticeSummary(throttledText())}
+        summaryOnly
+        tool="reasoning"
+        numberKey={part.id}
+        raw
+        copy={throttledText}
+      >
         <Markdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
-      </div>
+      </CardBox>
     </Show>
   )
 }
@@ -1268,7 +1271,7 @@ ToolRegistry.register({
     })
     return (
       <>
-        <BasicTool
+        <TranscriptCard
           {...props}
           icon="glasses"
           trigger={{
@@ -1297,7 +1300,7 @@ ToolRegistry.register({
   render(props) {
     const i18n = useI18n()
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="bullet-list"
@@ -1310,7 +1313,7 @@ ToolRegistry.register({
             </div>
           )}
         </Show>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1320,7 +1323,7 @@ ToolRegistry.register({
   render(props) {
     const i18n = useI18n()
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="magnifying-glass-menu"
@@ -1337,7 +1340,7 @@ ToolRegistry.register({
             </div>
           )}
         </Show>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1350,7 +1353,7 @@ ToolRegistry.register({
     if (props.input.pattern) args.push("pattern=" + props.input.pattern)
     if (props.input.include) args.push("include=" + props.input.include)
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="magnifying-glass-menu"
@@ -1367,7 +1370,7 @@ ToolRegistry.register({
             </div>
           )}
         </Show>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1377,7 +1380,7 @@ ToolRegistry.register({
   render(props) {
     const i18n = useI18n()
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         icon="window-cursor"
         trigger={{
@@ -1415,7 +1418,7 @@ ToolRegistry.register({
       return out
     }
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         icon="magnifying-glass"
         defaultOpen
@@ -1435,7 +1438,7 @@ ToolRegistry.register({
             </div>
           )}
         </Show>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1485,10 +1488,7 @@ ToolRegistry.register({
 
     // Rendered in the trigger's action slot (a SIBLING of the trigger button,
     // never nested inside it — invalid HTML / a11y).
-    const jumpToChild = () => {
-      const sessionId = childSessionId()
-      if (sessionId && data.navigateToSession) data.navigateToSession(sessionId)
-    }
+    const jumpToChild = () => navigateToChildSession(data.navigateToSession, childSessionId())
 
     const openButton = () =>
       childSessionId() ? (
@@ -1506,18 +1506,20 @@ ToolRegistry.register({
       ) : undefined
 
     // Dispatch fields as one markdown block so it themes like the rest of the
-    // UI: bold labels, code pills for the agent/toolset/tool identifiers.
+    // UI: bold labels, code pills. Only what a glance needs — Summary (the ask),
+    // Type, and one Toolset line carrying the preset name and its full finite
+    // tool list. The description is dropped here: it is already the card's own
+    // identifier line. Everything fuller lives in the child session.
     const dispatchMarkdown = createMemo(() => {
       const lines: string[] = []
       const push = (label: string, value: string) => lines.push(`**${label}** ${value}`)
-      if (props.input.description) push(i18n.t("ui.tool.subagent.label.instruction"), props.input.description)
       if (props.metadata.summary) push(i18n.t("ui.tool.subagent.label.summary"), props.metadata.summary as string)
       push(i18n.t("ui.tool.subagent.label.agent"), `\`${props.input.subagent_type || props.tool}\``)
-      if (props.metadata.toolset)
-        push(i18n.t("ui.tool.subagent.label.toolset"), `\`${props.metadata.toolset as string}\``)
-      const tools = props.metadata.tools
-      if (Array.isArray(tools) && tools.length)
-        push(i18n.t("ui.tool.subagent.label.tools"), tools.map((t) => `\`${t}\``).join(" "))
+      if (props.metadata.toolset) {
+        const tools = props.metadata.tools
+        const list = Array.isArray(tools) && tools.length ? `: ${tools.map((t) => `\`${t}\``).join(" ")}` : ""
+        push(i18n.t("ui.tool.subagent.label.toolset"), `\`${props.metadata.toolset as string}\`${list}`)
+      }
       return lines.join("\n\n")
     })
 
@@ -1545,38 +1547,33 @@ ToolRegistry.register({
       )
     }
 
+    // The subagent box is a tool box wearing the subagent amber. The tokens ride
+    // on the card itself; wrapping it to carry them would nest a box in a box.
+    const accent = (): CardAccent | undefined => (childPermission() ? undefined : "subagent")
+
     return (
-      <div
-        data-component="tool-part-wrapper"
-        data-permission={!!childPermission()}
-        // The subagent box is a tool box, but amber (the subagent accent) rather
-        // than the neutral tool grey. Point the tool tokens the wrapper's
-        // collapsible reads at the task tokens, so it inherits every tool-box
-        // metric (padding, radius, chevron alignment) and only the color differs.
-        style={
-          childPermission()
-            ? undefined
-            : {
-                "--box-accent-tool": TASK_ACCENT,
-                "--box-border-tool": "var(--box-border-task)",
-                "--box-bg-tool": "var(--box-bg-task)",
-              }
-        }
-      >
+      <>
         <Switch>
+          {/* A permission raised INSIDE the child session groups the card and its
+              prompt into one blocking unit: the ring, the sticky pin and the
+              prompt's seam all key on this wrapper. The outer wrapper cannot
+              serve, since it tracks the PARENT session's permissions. */}
           <Match when={childPermission()}>
-            <>
+            <div data-component="tool-part-wrapper" data-permission="true">
               <Show
                 when={childToolPart()}
                 fallback={
-                  <BasicTool
-                    icon="task"
+                  <TranscriptCard
+                    icon="robot"
                     tool="agent"
+                    time={props.time}
+                    blockNumber={props.blockNumber}
                     defaultOpen={true}
-                    preArrowAction={openButton()}
+                    accent={accent()}
                     trigger={{
                       title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
                       subtitle: props.input.description,
+                      action: openButton(),
                     }}
                   />
                 }
@@ -1596,20 +1593,23 @@ ToolRegistry.register({
                   </Button>
                 </div>
               </div>
-            </>
+            </div>
           </Match>
           <Match when={true}>
-            <BasicTool
-              icon="task"
+            <TranscriptCard
+              icon="robot"
               tool="agent"
+              time={props.time}
+              blockNumber={props.blockNumber}
               sessionID={props.sessionID}
               boxID={props.boxID}
-              preArrowAction={openButton()}
+              accent={accent()}
               trigger={{
-                title: i18n.t("ui.tool.agent", { type: props.input.subagent_type || props.tool }),
-                subtitle: props.input.description,
+                title: i18n.t("ui.tool.subagent.box.title"),
+                subtitle: subagentLabel(props.input.description ?? ""),
                 args:
                   props.metadata.status === "async_launched" ? [i18n.t("ui.tool.subagent.box.launched")] : undefined,
+                action: openButton(),
               }}
             >
               <Switch>
@@ -1618,7 +1618,7 @@ ToolRegistry.register({
                   {(body) => (
                     <div data-slot="tool-body">
                       <CopyButton content={() => body()} />
-                      <div data-slot="task-output-body" data-component="tool-output" data-scrollable>
+                      <div data-slot="subagent-output-body" data-component="tool-output" data-scrollable>
                         <Markdown text={body()} complete />
                       </div>
                     </div>
@@ -1628,7 +1628,7 @@ ToolRegistry.register({
                       launched as labeled fields. The real result lands as a
                       separate result box below. */}
                 <Match when={props.metadata.status === "async_launched"}>
-                  <div data-slot="task-output-dispatch">
+                  <div data-slot="subagent-output-dispatch">
                     <Markdown text={dispatchMarkdown()} complete />
                   </div>
                 </Match>
@@ -1638,10 +1638,10 @@ ToolRegistry.register({
                   <ToolStreaming label={i18n.t("ui.tool.subagent.preparing")} />
                 </Match>
               </Switch>
-            </BasicTool>
+            </TranscriptCard>
           </Match>
         </Switch>
-      </div>
+      </>
     )
   },
 })
@@ -1653,7 +1653,7 @@ ToolRegistry.register({
     // A skill call is its own block, so it gets its own box (header-only, no
     // body) like other content-less tools, instead of a bare inline line.
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         icon="code-lines"
         trigger={{ title: i18n.t("ui.tool.skill"), subtitle: props.input.name ?? "" }}
@@ -1669,7 +1669,7 @@ ToolRegistry.register({
     const command = () => props.input.command ?? props.metadata.command ?? ""
     const output = () => props.output || props.metadata.output
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="console"
@@ -1689,7 +1689,7 @@ ToolRegistry.register({
             />
           </div>
         </Show>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1702,30 +1702,16 @@ ToolRegistry.register({
     const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
     const filename = () => getFilename(props.input.filePath ?? "")
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="code-lines"
-        trigger={
-          <div data-component="edit-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">
-                <span data-slot="message-part-title-text">{i18n.t("ui.messagePart.title.edit")}</span>
-                <span data-slot="message-part-title-filename">{filename()}</span>
-              </div>
-              <Show when={props.input.filePath?.includes("/")}>
-                <div data-slot="message-part-path">
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                </div>
-              </Show>
-            </div>
-            <div data-slot="message-part-actions">
-              <Show when={props.metadata.filediff}>
-                <DiffChanges changes={props.metadata.filediff} />
-              </Show>
-            </div>
-          </div>
-        }
+        trigger={{
+          title: i18n.t("ui.messagePart.title.edit"),
+          subtitle: filename(),
+          args: props.input.filePath?.includes("/") ? [getDirectory(props.input.filePath)] : undefined,
+          action: props.metadata.filediff ? <DiffChanges changes={props.metadata.filediff} /> : undefined,
+        }}
       >
         <Switch>
           <Match when={props.metadata.filediff?.path || props.input.newString || props.input.oldString}>
@@ -1750,7 +1736,7 @@ ToolRegistry.register({
           </Match>
         </Switch>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1781,26 +1767,15 @@ ToolRegistry.register({
     const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
     const filename = () => getFilename(props.input.filePath ?? "")
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="code-lines"
-        trigger={
-          <div data-component="write-trigger">
-            <div data-slot="message-part-title-area">
-              <div data-slot="message-part-title">
-                <span data-slot="message-part-title-text">{i18n.t("ui.messagePart.title.write")}</span>
-                <span data-slot="message-part-title-filename">{filename()}</span>
-              </div>
-              <Show when={props.input.filePath?.includes("/")}>
-                <div data-slot="message-part-path">
-                  <span data-slot="message-part-directory">{getDirectory(props.input.filePath!)}</span>
-                </div>
-              </Show>
-            </div>
-            <div data-slot="message-part-actions">{/* <DiffChanges diff={diff} /> */}</div>
-          </div>
-        }
+        trigger={{
+          title: i18n.t("ui.messagePart.title.write"),
+          subtitle: filename(),
+          args: props.input.filePath?.includes("/") ? [getDirectory(props.input.filePath)] : undefined,
+        }}
       >
         <Switch>
           <Match when={props.input.content}>
@@ -1822,7 +1797,7 @@ ToolRegistry.register({
           </Match>
         </Switch>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1853,7 +1828,7 @@ ToolRegistry.register({
     })
 
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="code-lines"
@@ -1919,7 +1894,7 @@ ToolRegistry.register({
             <ToolStreaming label={i18n.t("ui.tool.patch.preparing")} />
           </Match>
         </Switch>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -1950,7 +1925,7 @@ ToolRegistry.register({
         .join("\n")
 
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         defaultOpen
         icon="checklist"
@@ -1975,7 +1950,7 @@ ToolRegistry.register({
             </div>
           </div>
         </Show>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })
@@ -2005,7 +1980,7 @@ ToolRegistry.register({
     })
 
     return (
-      <BasicTool
+      <TranscriptCard
         {...props}
         icon="bubble-5"
         trigger={{
@@ -2050,7 +2025,7 @@ ToolRegistry.register({
             </For>
           </div>
         </Show>
-      </BasicTool>
+      </TranscriptCard>
     )
   },
 })

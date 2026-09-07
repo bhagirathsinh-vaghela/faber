@@ -1,0 +1,438 @@
+/* The box clips horizontally so its rounded corners survive an expand, but stays
+   visible vertically — full clipping cropped the 24px header controls inside the
+   32px row. The body's ceiling is a custom property so a context that must cap a
+   card (the pinned prompt) sets a value instead of reaching in with its own
+   overflow, which would collide with this shorthand and silently disable
+   scrolling. */
+[data-component="collapsible"]:has(> [data-component="transcript-card-trigger"]) {
+  overflow: clip visible;
+
+  > [data-slot="collapsible-content"] {
+    max-height: var(--transcript-card-body-max-height, none);
+    overflow-y: var(--transcript-card-body-overflow, visible);
+    overscroll-behavior: contain;
+  }
+
+  /* A bare body brings no padded slot of its own (a tool body supplies one), so
+     the card gives it the same inset here. The base owns it for every card type
+     rather than each type insetting its own body to a different value. */
+  &[data-body="bare"] > [data-slot="collapsible-content"] {
+    padding: 0 0.75rem 0.5rem;
+  }
+
+  /* Kobalte measures the content height only when the open state flips, so a body
+     that grows while open (streaming output) stays pinned to its first
+     measurement. Naming the height auto discards that stale measurement. */
+  > [data-slot="collapsible-content"][data-expanded] {
+    height: auto !important;
+  }
+}
+
+[data-component="transcript-card-trigger"] {
+  content-visibility: auto;
+  /* A skipped row with no remembered size falls back to the min-height floor,
+     then grows to its real height on render. Naming the rendered height keeps
+     the estimate honest so scrolling past an unrendered row does not resize the
+     turn around it. */
+  contain-intrinsic-size: auto var(--control-bar);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 8px;
+  /* No padding of its own: the row paints the header affordance, which has to
+     reach the card's edges, and padding here would inset that paint. The same
+     inset lives on the two children instead, so the content sits where it
+     always did while the wash runs full width. */
+  padding: 0;
+  /* The row seats the copy and action buttons, so its floor is the control it
+     carries — below that the row clips the very buttons it exists to present. */
+  min-height: var(--control-bar);
+  /* The lead cluster and the actions cluster are both positioned against this
+     row, so neither takes flow width from the header text between them. */
+  position: relative;
+
+  /* This wrapper owns the row's box, so the trigger inside it must contribute
+     none of its own. Handing the collapsible its overrides through its own
+     variables keeps the inset defined in one place; a competing rule here
+     would tie on specificity and lose to the later-loading sheet. */
+  --collapsible-trigger-height: auto;
+  --collapsible-trigger-padding: 0;
+
+  /* The trigger stays IN FLOW and simply grows to fill what the controls leave,
+     so its hit area ends exactly where the first control begins. Nothing
+     overlaps, so no click has to be arbitrated by stacking order: a press on a
+     button is over that button alone, and a press anywhere else is over the
+     trigger alone. The wash still reads full-width because the ROW paints it
+     (below) rather than the trigger. */
+  > [data-slot="collapsible-trigger"] {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 12px;
+    justify-content: flex-start;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  /* Out-specifies the base collapsible sheet, which sets the pointer on any
+     trigger it finds and loads after this one. */
+  [data-component="collapsible"] &[data-locked="true"] > [data-slot="collapsible-trigger"] {
+    cursor: default;
+  }
+
+  /* The affordance spans the whole title bar, edge to edge and with no inset at
+     the top or sides, even though the clickable region stops short of the
+     controls. The row is not itself the click target, so this is paint only. */
+  &:has(> [data-slot="collapsible-trigger"]) {
+    background-color: color-mix(in srgb, var(--box-accent, transparent) 5%, transparent);
+
+    @media (forced-colors: active) {
+      background-color: transparent;
+    }
+  }
+
+  /* The title bar is visibly its own band on EVERY card, locked or not. Only the
+     RESPONSE to a pointer belongs to a card that can actually toggle: a locked
+     header keeps the band and drops the pointer, so it never promises a press
+     that does nothing. */
+  &:has(> [data-slot="collapsible-trigger"]):not([data-locked="true"]) {
+    cursor: pointer;
+  }
+
+  /* The highlight follows the pointer's OWN half of the row, because the two
+     halves do different things: the left cluster identifies the block, the rest
+     toggles it. Each paints itself rather than the row painting both, so what
+     lights up is exactly what a press would act on.
+     --hover is the strengthened wash; the resting 5% band comes from the row. */
+  --transcript-card-hover: color-mix(in srgb, var(--box-accent, transparent) 8%, transparent);
+
+  [data-slot="transcript-card-identity"],
+  [data-slot="transcript-card-info"] {
+    /* Pull toward the card edges but leave 4px so the border-radius paint
+       is not clipped by the collapsible's horizontal overflow: clip. */
+    margin: -6px -8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.15s ease;
+  }
+
+  [data-slot="transcript-card-identity"] {
+    margin-right: 0;
+    padding-right: 0;
+  }
+
+  [data-slot="transcript-card-info"] {
+    margin-left: 0;
+    padding-left: 0;
+  }
+
+  @media (hover: hover) {
+    [data-slot="transcript-card-identity"]:hover {
+      background-color: var(--transcript-card-hover);
+    }
+
+    &:not([data-locked="true"]):hover:not(:has([data-slot="transcript-card-identity"]:hover))
+      [data-slot="transcript-card-info"] {
+      background-color: var(--transcript-card-hover);
+    }
+  }
+
+  @media (forced-colors: active) {
+    [data-slot="transcript-card-identity"],
+    [data-slot="transcript-card-info"] {
+      background-color: transparent;
+    }
+  }
+
+  /* The controls float over the row's right edge rather than taking flow width:
+     the summary then spans the whole row and simply passes UNDER them, instead
+     of being clipped short by a cluster whose buttons are invisible most of the
+     time. A control is not part of the toggle, so it keeps its own pointer. */
+  > [data-slot="transcript-card-actions"] {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    cursor: auto;
+    z-index: 1;
+    /* Only the buttons take clicks. The cluster's own box — the gaps between
+       them and its right inset — passes them through to the trigger beneath, so
+       every pixel of the bar that is not a control still toggles the card. */
+    pointer-events: none;
+
+    > * {
+      pointer-events: auto;
+    }
+  }
+
+  [data-slot="transcript-card-trigger-content"] {
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    align-self: stretch;
+    gap: 8px;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  [data-slot="icon-svg"] {
+    flex-shrink: 0;
+  }
+
+
+  /* A card whose accent IS its identity (a message, a subagent, a job) wears it
+     across the whole header: index, icon, label and time read as one coloured
+     line. A tool card names no family, so it stays neutral and its title reads
+     as a name rather than a status. One rule, keyed on the accent every card
+     already declares — never on a per-card flag a call site can forget.
+     The icon-svg is scoped to the IDENTITY cluster so the action buttons
+     (copy, speak, chevron) keep their own icon-button colour. */
+  [data-component="collapsible"]:not([data-accent="tool"]) & {
+    [data-slot="transcript-card-title"],
+    [data-slot="transcript-card-block-number"] {
+      color: var(--box-accent-tool);
+    }
+
+    [data-slot="transcript-card-identity"] [data-slot="icon-svg"] {
+      color: var(--box-accent-tool);
+    }
+  }
+
+  /* The left cluster: the jump control and the index/time stamp side by side, in
+     ONE box so the whole thing answers to a single hover. */
+  [data-slot="transcript-card-identity"] {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Index over timestamp, stacked into the height of the single row. */
+  [data-slot="transcript-card-stamp"] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    /* Tightened for the two-line case, which is the resting state wherever the
+       timestamp always shows (a coarse pointer). A fine pointer relaxes it while
+       the time is away — see the hover block. */
+    line-height: 1.05;
+  }
+
+  [data-slot="transcript-card-block-number"] {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-weak);
+  }
+
+  [data-slot="transcript-card-time"] {
+    font-size: 9px;
+    font-weight: 400;
+    color: var(--text-weaker, var(--text-weak));
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The in-between area is the row's elastic part: it starts at zero and takes
+     every pixel the identity and the icon do not, so those two size to their own
+     content and this one absorbs the rest. `flex-grow` alone would leave its
+     basis at `auto`, sizing it to its text and letting a long summary push the
+     row wider than the card before anything could clip. */
+  [data-slot="transcript-card-info"] {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  [data-slot="transcript-card-info-structured"] {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  [data-slot="transcript-card-info-main"] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  /* The summary is the greedy part of that space: the title keeps its own width
+     and the summary spends the rest of the row, to the card's far edge. It
+     reserves nothing for the controls, which float above it and are absent most
+     of the time — text that reaches them simply passes beneath. Only text longer
+     than the WHOLE row is cut, and then it ends in an ellipsis. */
+  [data-slot="transcript-card-subtitle"][data-summary="true"],
+  [data-slot="transcript-card-arg"][data-summary="true"] {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  [data-slot="transcript-card-title"] {
+    /* The title names the card, so it is never shortened to make room for the
+       summary beside it: the summary is the elastic part and yields instead. */
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-style: normal;
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-base);
+
+    &.capitalize {
+      text-transform: capitalize;
+    }
+  }
+
+  [data-slot="transcript-card-subtitle"] {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-style: normal;
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-weak);
+
+    &.clickable {
+      cursor: pointer;
+      text-decoration: underline;
+      transition: color 0.15s ease;
+
+      &:hover {
+        color: var(--text-base);
+      }
+    }
+  }
+
+  /* A summary stands in for the body, so it reads as that body's own text: the
+     card's base type and colour, not the header's smaller, dimmer label voice.
+     The prompt then looks the same collapsed as it does expanded. */
+  [data-slot="transcript-card-subtitle"][data-summary="true"] {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-regular);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-base);
+    text-transform: none;
+  }
+
+  [data-slot="transcript-card-arg"] {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-style: normal;
+    font-weight: var(--font-weight-regular);
+    line-height: var(--line-height-large);
+    letter-spacing: var(--letter-spacing-normal);
+    color: var(--text-weak);
+  }
+
+  /* The base owns the reveal, keyed on the WHOLE row so a pointer aimed at a
+     control still counts as being on the row. The chevron and the timestamp come
+     with the rest, since one gesture summons the row's whole set and a resting
+     row reads cleaner without a control on every card. A coarse pointer has no
+     hover to summon anything, so this block is skipped there and every
+     affordance stays visible. A speaking box holds its button, which is the only
+     thing here that outlives the pointer. */
+  @media (hover: hover) {
+    [data-slot="message-box-revert"],
+    [data-slot="box-speak"],
+    [data-slot="box-copy"],
+    [data-slot="collapsible-arrow"] {
+      opacity: 0;
+    }
+
+    /* The timestamp is summoned like the controls rather than standing at rest:
+       a resting row shows the index alone, which is what identifies the block.
+       It leaves the layout entirely so the index takes the row's full height
+       back and reads at its own size, instead of staying squeezed into half a
+       row for a second line that is not there. */
+    [data-slot="transcript-card-time"] {
+      display: none;
+    }
+
+    /* One line at rest, so the stamp drops the two-line tightening. */
+    [data-slot="transcript-card-stamp"] {
+      line-height: var(--line-height-large);
+    }
+
+    /* The LEFT cluster is summoned by reaching for IT and nothing else: its
+       contents appear where the eye already is, so the rest of the row must not
+       trigger them. */
+    [data-slot="transcript-card-identity"]:hover {
+      [data-slot="transcript-card-time"] {
+        display: block;
+      }
+
+      [data-slot="transcript-card-stamp"] {
+        line-height: 1.05;
+      }
+    }
+
+    /* The RIGHT cluster answers to the row as well as to itself: its controls act
+       on the whole card, so being anywhere on the header is reason enough to
+       offer them, and they are the target a pointer crossing the row is most
+       likely heading for. Focus is not consulted — a click leaves focus on the
+       button it pressed, which would strand them visible after the pointer left. */
+    &:hover {
+      [data-slot="message-box-revert"],
+      [data-slot="box-speak"],
+      [data-slot="box-copy"],
+      [data-slot="collapsible-arrow"] {
+        opacity: 1;
+      }
+    }
+
+    [data-slot="box-speak"][data-speaking] {
+      opacity: 1;
+    }
+  }
+
+  /* The row's own padding centres the header, so the trigger contributes none of
+     its own; with it the 24px controls sat below centre in the row. */
+  [data-slot="collapsible-trigger"] {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  /* Right-side control cluster: the controls then the timestamp (rightmost),
+     grouped so they sit adjacent at the row's right edge. Zero padding so the
+     timestamp lands at the trigger's own right inset on every card, keeping the
+     time column aligned across all card types. */
+  [data-slot="transcript-card-actions"] {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+    /* The row's inset, so a control lands at the same edge distance on every
+       card. The cluster is out of flow, so it carries this itself. */
+    padding: 0 12px 0 0;
+
+    /* The row is dense enough that the large focus ring reads as a smudge
+       against the trigger behind it; the resting hairline is the focus
+       affordance here instead. */
+    [data-component="icon-button"]:focus-visible:not(:active) {
+      box-shadow: var(--shadow-xs-border);
+    }
+  }
+}

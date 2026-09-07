@@ -8,7 +8,6 @@
 
 @import "../components/accordion.css" layer(components);
 @import "../components/avatar.css" layer(components);
-@import "../components/basic-tool.css" layer(components);
 @import "../components/button.css" layer(components);
 @import "../components/card.css" layer(components);
 @import "../components/checkbox.css" layer(components);
@@ -48,6 +47,7 @@
 @import "../components/tag.css" layer(components);
 @import "../components/toast.css" layer(components);
 @import "../components/tooltip.css" layer(components);
+@import "../components/transcript-card.css" layer(components);
 @import "../components/typewriter.css" layer(components);
 
 @import "./utilities.css" layer(utilities);

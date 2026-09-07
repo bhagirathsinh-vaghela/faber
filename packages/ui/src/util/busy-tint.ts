@@ -10,11 +10,11 @@
 // own render site can only express the states its author had in mind, so a new
 // busy cause reaches whichever copies get edited and silently omits the rest.
 
-// The task accent covers a subagent and the job accent a background command. The
-// job indicator carries the gold indicator colour, distinct from the blue accent
-// its result card draws. Own turns carry the agent's own colour, which the
+// The subagent accent covers a subagent and the job accent a background command.
+// The job indicator carries the gold indicator colour, distinct from the blue
+// accent its result card draws. Own turns carry the agent's own colour, which the
 // caller resolves and passes in.
-const TASK = "var(--box-accent-task)"
+const SUBAGENT = "var(--box-accent-subagent)"
 const JOB = "var(--box-indicator-job)"
 
 export type BusyFacts = {
@@ -29,7 +29,7 @@ export type BusyFacts = {
 export function busyTints(facts: BusyFacts, agent: string | undefined) {
   const tints: string[] = []
   if (facts.busySelf) tints.push(agent ?? "var(--icon-interactive-base)")
-  if (facts.busyDescendant) tints.push(TASK)
+  if (facts.busyDescendant) tints.push(SUBAGENT)
   if (facts.busyJob) tints.push(JOB)
   return tints
 }
@@ -38,7 +38,7 @@ export function busyTints(facts: BusyFacts, agent: string | undefined) {
 // be busy with no fact set (a turn whose rollup has not landed yet), so the
 // base falls back rather than leaving the indicator untinted.
 export function busyBase(facts: BusyFacts, agent: string | undefined) {
-  return busyTints(facts, agent)[0] ?? TASK
+  return busyTints(facts, agent)[0] ?? SUBAGENT
 }
 
 // Whether an indicator shows at all. `busy` covers the turns in the open

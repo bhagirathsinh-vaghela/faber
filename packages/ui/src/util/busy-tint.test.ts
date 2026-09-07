@@ -10,10 +10,10 @@ describe("busy tints", () => {
     expect(busyOverlays(facts, AGENT)).toEqual([])
   })
 
-  test("own turn + subagent: task accent crossfades over the agent base", () => {
+  test("own turn + subagent: subagent accent crossfades over the agent base", () => {
     const facts = { busySelf: true, busyDescendant: true }
     expect(busyBase(facts, AGENT)).toBe(AGENT)
-    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-task)"])
+    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-subagent)"])
     // A single overlay sits at the half-cycle, which is what a two-colour
     // cross-fade holds.
     expect(busyDelay(0, 1)).toBe("-1.30s")
@@ -26,7 +26,7 @@ describe("busy tints", () => {
 
   test("busy with no fact set: the base still resolves to a colour", () => {
     const facts = { busySelf: false, busyDescendant: false }
-    expect(busyBase(facts, AGENT)).toBe("var(--box-accent-task)")
+    expect(busyBase(facts, AGENT)).toBe("var(--box-accent-subagent)")
     expect(busyOverlays(facts, AGENT)).toEqual([])
   })
 })
@@ -46,7 +46,7 @@ describe("busy tints — a running job", () => {
 
   test("all three: two overlays, evenly phased across the cycle", () => {
     const facts = { busySelf: true, busyDescendant: true, busyJob: true }
-    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-task)", "var(--box-indicator-job)"])
+    expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-subagent)", "var(--box-indicator-job)"])
     expect(busyDelay(0, 2)).toBe("-0.87s")
     expect(busyDelay(1, 2)).toBe("-1.73s")
   })

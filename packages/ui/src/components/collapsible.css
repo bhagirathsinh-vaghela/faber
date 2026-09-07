@@ -34,9 +34,6 @@
     line-height: var(--line-height-large); /* 166.667% */
     letter-spacing: var(--letter-spacing-normal);
 
-    /* &:hover { */
-    /*   background-color: var(--surface-base); */
-    /* } */
     &:focus-visible {
       outline: none;
     }
@@ -84,6 +81,36 @@
   &[data-variant="ghost"][data-scope="filetree"] {
     > [data-slot="collapsible-trigger"] {
       height: var(--control-height);
+    }
+  }
+}
+
+/* Universal clickable-header affordance for every accent box whose first row
+   toggles it. The trigger IS the only clickable part for expand/collapse, so it
+   alone gets a pointer and a faint wash of the box's OWN accent — derived from
+   --box-accent, so each box tints itself with no per-box value. The wash
+   strengthens on hover. Structural: any box that sets --box-accent and renders a
+   Collapsible.Trigger gets it for free. The filetree tree rows opt out (no
+   --box-accent, and scoped out here), and so does a transcript card, whose
+   header row paints the wash across its full width instead — the trigger there
+   stops short of the controls, so a wash on it would end mid-row.
+   High-contrast/forced-colors: the tint is decorative, so drop it and let the
+   focus ring carry the affordance. */
+[data-component="collapsible"]:not([data-scope="filetree"])
+  [data-slot="collapsible-trigger"]:not([data-component="transcript-card-trigger"] > *) {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--box-accent, transparent) 5%, transparent);
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--box-accent, transparent) 12%, transparent);
+  }
+
+  @media (forced-colors: active) {
+    background-color: transparent;
+    &:hover {
+      background-color: transparent;
     }
   }
 }
