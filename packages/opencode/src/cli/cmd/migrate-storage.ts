@@ -5,6 +5,7 @@ import { Storage } from "../../storage/storage"
 import { Parts } from "../../storage/parts"
 import { Messages } from "../../storage/messages"
 import { Sessions } from "../../storage/sessions"
+import { refuseWhileServing } from "../serving"
 import { EOL } from "os"
 
 export const MigrateStorageCommand = cmd({
@@ -19,22 +20,7 @@ export const MigrateStorageCommand = cmd({
       describe: "skip the pre-migration copy of the storage tree (NOT recommended)",
     }),
   handler: async (args) => {
-    // Two connections writing the same WAL DB race: a large migrate transaction
-    // blocks the live server's writes (or throws SQLITE_BUSY mid-run) and vice
-    // versa. Refuse if the supervisor reports a healthy owned server. The
-    // supervisor's default port is 4099 (see supervise.ts).
-    const running = await fetch("http://127.0.0.1:4099/status", { signal: AbortSignal.timeout(1000) })
-      .then((r) => r.json())
-      .then((s: { health?: { healthy?: boolean } }) => s.health?.healthy === true)
-      .catch(() => false)
-    if (running) {
-      process.stderr.write(
-        `refusing to migrate: an opencode server is running (supervisor :4099 reports healthy).${EOL}` +
-          `stop the supervisor's server first, then re-run.${EOL}`,
-      )
-      process.exitCode = 1
-      return
-    }
+    if (await refuseWhileServing("migrate")) return
     await bootstrap(process.cwd(), async () => {
       const dir = await Storage.ready().then((x) => x.dir)
 

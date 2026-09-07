@@ -5,6 +5,7 @@ import { bootstrap } from "../bootstrap"
 import { Parts } from "../../storage/parts"
 import { Messages } from "../../storage/messages"
 import { Sessions } from "../../storage/sessions"
+import { refuseWhileServing } from "../serving"
 import { EOL } from "os"
 
 export const ImportCommand = cmd({
@@ -18,6 +19,9 @@ export const ImportCommand = cmd({
     })
   },
   handler: async (args) => {
+    // Same contract as migrate-storage: this bulk-writes the tables a live
+    // server is also writing, and leaves that server's session index stale.
+    if (await refuseWhileServing("import")) return
     await bootstrap(process.cwd(), async () => {
       let exportData:
         | {
