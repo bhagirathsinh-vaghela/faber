@@ -3,23 +3,23 @@ export function lazy<T>(fn: () => T) {
   let loaded = false
 
   const result = (): T => {
-    if (loaded) return value as T
-    loaded = true
-    value = fn()
-    // A rejected promise must not be memoized: an async body that fails once
+    // A rejected promise must not stay memoized: an async body that fails once
     // (a lock held at the moment a connection opens) would otherwise hand the
     // same rejection to every later caller, turning a transient failure into a
-    // permanently broken process. Clearing the flag lets the next call retry.
+    // permanently broken process.
     //
-    // The handler RE-THROWS so the derived promise stays rejected and unhandled.
-    // Handling the rejection here instead would mark it handled and silence the
-    // runtime's unhandled-rejection report, hiding a failure nobody awaited.
-    if (value instanceof Promise)
-      void value.then(undefined, (e) => {
-        loaded = false
-        value = undefined
-        throw e
-      })
+    // The state is INSPECTED rather than subscribed to, because attaching any
+    // rejection handler marks the promise handled and silences the runtime's
+    // unhandled-rejection report. A caller that handles the failure itself
+    // would then log an error for something nothing went wrong with, and one
+    // that drops it would log nothing at all: both backwards.
+    if (loaded) {
+      if (!(value instanceof Promise) || Bun.peek.status(value) !== "rejected") return value as T
+      loaded = false
+      value = undefined
+    }
+    loaded = true
+    value = fn()
     return value as T
   }
 
