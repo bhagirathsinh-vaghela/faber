@@ -7,13 +7,16 @@
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base); /* 14px */
   font-weight: var(--text-base-weight);
-  line-height: var(--line-height-x-large);
+  line-height: var(--line-height-large);
 
-  /* Spacing for flow */
-  > *:first-child {
+  /* Spacing for flow — the markdown renderer may wrap blocks in a single div,
+     so the first/last-child reset reaches one level deeper to cover that. */
+  > *:first-child,
+  > *:first-child > *:first-child {
     margin-top: 0;
   }
-  > *:last-child {
+  > *:last-child,
+  > *:last-child > *:last-child {
     margin-bottom: 0;
   }
 
@@ -25,8 +28,8 @@
   h5,
   h6 {
     color: var(--markdown-heading);
-    margin-top: 2rem;
-    margin-bottom: 0.75rem;
+    margin-top: 1rem;
+    margin-bottom: 0.375rem;
     line-height: var(--line-height-large);
   }
 
@@ -70,28 +73,15 @@
 
   /* Paragraphs */
   p {
-    margin-bottom: 1rem;
+    margin-bottom: 0.625rem;
   }
 
-  /* Compact: tighten the loose 180% line-height and the inter-block spacing so
-     the transcript packs more content into the precious vertical space. Keyed
-     to the shell's published size class rather than its own media query, so it
-     cannot disagree with the layout around it. */
+  /* Compact packs paragraphs tighter still than the base. Keyed to the shell's
+     published size class rather than its own media query, so it cannot disagree
+     with the layout around it. */
   [data-size-class="compact"] & {
-    line-height: var(--line-height-large);
-
     p {
       margin-bottom: 0.375rem;
-    }
-
-    ul,
-    ol {
-      margin-top: 0.25rem;
-      margin-bottom: 0.5rem;
-    }
-
-    li {
-      margin-bottom: 0.25rem;
     }
   }
 
@@ -106,8 +96,8 @@
   /* Lists */
   ul,
   ol {
-    margin-top: 0.5rem;
-    margin-bottom: 1rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0.625rem;
     padding-left: 1.5rem;
     list-style-position: outside;
   }
@@ -121,7 +111,7 @@
   }
 
   li {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   }
 
   li > p:first-child {
@@ -153,17 +143,18 @@
   /* Blockquotes */
   blockquote {
     border-left: 2px solid var(--border-weak-base);
-    margin: 1.5rem 0;
+    margin: 0 0 0.625rem;
     padding-left: 0.5rem;
     color: var(--text-weak);
     font-style: normal;
   }
 
-  /* Horizontal Rule - Invisible spacing only */
+  /* Horizontal Rule */
   hr {
     border: none;
+    border-top: 1px solid var(--border-weak-base);
     height: 0;
-    margin: 2.5rem 0;
+    margin: 0 0 0.625rem;
   }
 
   .shiki {
@@ -209,8 +200,8 @@
   }
 
   pre {
-    margin-top: 2rem;
-    margin-bottom: 2rem;
+    margin-top: 0;
+    margin-bottom: 0.625rem;
     overflow: auto;
 
     scrollbar-width: none;
@@ -287,7 +278,7 @@
     width: max-content;
     max-width: 100%;
     overflow: auto;
-    margin: 1.5rem 0;
+    margin: 0 0 0.625rem;
     font-size: var(--font-size-base);
   }
 
@@ -317,7 +308,7 @@
     max-width: 100%;
     height: auto;
     border-radius: 4px;
-    margin: 1.5rem 0;
+    margin: 0 0 0.625rem;
     display: block;
   }
 
@@ -326,7 +317,7 @@
      for the left border, the soft background, and the label. `check` folds
      shut as a <details>. */
   .callout {
-    margin: 1.3em 0;
+    margin: 0 0 0.625rem;
     padding: 12px 15px;
     border-radius: 9px;
     border: 1px solid var(--border-weak-base);

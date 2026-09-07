@@ -1220,9 +1220,12 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
         {/* Snapshot line under every assistant text box, matching the Response
             box. Gate on this block's OWN completion, not the whole turn: an
             intermediate step gets its chips as soon as it finishes, while the
-            still-streaming last block stays footer-less until it completes. */}
+            still-streaming last block stays footer-less until it completes. The
+            footer sits in its own slot so the markdown flow's line leading and
+            block margins cannot bleed into the gap above it; the spacing is owned
+            by data-slot="assistant-footer" in message-part.css. */}
         <Show when={props.footer && (props.message as AssistantMessage).time.completed}>
-          {props.footer!(props.message as AssistantMessage)}
+          <div data-slot="assistant-footer">{props.footer!(props.message as AssistantMessage)}</div>
         </Show>
       </CardBox>
     </Show>

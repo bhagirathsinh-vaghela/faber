@@ -3,6 +3,16 @@
    scrollbar entirely, so a body scrolling within its max-height gave no visual
    cue. Reuses the session-scroller thumb style (--border-weak-base) for a
    subtle, consistent bar. */
+/* The assistant/response footer (the model-stats chip lines) sits in its own
+   slot, OUTSIDE the markdown block flow, so the markdown's trailing line leading
+   and its last block's margin cannot bleed into the gap above the footer. The
+   gap is this one margin, the same on every message regardless of what block the
+   answer ended on. It mirrors the bare-body top inset so the footer sits as far
+   below the text as the text sits below the header. */
+[data-slot="assistant-footer"] {
+  margin-top: 0.25rem;
+}
+
 [data-component="tool-output"][data-scrollable],
 [data-component="subagent-result"][data-scrollable],
 [data-component="job-result"][data-scrollable],

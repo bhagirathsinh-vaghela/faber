@@ -113,7 +113,7 @@ export function MessageFooter(props: { message: AssistantMessage }) {
 
   return (
     <>
-      <div class="flex flex-row flex-wrap items-center pt-1 text-11-regular font-mono leading-tight">
+      <div class="flex flex-row flex-wrap items-center text-11-regular font-mono leading-tight">
         <For each={fields()}>
           {(field, i) => (
             <>

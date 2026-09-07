@@ -16,7 +16,7 @@
      the card gives it the same inset here. The base owns it for every card type
      rather than each type insetting its own body to a different value. */
   &[data-body="bare"] > [data-slot="collapsible-content"] {
-    padding: 0 0.75rem 0.5rem;
+    padding: 0.25rem 0.75rem;
   }
 
   /* Kobalte measures the content height only when the open state flips, so a body
