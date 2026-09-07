@@ -171,9 +171,14 @@ describe("toolDenial — sentinel is inert for native tools", () => {
   // A native tool passes no mcp descriptor, so the sentinel never matches its
   // id. A write-capable subagent still denies a native tool that is not on its
   // list (proving the sentinel grants MCP keys only, not native ids).
+  //
+  // `question` is the subject because it is excluded from every preset by
+  // design, not by omission — a headless subagent has no human to answer one.
+  // A tool that merely happens to be absent today gets granted eventually, and
+  // then this test fails for a reason that has nothing to do with sentinels.
   test("general-mcp still denies a native tool it does not list", async () => {
     const set = await toolset("general-mcp")
-    const denial = SessionPrompt.toolDenial(set, "todowrite", {})
-    expect(denial).toBe(`Tool "todowrite" is not available for this task. Available tools: ${set.join(", ")}`)
+    const denial = SessionPrompt.toolDenial(set, "question", {})
+    expect(denial).toBe(`Tool "question" is not available for this task. Available tools: ${set.join(", ")}`)
   })
 })
