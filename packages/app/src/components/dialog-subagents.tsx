@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List, type ListRef } from "@opencode-ai/ui/list"
+import { Button } from "@opencode-ai/ui/button"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useSDK } from "@/context/sdk"
@@ -40,6 +41,12 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
 
   const source = () => props.sessionID ?? params.id
   const parentID = () => props.parentID
+
+  // Opened inside a subagent session by the Alt+A keybind (a parent to escape
+  // to, and not the Ctrl+Tab sibling switcher). A subagent cannot launch its own
+  // subagents, so this list is always empty; show only the parent escape instead
+  // of empty sections. The switcher still lists the parent's other children.
+  const parentOnly = () => !!parentID() && !props.switcher
 
   // Same pattern as PromptActionBar: one seed fetch on mount, then keep the list
   // live off the background.subagent.* events. NOT createResource — a resource is
@@ -121,8 +128,6 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
   // the listener above folds into the store — no manual refetch.
   const cancel = (task: BackgroundSubagent) => sdk.client.background.cancel({ id: task.id })
 
-  const [parentFocused, setParentFocused] = createSignal(false)
-
   // Ctrl+Tab hold-cycle, mirroring DialogOverview: when opened by the Ctrl-hold
   // keybind (switcher), each further Ctrl+Tab advances the highlight and
   // releasing Ctrl opens it — so the switcher feels the same in a subagent
@@ -135,15 +140,11 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
   // would receive arrow/Enter keys. Forward them from the window into the list's
   // key handler so the dialog is keyboard-navigable the moment it opens, without
   // a search input. A fresh KeyboardEvent is forwarded (not the original) so the
-  // list's own preventDefault path runs uninhibited. When the parent button (a
-  // real <button>, reached with ArrowLeft) holds focus, its own keys are left to
-  // the browser — Enter fires its click natively.
-  const parentButton = () => document.querySelector<HTMLElement>('[data-slot="tasks-parent"]')
+  // list's own preventDefault path runs uninhibited.
   const forward = (key: string) => listRef?.onKeyDown(new KeyboardEvent("keydown", { key, bubbles: true }))
-  const navKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "Enter"]
+  const navKeys = ["ArrowUp", "ArrowDown", "Enter"]
   const onKey = (event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
-    if (document.activeElement === parentButton()) return
+    if (parentOnly() || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
     if (navKeys.includes(event.key) || event.key.toLowerCase() === "x") {
       // stopPropagation so a list-item button that happens to hold focus (e.g.
       // reached by Tab) does not ALSO run its own bubble-phase handler on the
@@ -182,55 +183,47 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
 
   return (
     <Dialog title={language.t("dialog.subagents.title")}>
-      <Show when={parentID()}>
-        <button
-          type="button"
-          data-slot="tasks-parent"
-          class="mx-2 mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-left text-14-regular shrink-0"
-          classList={{ "bg-surface text-text": parentFocused(), "text-text-weak": !parentFocused() }}
-          onClick={goToParent}
-          onFocus={() => setParentFocused(true)}
-          onBlur={() => setParentFocused(false)}
-        >
-          <Icon name="arrow-left" />
-          <span class="truncate">{language.t("dialog.subagents.parent")}</span>
-        </button>
-      </Show>
-      <List
-        ref={(r) => (listRef = r)}
-        class="flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
-        initial={items()[0]}
-        onMove={setHighlight}
-        key={(x) => x.id}
-        items={items}
-        groupBy={(x) => (x.status === "running" ? running : completed)}
-        groups={[running, completed]}
-        onSelect={select}
-        onKeyEvent={(event, task) => {
-          if (event.key === "ArrowLeft" && parentID()) {
-            event.preventDefault()
-            const button = document.querySelector<HTMLElement>('[data-slot="tasks-parent"]')
-            button?.focus()
-            return
-          }
-          if (event.key.toLowerCase() === "x" && !event.ctrlKey && !event.metaKey && task?.status === "running") {
-            event.preventDefault()
-            cancel(task)
-          }
-        }}
-      >
-        {(task) => (
-          <div class="w-full flex items-center gap-2">
-            <StatusIcon status={task.status} />
-            <div class="flex-1 min-w-0 flex flex-col text-left">
-              <span class="truncate font-normal">{task.description}</span>
-              <span class="truncate text-text-weak font-normal">
-                {(task.subagent?.agent ?? "subagent") + " · " + duration(task)}
-              </span>
-            </div>
+      <Show
+        when={!parentOnly()}
+        fallback={
+          <div class="flex flex-col items-center gap-3 px-4 py-8">
+            <p class="text-14-regular text-text-weak text-center">{language.t("dialog.subagents.parentOnly")}</p>
+            <Button autofocus size="large" variant="primary" icon="arrow-left" onClick={goToParent}>
+              {language.t("dialog.subagents.parent")}
+            </Button>
           </div>
-        )}
-      </List>
+        }
+      >
+        <List
+          ref={(r) => (listRef = r)}
+          class="flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
+          initial={items()[0]}
+          onMove={setHighlight}
+          key={(x) => x.id}
+          items={items}
+          groupBy={(x) => (x.status === "running" ? running : completed)}
+          groups={[running, completed]}
+          onSelect={select}
+          onKeyEvent={(event, task) => {
+            if (event.key.toLowerCase() === "x" && !event.ctrlKey && !event.metaKey && task?.status === "running") {
+              event.preventDefault()
+              cancel(task)
+            }
+          }}
+        >
+          {(task) => (
+            <div class="w-full flex items-center gap-2">
+              <StatusIcon status={task.status} />
+              <div class="flex-1 min-w-0 flex flex-col text-left">
+                <span class="truncate font-normal">{task.description}</span>
+                <span class="truncate text-text-weak font-normal">
+                  {(task.subagent?.agent ?? "subagent") + " · " + duration(task)}
+                </span>
+              </div>
+            </div>
+          )}
+        </List>
+      </Show>
     </Dialog>
   )
 }

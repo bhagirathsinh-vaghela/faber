@@ -345,6 +345,7 @@ export const dict = {
   "dialog.subagents.section.running": "Running",
   "dialog.subagents.section.completed": "Completed",
   "dialog.subagents.parent": "Parent session",
+  "dialog.subagents.parentOnly": "This is a subagent session. It has no subagents of its own.",
   "dialog.pending.title": "Pending Results",
   "dialog.pending.empty": "No pending results",
   "dialog.pending.none": "No results selected",
