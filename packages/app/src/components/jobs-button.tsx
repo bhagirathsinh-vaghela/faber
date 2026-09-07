@@ -10,7 +10,7 @@ export function JobsButton(props: { class?: string }) {
 
   return (
     <IconButton
-      icon="task"
+      icon="queue-list"
       iconSize="medium"
       variant="ghost"
       class={`shrink-0 p-0 ${props.class ?? ""}`}

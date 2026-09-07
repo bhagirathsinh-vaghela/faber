@@ -39,7 +39,7 @@ import { useDiffComponent } from "@opencode-ai/ui/context/diff"
 import { LineComment as LineCommentView, LineCommentEditor } from "@opencode-ai/ui/line-comment"
 import { findMarker } from "@opencode-ai/ui/diff-marker"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
-import { BasicTool } from "@opencode-ai/ui/basic-tool"
+import { TranscriptCard } from "@opencode-ai/ui/transcript-card"
 import { SessionReview } from "@opencode-ai/ui/session-review"
 import { Mark } from "@opencode-ai/ui/logo"
 import { Spinner } from "@opencode-ai/ui/spinner"
@@ -2987,7 +2987,7 @@ export default function Page() {
               <Show when={request()} keyed>
                 {(perm) => (
                   <div data-component="tool-part-wrapper" data-permission="true" class="mb-3">
-                    <BasicTool
+                    <TranscriptCard
                       icon="checklist"
                       locked
                       defaultOpen
@@ -3011,7 +3011,7 @@ export default function Page() {
                           {language.t("settings.permissions.tool.doom_loop.description")}
                         </div>
                       </Show>
-                    </BasicTool>
+                    </TranscriptCard>
                     <div data-component="permission-prompt">
                       <div data-slot="permission-actions">
                         <Button variant="ghost" size="small" onClick={() => decide("reject")}>

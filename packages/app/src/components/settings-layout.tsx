@@ -14,6 +14,7 @@ const BOX_TYPES: { key: string; label: string }[] = [
   { key: "subagent_result", label: "Subagent result" },
   { key: "job_result", label: "Job result" },
   { key: "system_notice", label: "System notice" },
+  { key: "reasoning", label: "Thinking" },
   { key: "agent", label: "Subagent" },
   { key: "bash", label: "Bash" },
   { key: "edit", label: "Edit" },

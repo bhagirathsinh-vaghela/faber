@@ -10,7 +10,7 @@ export function SubagentsButton(props: { class?: string }) {
 
   return (
     <IconButton
-      icon="queue-list"
+      icon="subagents"
       iconSize="medium"
       variant="ghost"
       class={`shrink-0 p-0 ${props.class ?? ""}`}
