@@ -14,11 +14,22 @@ import { Session } from "@/session"
 
 export namespace Skill {
   const log = Log.create({ service: "skill" })
+  // A skill's opt-in into the per-turn reminder mechanism (insertReminders in
+  // session/prompt.ts): sparse text re-injected on every turn opener while
+  // the skill is Session.Info.activeSkills, computed ledger prepended. Never
+  // rendered into SkillTool's description, so it moves the pin digest
+  // (skillDigestInput fingerprints frontmatter) but not tools[] bytes.
+  export const Reminder = z.object({
+    sparse: z.string(),
+  })
+  export type Reminder = z.infer<typeof Reminder>
+
   export const Info = z.object({
     name: z.string(),
     description: z.string(),
     location: z.string(),
     content: z.string(),
+    reminder: Reminder.optional(),
   })
   export type Info = z.infer<typeof Info>
 
@@ -64,7 +75,7 @@ export namespace Skill {
 
       if (!md) return
 
-      const parsed = Info.pick({ name: true, description: true }).safeParse(md.data)
+      const parsed = Info.pick({ name: true, description: true, reminder: true }).safeParse(md.data)
       if (!parsed.success) return
 
       // Warn on duplicate skill names
@@ -83,6 +94,7 @@ export namespace Skill {
         description: parsed.data.description,
         location: match,
         content: md.content,
+        reminder: parsed.data.reminder,
       }
     }
 

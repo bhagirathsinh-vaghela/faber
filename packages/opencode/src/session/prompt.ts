@@ -33,6 +33,8 @@ import { ToolRegistry } from "../tool/registry"
 import { MCP } from "../mcp"
 import { McpCatalog } from "../mcp/catalog"
 import { AgentCatalog } from "../agent/catalog"
+import { Skill } from "../skill"
+import { current as currentSkillBody } from "../tool/skill"
 import { Config } from "../config/config"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
@@ -1692,6 +1694,75 @@ export namespace SessionPrompt {
     return { turnsSinceReminder, totalReminders, hadPlanExit }
   }
 
+  const EXIT_LINE = /^SKILL-DONE:/m
+  const EDIT_TOOLS = new Set(["edit", "write", "multiedit"])
+
+  // Computed state for a skill's per-turn reminder: everything since the
+  // ANCHOR, the newest assistant message carrying a completed `skill` tool
+  // part for `name`. Absent (dropped by compaction's filterCompacted, which
+  // keeps only the compaction request forward) -> anchor at the start of the
+  // list, scope reads "since compaction" rather than "since load".
+  export function skillLedger(messages: MessageV2.WithParts[], name: string) {
+    const anchor = messages.findIndex((msg) =>
+      msg.info.role === "assistant" &&
+      msg.parts.some(
+        (p) => p.type === "tool" && p.tool === "skill" && p.state.status === "completed" && p.state.input?.name === name,
+      ),
+    )
+    const since = anchor === -1 ? messages : messages.slice(anchor + 1)
+    let turns = 0
+    let edits = 0
+    let reviews = 0
+    let commits = 0
+    let editsSinceReview = 0
+    for (const msg of since) {
+      if (msg.info.role === "user") {
+        turns++
+        if (msg.parts.some((p) => p.type === "text" && p.backgroundSubagentResult?.status === "completed")) {
+          reviews++
+          editsSinceReview = 0
+        }
+        continue
+      }
+      for (const part of msg.parts) {
+        if (part.type !== "tool" || part.state.status !== "completed") continue
+        if (EDIT_TOOLS.has(part.tool)) {
+          edits++
+          editsSinceReview++
+        } else if (part.tool === "bash" && /\bgit commit\b/.test(String(part.state.input?.command ?? ""))) {
+          commits++
+        }
+      }
+    }
+    // The opener itself is excluded: it is the turn this reminder rides on,
+    // not a completed turn to count.
+    if (since.length > 0 && since.at(-1)?.info.role === "user") turns--
+    return { scope: anchor === -1 ? "since compaction" : "since load", turns, edits, reviews, commits, editsSinceReview }
+  }
+
+  // The newest assistant message's own text (synthetic parts excluded, since
+  // those are injected reminders, not the model's own words) carrying the
+  // SKILL-DONE exit line the model writes to close out a skill run.
+  export function skillExitRequested(messages: MessageV2.WithParts[]) {
+    const last = messages.findLast((msg) => msg.info.role === "assistant")
+    if (!last) return false
+    const text = last.parts
+      .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+      .map((p) => p.text)
+      .join("\n")
+    return EXIT_LINE.test(text)
+  }
+
+  // The `## Checklist` section of a skill body, by heading, for the one-time
+  // post-compaction re-inject (the sparse reminder alone is not enough right
+  // after the body was dropped from history).
+  export function skillChecklistSection(body: string) {
+    const start = body.indexOf("## Checklist")
+    if (start === -1) return undefined
+    const next = body.indexOf("\n## ", start + "## Checklist".length)
+    return (next === -1 ? body.slice(start) : body.slice(start, next)).trim()
+  }
+
   // The reminder rides the message that opens a turn, and ONLY there. It is due
   // when the turn-opener does not already carry the reminder, so it lands once,
   // at turn start, on a message not yet sent. A mid-turn re-fire would append to
@@ -1879,6 +1950,58 @@ export namespace SessionPrompt {
     input.session.contextBranch = branch
   }
 
+  // Per-skill reminder: a computed ledger plus the skill's own `reminder.sparse`
+  // text, on every turn opener while the skill is Session.Info.activeSkills.
+  async function insertSkillReminders(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
+    const active = input.session.activeSkills ?? []
+    if (active.length === 0) return
+
+    const opener = MessageV2.turnOpener(input.messages)
+    if (!opener) return
+
+    // The compaction-minted "Continue if you have next steps" message has no
+    // assistant after it (same freshness test appendSyntheticPart itself
+    // uses), and its own predecessor is the finished summary — the one
+    // fingerprint of "we just crossed a compaction boundary" available here.
+    const prev = input.messages.at(-2)
+    const justCompacted = prev?.info.role === "assistant" && (prev.info as MessageV2.Assistant).summary === true
+
+    for (const name of active) {
+      const marker = `<!-- skill-reminder:${name} -->`
+      if (hasReminder(opener, marker)) continue
+
+      const led = skillLedger(input.messages, name)
+
+      if (skillExitRequested(input.messages)) {
+        if (led.editsSinceReview === 0) {
+          await Session.update(
+            input.session.id,
+            (draft) => void (draft.activeSkills = (draft.activeSkills ?? []).filter((n) => n !== name)),
+            { touch: false },
+          )
+          input.session.activeSkills = (input.session.activeSkills ?? []).filter((n) => n !== name)
+          continue
+        }
+      }
+
+      const skill = await Skill.get(name)
+      if (!skill?.reminder) continue
+
+      if (justCompacted) {
+        const section = skillChecklistSection(await currentSkillBody(skill))
+        if (section) await persistReminder(input.messages, section, `<!-- skill-checklist:${name} -->`)
+      }
+
+      const refusal = skillExitRequested(input.messages)
+        ? `\n\nExit refused: SKILL-DONE was written with ${led.editsSinceReview} edit(s) after the last completed review. Run a fresh review round, then restate SKILL-DONE.`
+        : ""
+      const text =
+        `${name} active. ${led.scope}: ${led.turns} turns \u00b7 ${led.edits} edits \u00b7 ${led.reviews} reviews \u00b7 ` +
+        `${led.commits} commits \u00b7 edits since last review: ${led.editsSinceReview}.\n\n${skill.reminder.sparse}${refusal}`
+      await persistReminder(input.messages, text, marker)
+    }
+  }
+
   async function insertReminders(input: {
     messages: MessageV2.WithParts[]
     agent: Agent.Info
@@ -1902,6 +2025,11 @@ export namespace SessionPrompt {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
       if (concise) await persistReminder(input.messages, CONCISE, CONCISE_MARKER)
     }
+
+    // Subagents run for their parent's benefit, not the user's — the loop's
+    // exit checklist and ledger are meaningless without a human deciding
+    // whether to trust "done".
+    if (!input.session.parentID) await insertSkillReminders(input)
 
     // A subagent reaches for the agent tool, gets a denial back, and only then
     // does the work itself, having spent a turn learning it. The tool stays in

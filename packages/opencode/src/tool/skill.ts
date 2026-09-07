@@ -8,6 +8,7 @@ import { Ripgrep } from "../file/ripgrep"
 import { iife } from "@/util/iife"
 import { Instance } from "../project/instance"
 import { Global } from "@/global"
+import { Session } from "@/session"
 
 // This text is part of the skill tool's description, so it lands in tools[] —
 // the front of Anthropic's cumulative prefix hash. A location that renders
@@ -25,8 +26,10 @@ function relativePath(absolute: string) {
 }
 
 // The body as it stands on disk, falling back to the pinned copy when the file
-// is gone or unreadable.
-async function current(skill: Skill.Info) {
+// is gone or unreadable. Exported so the per-turn reminder's post-compaction
+// step (insertReminders in session/prompt.ts) reads the same current text this
+// tool serves, rather than the pin's possibly-stale snapshot.
+export async function current(skill: Skill.Info) {
   const text = await Bun.file(skill.location)
     .text()
     .catch(() => undefined)
@@ -110,6 +113,13 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
         always: [params.name],
         metadata: {},
       })
+
+      if (skill.reminder)
+        await Session.update(
+          execCtx.sessionID,
+          (draft) => void (draft.activeSkills = [...new Set([...(draft.activeSkills ?? []), skill.name])]),
+          { touch: false },
+        )
 
       const dir = path.dirname(skill.location)
       const base = pathToFileURL(dir).href

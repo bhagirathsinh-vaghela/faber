@@ -1088,6 +1088,7 @@ export type Session = {
   mcpCatalogText?: string
   contextDate?: string
   contextBranch?: string
+  activeSkills?: Array<string>
 }
 
 export type EventSessionCreated = {
@@ -7012,6 +7013,9 @@ export type AppSkillsResponses = {
     description: string
     location: string
     content: string
+    reminder?: {
+      sparse: string
+    }
   }>
 }
 

@@ -259,6 +259,14 @@ export namespace Session {
       // seeded from the frozen block on the next turn, announcing nothing.
       contextDate: z.string().optional(),
       contextBranch: z.string().optional(),
+      // Names of loaded skills that declare a `reminder:` block and are still
+      // considered active. Written by SkillTool.execute on load; cleared by
+      // insertReminders once the model's SKILL-DONE-style exit line checks out
+      // against the ledger. NOT reset on compaction: filterCompacted drops the
+      // assistant message carrying the skill's tool part, so a history scan
+      // alone goes blind across a compaction boundary, and this flag is what
+      // lets the reminder survive it.
+      activeSkills: z.string().array().optional(),
     })
     .meta({
       ref: "Session",
