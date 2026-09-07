@@ -86,9 +86,24 @@ describe("cross-process storage", () => {
     read.close()
   }, 30_000)
 
-  test("opening concurrently sets busy_timeout before the statement that contends", async () => {
-    // journal_mode takes an exclusive lock, so it is the open's contended
-    // statement; with busy_timeout set first it waits rather than throwing.
+  test("an open waits out a lock instead of throwing", async () => {
+    // Deterministic rather than a race: this process HOLDS an exclusive lock
+    // for a fixed span while the child opens, so the child's first locking
+    // statement is guaranteed to contend. Racing N concurrent opens and hoping
+    // two collide detects the fault only sometimes, which makes the test flaky
+    // in both directions.
+    //
+    // journal_mode is that first locking statement, and busy_timeout only
+    // governs statements issued after it. Set second, the switch waits zero and
+    // throws SQLITE_BUSY the moment anything else holds the lock.
+    //
+    // The fixture is deliberately left in the default journal mode: switching
+    // to WAL takes the lock only when it is a real switch, so a database
+    // already in WAL makes the statement a no-op and the test cannot observe
+    // the fault at all.
+    const seed = new Database(db)
+    seed.run("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+
     const source = `
       import { Database } from "bun:sqlite"
       try {
@@ -99,8 +114,16 @@ describe("cross-process storage", () => {
         console.log("ok")
       } catch (e) { console.log("FAILED:" + e.code) }
     `
-    const opens = await Promise.all(Array.from({ length: 8 }, () => child(source)))
-    const results = await Promise.all(opens.map(output))
-    expect(results.every((r) => r === "ok")).toBe(true)
+    const holder = new Database(db)
+    holder.run("BEGIN EXCLUSIVE")
+    const opening = child(source).then(output)
+    // Long enough that the child reaches its locking statement while the lock
+    // is held, short enough to sit well inside the child's 15s timeout.
+    await Bun.sleep(750)
+    holder.run("COMMIT")
+    holder.close()
+    seed.close()
+
+    expect(await opening).toBe("ok")
   }, 30_000)
 })

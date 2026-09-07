@@ -22,13 +22,10 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true })
 })
 
-// Db.close's shape, against a fixture path. The statement ORDER is part of what
-// is asserted: `optimize` writes the stats table, so running it after the
-// checkpoint would append the frames the checkpoint just cleared.
+// Db.close's shape, against a fixture path.
 const CLOSE = `
   try {
     db.run("PRAGMA busy_timeout = 250")
-    db.run("PRAGMA optimize")
     db.run("PRAGMA wal_checkpoint(TRUNCATE)")
   } catch {}
   db.close()
@@ -44,12 +41,8 @@ async function child(body: string) {
      if (db.query("PRAGMA journal_mode").get().journal_mode !== "wal") db.run("PRAGMA journal_mode = WAL")
      db.run("PRAGMA synchronous = NORMAL")
      db.run("CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY, v TEXT)")
-     // An index, and a query that uses it, so PRAGMA optimize has stats worth
-     // writing. Without them it is a no-op and cannot demonstrate the ordering.
-     db.run("CREATE INDEX IF NOT EXISTS t_v ON t (v)")
      const put = db.query("INSERT INTO t (v) VALUES (?)")
      for (let i = 0; i < 2000; i++) put.run("row-" + i)
-     db.query("SELECT * FROM t WHERE v = ?").all("row-1")
      ${body}`,
   )
   const proc = Bun.spawn(["bun", "run", file, db], { stdout: "pipe", stderr: "pipe" })

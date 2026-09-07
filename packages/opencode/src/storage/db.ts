@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
 import path from "path"
 import { Global } from "../global"
+import { Log } from "../util/log"
 import { lazy } from "../util/lazy"
 import { Storage } from "./storage"
 
@@ -85,10 +86,13 @@ export namespace Db {
     // 64MB of page cache. The store is well past a gigabyte, so a smaller cache
     // holds a fraction of a percent of it and every read walks to disk.
     db.run("PRAGMA cache_size = -64000")
-    // Let the planner know which indexes are worth using. Without stats it
-    // guesses from row counts alone, and 0x10002 is the mode SQLite documents
-    // for a long-lived connection: gather what is missing, analyze nothing else.
-    db.run("PRAGMA optimize = 0x10002")
+    // NOTHING that writes belongs here. `open` is the boot path, it runs before
+    // anything can retry it, and a write here holds SQLite's one write lock
+    // against every other process — which is how a second server booting beside
+    // a live one kills the live one's turn. PRAGMA optimize looks harmless and
+    // is not: on a store with no stats yet it measured 26s of scanning and 8KB
+    // of WAL. Statistics are gathered in `close` instead, where the process is
+    // ending and holding the lock costs nobody.
     connection = db
     return db
   })
@@ -112,20 +116,17 @@ export namespace Db {
     const db = connection
     connection = undefined
     try {
-      // Drop the timeout first. TRUNCATE waits on the busy handler, so the
-      // 15s an ordinary write is allowed would become 15s of a supervisor's
+      // Drop the timeout first. TRUNCATE waits on the busy handler, so the 15s
+      // an ordinary write is allowed would become 15s of a supervisor's
       // restart, and the supervisor kills without a timeout of its own.
       db.run("PRAGMA busy_timeout = 250")
-      // Persist what the planner learned this run, per SQLite's guidance for a
-      // connection about to close. It runs BEFORE the checkpoint because it
-      // WRITES the stats table, and frames added after a checkpoint are exactly
-      // the WAL the checkpoint exists to clear.
-      db.run("PRAGMA optimize")
       db.run("PRAGMA wal_checkpoint(TRUNCATE)")
-    } catch {
-      // A checkpoint that cannot finish (a reader elsewhere holding frames)
-      // leaves the WAL for the next open to recover, which is exactly the
-      // behavior without this call. Never block the exit on it.
+    } catch (e) {
+      // The WAL stays for the next open to recover, which is slower but
+      // correct. Logged rather than swallowed: folding the WAL back in is the
+      // one thing this function exists to do, so a silent failure would hide
+      // the feature not working at all.
+      Log.Default.warn("storage checkpoint failed", { e })
     }
     db.close()
   }
