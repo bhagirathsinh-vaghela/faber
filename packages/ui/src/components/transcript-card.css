@@ -295,7 +295,7 @@
     font-weight: var(--font-weight-medium);
     line-height: var(--line-height-large);
     letter-spacing: var(--letter-spacing-normal);
-    color: var(--text-weak);
+    color: var(--text-base);
 
     &.clickable {
       cursor: pointer;
@@ -332,7 +332,7 @@
     font-weight: var(--font-weight-regular);
     line-height: var(--line-height-large);
     letter-spacing: var(--letter-spacing-normal);
-    color: var(--text-weak);
+    color: var(--text-base);
   }
 
   /* The base owns the reveal, keyed on the WHOLE row so a pointer aimed at a

@@ -60,7 +60,7 @@
      Brightness-matched (~0.30 relative luminance) so no family shouts. */
   --box-accent-tool-readonly: #5b99d4;
   --box-accent-tool-write: #c9a035;
-  --box-accent-tool-execute: #f472b6;
+  --box-accent-tool-execute: #a38084;
   --box-accent-tool-agent: #d4884e;
 
   --box-backdrop: var(--color-background-strong, #010409);
