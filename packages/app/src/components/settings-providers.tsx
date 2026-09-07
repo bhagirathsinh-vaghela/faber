@@ -145,7 +145,7 @@ export const SettingsProviders: Component = () => {
                     <Show
                       when={canDisconnect(item)}
                       fallback={
-                        <span class="text-14-regular text-text-base opacity-0 group-hover:opacity-100 transition-opacity duration-200 pr-3 cursor-default">
+                        <span class="text-14-regular text-text-base opacity-0 group-hover:opacity-100 hover-none:opacity-100 transition-opacity duration-200 pr-3 cursor-default">
                           Connected from your environment variables
                         </span>
                       }

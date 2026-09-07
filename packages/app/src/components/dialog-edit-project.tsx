@@ -11,6 +11,7 @@ import { type LocalProject, getAvatarColors } from "@/context/layout"
 import { getFilename } from "@opencode-ai/util/path"
 import { Avatar } from "@opencode-ai/ui/avatar"
 import { useLanguage } from "@/context/language"
+import { preserveFocus } from "@/utils/mobile"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 
@@ -202,6 +203,7 @@ export function DialogEditProject(props: { project: LocalProject }) {
                           store.color !== color,
                       }}
                       onClick={() => setStore("color", color)}
+                      {...preserveFocus()}
                     >
                       <Avatar
                         fallback={store.name || defaultName()}

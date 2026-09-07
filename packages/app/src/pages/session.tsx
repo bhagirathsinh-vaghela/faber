@@ -12,7 +12,7 @@ import {
   untrack,
   type JSX,
 } from "solid-js"
-import { createCoarsePointer, useShell } from "@/utils/mobile"
+import { createCoarsePointer, preserveFocus, useShell } from "@/utils/mobile"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
@@ -2550,6 +2550,7 @@ export default function Page() {
                         <button
                           class="pointer-events-auto size-(--control-height) flex items-center justify-center rounded-full bg-background-base border border-border-base shadow-sm text-text-base hover:bg-background-stronger transition-colors"
                           onClick={resumeScroll}
+                          {...preserveFocus()}
                         >
                           <Icon name="arrow-down-to-line" />
                         </button>

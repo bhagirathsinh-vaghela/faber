@@ -2255,7 +2255,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                             type="button"
                             icon="close-small"
                             variant="ghost"
-                            class="ml-auto size-3.5 opacity-0 group-hover:opacity-100 transition-all"
+                            class="ml-auto size-3.5 opacity-0 group-hover:opacity-100 hover-none:opacity-100 transition-all"
                             onClick={(e) => {
                               e.stopPropagation()
                               if (item.commentID) comments.remove(item.path, item.commentID)
@@ -2301,8 +2301,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <button
                       type="button"
                       onClick={() => removeImageAttachment(attachment.id)}
-                      class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+                      class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 hover-none:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
                       aria-label={language.t("prompt.attachment.remove")}
+                      {...preserveFocus()}
                     >
                       <Icon name="close" class="size-3 text-text-weak" />
                     </button>

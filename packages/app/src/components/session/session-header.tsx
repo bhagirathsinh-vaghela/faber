@@ -10,6 +10,7 @@ import { isStopKey, useStopSession } from "@/hooks/use-stop-session"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { getFilename } from "@opencode-ai/util/path"
 import { decode64 } from "@/utils/base64"
+import { preserveFocus } from "@/utils/mobile"
 
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -94,6 +95,7 @@ export function SessionHeader() {
               class="hidden @2xl/titlebar:flex w-[320px] max-w-full min-w-0 shrink h-(--control-height) p-1 pl-1.5 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-raised-base transition-colors cursor-default hover:bg-surface-raised-base-hover focus-visible:bg-surface-raised-base-hover active:bg-surface-raised-base-active"
               onClick={() => command.trigger("file.open")}
               aria-label={language.t("session.header.searchFiles")}
+              {...preserveFocus()}
             >
               <div class="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
                 <Icon name="magnifying-glass" size="normal" class="icon-base shrink-0" />
@@ -166,6 +168,7 @@ export function SessionHeader() {
                   onClick={toggleReview}
                   aria-label={language.t("command.review.toggle")}
                   aria-expanded={reviewActive()}
+                  {...preserveFocus()}
                   aria-controls="review-panel"
                 >
                   <Icon name={reviewActive() ? "layout-right-full" : "layout-right"} size="medium" />

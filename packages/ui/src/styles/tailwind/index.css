@@ -57,6 +57,16 @@
   }
 }
 
+/* A device with no hover cannot reach a `group-hover:` reveal without a first
+   tap spent triggering :hover, so a hover-only control costs two taps there.
+   Pair `hover-none:` with the hover reveal to keep the control visible where
+   there is no hover to wait for. */
+@custom-variant hover-none {
+  @media (hover: none) {
+    @slot;
+  }
+}
+
 @theme {
   --*: initial;
 
