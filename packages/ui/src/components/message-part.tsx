@@ -1509,13 +1509,14 @@ ToolRegistry.register({
       ) : undefined
 
     // Dispatch fields as one markdown block so it themes like the rest of the
-    // UI: bold labels, code pills. Only what a glance needs — Summary (the ask),
-    // Type, and one Toolset line carrying the preset name and its full finite
-    // tool list. The description is dropped here: it is already the card's own
-    // identifier line. Everything fuller lives in the child session.
+    // UI: bold labels, code pills. Only what a glance needs — Description (the
+    // card's identifier, duplicated here so summaryOnly can hide the header
+    // subtitle on expand without losing it), Summary (the ask), Type, and one
+    // Toolset line. Everything fuller lives in the child session.
     const dispatchMarkdown = createMemo(() => {
       const lines: string[] = []
       const push = (label: string, value: string) => lines.push(`**${label}** ${value}`)
+      if (props.input.description) push(i18n.t("ui.tool.subagent.label.description"), props.input.description as string)
       if (props.metadata.summary) push(i18n.t("ui.tool.subagent.label.summary"), props.metadata.summary as string)
       push(i18n.t("ui.tool.subagent.label.agent"), `\`${props.input.subagent_type || props.tool}\``)
       if (props.metadata.toolset) {
@@ -1607,11 +1608,13 @@ ToolRegistry.register({
               sessionID={props.sessionID}
               boxID={props.boxID}
               accent={accent()}
+              summaryOnly
               trigger={{
-                title: i18n.t("ui.tool.subagent.box.title"),
-                subtitle: subagentLabel(props.input.description ?? ""),
-                args:
-                  props.metadata.status === "async_launched" ? [i18n.t("ui.tool.subagent.box.launched")] : undefined,
+                title:
+                  props.metadata.status === "async_launched"
+                    ? i18n.t("ui.tool.subagent.box.launched", { label: subagentLabel(props.input.description ?? "") })
+                    : i18n.t("ui.tool.subagent.box.title"),
+                subtitle: props.metadata.status !== "async_launched" ? subagentLabel(props.input.description ?? "") : undefined,
                 action: openButton(),
               }}
             >

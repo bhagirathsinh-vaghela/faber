@@ -98,49 +98,21 @@
     cursor: pointer;
   }
 
-  /* The highlight follows the pointer's OWN half of the row, because the two
-     halves do different things: the left cluster identifies the block, the rest
-     toggles it. Each paints itself rather than the row painting both, so what
-     lights up is exactly what a press would act on.
-     --hover is the strengthened wash; the resting 5% band comes from the row. */
+  /* The highlight spans the entire row on hover. The two halves (identity and
+     info) have different click actions, but the visual wash is one band so the
+     row reads as a single interactive surface. */
   --transcript-card-hover: color-mix(in srgb, var(--box-accent, transparent) 8%, transparent);
 
-  [data-slot="transcript-card-identity"],
-  [data-slot="transcript-card-info"] {
-    /* Pull toward the card edges but leave 4px so the border-radius paint
-       is not clipped by the collapsible's horizontal overflow: clip. */
-    margin: -6px -8px;
-    padding: 6px 8px;
-    border-radius: var(--radius-sm);
-    transition: background-color 0.15s ease;
-  }
-
-  [data-slot="transcript-card-identity"] {
-    margin-right: 0;
-    padding-right: 0;
-  }
-
-  [data-slot="transcript-card-info"] {
-    margin-left: 0;
-    padding-left: 0;
-  }
+  transition: background-color 0.15s ease;
 
   @media (hover: hover) {
-    [data-slot="transcript-card-identity"]:hover {
-      background-color: var(--transcript-card-hover);
-    }
-
-    &:not([data-locked="true"]):hover:not(:has([data-slot="transcript-card-identity"]:hover))
-      [data-slot="transcript-card-info"] {
+    &:hover {
       background-color: var(--transcript-card-hover);
     }
   }
 
   @media (forced-colors: active) {
-    [data-slot="transcript-card-identity"],
-    [data-slot="transcript-card-info"] {
-      background-color: transparent;
-    }
+    background-color: transparent;
   }
 
   /* The controls float over the row's right edge rather than taking flow width:
@@ -347,7 +319,8 @@
     [data-slot="message-box-revert"],
     [data-slot="box-speak"],
     [data-slot="box-copy"],
-    [data-slot="collapsible-arrow"] {
+    [data-slot="collapsible-arrow"],
+    [data-slot="tool-action"] {
       opacity: 0;
       transition: opacity 0.15s ease;
     }
@@ -374,7 +347,8 @@
       [data-slot="message-box-revert"],
       [data-slot="box-speak"],
       [data-slot="box-copy"],
-      [data-slot="collapsible-arrow"] {
+      [data-slot="collapsible-arrow"],
+      [data-slot="tool-action"] {
         opacity: 1;
       }
     }
@@ -393,7 +367,8 @@
     [data-component="collapsible"]:not([data-expanded]) & {
       [data-slot="message-box-revert"],
       [data-slot="box-speak"],
-      [data-slot="box-copy"] {
+      [data-slot="box-copy"],
+      [data-slot="tool-action"] {
         display: none;
       }
     }
