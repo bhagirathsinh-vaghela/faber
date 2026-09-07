@@ -122,6 +122,26 @@ export namespace SessionPing {
     return !!base && base + CACHE_TTL > Date.now()
   }
 
+  // A session whose /restore is in flight must not start a turn until the
+  // continue prompt is on disk. Any wake (job delivery, subagent injection)
+  // that races the restore awaits this gate, so the conversation never ends
+  // with the cut assistant message.
+  const restoring = new Map<string, { promise: Promise<void>; resolve: () => void }>()
+
+  export function restoreGate(sessionID: string) {
+    let resolve!: () => void
+    const promise = new Promise<void>((r) => (resolve = r))
+    restoring.set(sessionID, { promise, resolve })
+    return () => {
+      resolve()
+      restoring.delete(sessionID)
+    }
+  }
+
+  export function awaitRestore(sessionID: string) {
+    return restoring.get(sessionID)?.promise
+  }
+
   // What a resumed parent is told about the restart. A question or permission it
   // was blocked on is a promise map that died with the process, and a tool
   // mid-execute is an orphaned running part, so both are gone and it must redo

@@ -418,6 +418,8 @@ export namespace SessionPrompt {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
+    const pending = SessionPing.awaitRestore(sessionID)
+    if (pending) await pending
     const abort = start(sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {

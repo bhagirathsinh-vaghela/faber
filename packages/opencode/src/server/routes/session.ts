@@ -947,23 +947,36 @@ export const SessionRoutes = lazy(() =>
         c.header("Content-Type", "application/json")
         return stream(c, async () => {
           const sessionID = c.req.valid("param").sessionID
+          const cut = await SessionPing.interrupted(sessionID)
+          if (!cut) {
+            const { resumeSubagents } = await import("../../tool/agent")
+            await resumeSubagents(sessionID)
+            return
+          }
+          // Gate: any SessionPrompt.loop() call on this session waits until
+          // the continue prompt is on disk. This blocks job deliveries and
+          // subagent injections from starting a turn before the message
+          // that makes the conversation valid for the API.
+          const release = SessionPing.restoreGate(sessionID)
+          try {
+            await SessionPrompt.prompt({
+              sessionID,
+              parts: [{ type: "text", text: SessionPing.continueText(0), synthetic: true }],
+              noReply: true,
+            })
+          } finally {
+            release()
+          }
           const { resumeSubagents } = await import("../../tool/agent")
           const subagents = await resumeSubagents(sessionID)
-          // Only a parent whose OWN turn was cut gets the continue prompt: it is
-          // the one that might re-issue and so must be told its subagents are
-          // alive. A parent that is busy only because of a running descendant has
-          // no interrupted turn to continue; prompting it would start a spurious
-          // one. Its resumed subagents inject and wake it on their own.
-          if (!(await SessionPing.interrupted(sessionID))) return
-          await new Promise<void>((resolve) => {
-            void SessionPrompt.promptAsync(
-              {
-                sessionID,
-                parts: [{ type: "text", text: SessionPing.continueText(subagents), synthetic: true }],
-              },
-              resolve,
-            ).catch(() => resolve())
-          })
+          if (subagents > 0) {
+            await SessionPrompt.prompt({
+              sessionID,
+              parts: [{ type: "text", text: SessionPing.continueText(subagents), synthetic: true }],
+              noReply: true,
+            })
+          }
+          await SessionPrompt.loop(sessionID).catch(() => {})
         })
       },
     )
