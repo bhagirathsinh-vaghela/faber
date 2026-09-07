@@ -44,32 +44,59 @@ export namespace Sessions {
   }
 
   export async function write(session: Session.Info) {
-    await open().then((q) => q.put.run(...row(session)))
+    const q = await open()
+    await Db.retry(() => q.put.run(...row(session)))
+  }
+
+  // The schema, resolved through a lazy import that breaks the storage ->
+  // session cycle, then held so a caller inside a synchronous transaction body
+  // can parse without awaiting.
+  let schema: typeof Session.Info | undefined
+  async function ready() {
+    schema ??= await import("../session").then((x) => x.Session.Info)
+    return schema
   }
 
   // Run the stored blob through the schema so its `.default(...)` clauses fill
   // fields a pre-feature record never had (tokens, total, cost). A bare cast
   // would leave them undefined, and a mutator like `draft.total.input += x` then
-  // throws on an old session. Lazy import breaks the storage -> session cycle.
+  // throws on an old session.
+  function parse(json: string) {
+    return schema!.parse(JSON.parse(json))
+  }
+
   async function normalize(json: string): Promise<Session.Info> {
-    const { Session } = await import("../session")
-    return Session.Info.parse(JSON.parse(json))
+    await ready()
+    return parse(json)
   }
 
   // Read-modify-write, throwing NotFoundError when the session is absent, like
-  // Storage.update (which reads the file first). `normalize` awaits a lazy
-  // import between the read and the write, so two concurrent updates on one
-  // session would both read the same blob and the later write would drop the
-  // earlier mutation. A per-id write lock closes that window, the way the file
-  // backend's Lock.write did.
+  // Storage.update (which reads the file first).
+  //
+  // Two locks, because they cover different racers and neither substitutes for
+  // the other. Lock.write serializes the coroutines of THIS process. The
+  // IMMEDIATE transaction serializes against OTHER processes — a second server
+  // (the staging one a /restart runs) shares the file but not the Map behind
+  // Lock, so without it both processes read the same blob and the later write
+  // silently discards the earlier mutation, with no error on either side.
+  //
+  // The read, the mutation, and the write all sit INSIDE the transaction; that
+  // adjacency is the whole point, since a read outside it could be stale by the
+  // time the write lands. The schema is resolved beforehand because
+  // bun:sqlite's transaction callback is synchronous and cannot await.
   export async function update(sessionID: string, fn: (draft: Session.Info) => void) {
     const q = await open()
     using _ = await Lock.write("session/" + sessionID)
-    const stored = q.get.get(sessionID)
-    if (!stored) throw new Storage.NotFoundError({ message: `Session not found: ${sessionID}` })
-    const draft = await normalize(stored.json)
-    fn(draft)
-    q.put.run(...row(draft))
+    // Resolve the schema before the synchronous transaction body needs it.
+    await ready()
+    let draft!: Session.Info
+    await Db.transaction(() => {
+      const current = q.get.get(sessionID)
+      if (!current) throw new Storage.NotFoundError({ message: `Session not found: ${sessionID}` })
+      draft = parse(current.json)
+      fn(draft)
+      q.put.run(...row(draft))
+    })
     return draft
   }
 
@@ -85,7 +112,8 @@ export namespace Sessions {
   }
 
   export async function remove(sessionID: string) {
-    await open().then((q) => q.remove.run(sessionID))
+    const q = await open()
+    await Db.retry(() => q.remove.run(sessionID))
   }
 
   export async function removeQuery() {

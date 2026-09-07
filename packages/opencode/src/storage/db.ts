@@ -22,14 +22,60 @@ export namespace Db {
   // all three facades' migrators chunk identically.
   export const MIGRATE_CHUNK = 5000
 
+  // How long SQLite itself waits for the write lock before handing back BUSY.
+  // Sized above the slowest legitimate write rather than against a "typical"
+  // one: a sub-millisecond part upsert never approaches it, and the ceiling only
+  // matters when something unusually large is committing in another process.
+  export const BUSY_TIMEOUT = 15_000
+
+  // Retries AFTER busy_timeout has already elapsed, so this is the second line
+  // of defence, not the first. Jittered because a fixed backoff makes every
+  // blocked writer wake together and re-collide (the convoy pattern).
+  const RETRY_MAX = 5
+  const RETRY_BASE = 25
+
+  // The busy family, which SQLite documents as "try again": the lock was held,
+  // nothing is wrong with the statement. SQLITE_BUSY_SNAPSHOT is the exception
+  // that cannot be fixed by re-running the statement alone — its transaction
+  // holds a stale snapshot, so the whole transaction has to restart. It is
+  // listed because `transaction` retries at that granularity; a bare statement
+  // retry never encounters it.
+  const BUSY = new Set(["SQLITE_BUSY", "SQLITE_BUSY_SNAPSHOT", "SQLITE_BUSY_RECOVERY", "SQLITE_BUSY_TIMEOUT"])
+
+  export function busy(e: unknown): e is { code: string } {
+    return BUSY.has((e as { code?: string })?.code ?? "")
+  }
+
+  // Run a storage write so a lock held elsewhere costs latency instead of an
+  // error. Without this a turn dies for a contention SQLite expects the caller
+  // to wait out.
+  export async function retry<T>(fn: () => T): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return fn()
+      } catch (e) {
+        if (!busy(e) || attempt >= RETRY_MAX) throw e
+        await Bun.sleep(RETRY_BASE * 2 ** attempt * (0.5 + Math.random()))
+      }
+    }
+  }
+
   export const open = lazy(async () => {
     // Wait for the storage dir to exist (migrations that fill these tables from
     // the legacy JSON tree run as a standalone command, not here).
     await Storage.ready()
     const db = new Database(path.join(Global.Path.data, "storage", "storage.db"))
-    db.run("PRAGMA journal_mode = WAL")
+    // busy_timeout FIRST: it governs every statement after it, including the
+    // journal_mode switch below, which takes an exclusive lock and is therefore
+    // the open's most contended statement. Without the timeout already in place,
+    // that switch runs with a zero wait and throws SQLITE_BUSY whenever another
+    // process is opening the file or recovering its WAL.
+    db.run(`PRAGMA busy_timeout = ${BUSY_TIMEOUT}`)
+    // journal_mode is persisted in the file, so re-issuing it spends an
+    // exclusive lock to set what is already set. Read first, write on mismatch.
+    if (db.query<{ journal_mode: string }, []>("PRAGMA journal_mode").get()?.journal_mode !== "wal")
+      db.run("PRAGMA journal_mode = WAL")
     db.run("PRAGMA synchronous = NORMAL")
-    db.run("PRAGMA busy_timeout = 5000")
     db.run("PRAGMA temp_store = MEMORY")
     db.run("PRAGMA cache_size = -8000")
     return db
@@ -39,9 +85,20 @@ export namespace Db {
   // them cannot leave a record half-deleted (an orphan part whose message is
   // gone, a session row with no transcript). The callback runs synchronously
   // inside bun:sqlite's transaction; a caller awaits its statements ready first.
+  //
+  // IMMEDIATE, not bun's default DEFERRED. A DEFERRED transaction that reads
+  // before it writes takes a read snapshot and only asks for the write lock at
+  // its first write; if another process committed in that window the upgrade
+  // fails with SQLITE_BUSY_SNAPSHOT, which the busy handler deliberately does
+  // NOT wait on — the snapshot is stale, so no amount of waiting makes the
+  // statement valid. Declaring the writer intent at BEGIN turns that into
+  // ordinary lock contention, which busy_timeout and `retry` both handle.
+  //
+  // Retrying wraps the WHOLE transaction because that is the only granularity
+  // at which a stale snapshot can be discarded and re-read.
   export async function transaction(fn: () => void) {
     const db = await open()
-    db.transaction(fn)()
+    await retry(() => db.transaction(fn).immediate())
   }
 
   // Reap rows whose owner is gone: parts whose message is deleted, messages whose
@@ -68,16 +125,54 @@ export namespace Db {
       Sessions.listProject("__warm__"),
     ])
     const db = await open()
-    const empty = (table: string) =>
-      db.query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM ${table}) AS n`).get()!.n === 0
-    const parts = empty("message")
-      ? 0
-      : db.run(`DELETE FROM part WHERE message_id NOT IN (SELECT id FROM message)`).changes
-    const messages = empty("session")
-      ? 0
-      : db.run(`DELETE FROM message WHERE session_id NOT IN (SELECT id FROM session)`).changes
-    return { parts, messages }
+    const exists = (sql: string) => db.query<{ n: number }, []>(`SELECT EXISTS(${sql}) AS n`).get()!.n === 1
+    return {
+      parts: exists("SELECT 1 FROM message")
+        ? await reap(
+            db,
+            "SELECT 1 FROM part WHERE NOT EXISTS (SELECT 1 FROM message m WHERE m.id = part.message_id)",
+            `DELETE FROM part WHERE NOT EXISTS (SELECT 1 FROM message m WHERE m.id = part.message_id) LIMIT ${SWEEP_CHUNK}`,
+          )
+        : 0,
+      messages: exists("SELECT 1 FROM session")
+        ? await reap(
+            db,
+            "SELECT 1 FROM message WHERE NOT EXISTS (SELECT 1 FROM session s WHERE s.id = message.session_id)",
+            `DELETE FROM message WHERE NOT EXISTS (SELECT 1 FROM session s WHERE s.id = message.session_id) LIMIT ${SWEEP_CHUNK}`,
+          )
+        : 0,
+    }
   }
+
+  // Rows per sweep statement. The GC is the lowest-priority work in the process,
+  // so what matters is the write lock it holds at once, not how fast it
+  // finishes: SQLite has one global write lock and no way to yield a statement
+  // already running (bun:sqlite exposes no sqlite3_interrupt), so a bounded
+  // statement is the ONLY mechanism that keeps a foreground write from queueing
+  // behind the sweep. 500 rows measures ~100ms per slice against a 1.3GB store.
+  const SWEEP_CHUNK = 500
+
+  // Delete every row `probe` can find, in `remove`-sized slices, yielding to the
+  // event loop between them so foreground writes interleave.
+  //
+  // The probe runs first and, on the overwhelmingly common empty case, is the
+  // ONLY statement executed. It is a read: in WAL a read takes no write lock at
+  // all, so a sweep with nothing to do is invisible to every other writer.
+  async function reap(db: Database, probe: string, remove: string) {
+    if (!db.query<{ n: number }, []>(`SELECT EXISTS(${probe}) AS n`).get()!.n) return 0
+    const statement = db.query<void, []>(remove)
+    let removed = 0
+    while (true) {
+      const changes = await retry(() => statement.run().changes)
+      removed += changes
+      if (changes < SWEEP_CHUNK) return removed
+      await Bun.sleep(SWEEP_PAUSE)
+    }
+  }
+
+  // Idle between slices, so the sweep spends most of its wall-clock time holding
+  // no lock and a foreground writer never waits more than one slice.
+  const SWEEP_PAUSE = 25
 
   // The boot trigger, memoized so a restart's re-import of this module does not
   // re-sweep. Tests call sweepOrphans directly.

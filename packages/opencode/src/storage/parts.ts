@@ -55,9 +55,12 @@ export namespace Parts {
     }
   })
 
+  // Db.retry, because this is the streaming hot path: a lock held by another
+  // process must cost this write latency, never an error that unwinds the turn.
   export async function put(part: MessageV2.Part) {
     const json = JSON.stringify(part)
-    await open().then((q) => q.put.run(part.id, part.messageID, part.sessionID, json, Buffer.byteLength(json)))
+    const q = await open()
+    await Db.retry(() => q.put.run(part.id, part.messageID, part.sessionID, json, Buffer.byteLength(json)))
   }
 
   // The byte total the message cache budgets on, summed here so the caller does
@@ -86,15 +89,18 @@ export namespace Parts {
   }
 
   export async function remove(messageID: string, partID: string) {
-    await open().then((q) => q.remove.run(messageID, partID))
+    const q = await open()
+    await Db.retry(() => q.remove.run(messageID, partID))
   }
 
   export async function removeMessage(messageID: string) {
-    await open().then((q) => q.removeMessage.run(messageID))
+    const q = await open()
+    await Db.retry(() => q.removeMessage.run(messageID))
   }
 
   export async function removeSession(sessionID: string) {
-    await open().then((q) => q.removeSession.run(sessionID))
+    const q = await open()
+    await Db.retry(() => q.removeSession.run(sessionID))
   }
 
   // The prepared DELETE, so Session.remove can drop parts, messages, and the

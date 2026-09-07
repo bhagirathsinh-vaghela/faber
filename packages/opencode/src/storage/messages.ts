@@ -50,18 +50,27 @@ export namespace Messages {
 
   export async function put(message: MessageV2.Info) {
     const json = JSON.stringify(message)
-    await open().then((q) => q.put.run(message.id, message.sessionID, created(message), json, Buffer.byteLength(json)))
+    const q = await open()
+    await Db.retry(() => q.put.run(message.id, message.sessionID, created(message), json, Buffer.byteLength(json)))
   }
 
-  // Read-modify-write under the DB's own atomicity. `merge` sees the stored
-  // message or undefined (first write), matching Storage.reconcile.
+  // Read-modify-write, with `merge` seeing the stored message or undefined
+  // (first write), matching Storage.reconcile.
+  //
+  // The read and the write are ONE IMMEDIATE transaction. Issued as two
+  // autocommit statements they are not atomic together, so a second process
+  // (the staging server a /restart runs) committing between them makes this
+  // write clobber a mutation it never saw. That loss is silent: both writers
+  // report success and the earlier one's fields are simply gone.
   export async function reconcile(messageID: string, merge: (stored: MessageV2.Info | undefined) => MessageV2.Info) {
     const q = await open()
-    const row = q.get.get(messageID)
-    const stored = row ? (JSON.parse(row.json) as MessageV2.Info) : undefined
-    const merged = merge(stored)
-    const json = JSON.stringify(merged)
-    q.put.run(merged.id, merged.sessionID, created(merged), json, Buffer.byteLength(json))
+    let merged!: MessageV2.Info
+    await Db.transaction(() => {
+      const row = q.get.get(messageID)
+      merged = merge(row ? (JSON.parse(row.json) as MessageV2.Info) : undefined)
+      const json = JSON.stringify(merged)
+      q.put.run(merged.id, merged.sessionID, created(merged), json, Buffer.byteLength(json))
+    })
     return merged
   }
 
@@ -83,11 +92,13 @@ export namespace Messages {
   }
 
   export async function remove(messageID: string) {
-    await open().then((q) => q.remove.run(messageID))
+    const q = await open()
+    await Db.retry(() => q.remove.run(messageID))
   }
 
   export async function removeSession(sessionID: string) {
-    await open().then((q) => q.removeSession.run(sessionID))
+    const q = await open()
+    await Db.retry(() => q.removeSession.run(sessionID))
   }
 
   export async function removeSessionQuery() {
