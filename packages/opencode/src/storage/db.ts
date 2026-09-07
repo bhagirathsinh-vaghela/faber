@@ -82,7 +82,13 @@ export namespace Db {
       db.run("PRAGMA journal_mode = WAL")
     db.run("PRAGMA synchronous = NORMAL")
     db.run("PRAGMA temp_store = MEMORY")
-    db.run("PRAGMA cache_size = -8000")
+    // 64MB of page cache. The store is well past a gigabyte, so a smaller cache
+    // holds a fraction of a percent of it and every read walks to disk.
+    db.run("PRAGMA cache_size = -64000")
+    // Let the planner know which indexes are worth using. Without stats it
+    // guesses from row counts alone, and 0x10002 is the mode SQLite documents
+    // for a long-lived connection: gather what is missing, analyze nothing else.
+    db.run("PRAGMA optimize = 0x10002")
     connection = db
     return db
   })
@@ -106,6 +112,15 @@ export namespace Db {
     const db = connection
     connection = undefined
     try {
+      // Drop the timeout first. TRUNCATE waits on the busy handler, so the
+      // 15s an ordinary write is allowed would become 15s of a supervisor's
+      // restart, and the supervisor kills without a timeout of its own.
+      db.run("PRAGMA busy_timeout = 250")
+      // Persist what the planner learned this run, per SQLite's guidance for a
+      // connection about to close. It runs BEFORE the checkpoint because it
+      // WRITES the stats table, and frames added after a checkpoint are exactly
+      // the WAL the checkpoint exists to clear.
+      db.run("PRAGMA optimize")
       db.run("PRAGMA wal_checkpoint(TRUNCATE)")
     } catch {
       // A checkpoint that cannot finish (a reader elsewhere holding frames)

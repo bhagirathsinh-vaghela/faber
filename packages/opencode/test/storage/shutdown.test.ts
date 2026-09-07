@@ -22,9 +22,15 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true })
 })
 
-// Db.close's shape, against a fixture path: checkpoint TRUNCATE, then close.
+// Db.close's shape, against a fixture path. The statement ORDER is part of what
+// is asserted: `optimize` writes the stats table, so running it after the
+// checkpoint would append the frames the checkpoint just cleared.
 const CLOSE = `
-  try { db.run("PRAGMA wal_checkpoint(TRUNCATE)") } catch {}
+  try {
+    db.run("PRAGMA busy_timeout = 250")
+    db.run("PRAGMA optimize")
+    db.run("PRAGMA wal_checkpoint(TRUNCATE)")
+  } catch {}
   db.close()
 `
 
@@ -38,8 +44,12 @@ async function child(body: string) {
      if (db.query("PRAGMA journal_mode").get().journal_mode !== "wal") db.run("PRAGMA journal_mode = WAL")
      db.run("PRAGMA synchronous = NORMAL")
      db.run("CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY, v TEXT)")
+     // An index, and a query that uses it, so PRAGMA optimize has stats worth
+     // writing. Without them it is a no-op and cannot demonstrate the ordering.
+     db.run("CREATE INDEX IF NOT EXISTS t_v ON t (v)")
      const put = db.query("INSERT INTO t (v) VALUES (?)")
      for (let i = 0; i < 2000; i++) put.run("row-" + i)
+     db.query("SELECT * FROM t WHERE v = ?").all("row-1")
      ${body}`,
   )
   const proc = Bun.spawn(["bun", "run", file, db], { stdout: "pipe", stderr: "pipe" })
@@ -54,6 +64,23 @@ const walBytes = () =>
     .catch(() => 0)
 
 describe("Db.close", () => {
+  // A SECOND connection stays open across the exit, which is what makes these
+  // tests discriminate. SQLite checkpoints and deletes the WAL by itself when
+  // the LAST connection closes, so against a lone connection every variant
+  // leaves a zero-byte WAL and the assertion holds no matter what the code
+  // does. Two connections is also the real case: a /restart runs a staging
+  // server beside the live one, and one of them exits first.
+  let other: Database
+
+  beforeEach(() => {
+    new Database(db).run("PRAGMA journal_mode = WAL")
+    other = new Database(db)
+    other.run("PRAGMA busy_timeout = 15000")
+    other.query("SELECT 1").get()
+  })
+
+  afterEach(() => other.close())
+
   test("checkpointing on shutdown leaves no WAL for the next process to recover", async () => {
     await child(CLOSE)
     // TRUNCATE folds every frame back and zeroes the file, so the next open
@@ -66,10 +93,11 @@ describe("Db.close", () => {
     next.close()
   }, 30_000)
 
-  test("exiting without the checkpoint leaves a WAL behind", async () => {
-    // The contrast case, which is what a process that just dies produces. If
-    // this ever stops leaving a WAL, the test above proves nothing.
-    await child("")
+  test("closing without the checkpoint leaves the WAL behind", async () => {
+    // The contrast case: the same exit path minus the checkpoint. Closing a
+    // connection that is not the last one cannot reclaim the WAL, so this is
+    // what a process leaves for the next one without the explicit call.
+    await child("db.close()")
     expect(await walBytes()).toBeGreaterThan(0)
   }, 30_000)
 })
