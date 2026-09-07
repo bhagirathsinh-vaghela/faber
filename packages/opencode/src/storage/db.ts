@@ -60,6 +60,11 @@ export namespace Db {
     }
   }
 
+  // The open connection, for `close` to reach without awaiting `open` (a signal
+  // handler cannot await, and must never force a connection open just to shut
+  // one down). Undefined until something actually opens the database.
+  let connection: Database | undefined
+
   export const open = lazy(async () => {
     // Wait for the storage dir to exist (migrations that fill these tables from
     // the legacy JSON tree run as a standalone command, not here).
@@ -78,8 +83,37 @@ export namespace Db {
     db.run("PRAGMA synchronous = NORMAL")
     db.run("PRAGMA temp_store = MEMORY")
     db.run("PRAGMA cache_size = -8000")
+    connection = db
     return db
   })
+
+  // Fold the WAL back into the database and release the connection, for a stop
+  // the process knows is coming (a signal, which is how the supervisor ends a
+  // server on /restart and /stop).
+  //
+  // A process that just dies leaves its WAL for whoever opens next to recover,
+  // and that recovery takes an exclusive lock — the source of the
+  // SQLITE_BUSY_RECOVERY a concurrent open can hit. Checkpointing here means
+  // the next process opens a database that needs no recovery.
+  //
+  // TRUNCATE rather than PASSIVE: PASSIVE gives up when a reader holds a frame
+  // it would remove, and this is the one moment worth insisting, since nothing
+  // is going to run afterwards. Synchronous throughout, because a signal
+  // handler cannot await, and it never opens a connection that was not already
+  // open — a CLI that touched no storage has nothing to checkpoint.
+  export function close() {
+    if (!connection) return
+    const db = connection
+    connection = undefined
+    try {
+      db.run("PRAGMA wal_checkpoint(TRUNCATE)")
+    } catch {
+      // A checkpoint that cannot finish (a reader elsewhere holding frames)
+      // leaves the WAL for the next open to recover, which is exactly the
+      // behavior without this call. Never block the exit on it.
+    }
+    db.close()
+  }
 
   // Run writes as one atomic unit on the shared connection, so a crash between
   // them cannot leave a record half-deleted (an orphan part whose message is

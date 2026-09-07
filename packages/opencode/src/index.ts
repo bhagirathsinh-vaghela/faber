@@ -3,6 +3,7 @@ import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
 import { Log } from "./util/log"
+import { Db } from "./storage/db"
 import { AuthCommand } from "./cli/cmd/auth"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
@@ -54,6 +55,16 @@ process.on("uncaughtException", (e) => {
 // window is closed, the shell sends SIGHUP but the event loop keeps running).
 for (const signal of ["SIGHUP", "SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
+    // A signal is the one stop the process sees coming, and it is how the
+    // supervisor ends a server on /restart and /stop. Fold the WAL back in
+    // first, so the next process opens a database needing no recovery. Both
+    // calls are synchronous: process.exit runs no pending microtask, so
+    // anything awaited here would be dropped.
+    try {
+      Db.close()
+    } catch (e) {
+      Log.Default.error("shutdown", { e: describe(e) })
+    }
     process.exit(0)
   })
 }
