@@ -130,6 +130,32 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
   // commits; a bare Control keyup on a non-switcher open never navigates.
   let listRef: ListRef | undefined
   const [highlight, setHighlight] = createSignal<BackgroundSubagent | undefined>(items()[0])
+
+  // The list has no search box and no focused row on open, so nothing inside it
+  // would receive arrow/Enter keys. Forward them from the window into the list's
+  // key handler so the dialog is keyboard-navigable the moment it opens, without
+  // a search input. A fresh KeyboardEvent is forwarded (not the original) so the
+  // list's own preventDefault path runs uninhibited. When the parent button (a
+  // real <button>, reached with ArrowLeft) holds focus, its own keys are left to
+  // the browser — Enter fires its click natively.
+  const parentButton = () => document.querySelector<HTMLElement>('[data-slot="tasks-parent"]')
+  const forward = (key: string) => listRef?.onKeyDown(new KeyboardEvent("keydown", { key, bubbles: true }))
+  const navKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "Enter"]
+  const onKey = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
+    if (document.activeElement === parentButton()) return
+    if (navKeys.includes(event.key) || event.key.toLowerCase() === "x") {
+      // stopPropagation so a list-item button that happens to hold focus (e.g.
+      // reached by Tab) does not ALSO run its own bubble-phase handler on the
+      // same press and act twice — this forward is the single source of truth.
+      event.preventDefault()
+      event.stopPropagation()
+      forward(event.key)
+    }
+  }
+  onMount(() => window.addEventListener("keydown", onKey, true))
+  onCleanup(() => window.removeEventListener("keydown", onKey, true))
+
   if (props.switcher) {
     let armed = true
     const cycle = (event: KeyboardEvent) => {
