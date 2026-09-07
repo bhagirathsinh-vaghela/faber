@@ -353,31 +353,24 @@
      hover to summon anything, so this block is skipped there and every
      affordance stays visible. A speaking box holds its button, which is the only
      thing here that outlives the pointer. */
+  /* Fine pointer: controls hidden at rest, hover reveals them all. */
   @media (hover: hover) {
     [data-slot="message-box-revert"],
     [data-slot="box-speak"],
     [data-slot="box-copy"],
     [data-slot="collapsible-arrow"] {
       opacity: 0;
+      transition: opacity 0.15s ease;
     }
 
-    /* The timestamp is summoned like the controls rather than standing at rest:
-       a resting row shows the index alone, which is what identifies the block.
-       It leaves the layout entirely so the index takes the row's full height
-       back and reads at its own size, instead of staying squeezed into half a
-       row for a second line that is not there. */
     [data-slot="transcript-card-time"] {
       display: none;
     }
 
-    /* One line at rest, so the stamp drops the two-line tightening. */
     [data-slot="transcript-card-stamp"] {
       line-height: var(--line-height-large);
     }
 
-    /* The LEFT cluster is summoned by reaching for IT and nothing else: its
-       contents appear where the eye already is, so the rest of the row must not
-       trigger them. */
     [data-slot="transcript-card-identity"]:hover {
       [data-slot="transcript-card-time"] {
         display: block;
@@ -388,11 +381,6 @@
       }
     }
 
-    /* The RIGHT cluster answers to the row as well as to itself: its controls act
-       on the whole card, so being anywhere on the header is reason enough to
-       offer them, and they are the target a pointer crossing the row is most
-       likely heading for. Focus is not consulted — a click leaves focus on the
-       button it pressed, which would strand them visible after the pointer left. */
     &:hover {
       [data-slot="message-box-revert"],
       [data-slot="box-speak"],
@@ -404,6 +392,21 @@
 
     [data-slot="box-speak"][data-speaking] {
       opacity: 1;
+    }
+  }
+
+  /* Coarse pointer (touch): a collapsed card shows only the chevron. The
+     secondary actions (copy, speak, revert) are removed from the layout
+     entirely so they take no space on narrow screens. They appear when the
+     card is expanded, since the user is already engaged with that content.
+     The chevron stays because it is the primary toggle affordance. */
+  @media (hover: none) {
+    [data-component="collapsible"]:not([data-expanded]) & {
+      [data-slot="message-box-revert"],
+      [data-slot="box-speak"],
+      [data-slot="box-copy"] {
+        display: none;
+      }
     }
   }
 
