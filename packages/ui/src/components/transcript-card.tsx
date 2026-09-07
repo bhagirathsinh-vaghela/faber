@@ -86,15 +86,58 @@ export interface TranscriptCardProps {
 // in the theme, so naming the family is enough for the base to reach all three.
 export type CardAccent = "user" | "assistant" | "subagent" | "job" | "tool"
 
-// The tokens the box reads, derived from the accent so a card never assembles
-// them itself. A family supplies its own border and fill; a status colour has
-// neither, so only the accent is pointed and the box derives the rest from it.
-function accentTokens(accent: CardAccent, tone?: string) {
+// Per-tool accent: a tool can name its own token, or fall back to its
+// family's. The family is the default so the transcript is scannable by
+// action type; a per-tool entry overrides it when a card needs to stand
+// out from its siblings.
+type ToolFamily = "readonly" | "write" | "execute" | "agent"
+const TOOL_ACCENTS: Record<string, string> = {}
+const TOOL_FAMILIES: Record<string, ToolFamily> = {
+  read: "readonly",
+  grep: "readonly",
+  glob: "readonly",
+  list: "readonly",
+  codesearch: "readonly",
+  lsp: "readonly",
+  websearch: "readonly",
+  webfetch: "readonly",
+  mcp_search: "readonly",
+  todoread: "readonly",
+  reasoning: "readonly",
+  write: "write",
+  edit: "write",
+  patch: "write",
+  apply_patch: "write",
+  multiedit: "write",
+  batch: "write",
+  bash: "execute",
+  mcp: "execute",
+  skill: "agent",
+  todowrite: "agent",
+  question: "agent",
+  plan_enter: "agent",
+  plan_exit: "agent",
+  agent: "agent",
+  system_notice: "agent",
+}
+
+function toolAccent(tool?: string): string | undefined {
+  if (!tool) return undefined
+  const direct = TOOL_ACCENTS[tool]
+  if (direct) return direct
+  const family = TOOL_FAMILIES[tool]
+  if (family) return `var(--box-accent-tool-${family})`
+  return undefined
+}
+
+function accentTokens(accent: CardAccent, tone?: string, tool?: string) {
   if (tone) return { "--box-accent-tool": tone }
+  const resolved = accent === "tool" ? toolAccent(tool) : undefined
+  const base = resolved ?? `var(--box-accent-${accent})`
   return {
-    "--box-accent-tool": `var(--box-accent-${accent})`,
-    "--box-border-tool": `var(--box-border-${accent})`,
-    "--box-bg-tool": `var(--box-bg-${accent})`,
+    "--box-accent-tool": base,
+    "--box-border-tool": `color-mix(in srgb, ${base} 80%, var(--box-backdrop, #010409))`,
+    "--box-bg-tool": `color-mix(in srgb, ${base} 7%, var(--box-backdrop, #010409))`,
   }
 }
 
@@ -162,7 +205,7 @@ export function TranscriptCard(props: TranscriptCardProps) {
             </Show>
           </div>
         </Show>
-        <Icon name={props.icon} size="small" />
+        <Icon name={props.icon} size="normal" />
         <span
           data-slot="transcript-card-title"
           classList={{ [props.trigger.titleClass ?? ""]: !!props.trigger.titleClass }}
@@ -205,7 +248,7 @@ export function TranscriptCard(props: TranscriptCardProps) {
     <Collapsible
       open={open()}
       onOpenChange={handleOpenChange}
-      style={accentTokens(props.accent ?? "tool", props.tone)}
+      style={accentTokens(props.accent ?? "tool", props.tone, props.tool)}
       data-accent={props.accent ?? "tool"}
       data-body={props.bare ? "bare" : undefined}
     >

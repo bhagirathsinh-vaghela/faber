@@ -10,7 +10,6 @@
   > [data-slot="collapsible-content"] {
     max-height: var(--transcript-card-body-max-height, none);
     overflow-y: var(--transcript-card-body-overflow, visible);
-    overscroll-behavior: contain;
   }
 
   /* A bare body brings no padded slot of its own (a tool body supplies one), so
@@ -180,22 +179,16 @@
   }
 
 
-  /* A card whose accent IS its identity (a message, a subagent, a job) wears it
-     across the whole header: index, icon, label and time read as one coloured
-     line. A tool card names no family, so it stays neutral and its title reads
-     as a name rather than a status. One rule, keyed on the accent every card
-     already declares — never on a per-card flag a call site can forget.
-     The icon-svg is scoped to the IDENTITY cluster so the action buttons
-     (copy, speak, chevron) keep their own icon-button colour. */
-  [data-component="collapsible"]:not([data-accent="tool"]) & {
-    [data-slot="transcript-card-title"],
-    [data-slot="transcript-card-block-number"] {
-      color: var(--box-accent-tool);
-    }
+  /* Every card wears its accent across the header: index, icon, and title read
+     as one coloured line. The icon-svg is scoped to the identity cluster so
+     action buttons (copy, speak, chevron) keep their own colour. */
+  [data-slot="transcript-card-title"],
+  [data-slot="transcript-card-block-number"] {
+    color: var(--box-accent-tool);
+  }
 
-    [data-slot="transcript-card-identity"] [data-slot="icon-svg"] {
-      color: var(--box-accent-tool);
-    }
+  [data-slot="transcript-card-identity"] [data-slot="icon-svg"] {
+    color: var(--box-accent-tool);
   }
 
   /* The left cluster: the jump control and the index/time stamp side by side, in
@@ -222,7 +215,6 @@
   [data-slot="transcript-card-block-number"] {
     font-size: 11px;
     font-weight: 600;
-    color: var(--text-weak);
   }
 
   [data-slot="transcript-card-time"] {
@@ -285,7 +277,6 @@
     font-weight: 600;
     line-height: var(--line-height-large);
     letter-spacing: 0.04em;
-    color: var(--text-base);
 
     &.capitalize {
       text-transform: capitalize;

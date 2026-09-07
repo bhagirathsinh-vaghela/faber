@@ -47,19 +47,22 @@
      unclaimed here: user is purple, assistant green, subagent amber. The `info`
      token is NOT it, despite the name, since it resolves to a brown a shade
      off the subagent amber. */
-  --box-accent-job: var(--syntax-primitive, #79c0ff);
+  --box-accent-job: var(--box-accent-tool-execute, #f472b6);
   /* The job's live INDICATOR (busy bar, spinner, overview dot) carries a gold
      yellow instead of the box accent above: an indicator sits beside the amber
      subagent indicator, where the gold reads as kin while staying a distinct,
      brighter step, whereas the result BOX keeps the accent above. */
-  --box-indicator-job: var(--solaris-dark-9, #fcd53a);
+  --box-indicator-job: var(--box-accent-tool-execute, #f472b6);
   --box-accent-tool: var(--ink-dark-11, #b1b7b7);
 
-  /* Explicit per-box border + fill tokens. Defaults reproduce the derived
-     accent-box look (border = accent 80% / fill = accent 7%, mixed into the
-     solid panel backdrop so the fill stays opaque and flicker-free). Set any
-     of these in Customization to override border and background independently
-     of the accent. */
+  /* Tool-family accents: each action type carries its own colour so the
+     transcript is scannable by what each card DOES, not just who sent it.
+     Brightness-matched (~0.30 relative luminance) so no family shouts. */
+  --box-accent-tool-readonly: #5b99d4;
+  --box-accent-tool-write: #c9a035;
+  --box-accent-tool-execute: #f472b6;
+  --box-accent-tool-agent: #d4884e;
+
   --box-backdrop: var(--color-background-strong, #010409);
   --box-accent-user: var(--color-icon-agent-build-base);
   --box-border-user: color-mix(in srgb, var(--box-accent-user) 80%, var(--box-backdrop));
