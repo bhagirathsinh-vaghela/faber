@@ -18,6 +18,7 @@ import { createDictation, dictationActive, dictationTarget, registerDictationTar
 import { overlayActive } from "@/utils/overlay"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
+import { actsOnFirstPress } from "@/components/question-panel-guard"
 import { MicIcon } from "@/components/mic-icon"
 import { usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -525,11 +526,10 @@ function Panel(props: {
   let swallowClick = false
   function guardMouseDown(event: MouseEvent) {
     if (focused()) return
-    // The collapse header always acts, focused or not — it never picks a choice,
-    // so it must not be swallowed by the defocused-press guard.
-    if ((event.target as HTMLElement | null)?.closest("[data-question-collapse]")) return
-    // Defocused press: take focus for the panel, not the button, and remember
-    // to swallow the click this press will generate so no choice is picked.
+    if (actsOnFirstPress(event.target as HTMLElement | null)) return
+    // Defocused press on an option row: take focus for the panel, not the button,
+    // and remember to swallow the click this press will generate so no choice is
+    // picked.
     event.preventDefault()
     event.stopPropagation()
     swallowClick = true
