@@ -257,7 +257,10 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
           .then(() => null)
           .catch((e: Error) => e)
         expect(err).toBeInstanceOf(Error)
-        expect(err!.message).toContain("must read file")
+        expect(err!.message).toContain("before editing it")
+        // The no-entry message must NOT read as the content-changed error; the
+        // two are distinct signals (never read vs. changed under us).
+        expect(err!.message).not.toContain("modified since it was last read")
       },
     })
   })

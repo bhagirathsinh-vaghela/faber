@@ -331,7 +331,7 @@ describe("tool.apply_patch freeform", () => {
         // Call the tool directly (not the seedReads helper) so the read-first
         // guard is exercised. The file must be untouched after the refusal.
         const tool = await ApplyPatchTool.init()
-        await expect(tool.execute({ patchText }, ctx)).rejects.toThrow("before overwriting it")
+        await expect(tool.execute({ patchText }, ctx)).rejects.toThrow("before editing it")
         expect(await fs.readFile(target, "utf-8")).toBe("line1\nline2\n")
       },
     })

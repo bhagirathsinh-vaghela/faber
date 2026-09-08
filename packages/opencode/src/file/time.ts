@@ -128,7 +128,15 @@ export namespace FileTime {
     }
 
     const entry = get(sessionID, filepath)
-    if (!entry) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
+    // No read on record is the EXPECTED state after a compaction dropped the
+    // earlier Read from context, or a restart the model does not know about. It
+    // is not a mistake by the model, so the message is a plain precondition —
+    // read the file, then retry — not an accusation. The model recovers by
+    // reading; the wording is what stops that recovery reading as a failure.
+    if (!entry)
+      throw new Error(
+        `Read ${filepath} before editing it. Its earlier contents are no longer in context (a summary or restart dropped them), so read it again first, then retry this edit.`,
+      )
     const stats = await Bun.file(filepath).stat()
     // Compare against the file's mtime when it was read, not the wall-clock read
     // time. The read-mtime is durable (persisted on the Read tool part and
