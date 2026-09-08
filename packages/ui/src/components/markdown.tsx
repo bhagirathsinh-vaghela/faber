@@ -357,9 +357,10 @@ export function Markdown(
     class?: string
     classList?: Record<string, boolean>
     complete?: boolean
+    block?: boolean
   },
 ) {
-  const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList", "complete"])
+  const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList", "complete", "block"])
   const i18n = useI18n()
   const theme = useCodeTheme()
   const [root, setRoot] = createSignal<HTMLDivElement>()
@@ -425,6 +426,7 @@ export function Markdown(
   return (
     <div
       data-component="markdown"
+      data-block={local.block ? "" : undefined}
       classList={{
         ...(local.classList ?? {}),
         [local.class ?? ""]: !!local.class,
@@ -472,7 +474,7 @@ export function StreamingMarkdown(
   return (
     <Index each={blocks()}>
       {(block, index) => (
-        <Markdown {...others} text={block()} complete={local.complete || index < blocks().length - 1} />
+        <Markdown {...others} block text={block()} complete={local.complete || index < blocks().length - 1} />
       )}
     </Index>
   )

@@ -9,15 +9,39 @@
   font-weight: var(--text-base-weight);
   line-height: var(--line-height-large);
 
-  /* Spacing for flow — the markdown renderer may wrap blocks in a single div,
-     so the first/last-child reset reaches one level deeper to cover that. */
-  > *:first-child,
-  > *:first-child > *:first-child {
-    margin-top: 0;
+  /* Spacing for flow. A whole message rendered as ONE container (static text, a
+     question label) trims its own outer edges here. A streaming message is split
+     into one [data-block] root per top-level block, where this per-root reset
+     would instead zero EVERY block's outer margins and collapse the trailing
+     margin that separates each block from the next — so it is disabled for a
+     block root (&:not([data-block])) and re-applied across the whole run below,
+     at the true first/last edges only. The reset reaches one level deeper
+     because the renderer may wrap a block's content in a single div. */
+  &:not([data-block]) {
+    > *:first-child,
+    > *:first-child > *:first-child {
+      margin-top: 0;
+    }
+    > *:last-child,
+    > *:last-child > *:last-child {
+      margin-bottom: 0;
+    }
   }
-  > *:last-child,
-  > *:last-child > *:last-child {
-    margin-bottom: 0;
+  /* First block of the run: no [data-block] precedes it. Last block: no
+     [data-block] follows it (a trailing non-block sibling like the assistant
+     footer must not be mistaken for the last block, so match on the presence of
+     a following block rather than on :last-child / :last-of-type). */
+  &[data-block]:not([data-block] ~ [data-block]) {
+    > *:first-child,
+    > *:first-child > *:first-child {
+      margin-top: 0;
+    }
+  }
+  &[data-block]:not(:has(~ [data-block])) {
+    > *:last-child,
+    > *:last-child > *:last-child {
+      margin-bottom: 0;
+    }
   }
 
   /* Headings: colored, bold, sized by level (all themable) */
