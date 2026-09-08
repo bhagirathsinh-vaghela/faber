@@ -10,6 +10,12 @@
   > [data-slot="collapsible-content"] {
     max-height: var(--transcript-card-body-max-height, none);
     overflow-y: var(--transcript-card-body-overflow, visible);
+    /* The app shell is select-none by default (layout.tsx), so a card's content
+       claws selection back for itself the way message-part and session-turn do
+       for theirs. The body is real content to copy; the header summary/args
+       stand in for it, so they select too. The title stays chrome. */
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   /* A bare body brings no padded slot of its own (a tool body supplies one), so
@@ -157,6 +163,16 @@
   [data-slot="transcript-card-title"],
   [data-slot="transcript-card-block-number"] {
     color: var(--box-accent-tool);
+  }
+
+  /* The summary and args are the card's actual content shown in the header — a
+     collapsed prompt reads its whole text here — so they select even though
+     they sit inside the select-none trigger. The toggle still fires on click; a
+     deliberate drag selects. */
+  [data-slot="transcript-card-subtitle"],
+  [data-slot="transcript-card-arg"] {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   [data-slot="transcript-card-identity"] [data-slot="icon-svg"] {
