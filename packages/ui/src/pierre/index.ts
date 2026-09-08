@@ -1,7 +1,17 @@
-import { DiffLineAnnotation, FileContents, FileDiffOptions, type SelectedLineRange } from "@pierre/diffs"
+import { DiffLineAnnotation, FileContents, FileDiffOptions, FileOptions, type SelectedLineRange } from "@pierre/diffs"
+import { type PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 import { ComponentProps } from "solid-js"
+import { ROOT_SELECTOR } from "../components/diff-marker"
 
-export type DiffProps<T = {}> = FileDiffOptions<T> & {
+// Pierre parameterizes its option and preload types by <LAnnotation, Caret>.
+// Nothing here runs the editor, so Caret is always the class default (undefined)
+// and these aliases carry that, keeping the second argument in one place rather
+// than at every use.
+export type DiffOptions<T> = FileDiffOptions<T, undefined>
+export type CodeOptions<T> = FileOptions<T, undefined>
+export type FileDiffPreload<T> = PreloadMultiFileDiffResult<T, undefined>
+
+export type DiffProps<T = {}> = DiffOptions<T> & {
   before: FileContents
   after: FileContents
   annotations?: DiffLineAnnotation<T>[]
@@ -12,8 +22,20 @@ export type DiffProps<T = {}> = FileDiffOptions<T> & {
   classList?: ComponentProps<"div">["classList"]
 }
 
+// The root-selector contract lives in diff-marker so the CSS here and the DOM
+// walks there cannot disagree about what a diff root is.
+const ROOT = ROOT_SELECTOR
+
+// The GitHub palette is scoped to DIFF only, never ROOT. ROOT is
+// :is([data-diff], [data-file]) — [data-file] is the plain File viewer that a
+// file read and a file preview also render through, and recoloring it would
+// leak GitHub's background onto non-diff code. Edit, apply_patch, and Write all
+// render through the diff component ([data-diff]), so DIFF covers exactly the
+// three surfaces meant to look like GitHub and nothing else.
+const DIFF = "[data-diff]"
+
 const unsafeCSS = `
-[data-diffs] {
+${ROOT} {
   --diffs-bg: light-dark(var(--diffs-light-bg), var(--diffs-dark-bg));
   --diffs-bg-buffer: var(--diffs-bg-buffer-override, light-dark( color-mix(in lab, var(--diffs-bg) 92%, var(--diffs-mixer)), color-mix(in lab, var(--diffs-bg) 92%, var(--diffs-mixer))));
   --diffs-bg-hover: var(--diffs-bg-hover-override, light-dark( color-mix(in lab, var(--diffs-bg) 97%, var(--diffs-mixer)), color-mix(in lab, var(--diffs-bg) 91%, var(--diffs-mixer))));
@@ -27,11 +49,11 @@ const unsafeCSS = `
   --diffs-bg-deletion: var(--diffs-bg-deletion-override, light-dark( color-mix(in lab, var(--diffs-bg) 98%, var(--diffs-deletion-base)), color-mix(in lab, var(--diffs-bg) 92%, var(--diffs-deletion-base))));
   --diffs-bg-deletion-number: var(--diffs-bg-deletion-number-override, light-dark( color-mix(in lab, var(--diffs-bg) 91%, var(--diffs-deletion-base)), color-mix(in lab, var(--diffs-bg) 85%, var(--diffs-deletion-base))));
   --diffs-bg-deletion-hover: var(--diffs-bg-deletion-hover-override, light-dark( color-mix(in lab, var(--diffs-bg) 80%, var(--diffs-deletion-base)), color-mix(in lab, var(--diffs-bg) 75%, var(--diffs-deletion-base))));
-  --diffs-bg-deletion-emphasis: var(--diffs-bg-deletion-emphasis-override, light-dark(rgb(from var(--diffs-deletion-base) r g b / 0.7), rgb(from var(--diffs-deletion-base) r g b / 0.1)));
+  --diffs-bg-deletion-emphasis: var(--diffs-bg-deletion-emphasis-override, light-dark(rgb(from var(--diffs-deletion-base) r g b / 0.4), rgb(from var(--diffs-deletion-base) r g b / 0.4)));
   --diffs-bg-addition: var(--diffs-bg-addition-override, light-dark( color-mix(in lab, var(--diffs-bg) 98%, var(--diffs-addition-base)), color-mix(in lab, var(--diffs-bg) 92%, var(--diffs-addition-base))));
   --diffs-bg-addition-number: var(--diffs-bg-addition-number-override, light-dark( color-mix(in lab, var(--diffs-bg) 91%, var(--diffs-addition-base)), color-mix(in lab, var(--diffs-bg) 85%, var(--diffs-addition-base))));
   --diffs-bg-addition-hover: var(--diffs-bg-addition-hover-override, light-dark( color-mix(in lab, var(--diffs-bg) 80%, var(--diffs-addition-base)), color-mix(in lab, var(--diffs-bg) 70%, var(--diffs-addition-base))));
-  --diffs-bg-addition-emphasis: var(--diffs-bg-addition-emphasis-override, light-dark(rgb(from var(--diffs-addition-base) r g b / 0.07), rgb(from var(--diffs-addition-base) r g b / 0.1)));
+  --diffs-bg-addition-emphasis: var(--diffs-bg-addition-emphasis-override, light-dark(rgb(from var(--diffs-addition-base) r g b / 0.4), rgb(from var(--diffs-addition-base) r g b / 0.4)));
   --diffs-selection-base: var(--surface-warning-strong);
   --diffs-selection-border: var(--border-warning-base);
   --diffs-selection-number-fg: #1c1917;
@@ -44,7 +66,7 @@ const unsafeCSS = `
   --diffs-bg-selection-text: rgb(from var(--surface-warning-strong) r g b / 0.2);
 }
 
-:host([data-color-scheme='dark']) [data-diffs] {
+:host([data-color-scheme='dark']) ${ROOT} {
   --diffs-selection-number-fg: #fdfbfb;
   --diffs-bg-selection: var(--diffs-bg-selection-override, rgb(from var(--solaris-dark-6) r g b / 0.65));
   --diffs-bg-selection-number: var(
@@ -53,7 +75,7 @@ const unsafeCSS = `
   );
 }
 
-[data-diffs] ::selection {
+${ROOT} ::selection {
   background-color: var(--diffs-bg-selection-text);
 }
 
@@ -65,34 +87,32 @@ const unsafeCSS = `
   background-color: rgb(from var(--surface-warning-strong) r g b / 0.55);
 }
 
-[data-diffs] [data-comment-selected]:not([data-selected-line]) [data-column-content] {
+/* pierre marks a commented row on both columns: the content row ([data-line])
+   and the gutter item ([data-column-number]). Each carries data-comment-selected
+   directly, so the tint targets the marked element, not a descendant. */
+${ROOT} [data-line][data-comment-selected]:not([data-selected-line]) {
   box-shadow: inset 0 0 0 9999px var(--diffs-bg-selection);
 }
 
-[data-diffs] [data-comment-selected]:not([data-selected-line]) [data-column-number] {
+${ROOT} [data-column-number][data-comment-selected]:not([data-selected-line]) {
   box-shadow: inset 0 0 0 9999px var(--diffs-bg-selection-number);
   color: var(--diffs-selection-number-fg);
 }
 
-[data-diffs] [data-selected-line] {
+${ROOT} [data-selected-line] {
   background-color: var(--diffs-bg-selection);
   box-shadow: inset 2px 0 0 var(--diffs-selection-border);
 }
 
-[data-diffs] [data-selected-line] [data-column-number] {
+/* pierre sets data-selected-line on the gutter item itself, which is the
+   [data-column-number] element — a compound match, not a descendant. */
+${ROOT} [data-column-number][data-selected-line] {
   background-color: var(--diffs-bg-selection-number);
   color: var(--diffs-selection-number-fg);
 }
 
-[data-diffs] [data-line-type='context'][data-selected-line] [data-column-number],
-[data-diffs] [data-line-type='context-expanded'][data-selected-line] [data-column-number],
-[data-diffs] [data-line-type='change-addition'][data-selected-line] [data-column-number],
-[data-diffs] [data-line-type='change-deletion'][data-selected-line] [data-column-number] {
-  color: var(--diffs-selection-number-fg);
-}
-
 /* The deletion word-diff emphasis is stronger than additions; soften it while selected so the selection highlight reads consistently. */
-[data-diffs] [data-line-type='change-deletion'][data-selected-line] {
+${ROOT} [data-line-type='change-deletion'][data-selected-line] {
   --diffs-bg-deletion-emphasis: light-dark(
     rgb(from var(--diffs-deletion-base) r g b / 0.07),
     rgb(from var(--diffs-deletion-base) r g b / 0.1)
@@ -100,7 +120,7 @@ const unsafeCSS = `
 }
 
 [data-diffs-header],
-[data-diffs] {
+${ROOT} {
   [data-separator-wrapper] {
     margin: 0 !important;
     border-radius: 0 !important;
@@ -139,40 +159,60 @@ const unsafeCSS = `
 }
 
 /* GitHub diff palette, hardcoded so diffs render identically in every app
-   theme. This overrides pierre's theme-derived diff colors via its documented
-   -override hooks plus the *-base seeds, keeping the library otherwise
-   untouched. Dark/light is keyed off pierre's own [data-color-scheme] host
-   attribute (set from the app theme), NOT light-dark() — light-dark() follows
-   the OS color-scheme, which is why context rows previously washed out. Solid
-   row backgrounds at rest (no faint color-mix blend). */
-[data-diffs] {
-  --diffs-addition-base: #1a7f37;
-  --diffs-deletion-base: #cf222e;
-  --diffs-bg-context-override: #f6f8fa;
-  --diffs-bg-buffer-override: #f6f8fa;
-  --diffs-bg-hover-override: #eef1f4;
-  --diffs-bg-addition-override: #dafbe1;
-  --diffs-bg-addition-number-override: #aceebb;
-  --diffs-bg-addition-hover-override: #aceebb;
-  --diffs-bg-deletion-override: #ffebe9;
-  --diffs-bg-deletion-number-override: #ffd7d5;
-  --diffs-bg-deletion-hover-override: #ffd7d5;
+   theme. Values are GitHub's own Primer diff tokens, read live from a GitHub
+   dark/light diff. Dark/light is keyed off pierre's own [data-color-scheme]
+   host attribute (set from the app theme), NOT light-dark() — light-dark()
+   follows the OS color-scheme, which washes out context rows.
+
+   The washes are painted directly on the row cells here rather than through
+   pierre's --diffs-bg-*-override vars: pierre does not assign those vars to a
+   row's background, so override vars alone leave every change row transparent.
+   Addition/deletion lines get GitHub's translucent line color; the gutter
+   number cell gets the stronger num color; the word-diff emphasis keeps the
+   0.4-alpha word color. A whole new file is rendered as an all-additions diff
+   (empty before), so its rows carry change-addition and wash the same way. */
+${DIFF},
+${DIFF} [data-code] {
+  background-color: var(--diffs-gh-bg);
 }
-:host([data-color-scheme='dark']) [data-diffs] {
-  --diffs-addition-base: #3fb950;
-  --diffs-deletion-base: #f85149;
-  --diffs-bg-context-override: #010409;
-  --diffs-bg-buffer-override: #010409;
-  --diffs-bg-hover-override: #0d1117;
-  --diffs-bg-addition-override: #033a16;
-  --diffs-bg-addition-number-override: #05471c;
-  --diffs-bg-addition-hover-override: #04521f;
-  --diffs-bg-deletion-override: #67060c;
-  --diffs-bg-deletion-number-override: #8b1116;
-  --diffs-bg-deletion-hover-override: #7a0d12;
+${DIFF} {
+  --diffs-gh-bg: #ffffff;
+  --diffs-gh-add-line: #e6ffec;
+  --diffs-gh-add-num: #ccffd8;
+  --diffs-gh-add-word: #abf2bc;
+  --diffs-gh-del-line: #ffebe9;
+  --diffs-gh-del-num: #ffd7d5;
+  --diffs-gh-del-word: rgb(255 129 130 / 0.4);
+}
+:host([data-color-scheme='dark']) ${DIFF} {
+  --diffs-gh-bg: #0d1117;
+  --diffs-gh-add-line: rgb(46 160 67 / 0.15);
+  --diffs-gh-add-num: rgb(63 185 80 / 0.3);
+  --diffs-gh-add-word: rgb(46 160 67 / 0.4);
+  --diffs-gh-del-line: rgb(248 81 73 / 0.1);
+  --diffs-gh-del-num: rgb(248 81 73 / 0.3);
+  --diffs-gh-del-word: rgb(248 81 73 / 0.4);
+}
+
+${DIFF} [data-line-type='change-addition'] {
+  background-color: var(--diffs-gh-add-line);
+}
+${DIFF} [data-line-type='change-deletion'] {
+  background-color: var(--diffs-gh-del-line);
+}
+${DIFF} [data-column-number][data-line-type='change-addition'] {
+  background-color: var(--diffs-gh-add-num);
+}
+${DIFF} [data-column-number][data-line-type='change-deletion'] {
+  background-color: var(--diffs-gh-del-num);
+}
+
+${DIFF} {
+  --diffs-bg-addition-emphasis: var(--diffs-gh-add-word);
+  --diffs-bg-deletion-emphasis: var(--diffs-gh-del-word);
 }`
 
-export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"], theme = "github-dark") {
+export function createDefaultOptions<T>(style: DiffOptions<T>["diffStyle"], theme = "github-dark") {
   return {
     theme,
     themeType: "system",
@@ -182,9 +222,8 @@ export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"], 
     diffIndicators: "bars",
     disableBackground: false,
     expansionLineCount: 20,
-    lineDiffType: style === "split" ? "word-alt" : "none",
+    lineDiffType: "word-alt",
     maxLineDiffLength: 1000,
-    maxLineLengthForHighlighting: 1000,
     disableFileHeader: true,
     unsafeCSS,
     // hunkSeparators(hunkData: HunkData) {

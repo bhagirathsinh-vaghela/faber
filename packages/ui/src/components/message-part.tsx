@@ -32,7 +32,6 @@ import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/
 import { jobAccent, jobLabel } from "../util/job-status"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
-import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
 import { Dialog } from "./dialog"
 import { useI18n } from "../context/i18n"
@@ -48,7 +47,6 @@ import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
 import { findLast } from "@opencode-ai/util/array"
 import { getDirectory as _getDirectory, getFilename, truncateMiddle } from "@opencode-ai/util/path"
-import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { CopyButton } from "./copy-button"
 import { SpeakButton } from "./speak-button"
@@ -1769,7 +1767,7 @@ ToolRegistry.register({
   name: "write",
   render(props) {
     const i18n = useI18n()
-    const codeComponent = useCodeComponent()
+    const diffComponent = useDiffComponent()
     const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
     const filename = () => getFilename(props.input.filePath ?? "")
     return (
@@ -1787,13 +1785,9 @@ ToolRegistry.register({
           <Match when={props.input.content}>
             <div data-component="write-content">
               <Dynamic
-                component={codeComponent}
-                file={{
-                  name: props.input.filePath,
-                  contents: props.input.content,
-                  cacheKey: checksum(props.input.content),
-                }}
-                overflow="scroll"
+                component={diffComponent}
+                before={{ name: props.input.filePath, contents: "" }}
+                after={{ name: props.input.filePath, contents: props.input.content }}
               />
             </div>
           </Match>
