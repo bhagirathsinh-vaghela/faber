@@ -299,21 +299,39 @@ function CopyButton(props: { labels: CopyLabels }) {
   )
 }
 
-// An inline <code> pill with click-to-copy. NO wrapper element — the pill is a
-// bare inline <code>, so it keeps the exact GitHub-style pill layout and takes
-// the click directly. The hover hint is a CSS-only bubble driven by the
-// `data-tooltip` attribute (see markdown.css); on click the pill copies and the
-// hint flips to "Copied" briefly. The pill's own text NEVER changes.
-function InlineCode(props: { children: JSX.Element; text: string; labels: CopyLabels }) {
-  const [done, setDone] = createSignal(false)
-  const onClick = async () => {
+// A short-lived "Copied" bubble shown at the click point after a copy. It is a
+// manual popover, so the browser paints it in the top layer: no ancestor's
+// overflow can clip it and no stacking context can occlude it, which a bubble
+// positioned inside the scrolling transcript card could not guarantee. It is
+// triggered by the click itself, so it behaves identically under a finger and a
+// mouse. Positioned at the pointer, fades, and removes itself.
+function flashCopied(x: number, y: number, label: string) {
+  if (isServer) return
+  const bubble = document.createElement("div")
+  bubble.setAttribute("popover", "manual")
+  bubble.setAttribute("data-slot", "copied-bubble")
+  bubble.textContent = label
+  bubble.style.left = `${x}px`
+  bubble.style.top = `${y}px`
+  document.body.appendChild(bubble)
+  bubble.showPopover()
+  requestAnimationFrame(() => bubble.setAttribute("data-show", ""))
+  setTimeout(() => {
+    bubble.removeAttribute("data-show")
+    setTimeout(() => bubble.remove(), 200)
+  }, 900)
+}
+
+// An inline <code> pill with click-to-copy. Clicking copies and flashes the
+// "Copied" bubble at the pointer.
+function InlineCode(props: { children: JSX.Element; text: string; label: string }) {
+  const onClick = async (e: MouseEvent) => {
     if (!props.text) return
     await copyText(props.text)
-    setDone(true)
-    setTimeout(() => setDone(false), 1500)
+    flashCopied(e.clientX, e.clientY, props.label)
   }
   return (
-    <code data-slot="inline-code" data-tooltip={done() ? props.labels.copied : props.labels.copy} onClick={onClick}>
+    <code data-slot="inline-code" onClick={onClick}>
       {props.children}
     </code>
   )
@@ -329,7 +347,7 @@ function components(labels: CopyLabels, theme: () => string, complete: () => boo
       if (!props.inline) return <code>{props.children}</code>
       const node = props.node as unknown as Hast
       const text = node?.children?.map((c) => c.value ?? "").join("") ?? ""
-      return <InlineCode text={text} labels={labels} children={props.children} />
+      return <InlineCode text={text} label={labels.copied} children={props.children} />
     },
     pre(props) {
       // Read props.node inside a memo so reconcile's in-place node mutations
@@ -474,7 +492,7 @@ function setupCopy(root: HTMLElement) {
     const target = event.target
     if (!(target instanceof Element)) return
     // Block code: the dedicated copy button copies the fence body. (Inline code
-    // copy is owned by the InlineCode component + Tooltip, not this delegation.)
+    // copy is owned by the InlineCode component, not this delegation.)
     const button = target.closest('[data-slot="markdown-copy-button"]')
     if (button instanceof HTMLButtonElement) {
       const code = button.closest('[data-component="markdown-code"]')?.querySelector("code")

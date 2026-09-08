@@ -240,36 +240,6 @@
     box-shadow: 0 0 0 1px var(--border-weak-base);
   }
 
-  /* CSS-only hover hint: a small bubble above the pill, driven by the pill's
-     data-tooltip attribute ("Copy" / "Copied"). No wrapper element, so the pill
-     keeps its exact inline layout and the click lands on it directly. */
-  [data-slot="inline-code"][data-tooltip]::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--surface-float-base);
-    color: var(--text-invert-strong);
-    border: 1px solid var(--border-weak-base, rgba(0, 0, 0, 0.07));
-    box-shadow: var(--shadow-md);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.12s ease;
-    z-index: 1000;
-  }
-
-  [data-slot="inline-code"][data-tooltip]:hover::after {
-    opacity: 1;
-  }
-
   /* Tables: GitHub GFM table styling (github-markdown-css) */
   table {
     border-spacing: 0;
@@ -379,4 +349,34 @@
     --callout-accent: color-mix(in srgb, #6b6862 85%, var(--text-base));
     --callout-soft: color-mix(in srgb, #6b6862 8%, var(--background-base));
   }
+}
+
+/* The "Copied" bubble flashed at the pointer after an inline-code copy. A manual
+   popover, so it lives in the top layer and is styled at stylesheet level (not
+   under [data-component="markdown"], since document.body owns it). It is placed
+   at the pointer via inline left/top and nudged up so it sits just above the
+   cursor; fades in and out on the data-show attribute. */
+[data-slot="copied-bubble"] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 2px 8px;
+  transform: translate(-50%, calc(-100% - 8px));
+  border: 1px solid var(--border-weak-base, rgba(0, 0, 0, 0.07));
+  border-radius: var(--radius-sm);
+  background: var(--surface-float-base);
+  color: var(--text-invert-strong);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-large);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+[data-slot="copied-bubble"][data-show] {
+  opacity: 1;
 }
