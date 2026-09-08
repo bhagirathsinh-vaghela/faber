@@ -1,0 +1,60 @@
+diff --git a/dist/utils/renderDiffWithHighlighter.js b/dist/utils/renderDiffWithHighlighter.js
+index b73f8da6cce1ff042ba334b3427a4a2b3ef80746..5560443957e090516976b8ee631e45ea77fa7980 100644
+--- a/dist/utils/renderDiffWithHighlighter.js
++++ b/dist/utils/renderDiffWithHighlighter.js
+@@ -138,6 +138,15 @@ function computeLineDiffDecorations({ deletionLine, additionLine, deletionLineIn
+ 	additionLine = cleanLastNewline(additionLine);
+ 	if (deletionLine.length > maxLineDiffLength || additionLine.length > maxLineDiffLength) return;
+ 	const lineDiff = lineDiffType === "char" ? diffChars(deletionLine, additionLine) : diffWordsWithSpace(deletionLine, additionLine);
++	if (lineDiffType !== "char") {
++		let common = 0, changed = 0;
++		for (const item of lineDiff) {
++			if (item.added || item.removed) changed += item.value.length;
++			else common += item.value.length;
++		}
++		const denom = 2 * common + changed;
++		if (denom > 0 && 2 * common / denom < 0.5) return;
++	}
+ 	const deletionSpans = [];
+ 	const additionSpans = [];
+ 	const enableJoin = lineDiffType === "word-alt";
+diff --git a/dist/worker/worker-portable.js b/dist/worker/worker-portable.js
+index c3ae20a32d92a0e5b67ae04746f55f1b10bd0aa2..954cc5a59aea5e4f56ffa0e411e7ddf61cf96964 100644
+--- a/dist/worker/worker-portable.js
++++ b/dist/worker/worker-portable.js
+@@ -13258,6 +13258,15 @@ function computeLineDiffDecorations({ deletionLine, additionLine, deletionLineIn
+ 	additionLine = cleanLastNewline(additionLine);
+ 	if (deletionLine.length > maxLineDiffLength || additionLine.length > maxLineDiffLength) return;
+ 	const lineDiff = lineDiffType === "char" ? diffChars(deletionLine, additionLine) : diffWordsWithSpace(deletionLine, additionLine);
++	if (lineDiffType !== "char") {
++		let common = 0, changed = 0;
++		for (const item of lineDiff) {
++			if (item.added || item.removed) changed += item.value.length;
++			else common += item.value.length;
++		}
++		const denom = 2 * common + changed;
++		if (denom > 0 && 2 * common / denom < 0.5) return;
++	}
+ 	const deletionSpans = [];
+ 	const additionSpans = [];
+ 	const enableJoin = lineDiffType === "word-alt";
+diff --git a/dist/worker/worker.js b/dist/worker/worker.js
+index f7f1d59f5440bdd307e0d6e843bc1da98f926123..dcebb4fe9009926401519018bf3dd97bc19ef986 100644
+--- a/dist/worker/worker.js
++++ b/dist/worker/worker.js
+@@ -1429,6 +1429,15 @@ function computeLineDiffDecorations({ deletionLine, additionLine, deletionLineIn
+ 	additionLine = cleanLastNewline(additionLine);
+ 	if (deletionLine.length > maxLineDiffLength || additionLine.length > maxLineDiffLength) return;
+ 	const lineDiff = lineDiffType === "char" ? diffChars(deletionLine, additionLine) : diffWordsWithSpace(deletionLine, additionLine);
++	if (lineDiffType !== "char") {
++		let common = 0, changed = 0;
++		for (const item of lineDiff) {
++			if (item.added || item.removed) changed += item.value.length;
++			else common += item.value.length;
++		}
++		const denom = 2 * common + changed;
++		if (denom > 0 && 2 * common / denom < 0.5) return;
++	}
+ 	const deletionSpans = [];
+ 	const additionSpans = [];
+ 	const enableJoin = lineDiffType === "word-alt";

@@ -14,7 +14,7 @@ import { checksum } from "@opencode-ai/util/encode"
 import { createEffect, createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type FileContent, type FileDiff } from "@opencode-ai/sdk/v2"
-import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import { type FileDiffPreload } from "../pierre"
 import { type SelectedLineRange } from "@pierre/diffs"
 import { Dynamic } from "solid-js/web"
 
@@ -54,7 +54,7 @@ export interface SessionReviewProps {
   classList?: Record<string, boolean | undefined>
   classes?: { root?: string; header?: string; container?: string }
   actions?: JSX.Element
-  diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
+  diffs: (FileDiff & { preloaded?: FileDiffPreload<any> })[]
   onViewFile?: (file: string) => void
   onOpenFile?: (file: string) => Promise<void> | void
   readFile?: (path: string) => Promise<FileContent | undefined>

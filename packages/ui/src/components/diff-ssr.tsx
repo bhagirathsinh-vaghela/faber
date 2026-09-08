@@ -1,12 +1,12 @@
 import { DIFFS_TAG_NAME, FileDiff, type SelectedLineRange } from "@pierre/diffs"
-import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 import { createEffect, onCleanup, onMount, Show, splitProps } from "solid-js"
 import { Dynamic, isServer } from "solid-js/web"
-import { createDefaultOptions, styleVariables, type DiffProps } from "../pierre"
+import { createDefaultOptions, styleVariables, type DiffProps, type FileDiffPreload } from "../pierre"
 import { useWorkerPool } from "../context/worker-pool"
+import { applyCommentedLines, findRoot, isSplit, rowIndex } from "./diff-marker"
 
 export type SSRDiffProps<T = {}> = DiffProps<T> & {
-  preloadedDiff: PreloadMultiFileDiffResult<T>
+  preloadedDiff: FileDiffPreload<T>
 }
 
 export function Diff<T>(props: SSRDiffProps<T>) {
@@ -38,42 +38,15 @@ export function Diff<T>(props: SSRDiffProps<T>) {
     fileDiffRef.removeAttribute("data-color-scheme")
   }
 
-  const lineIndex = (split: boolean, element: HTMLElement) => {
-    const raw = element.dataset.lineIndex
-    if (!raw) return
-    const values = raw
-      .split(",")
-      .map((value) => parseInt(value, 10))
-      .filter((value) => !Number.isNaN(value))
-    if (values.length === 0) return
-    if (!split) return values[0]
-    if (values.length === 2) return values[1]
-    return values[0]
-  }
-
-  const rowIndex = (root: ShadowRoot, split: boolean, line: number, side: "additions" | "deletions" | undefined) => {
-    const nodes = Array.from(root.querySelectorAll(`[data-line="${line}"], [data-alt-line="${line}"]`)).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement,
-    )
-    if (nodes.length === 0) return
-
-    const targetSide = side ?? "additions"
-
-    for (const node of nodes) {
-      if (findSide(node) === targetSide) return lineIndex(split, node)
-      if (parseInt(node.dataset.altLine ?? "", 10) === line) return lineIndex(split, node)
-    }
-  }
-
   const fixSelection = (range: SelectedLineRange | null) => {
     if (!range) return range
     const root = getRoot()
     if (!root) return
 
-    const diffs = root.querySelector("[data-diffs]")
-    if (!(diffs instanceof HTMLElement)) return
+    const diffs = findRoot(root)
+    if (!diffs) return
 
-    const split = diffs.dataset.type === "split"
+    const split = isSplit(diffs)
 
     const start = rowIndex(root, split, range.start, range.side)
     const end = rowIndex(root, split, range.end, range.endSide ?? range.side)
@@ -109,95 +82,9 @@ export function Diff<T>(props: SSRDiffProps<T>) {
     diff.setSelectedLines(fixed)
   }
 
-  const findSide = (element: HTMLElement): "additions" | "deletions" => {
-    const line = element.closest("[data-line], [data-alt-line]")
-    if (line instanceof HTMLElement) {
-      const type = line.dataset.lineType
-      if (type === "change-deletion") return "deletions"
-      if (type === "change-addition" || type === "change-additions") return "additions"
-    }
-
-    const code = element.closest("[data-code]")
-    if (!(code instanceof HTMLElement)) return "additions"
-    return code.hasAttribute("data-deletions") ? "deletions" : "additions"
-  }
-
-  const applyCommentedLines = (ranges: SelectedLineRange[]) => {
+  const commentLines = (ranges: SelectedLineRange[]) => {
     const root = getRoot()
-    if (!root) return
-
-    const existing = Array.from(root.querySelectorAll("[data-comment-selected]"))
-    for (const node of existing) {
-      if (!(node instanceof HTMLElement)) continue
-      node.removeAttribute("data-comment-selected")
-    }
-
-    const diffs = root.querySelector("[data-diffs]")
-    if (!(diffs instanceof HTMLElement)) return
-
-    const split = diffs.dataset.type === "split"
-
-    const code = Array.from(diffs.querySelectorAll("[data-code]")).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement,
-    )
-    if (code.length === 0) return
-
-    const lineIndex = (element: HTMLElement) => {
-      const raw = element.dataset.lineIndex
-      if (!raw) return
-      const values = raw
-        .split(",")
-        .map((value) => parseInt(value, 10))
-        .filter((value) => !Number.isNaN(value))
-      if (values.length === 0) return
-      if (!split) return values[0]
-      if (values.length === 2) return values[1]
-      return values[0]
-    }
-
-    const rowIndex = (line: number, side: "additions" | "deletions" | undefined) => {
-      const nodes = Array.from(root.querySelectorAll(`[data-line="${line}"], [data-alt-line="${line}"]`)).filter(
-        (node): node is HTMLElement => node instanceof HTMLElement,
-      )
-      if (nodes.length === 0) return
-
-      const targetSide = side ?? "additions"
-
-      for (const node of nodes) {
-        if (findSide(node) === targetSide) return lineIndex(node)
-        if (parseInt(node.dataset.altLine ?? "", 10) === line) return lineIndex(node)
-      }
-    }
-
-    for (const range of ranges) {
-      const start = rowIndex(range.start, range.side)
-      if (start === undefined) continue
-
-      const end = (() => {
-        const same = range.end === range.start && (range.endSide == null || range.endSide === range.side)
-        if (same) return start
-        return rowIndex(range.end, range.endSide ?? range.side)
-      })()
-      if (end === undefined) continue
-
-      const first = Math.min(start, end)
-      const last = Math.max(start, end)
-
-      for (const block of code) {
-        for (const element of Array.from(block.children)) {
-          if (!(element instanceof HTMLElement)) continue
-          const idx = lineIndex(element)
-          if (idx === undefined) continue
-          if (idx > last) break
-          if (idx < first) continue
-          element.setAttribute("data-comment-selected", "")
-          const next = element.nextSibling
-          if (next instanceof HTMLElement && next.hasAttribute("data-line-annotation")) {
-            next.setAttribute("data-comment-selected", "")
-          }
-        }
-      }
-    }
+    if (root) applyCommentedLines(root, ranges)
   }
 
   onMount(() => {
@@ -242,7 +129,7 @@ export function Diff<T>(props: SSRDiffProps<T>) {
 
     createEffect(() => {
       const ranges = local.commentedLines ?? []
-      requestAnimationFrame(() => applyCommentedLines(ranges))
+      requestAnimationFrame(() => commentLines(ranges))
     })
 
     // Hydrate annotation slots with interactive SolidJS components

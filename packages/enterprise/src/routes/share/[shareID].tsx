@@ -21,7 +21,8 @@ import z from "zod"
 import NotFound from "../[...404]"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { MessageNav } from "@opencode-ai/ui/message-nav"
-import { preloadMultiFileDiff, PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import { preloadMultiFileDiff } from "@pierre/diffs/ssr"
+import { type FileDiffPreload } from "@opencode-ai/ui/pierre"
 import { Diff as SSRDiff } from "@opencode-ai/ui/diff-ssr"
 import { clientOnly } from "@solidjs/start"
 import { type IconName } from "@opencode-ai/ui/icons/provider"
@@ -59,10 +60,10 @@ const getData = query(async (shareID) => {
       [sessionID: string]: FileDiff[]
     }
     session_diff_preload: {
-      [sessionID: string]: PreloadMultiFileDiffResult<any>[]
+      [sessionID: string]: FileDiffPreload<any>[]
     }
     session_diff_preload_split: {
-      [sessionID: string]: PreloadMultiFileDiffResult<any>[]
+      [sessionID: string]: FileDiffPreload<any>[]
     }
     session_status: {
       [sessionID: string]: SessionStatus
@@ -270,7 +271,7 @@ export default function () {
                           const preloaded = data().session_diff_preload[data().sessionID] ?? []
                           return diffs.map((diff) => ({
                             ...diff,
-                            preloaded: preloaded.find((d) => d.newFile.name === diff.file),
+                            preloaded: preloaded.find((d) => d.newFile?.name === diff.file),
                           }))
                         })
                         const splitDiffs = createMemo(() => {
@@ -278,7 +279,7 @@ export default function () {
                           const preloaded = data().session_diff_preload_split[data().sessionID] ?? []
                           return diffs.map((diff) => ({
                             ...diff,
-                            preloaded: preloaded.find((d) => d.newFile.name === diff.file),
+                            preloaded: preloaded.find((d) => d.newFile?.name === diff.file),
                           }))
                         })
 

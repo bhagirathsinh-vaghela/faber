@@ -1,13 +1,12 @@
-import { type FileContents, File, FileOptions, LineAnnotation, type SelectedLineRange } from "@pierre/diffs"
+import { type FileContents, File, LineAnnotation, type SelectedLineRange } from "@pierre/diffs"
 import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, onMount, Show, splitProps } from "solid-js"
-import { createDefaultOptions, styleVariables } from "../pierre"
+import { createDefaultOptions, styleVariables, type CodeOptions } from "../pierre"
 import { getWorkerPool } from "../pierre/worker"
 import { isEditable } from "../util/focus"
 import { Icon } from "./icon"
+import { findElement, type SelectionSide } from "./diff-marker"
 
-type SelectionSide = "additions" | "deletions"
-
-export type CodeProps<T = {}> = FileOptions<T> & {
+export type CodeProps<T = {}> = CodeOptions<T> & {
   file: FileContents
   annotations?: LineAnnotation<T>[]
   selectedLines?: SelectedLineRange | null
@@ -18,12 +17,9 @@ export type CodeProps<T = {}> = FileOptions<T> & {
   classList?: ComponentProps<"div">["classList"]
 }
 
-function findElement(node: Node | null): HTMLElement | undefined {
-  if (!node) return
-  if (node instanceof HTMLElement) return node
-  return node.parentElement ?? undefined
-}
-
+// A File is never split and has no alt-line or change line-types, so its line
+// and side lookups are simpler than the diff versions in diff-marker: a single
+// [data-line] number, and side keyed only on the code column's data-deletions.
 function findLineNumber(node: Node | null): number | undefined {
   const element = findElement(node)
   if (!element) return
@@ -308,7 +304,9 @@ export function Code<T>(props: CodeProps<T>) {
     const needle = query.toLowerCase()
     const out: Range[] = []
 
-    const cols = Array.from(root.querySelectorAll("[data-column-content]")).filter(
+    // pierre renders line text on the [data-line] rows inside the content column;
+    // scoping to [data-content] keeps the gutter line numbers out of the haystack.
+    const cols = Array.from(root.querySelectorAll("[data-content] [data-line]")).filter(
       (node): node is HTMLElement => node instanceof HTMLElement,
     )
 

@@ -10,7 +10,7 @@ import type {
 } from "@opencode-ai/sdk/v2"
 import { createSimpleContext } from "./helper"
 import { createMemo } from "solid-js"
-import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import { type FileDiffPreload } from "../pierre"
 
 type Data = {
   session: Session[]
@@ -37,7 +37,7 @@ type Data = {
     [sessionID: string]: FileDiff[]
   }
   session_diff_preload?: {
-    [sessionID: string]: PreloadMultiFileDiffResult<any>[]
+    [sessionID: string]: FileDiffPreload<any>[]
   }
   permission?: {
     [sessionID: string]: PermissionRequest[]
