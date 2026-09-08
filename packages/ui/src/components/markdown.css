@@ -157,7 +157,14 @@
     margin: 0 0 0.625rem;
   }
 
-  .shiki {
+  /* Box metrics live on the code block's pre in BOTH states — the plain pre
+     shown while a fence streams, and the .shiki pre after highlight settles —
+     so the plain->highlighted swap recolours glyphs without changing padding,
+     font-size, or border. A geometry difference here shifts every line below by
+     the delta the moment Shiki lands, which the transcript's overflow-anchor:none
+     scroller does not compensate. Shiki injects its own inline background/colors
+     via the theme; only the box is pinned here. */
+  [data-component="markdown-code"] pre {
     font-family: var(--markdown-code-block-family);
     font-size: 13px;
     padding: 8px 12px;

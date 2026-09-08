@@ -167,7 +167,36 @@ function renderableLength(text: string) {
   let boundary = anchor
   for (let i = 0; i < tokens.length - 1; i++) boundary += tokens[i].raw.length
   const tail = text.slice(boundary)
+  // A trailing paragraph is type-ambiguous: the next streamed line can turn it
+  // into a setext heading (`===`/`---`) or a GFM table (a `|--|` delimiter row),
+  // which re-tags an already-visible block — a hard remount that shifts every
+  // line below. When the tail has grown INTO one of those shapes, withhold the
+  // whole block until a blank line settles it; the settled blocks before it
+  // stay on screen. This delays the tail's edge, never removes shown content.
+  if (blockConverts(tail)) return boundary
   return boundary + balancedInlineLength(tail)
+}
+
+// A multi-line tail whose first line is text and whose LAST line converts the
+// block to another type: a setext underline under a paragraph, or a table
+// delimiter row under a header row. The block currently renders as that other
+// type, so it flipped from the paragraph shown a tick earlier — withhold it
+// until it terminates.
+function blockConverts(tail: string) {
+  const lines = tail.split("\n")
+  if (lines.length < 2) return false
+  const last = lines[lines.length - 1]
+  const prev = lines[lines.length - 2]
+  if (!prev.trim()) return false
+  // Setext underline: a line of only = or only - (marked allows up to 3 leading
+  // spaces) directly under a non-blank line. A setext underline attaches only to
+  // a paragraph, so a dash line under a LIST item is a thematic break, not a
+  // conversion — leave those streaming rather than withholding the shown list.
+  if (/^ {0,3}(=+|-+) *$/.test(last) && !/^ {0,3}([-*+]|\d{1,9}[.)]) /.test(lines[0])) return true
+  // GFM table delimiter: a `|---|:--:|` row directly under a header row that
+  // also holds a pipe.
+  if (/\|/.test(prev) && /^[ |:-]+$/.test(last) && /-/.test(last) && /\|/.test(last)) return true
+  return false
 }
 
 // A safe offset to start lexing from: the blank-line boundary two blocks back

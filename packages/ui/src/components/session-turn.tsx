@@ -99,26 +99,13 @@ function isAttachment(part: PartType | undefined) {
 
 function AssistantMessageItem(props: {
   message: AssistantMessage
-  responsePartId: string | undefined
-  hideReasoning: boolean
   footer?: (message: AssistantMessage) => JSX.Element
 }) {
   const data = useData()
   const emptyParts: PartType[] = []
-  const msgParts = createMemo(() => data.store.part[props.message.id] ?? emptyParts)
+  const parts = createMemo(() => data.store.part[props.message.id] ?? emptyParts)
 
-  // Parts render inline in arrival order. The turn's current last text part is
-  // pulled out and rendered as its own block below the steps box, so hide it
-  // here (by id) to avoid rendering it twice. When a newer step arrives this
-  // part is no longer the response, so it un-hides and takes its inline slot.
-  const filteredParts = createMemo(() => {
-    let parts = msgParts()
-    if (props.hideReasoning) parts = parts.filter((part) => part?.type !== "reasoning")
-    if (props.responsePartId) parts = parts.filter((part) => part?.id !== props.responsePartId)
-    return parts
-  })
-
-  return <Message message={props.message} parts={filteredParts()} defaultOpen footer={props.footer} />
+  return <Message message={props.message} parts={parts()} defaultOpen footer={props.footer} />
 }
 
 export function SessionTurn(
@@ -256,7 +243,6 @@ export function SessionTurn(
     return undefined
   })
   const lastTextPart = createMemo(() => lastBlock()?.part)
-  const responsePartId = createMemo(() => lastBlock()?.part.id)
 
   const hasSteps = createMemo(() => {
     for (const m of assistantMessages()) {
@@ -753,18 +739,16 @@ export function SessionTurn(
                         </div>
                       </Show>
                     </div>
-                    {/* Response */}
+                    {/* Response. The answer part has ONE lifelong mount point per
+                        turn, keyed by part.id, so a busy-rollup edge cannot remount
+                        it mid-stream. Which mount point is chosen by stepsExpanded
+                        (stable, user-driven) never by working() (flickers on
+                        subtree/job rollups). Expanded shows every step inline;
+                        collapsed shows just the final text block as a peek. */}
                     <Show when={props.stepsExpanded && assistantMessages().length > 0}>
-                      <div data-slot="session-turn-collapsible-content-inner" aria-hidden={working()}>
+                      <div data-slot="session-turn-collapsible-content-inner">
                         <For each={assistantMessages()}>
-                          {(assistantMessage) => (
-                            <AssistantMessageItem
-                              message={assistantMessage}
-                              responsePartId={working() ? undefined : responsePartId()}
-                              hideReasoning={!working()}
-                              footer={props.footer}
-                            />
-                          )}
+                          {(assistantMessage) => <AssistantMessageItem message={assistantMessage} footer={props.footer} />}
                         </For>
                         <Show when={error()}>
                           <Card variant="error" class="error-card">
@@ -773,12 +757,7 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    {/* Once the turn is idle, promote its final block to its own
-                        box below the steps — but only when that block is assistant
-                        text (the answer). If the turn ended on a tool, lastBlock is
-                        undefined and nothing promotes. While streaming everything
-                        stays inline as a step, so nothing teleports mid-turn. */}
-                    <Show when={!working() && lastBlock()}>
+                    <Show when={!props.stepsExpanded && lastBlock()}>
                       {(last) => (
                         <div data-slot="session-turn-promoted" style={{ width: "100%" }}>
                           <Part part={last().part} message={last().message} footer={props.footer} defaultOpen />
