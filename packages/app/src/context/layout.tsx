@@ -746,7 +746,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             open: createMemo(() => s().reviewOpen),
             setOpen(open: string[]) {
               const session = key()
-              if (same(store.sessionView[session]?.reviewOpen, open)) return
+              const current = store.sessionView[session]
+              if (same(current?.reviewOpen, open)) return
+              // A session gets its record on first persisted scroll, so a session
+              // whose review is opened before it has ever scrolled has none. The
+              // store cannot build the intermediate object from a path write, so
+              // seed the record whole, the way the scroll flush does.
+              if (!current) {
+                setStore("sessionView", session, { scroll: {}, reviewOpen: open })
+                return
+              }
               setStore("sessionView", session, "reviewOpen", open)
             },
           },
