@@ -1,7 +1,46 @@
 import { describe, expect, test } from "bun:test"
-import { formatDuration } from "../../src/util/format"
+import { formatDuration, parseDuration } from "../../src/util/format"
 
 describe("util.format", () => {
+  describe("parseDuration", () => {
+    test("a bare number string is seconds", () => {
+      expect(parseDuration("0")).toBe(0)
+      expect(parseDuration("90")).toBe(90)
+      expect(parseDuration("1800")).toBe(1800)
+    })
+
+    test("a number passes through unchanged", () => {
+      expect(parseDuration(90)).toBe(90)
+      expect(parseDuration(1800)).toBe(1800)
+    })
+
+    test("single-unit durations", () => {
+      expect(parseDuration("90s")).toBe(90)
+      expect(parseDuration("30m")).toBe(1800)
+      expect(parseDuration("2h")).toBe(7200)
+      expect(parseDuration("1d")).toBe(86400)
+    })
+
+    test("multi-unit durations", () => {
+      expect(parseDuration("1h30m")).toBe(5400)
+      expect(parseDuration("1m30s")).toBe(90)
+      expect(parseDuration("2h15m")).toBe(8100)
+    })
+
+    test("round-trips formatDuration output (with spaces)", () => {
+      expect(parseDuration("1m 30s")).toBe(90)
+      expect(parseDuration("2h 15m")).toBe(8100)
+      expect(parseDuration(formatDuration(330))).toBe(330)
+    })
+
+    test("rejects unparseable input as undefined", () => {
+      expect(parseDuration("")).toBeUndefined()
+      expect(parseDuration("30x")).toBeUndefined()
+      expect(parseDuration("abc")).toBeUndefined()
+      expect(parseDuration("30m x")).toBeUndefined()
+    })
+  })
+
   describe("formatDuration", () => {
     test("returns empty string for zero or negative values", () => {
       expect(formatDuration(0)).toBe("")

@@ -2402,6 +2402,15 @@ export type Config = {
      * Auto-inject background subagent results when they complete (default: false)
      */
     auto_inject?: boolean
+    /**
+     * Settings for background shell jobs (the bash tool), distinct from background subagents
+     */
+    job?: {
+      /**
+       * Default hard deadline for a background shell job before its watchdog kills it, as a duration like '30m', '1h30m', '90s', or '2h'. A bare number is seconds. Applies to bash-tool jobs only, NOT subagents. Overridden per-call by the bash tool's `timeout`. Defaults to 30m. Raise it for projects with long builds.
+       */
+      hard_timeout?: string | number
+    }
   }
   /**
    * Per-million-token prices keyed by model ID, e.g. 'anthropic/claude-opus-5'. Takes precedence over models.dev, which is used for any model absent here. Lives in config so prices can be corrected without shipping a new binary.

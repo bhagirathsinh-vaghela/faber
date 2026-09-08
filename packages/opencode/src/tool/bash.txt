@@ -29,8 +29,9 @@ Usage notes:
     NOT ask the user to tell you when it is done.
   - While a background job runs, its log file is being written continuously. Read it with
     Read or Grep to see progress at any point.
-  - `timeout` (milliseconds) is the point at which a job is killed. It defaults to 30
-    minutes. Raise it for something genuinely long, e.g. a soak or a large build.
+  - `timeout` is a duration ('30m', '1h30m', '90s', '2h'; a bare number is seconds)
+    after which a job is killed. It defaults to 30m. Raise it for something
+    genuinely long, e.g. a soak or a large build.
   - To stop a background job before then, call this tool with `kill` set to its job_id
     and no command. That kills the job and everything it spawned.
   - Interactive commands do NOT work here: stdin is closed, so anything prompting for a

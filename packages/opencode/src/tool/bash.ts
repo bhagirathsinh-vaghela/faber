@@ -18,6 +18,8 @@ import { Plugin } from "@/plugin"
 import { Server } from "@/server/server"
 import { BackgroundSpawn } from "@/background/spawn"
 import { BackgroundJob } from "@/background/job"
+import { Config } from "@/config/config"
+import { parseDuration, formatDuration } from "@/util/format"
 
 const MAX_METADATA_LENGTH = 30_000
 
@@ -68,11 +70,16 @@ export const BashTool = Tool.define("bash", async () => {
           .string()
           .describe("A job_id to stop. The only way to end a background job before its timeout.")
           .optional(),
-        timeout: z.number().describe("Milliseconds after which the job is killed. Defaults to 30 minutes.").optional(),
-        estimate: z
-          .number()
+        timeout: z
+          .string()
           .describe(
-            "Optional estimate, in milliseconds, of how long the command should take. If the job is still running past this, you get a progress check-in. It only makes the first check-in EARLIER (capped at ~3 minutes), so a rough guess is fine and a wrong one is cheap. Give one for a command you expect to finish quickly and want to hear about sooner if it hangs.",
+            "Duration after which the job is killed, like '30m', '1h30m', '90s', or '2h' (a bare number is seconds). Overrides the configured default (background.job.hard_timeout, itself defaulting to 30m).",
+          )
+          .optional(),
+        estimate: z
+          .string()
+          .describe(
+            "Optional estimate of how long the command should take, as a duration like '90s', '5m', or '1h'. If the job is still running past this, you get a progress check-in. It only makes the first check-in EARLIER (capped at ~3 minutes), so a rough guess is fine and a wrong one is cheap. Give one for a command you expect to finish quickly and want to hear about sooner if it hangs.",
           )
           .optional(),
         workdir: z
@@ -121,11 +128,13 @@ export const BashTool = Tool.define("bash", async () => {
 
       if (!params.command) throw new Error("Either command or kill is required.")
       const command = params.command
-      if (params.timeout !== undefined && params.timeout < 0) {
-        throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
+      const timeoutSecs = params.timeout === undefined ? undefined : parseDuration(params.timeout)
+      if (timeoutSecs !== undefined && !(timeoutSecs > 0)) {
+        throw new Error(`Invalid timeout: ${params.timeout}. Use a positive duration like '30m', '90s', or '1h30m'.`)
       }
-      if (params.estimate !== undefined && params.estimate < 0) {
-        throw new Error(`Invalid estimate value: ${params.estimate}. Estimate must be a positive number.`)
+      const estimateSecs = params.estimate === undefined ? undefined : parseDuration(params.estimate)
+      if (estimateSecs !== undefined && !(estimateSecs > 0)) {
+        throw new Error(`Invalid estimate: ${params.estimate}. Use a positive duration like '90s', '5m', or '1h'.`)
       }
       const tree = await parser().then((p) => p.parse(command))
       if (!tree) {
@@ -210,6 +219,7 @@ export const BashTool = Tool.define("bash", async () => {
       }
 
       const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
+      const cfg = await Config.get()
       const listening = Server.listening()
       ctx.metadata({
         metadata: {
@@ -217,6 +227,13 @@ export const BashTool = Tool.define("bash", async () => {
           description: params.description,
         },
       })
+
+      // The tool, the config, and the model all speak human durations; the job
+      // machinery speaks milliseconds. Resolve the ceiling in SECONDS here (so
+      // the message below can report it) and convert at the single boundary into
+      // `run`. A configured value is parsed the same way as a tool argument.
+      const configSecs = cfg.background?.job?.hard_timeout === undefined ? undefined : parseDuration(cfg.background.job.hard_timeout)
+      const seconds = timeoutSecs ?? configSecs ?? BackgroundSpawn.HARD_MS / 1000
 
       // One path for every command: a durable record, a detached process, and
       // output streaming to a file. The runtime decides the SHAPE of the result
@@ -241,8 +258,8 @@ export const BashTool = Tool.define("bash", async () => {
           // reach, and a default origin would name a port nothing is bound to.
           ...(listening ? { OPENCODE_SERVER_URL: listening } : {}),
         },
-        hard: params.timeout,
-        soft: params.estimate,
+        hard: seconds * 1000,
+        soft: estimateSecs === undefined ? undefined : estimateSecs * 1000,
       })
 
       // Past the window. The job keeps running and reports itself when it
@@ -253,6 +270,7 @@ export const BashTool = Tool.define("bash", async () => {
           `Command still running after ${Math.round(BackgroundSpawn.GRACE_MS / 1000)}s; it continues in the background.`,
           `job_id: ${spawned.job.id}`,
           `log: ${BackgroundJob.logPath(spawned.job.id)}`,
+          `hard deadline: killed if it runs past ${formatDuration(seconds)}. If the command legitimately needs longer, re-run with a larger timeout.`,
           ``,
           `The result will arrive on its own when the command finishes. Read the log with tail or grep for progress; do not poll for completion.`,
         ].join("\n")

@@ -1319,6 +1319,17 @@ export namespace Config {
             .boolean()
             .optional()
             .describe("Auto-inject background subagent results when they complete (default: false)"),
+          job: z
+            .object({
+              hard_timeout: z
+                .union([z.string(), z.number()])
+                .optional()
+                .describe(
+                  "Default hard deadline for a background shell job before its watchdog kills it, as a duration like '30m', '1h30m', '90s', or '2h'. A bare number is seconds. Applies to bash-tool jobs only, NOT subagents. Overridden per-call by the bash tool's `timeout`. Defaults to 30m. Raise it for projects with long builds.",
+                ),
+            })
+            .optional()
+            .describe("Settings for background shell jobs (the bash tool), distinct from background subagents"),
         })
         .optional(),
       pricing: z
