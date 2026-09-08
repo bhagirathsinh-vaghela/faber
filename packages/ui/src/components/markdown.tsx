@@ -9,7 +9,9 @@ import remarkBreaks from "remark-breaks"
 import remarkMath from "remark-math"
 import { directive } from "micromark-extension-directive"
 import { directiveFromMarkdown } from "mdast-util-directive"
-import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, splitProps, type JSX } from "solid-js"
+import remend, { isWithinCodeBlock, type RemendHandler } from "remend"
+import { CALLOUTS, scanCalloutDepth, opensCallout, closesCallout } from "@opencode-ai/util/callout"
+import { ComponentProps, createEffect, createMemo, createSignal, Index, onCleanup, splitProps, type JSX } from "solid-js"
 import { isServer } from "solid-js/web"
 
 // rehype-katex statically pulls the whole KaTeX engine (~280KB) into the initial
@@ -38,15 +40,7 @@ function hasMath(text: string) {
   return MATH.test(text)
 }
 
-// The `:::name` container callouts. The label is the heading a reader sees;
-// `check` folds shut so it reads as a self-test.
-const CALLOUTS: Record<string, string> = {
-  fix: "Correction",
-  anchor: "Anchor",
-  key: "Key point",
-  tangent: "Tangent",
-  check: "Check yourself",
-}
+// Callout names and labels live in the shared registry (@opencode-ai/util/callout).
 
 // remark-directive, wired to CONTAINER directives only. Its default also enables
 // inline text directives (`:name`), whose `:\w+` pattern false-matches ordinary
@@ -82,7 +76,7 @@ function remarkCallouts() {
     const walk = (node: any) => {
       for (const child of node.children ?? []) walk(child)
       if (node.type !== "containerDirective") return
-      const label = CALLOUTS[node.name]
+      const label = (CALLOUTS as Record<string, string>)[node.name]
       if (!label) return
       const body = node.children ?? []
       if (node.name === "check") {
@@ -141,96 +135,55 @@ function fenceSource(node: Hast) {
   return { text, lang: lang ?? "text" }
 }
 
-// How much of a still-streaming markdown string is safe to render without
-// flicker. Two layers:
-//
-// 1. Block boundary (marked's lexer). Every block
-//    token except the last is settled; the trailing, still-growing block (an
-//    open ``` fence, a partial list, the current paragraph) is dropped. Plain
-//    prose is one paragraph token, so its whole text is the "tail".
-// 2. Inline guard on that tail. The lexer settles a paragraph as a block but not
-//    its inline spans, so a tail ending mid **bold**, `code`, or [link](…) would
-//    still render raw. Trim the tail back to the last point where every inline
-//    marker is balanced. Plain prose has nothing open, so it streams live.
-//
-// Streaming appends only ever grow `text`, and re-lexing the WHOLE string on
-// every ~10Hz tick is O(n²) over a turn (measured: ~40ms/call on a 36KB
-// message). We only need the START OFFSET of the last block token, so lex just
-// a bounded tail: rewind to a hard block fence (a blank line) well before the
-// end, lex from there, and add the settled length ahead of it. `anchor` is that
-// fence — chosen far enough back that no in-flight append can retro-merge across
-// it (setext underline, loose-list continuation), which a naive last-`\n\n` cut
-// would miss.
-function renderableLength(text: string) {
-  const anchor = tailAnchor(text)
-  const tokens = marked.lexer(text.slice(anchor))
-  let boundary = anchor
-  for (let i = 0; i < tokens.length - 1; i++) boundary += tokens[i].raw.length
-  const tail = text.slice(boundary)
-  // A trailing paragraph is type-ambiguous: the next streamed line can turn it
-  // into a setext heading (`===`/`---`) or a GFM table (a `|--|` delimiter row),
-  // which re-tags an already-visible block — a hard remount that shifts every
-  // line below. When the tail has grown INTO one of those shapes, withhold the
-  // whole block until a blank line settles it; the settled blocks before it
-  // stay on screen. This delays the tail's edge, never removes shown content.
-  if (blockConverts(tail)) return boundary
-  return boundary + balancedInlineLength(tail)
+// A still-streaming markdown string renders by COMPLETING its unterminated tail
+// rather than withholding it (the streamdown approach). remend closes
+// open bold/italic/code/link/image/strikethrough and block math, so a half-typed
+// marker renders as its finished form and updates in place instead of popping in
+// whole when it closes. inlineKatex stays off to match MATH_OPTIONS (a lone
+// dollar is currency, not math). The callout handler extends remend to our
+// `:::` containers, which it has no native support for.
+export function completeTail(text: string, complete: boolean) {
+  if (complete) return text
+  return remend(text, { inlineKatex: false, katex: true, handlers: [calloutHandler] })
 }
 
-// A multi-line tail whose first line is text and whose LAST line converts the
-// block to another type: a setext underline under a paragraph, or a table
-// delimiter row under a header row. The block currently renders as that other
-// type, so it flipped from the paragraph shown a tick earlier — withhold it
-// until it terminates.
-function blockConverts(tail: string) {
-  const lines = tail.split("\n")
-  if (lines.length < 2) return false
-  const last = lines[lines.length - 1]
-  const prev = lines[lines.length - 2]
-  if (!prev.trim()) return false
-  // Setext underline: a line of only = or only - (marked allows up to 3 leading
-  // spaces) directly under a non-blank line. A setext underline attaches only to
-  // a paragraph, so a dash line under a LIST item is a thematic break, not a
-  // conversion — leave those streaming rather than withholding the shown list.
-  if (/^ {0,3}(=+|-+) *$/.test(last) && !/^ {0,3}([-*+]|\d{1,9}[.)]) /.test(lines[0])) return true
-  // GFM table delimiter: a `|---|:--:|` row directly under a header row that
-  // also holds a pipe.
-  if (/\|/.test(prev) && /^[ |:-]+$/.test(last) && /-/.test(last) && /\|/.test(last)) return true
-  return false
+// remend does not know `:::` containers, so a streaming callout would stay an
+// open directive that swallows the rest of the message until its closer arrives.
+// Append the missing closer(s), one per open depth, so the callout renders as
+// its box and fills in while streaming. A `:::` opened inside a fenced code block
+// is literal text, so leave it — remend closes the fence instead. Priority 90
+// runs after remend's inline markers (0-75) and before its default (100), so a
+// `:::check[question]` label is bracket-balanced first.
+const calloutHandler: RemendHandler = {
+  name: "callout",
+  priority: 90,
+  handle(text) {
+    const scan = scanCalloutDepth(text)
+    if (scan.depth === 0) return text
+    if (isWithinCodeBlock(text, scan.openOffset)) return text
+    const closers = Array(scan.depth).fill(":::").join("\n")
+    return text.endsWith("\n") ? text + closers : text + "\n" + closers
+  },
 }
 
-// A safe offset to start lexing from: the blank-line boundary two blocks back
-// from the end, or 0 when the text is short. Lexing from here yields byte-for-
-// byte the same trailing tokens as lexing the whole string, because the two
-// full blocks of overlap absorb every retroactive re-interpretation marked can
-// apply (setext heading from a following `===`/`---`, a paragraph folding into
-// a loose list). An open ``` fence spans blank lines, so if the anchor would
-// land inside one, fall back to 0 and lex the whole text — correctness over the
-// micro-optimization for the rare mid-fence tick.
-function tailAnchor(text: string) {
-  const second = text.lastIndexOf("\n\n", text.lastIndexOf("\n\n") - 1)
-  if (second <= 0) return 0
-  const head = text.slice(0, second)
-  if ((head.match(/```/g)?.length ?? 0) % 2 === 1) return 0
-  return second
-}
-
-// Longest prefix of a streaming tail whose inline markers are all closed. Scans
-// the flicker-prone markers (inline code, emphasis, links) and returns the
-// offset just before the first still-open one; returns the full length when
-// everything is balanced (the plain-prose case, which must stream live).
-function balancedInlineLength(tail: string) {
-  // An unclosed ``` fence: cut from where the fence opened (before any inline
-  // backtick handling, which would otherwise leave stray backticks visible).
-  const fence = tail.lastIndexOf("```")
-  if (fence !== -1 && (tail.match(/```/g)?.length ?? 0) % 2 === 1) return fence
-  if ((tail.match(/`/g)?.length ?? 0) % 2 === 1) return tail.lastIndexOf("`")
-  const link = tail.lastIndexOf("[")
-  if (link !== -1 && tail.indexOf(")", link) === -1) return link
-  for (const marker of ["**", "__", "~~", "*", "_"]) {
-    if ((tail.split(marker).length - 1) % 2 === 1) return tail.lastIndexOf(marker)
+// Split markdown into top-level blocks so settled blocks freeze and only the
+// growing tail re-parses (the O(message) to O(tail) streaming win). Blocks are
+// marked's top-level tokens by raw text, EXCEPT a `:::name … :::` region is kept
+// as one block: a callout is not a marked token, so left alone its body would
+// split across several renders and lose the aside/details wrapper. Invariant:
+// splitBlocks(x).join("") equals x.
+export function splitBlocks(text: string): string[] {
+  const blocks: string[] = []
+  let depth = 0
+  for (const token of marked.lexer(text)) {
+    if (depth > 0) blocks[blocks.length - 1] += token.raw
+    else blocks.push(token.raw)
+    for (const line of token.raw.split("\n")) {
+      if (opensCallout(line)) depth++
+      else if (closesCallout(line) && depth > 0) depth--
+    }
   }
-  return tail.length
+  return blocks
 }
 
 // A fenced code block: <div box><pre><code/></pre> + copy button. The body
@@ -417,14 +370,11 @@ export function Markdown(
   // still highlight (and skip the streaming-prefix clamp).
   const complete = () => local.complete ?? true
 
-  // While streaming, render only the flicker-free prefix (settled blocks + the
-  // tail up to its last closed inline marker). Plain prose has no open marker so
-  // it streams live; an incomplete **bold**/`code`/fence is withheld until it
-  // closes. The full text renders once the part completes.
-  const rendered = createMemo(() => {
-    if (complete()) return local.text
-    return local.text.slice(0, renderableLength(local.text))
-  })
+  // Tail completion and block splitting live in StreamingMarkdown, which feeds
+  // this component one already-settled block at a time. A streaming caller that
+  // does not split (passes the whole growing text) still renders it verbatim;
+  // remend/blocking is StreamingMarkdown's job, not this leaf renderer's.
+  const rendered = createMemo(() => local.text)
 
   // Only the messages that actually contain math pay for KaTeX. Kick off the
   // lazy import when math first appears; until the plugin resolves the array is
@@ -498,6 +448,33 @@ export function Markdown(
         {rendered()}
       </SolidMarkdown>
     </div>
+  )
+}
+
+// The streaming entry point for an assistant text/reasoning part. It completes
+// the unterminated tail (remend + callouts), splits into top-level blocks, and
+// renders each block through its own Markdown. Settled blocks keep a stable
+// value at a stable index, so Index leaves them untouched while only the last
+// (growing) block re-parses each tick — no whole-message re-render, and no
+// remount of shown content. Every block but the last is complete (full render,
+// Shiki highlights on settle); the last carries the caller's real complete flag.
+export function StreamingMarkdown(
+  props: ComponentProps<"div"> & {
+    text: string
+    cacheKey?: string
+    class?: string
+    classList?: Record<string, boolean>
+    complete?: boolean
+  },
+) {
+  const [local, others] = splitProps(props, ["text", "complete"])
+  const blocks = createMemo(() => splitBlocks(completeTail(local.text, local.complete ?? false)))
+  return (
+    <Index each={blocks()}>
+      {(block, index) => (
+        <Markdown {...others} text={block()} complete={local.complete || index < blocks().length - 1} />
+      )}
+    </Index>
   )
 }
 

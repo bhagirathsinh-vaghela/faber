@@ -43,7 +43,7 @@ import { Icon } from "./icon"
 import { IconButton } from "./icon-button"
 import { Checkbox } from "./checkbox"
 import { DiffChanges } from "./diff-changes"
-import { Markdown } from "./markdown"
+import { Markdown, StreamingMarkdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
 import { findLast } from "@opencode-ai/util/array"
 import { getDirectory as _getDirectory, getFilename, truncateMiddle } from "@opencode-ai/util/path"
@@ -1214,7 +1214,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
         copy={displayText}
         speak={displayText}
       >
-        <Markdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
+        <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
         {/* Snapshot line under every assistant text box, matching the Response
             box. Gate on this block's OWN completion, not the whole turn: an
             intermediate step gets its chips as soon as it finishes, while the
@@ -1249,7 +1249,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
         raw
         copy={throttledText}
       >
-        <Markdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
+        <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
       </CardBox>
     </Show>
   )

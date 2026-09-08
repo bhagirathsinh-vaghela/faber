@@ -1190,7 +1190,12 @@ function createGlobalSync() {
         }
         const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
         if (result.found) {
-          setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
+          // merge:true so the message node keeps its identity and only leaf
+          // fields (tokens, cost, time.completed, finish) update. A full replace
+          // gives the record a new reference, which remounts the reference-keyed
+          // <For each={assistantMessages()}> — blanking the streaming card for a
+          // frame at turn completion.
+          setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info, { merge: true }))
           break
         }
         setStore(
