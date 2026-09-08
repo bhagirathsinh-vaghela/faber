@@ -219,10 +219,18 @@
       height: var(--control-icon);
     }
 
-    /* No text besides the mark, so nothing else inherits this font size. */
-    &:has(> [data-component="icon"]:only-child),
-    &:has(> div:only-child > [data-component="icon"]),
-    &:has(> span:only-child) {
+    /* A control holding only a mark collapses to a square target. The component
+       sets data-icon-only when it has an icon and no children, which is the
+       authoritative signal for the icon-prop case: :only-child counts elements,
+       so a bare-text-node label would not defeat a plain :only-child test and the
+       button would collapse under its own escaping label. The :only-child forms
+       cover a mark passed AS the child (no icon prop) — an <Icon> or a lone span —
+       and are gated on :not([data-icon]) so an icon-prop button with a text label
+       never reaches them. */
+    &[data-icon-only],
+    &:not([data-icon]):has(> [data-component="icon"]:only-child),
+    &:not([data-icon]):has(> div:only-child > [data-component="icon"]),
+    &:not([data-icon]):has(> span:only-child) {
       width: var(--control-height);
       padding: 0;
       font-size: var(--control-icon);

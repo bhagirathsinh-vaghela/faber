@@ -28,6 +28,10 @@ export function Button(props: ButtonProps) {
       data-size={split.size || "normal"}
       data-variant={split.variant || "secondary"}
       data-icon={split.icon}
+      // A label passed as a bare text node is not an element child, so CSS
+      // cannot tell an icon-with-label button from an icon-only one. This marks
+      // the icon-only case for the collapse rule to key on.
+      data-icon-only={split.icon != null && props.children == null ? "" : undefined}
       classList={{
         ...(split.classList ?? {}),
         [split.class ?? ""]: !!split.class,
