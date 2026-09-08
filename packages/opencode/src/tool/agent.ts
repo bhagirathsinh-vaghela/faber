@@ -7,7 +7,7 @@ import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
-import { SessionRevert } from "../session/revert"
+import { SessionDeliver } from "../session/deliver"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
 import { BackgroundSubagent } from "@/background"
@@ -140,43 +140,29 @@ async function doInject(
   autoTriggerLLM = true,
   statusOverride?: "cancelled",
 ) {
-  const session = await Session.get(task.parentSessionID)
-  if (session.revert) {
-    await SessionRevert.cleanup(session)
-  }
-
   const status: "completed" | "failed" | "cancelled" = statusOverride ?? (error ? "failed" : "completed")
   const notification = buildNotification(task, output, error, duration, status)
 
-  const existingMessages = await Session.messages({ sessionID: task.parentSessionID })
-  const messageID = await MessageV2.mintSyntheticMessage(task.parentSessionID, existingMessages)
-
-  await Session.updatePart({
-    id: Identifier.ascending("part"),
-    messageID,
+  await SessionDeliver.deliver({
     sessionID: task.parentSessionID,
-    type: "text",
-    text: notification,
-    synthetic: true,
-    backgroundSubagentResult: {
-      subagentId: task.id,
-      description: task.description,
-      status,
-      agent: task.subagent?.agent,
-      sessionID: task.subagent?.sessionID,
-      duration,
-    },
+    parts: [
+      {
+        text: notification,
+        synthetic: true,
+        backgroundSubagentResult: {
+          subagentId: task.id,
+          description: task.description,
+          status,
+          agent: task.subagent?.agent,
+          sessionID: task.subagent?.sessionID,
+          duration,
+        },
+      },
+    ],
+    wake: autoTriggerLLM,
   })
 
   log.info("injected background subagent result", { subagentId: task.id, parentSessionID: task.parentSessionID })
-
-  // Trigger LLM to respond to the subagent result (only for auto-inject)
-  // The subagent-result user message we just created will be used by the loop
-  if (autoTriggerLLM) {
-    SessionPrompt.loop(task.parentSessionID).catch((err) => {
-      log.error("failed to prompt after subagent result injection", { subagentId: task.id, error: err })
-    })
-  }
 }
 
 // Export for accepting pending results from TUI
@@ -207,25 +193,12 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
     return 1
   }
 
-  const session = await Session.get(sessionID)
-  if (session.revert) {
-    await SessionRevert.cleanup(session)
-  }
-
-  const existingMessages = await Session.messages({ sessionID })
-
-  const messageID = await MessageV2.mintSyntheticMessage(sessionID, existingMessages)
-
-  for (const p of pending) {
+  // One synthetic message carries all N results as separate parts.
+  const parts = pending.map((p) => {
     const task = BackgroundSubagent.get(p.subagentId) ?? buildMinimalTask(p)
     const status: "completed" | "failed" = p.error ? "failed" : "completed"
-    const notification = buildNotification(task, p.output, p.error, p.duration)
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID,
-      sessionID,
-      type: "text",
-      text: notification,
+    return {
+      text: buildNotification(task, p.output, p.error, p.duration),
       synthetic: true,
       backgroundSubagentResult: {
         subagentId: task.id,
@@ -235,15 +208,11 @@ export async function acceptAllPending(sessionID: string, triggerLLM = false): P
         sessionID: task.subagent?.sessionID,
         duration: p.duration,
       },
-    })
-    log.info("injected background subagent result into merged message", { subagentId: task.id, sessionID })
-  }
+    }
+  })
 
-  if (triggerLLM) {
-    SessionPrompt.loop(sessionID).catch((err) => {
-      log.error("failed to prompt after merged subagent result injection", { error: err })
-    })
-  }
+  await SessionDeliver.deliver({ sessionID, parts, wake: triggerLLM })
+  log.info("injected merged background subagent results", { count: pending.length, sessionID })
 
   return pending.length
 }

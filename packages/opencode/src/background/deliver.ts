@@ -1,9 +1,5 @@
-import { Session } from "@/session"
 import { Instance } from "@/project/instance"
-import { MessageV2 } from "@/session/message-v2"
-import { Identifier } from "@/id/id"
-import { SessionPrompt } from "@/session/prompt"
-import { SessionRevert } from "@/session/revert"
+import { SessionDeliver } from "@/session/deliver"
 import { Log } from "@/util/log"
 import { BackgroundJob } from "./job"
 import { BackgroundNotify } from "./notify"
@@ -30,15 +26,6 @@ export namespace BackgroundDeliver {
   }
 
   async function deliver(job: BackgroundJob.Info, kind: BackgroundNotify.Kind, wake: boolean) {
-    const session = await Session.get(job.sessionID).catch(() => undefined)
-    // The session was deleted while the job ran. Nothing to deliver into, and
-    // the reconciler will reap the job on its next pass.
-    if (!session) {
-      log.info("no session to deliver into", { job: job.id, sessionID: job.sessionID })
-      return false
-    }
-    if (session.revert) await SessionRevert.cleanup(session)
-
     // The nudge's freshness delta: how long since the log last grew, read only
     // for a check-in and left undefined otherwise so render drops the clause
     // rather than claiming a freshness it does not have.
@@ -47,33 +34,20 @@ export namespace BackgroundDeliver {
         ? await BackgroundJob.logMtime(job.id).then((at) => (at === undefined ? undefined : Date.now() - at))
         : undefined
     const text = BackgroundNotify.render(job, await BackgroundJob.output(job.id), kind, Date.now(), logAge)
-    const messages = await Session.messages({ sessionID: job.sessionID })
-    const messageID = await MessageV2.mintSyntheticMessage(job.sessionID, messages)
 
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID,
+    // The backgroundJobResult meta is what turns the envelope into a card rather
+    // than a wall of text: the client renders a labelled block from it and
+    // strips the header lines out of the body.
+    const messageID = await SessionDeliver.deliver({
       sessionID: job.sessionID,
-      type: "text",
-      text,
-      synthetic: true,
-      // What turns the envelope into a card rather than a wall of text: the
-      // client renders a labelled block from this and strips the header lines
-      // out of the body, so the reader sees the command, the outcome and the
-      // duration as fields.
-      backgroundJobResult: BackgroundNotify.meta(job, kind),
+      parts: [{ text, synthetic: true, backgroundJobResult: BackgroundNotify.meta(job, kind) }],
+      wake,
     })
+    // undefined means the session was deleted while the job ran; the reconciler
+    // reaps the job on its next pass.
+    if (messageID === undefined) return false
 
     log.info("delivered", { job: job.id, sessionID: job.sessionID, kind })
-
-    // Waking is what turns a delivered result into work. A check-in on a job
-    // the model is already waiting for should reach it now; a caller batching
-    // several results wakes once at the end instead.
-    if (wake) {
-      SessionPrompt.loop(job.sessionID).catch((error) => {
-        log.error("failed to wake the session", { job: job.id, error })
-      })
-    }
     return true
   }
 }
