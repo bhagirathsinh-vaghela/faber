@@ -189,6 +189,25 @@ export function mergeDiffBodies(prev: FileDiff[] | undefined, next: FileDiff[]):
   })
 }
 
+// Pure interest-set builder, extracted for testability. Takes the set of live
+// root IDs, the open session, and every per-directory session list. Returns
+// live roots + open session + their one-level children (deduplicated).
+export function buildInterestSet(
+  liveRoots: Set<string>,
+  openSessionID: string | undefined,
+  sessionLists: { parentID?: string; id: string }[][],
+) {
+  const parents = new Set(liveRoots)
+  if (openSessionID) parents.add(openSessionID)
+  const set = new Set(parents)
+  for (const sessions of sessionLists) {
+    for (const session of sessions) {
+      if (session.parentID && parents.has(session.parentID)) set.add(session.id)
+    }
+  }
+  return [...set]
+}
+
 function normalizeProviderList(input: ProviderListResponse): ProviderListResponse {
   return {
     ...input,
@@ -748,10 +767,8 @@ function createGlobalSync() {
     return promise
   }
 
-  // Live sessions — and their subagent children, whose transcripts the parent's
-  // task panel reads — are never evicted, so switching between the sessions
-  // being juggled stays instant. recent_hub is the global home overview
-  // carrying these flags.
+  // Live root sessions from recent_hub. Children are resolved separately by
+  // childrenOf; recent_hub only carries roots (Session.touch skips parentID).
   function liveSessions() {
     const live = new Set<string>()
     for (const entry of globalStore.recent_hub) {
@@ -773,11 +790,11 @@ function createGlobalSync() {
   }
 
   // Per-connection event scoping. The set of sessions this client
-  // wants message-level events for: the open session plus the attention/live
-  // sessions the user juggles (liveSessions already includes any actively-
-  // working subagent, since a busy child has its own recent_hub entry). The
-  // server drops every other session's streaming firehose for this connection.
-  // An idle subagent streams nothing, so not listing it drops no event.
+  // wants message-level events for: the open session, live roots, and
+  // one-level children of both (subagent children never appear in recent_hub,
+  // since Session.touch skips parentID, so interestSet resolves them from the
+  // per-directory session stores). The server drops every other session's
+  // streaming firehose for this connection.
   const [openSession, rawSetOpenSession] = createSignal<string | undefined>()
   // The open session's directory — the subtree the busy reconcile tick heals.
   // Tracked alongside openSession and pushed on subscribe so the server can
@@ -785,10 +802,8 @@ function createGlobalSync() {
   const [openDirectory, setOpenDirectory] = createSignal<string | undefined>()
 
   function interestSet() {
-    const live = liveSessions()
-    const open = openSession()
-    if (open) live.add(open)
-    return [...live]
+    const lists = Object.values(children).map(([store]) => store.session)
+    return buildInterestSet(liveSessions(), openSession(), lists)
   }
 
   // Set the open session and push interest SYNCHRONOUSLY (not via the reactive
