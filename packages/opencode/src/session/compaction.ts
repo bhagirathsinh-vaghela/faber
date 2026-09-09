@@ -7,6 +7,7 @@ import { Provider } from "../provider/provider"
 import { MessageV2 } from "./message-v2"
 import z from "zod"
 import { SessionPrompt } from "./prompt"
+import { SessionDeliver } from "./deliver"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { SessionProcessor } from "./processor"
@@ -18,6 +19,16 @@ import { SessionPin } from "./pin"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
+
+  export const CONTINUE_NUDGE = "Continue if you have next steps"
+
+  // filterCompacted drops every Read before the summary, so FileTime has no
+  // entry for those files and the next edit would be refused at the read-first
+  // precondition. The reminder is delivered on the nudge message itself, the one
+  // place guaranteed to be the first thing the model sees after a summary.
+  export const COMPACTION_READS =
+    "The conversation before this point was summarized, so files you read earlier are no longer in your context. " +
+    "Read a file with the Read tool before editing it, even one you remember reading — an edit without a fresh read in the current context will be refused."
 
   export const Event = {
     Compacted: BusEvent.define(
@@ -220,30 +231,20 @@ export namespace SessionCompaction {
     })
 
     if (result === "continue") {
-      const continueMsg = await Session.updateMessage({
-        id: Identifier.ascending("message"),
-        role: "user",
+      // The nudge rides the same spine as a job or subagent result. `wake: false`
+      // because this runs INSIDE the loop, which re-reads the stream on its next
+      // iteration and picks the nudge up as the unanswered opener; a wake here
+      // would only join the loop already running. The reads-dropped reminder is a
+      // second part on the same message: filterCompacted drops every Read before
+      // the summary, so FileTime has no entry for those files and an edit would
+      // be refused. Telling the model up front beats letting it learn by refusal.
+      await SessionDeliver.deliver({
         sessionID: input.sessionID,
-        time: {
-          created: Date.now(),
-        },
-        // The nudge is infrastructure, not a human prompt, so it must not count
-        // toward the title, the prompt ordinal, or any "last real user message"
-        // lookup.
-        synthetic: true,
-        ...MessageV2.inherit(userMessage),
-      })
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: continueMsg.id,
-        sessionID: input.sessionID,
-        type: "text",
-        synthetic: true,
-        text: "Continue if you have next steps",
-        time: {
-          start: Date.now(),
-          end: Date.now(),
-        },
+        parts: [
+          { text: CONTINUE_NUDGE, synthetic: true },
+          { text: COMPACTION_READS, synthetic: true },
+        ],
+        wake: false,
       })
     }
     if (processor.message.error) return "stop"

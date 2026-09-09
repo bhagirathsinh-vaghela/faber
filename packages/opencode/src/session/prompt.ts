@@ -1674,10 +1674,6 @@ export namespace SessionPrompt {
   const PLAN_EXIT_MARKER = "<!-- plan-mode-exit -->"
   const SUBAGENT_MARKER = "<!-- subagent-no-delegation -->"
   const CONCISE_MARKER = "<!-- concise-reminder -->"
-  const COMPACTION_READS_MARKER = "<!-- compaction-reads-dropped -->"
-  const COMPACTION_READS =
-    "The conversation before this point was summarized, so files you read earlier are no longer in your context. " +
-    "Read a file with the Read tool before editing it, even one you remember reading — an edit without a fresh read in the current context will be refused."
   const CONCISE =
     "Keep replies concise: lead with the answer, no preamble, no recap. " +
     "This governs user-facing text only, not how much you read, investigate, or think before acting."
@@ -1800,23 +1796,6 @@ export namespace SessionPrompt {
     const last = messages[messages.length - 1]
     if (!last || !MessageV2.isTurnOpener(messages, last)) return false
     return !hasConciseReminder(last)
-  }
-
-  // Due on the FIRST turn after a compaction: the newest assistant before the
-  // turn opener is the summary. filterCompacted has dropped every Read before it,
-  // so FileTime has no entry for those files and an edit would hit the read-first
-  // precondition; the reminder tells the model to re-read proactively. The
-  // opener-marker dedup (in insertReminders) holds it to once — the next turn's
-  // opener has no summary before it, so this returns false there.
-  export function compactionReadsDue(messages: MessageV2.WithParts[]) {
-    const opener = MessageV2.turnOpener(messages)
-    if (!opener) return false
-    const prior = messages.findLast((m) => m.info.role === "assistant" && m.info.id < opener.info.id)
-    // finish as well as summary: an errored summary keeps summary:true but never
-    // gets finish, and filterCompacted (summary && finish) then does NOT drop the
-    // pre-summary reads — so those files are still in context and no reminder is
-    // due. The role re-check is the type guard that narrows to Assistant.summary.
-    return prior?.info.role === "assistant" && prior.info.summary === true && Boolean(prior.info.finish)
   }
 
   function planFileInfo(planPath: string, exists: boolean) {
@@ -2066,14 +2045,6 @@ export namespace SessionPrompt {
     if (!input.session.parentID && conciseDue(input.messages)) {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
       if (concise) await persistReminder(input.messages, CONCISE, CONCISE_MARKER)
-    }
-
-    // First turn after a compaction: the earlier Reads were dropped with the
-    // pre-summary history, so tell the model to re-read before editing rather
-    // than let it learn through a refused edit. Opener-marker dedup holds it to
-    // once. Rides the turn opener, so it stays out of the cached prefix.
-    if (compactionReadsDue(input.messages) && !hasReminder(userMessage, COMPACTION_READS_MARKER)) {
-      await persistReminder(input.messages, COMPACTION_READS, COMPACTION_READS_MARKER)
     }
 
     // Subagents run for their parent's benefit, not the user's — the loop's
