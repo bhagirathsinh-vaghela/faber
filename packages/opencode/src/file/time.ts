@@ -128,14 +128,15 @@ export namespace FileTime {
     }
 
     const entry = get(sessionID, filepath)
-    // No read on record is the EXPECTED state after a compaction dropped the
-    // earlier Read from context, or a restart the model does not know about. It
-    // is not a mistake by the model, so the message is a plain precondition —
-    // read the file, then retry — not an accusation. The model recovers by
-    // reading; the wording is what stops that recovery reading as a failure.
+    // No read on record has three causes the guard cannot tell apart: the model
+    // never read the file in this session, a compaction dropped the Read from
+    // context, or a restart the model does not know about. The message names
+    // none of them. Asserting one ("a summary dropped it") sends a fresh session
+    // that simply skipped the read hunting for a compaction that never happened.
+    // It is a plain precondition, not an accusation: read, then retry.
     if (!entry)
       throw new Error(
-        `Read ${filepath} before editing it. Its earlier contents are no longer in context (a summary or restart dropped them), so read it again first, then retry this edit.`,
+        `Read ${filepath} before editing it. There is no read of this file in the current context, so read it first, then retry this edit.`,
       )
     const stats = await Bun.file(filepath).stat()
     // Compare against the file's mtime when it was read, not the wall-clock read
