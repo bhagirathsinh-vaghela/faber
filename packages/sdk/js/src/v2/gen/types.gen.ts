@@ -832,6 +832,16 @@ export type EventJobUpdated = {
   }
 }
 
+export type EventSessionWorking = {
+  type: "session.working"
+  properties: {
+    sessionID: string
+    busy: boolean
+    busySelf: boolean
+    busyDescendant: boolean
+  }
+}
+
 export type BackgroundSubagent = {
   id: string
   parentSessionID: string
@@ -978,13 +988,11 @@ export type EventOpenProjectsUpdated = {
   }
 }
 
-export type EventSessionWorking = {
-  type: "session.working"
+export type EventSessionPromptInterrupted = {
+  type: "session.prompt.interrupted"
   properties: {
     sessionID: string
-    busy: boolean
-    busySelf: boolean
-    busyDescendant: boolean
+    interrupted: true
   }
 }
 
@@ -1037,6 +1045,7 @@ export type Session = {
     updated: number
     compacting?: number
     archived?: number
+    injected?: number
   }
   permission?: PermissionRuleset
   revert?: {
@@ -1357,6 +1366,7 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventJobUpdated
+  | EventSessionWorking
   | EventBackgroundSubagentCreated
   | EventBackgroundSubagentProgress
   | EventBackgroundSubagentCompleted
@@ -1366,7 +1376,7 @@ export type Event =
   | EventSessionPingArmed
   | EventSessionCompacted
   | EventOpenProjectsUpdated
-  | EventSessionWorking
+  | EventSessionPromptInterrupted
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionTotalsUpdated

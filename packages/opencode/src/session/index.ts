@@ -165,6 +165,16 @@ export namespace Session {
         updated: z.number(),
         compacting: z.number().optional(),
         archived: z.number().optional(),
+        // Three states, and the first two look alike to an `if (!x)` check:
+        //   absent  -> a child created before this field existed, or a root
+        //              session. Nothing owes an injection; never watch it.
+        //   0       -> a subagent child still waiting to report back. Set at
+        //              creation, so a restart knows which children to watch.
+        //   >0      -> the instant the watcher injected the result to the parent.
+        // Keying the restart scan on `=== 0` rather than falsiness is what keeps
+        // every pre-existing child on disk from being re-watched (and re-injected)
+        // the first time a parent is restored.
+        injected: z.number().optional(),
       }),
       permission: PermissionNext.Ruleset.optional(),
       revert: z
@@ -729,6 +739,10 @@ export namespace Session {
         // A subagent owns background jobs of its own, and it outlives nothing
         // once its parent is stopped.
         await BackgroundJob.stopSession(child.id)
+        // Cancel the child's own in-flight turn as well. Marked "interrupted" so
+        // the child's watcher holds its injection rather than reporting the cut
+        // turn as a completed result.
+        SessionPrompt.cancel(child.id, "interrupted")
       }
       await SessionPing.stop(input.sessionID)
       SessionPin.drop(input.sessionID)
@@ -738,8 +752,9 @@ export namespace Session {
       await BackgroundJob.stopSession(input.sessionID)
       // After the disarm, never before: cancel() runs on every normal loop exit
       // too, so it must not be what disarms, or an ordinary turn ending would
-      // silently stop the session.
-      if (input.turn !== false) SessionPrompt.cancel(input.sessionID)
+      // silently stop the session. Marked "interrupted": this is an external
+      // stop, so a subagent's watcher must hold rather than report a cut result.
+      if (input.turn !== false) SessionPrompt.cancel(input.sessionID, "interrupted")
     },
   )
 

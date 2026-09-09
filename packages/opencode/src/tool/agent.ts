@@ -8,6 +8,7 @@ import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
 import { SessionDeliver } from "../session/deliver"
+import { SubagentWatch } from "./subagent-watch"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
 import { BackgroundSubagent } from "@/background"
@@ -56,8 +57,27 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
   }
   abort.signal.addEventListener("abort", handleCancel)
 
+  // The watcher is the injection authority for a clean run: it fires once the
+  // child's turn AND every job it launched have been quiet for the debounce
+  // window, so a job-result turn that re-wakes the child is captured instead of
+  // stranded. Started BEFORE the prompt so it sees the very first busy-enter.
+  // The cancelled/failed paths below inject directly and stop the watcher, so it
+  // never doubles a result the error path already delivered.
+  SubagentWatch.start({
+    child: session,
+    task,
+    inject: (output) => {
+      // Stamped HERE, not when prompt() returns: `time.completed` is what the
+      // parent's notification reports as duration, and the watcher can fire long
+      // after the first turn ends (a job the turn left running, its result turn,
+      // the debounce). Stamping at prompt-return under-reports every one of those.
+      BackgroundSubagent.complete(task.id, "completed", { output })
+      return injectCompletionResult(task, output, undefined, input.forceInject)
+    },
+  })
+
   try {
-    const result = await SessionPrompt.prompt({
+    await SessionPrompt.prompt({
       messageID,
       sessionID: session.id,
       model,
@@ -69,28 +89,29 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
     progressUnsub()
     abort.signal.removeEventListener("abort", handleCancel)
 
-    // If cancelled by user while prompt was completing, inject cancellation instead
+    // If cancelled by user while prompt was completing, inject cancellation
+    // instead — the watcher must not also fire, so stop it first.
     const currentAfterComplete = BackgroundSubagent.get(task.id)
     if (currentAfterComplete?.status === "cancelled") {
       log.info("background subagent cancelled by user (completed race)", { subagentId: task.id })
+      SubagentWatch.stop(session.id)
       const duration = (task.time.completed ?? Date.now()) - task.time.created
       await doInject(task, "", undefined, duration, true, "cancelled")
       return
     }
 
-    const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
-
-    BackgroundSubagent.complete(task.id, "completed", { output: text })
-
-    await injectCompletionResult(task, text, undefined, input.forceInject)
+    // Clean completion: nothing to do here. The watcher records the result and
+    // injects once the child (and every job it left running) has gone quiet.
   } catch (error) {
     progressUnsub()
     abort.signal.removeEventListener("abort", handleCancel)
 
-    // If already cancelled (by user via TUI), inject directly bypassing auto-inject check
+    // If already cancelled (by user via TUI), inject directly bypassing the
+    // watcher and the auto-inject check.
     const current = BackgroundSubagent.get(task.id)
     if (current?.status === "cancelled") {
       log.info("background subagent cancelled by user", { subagentId: task.id })
+      SubagentWatch.stop(session.id)
       const duration = (task.time.completed ?? Date.now()) - task.time.created
       await doInject(task, "", undefined, duration, true, "cancelled")
       return
@@ -99,6 +120,7 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
     const errorMsg = error instanceof Error ? error.message : String(error)
     log.error("background subagent failed", { subagentId: task.id, error: errorMsg })
 
+    SubagentWatch.stop(session.id)
     BackgroundSubagent.complete(task.id, "failed", { output: "", error: errorMsg })
 
     await injectCompletionResult(task, "", errorMsg, input.forceInject)
@@ -235,7 +257,46 @@ export async function resumeSubagents(parentSessionID: string): Promise<number> 
   // Dynamic import: ping.ts dynamically imports this module, so a static import
   // back would close the cycle.
   const { SessionPing } = await import("../session/ping")
+  const { BackgroundJob } = await import("../background/job")
   const children = await Session.children(parentSessionID)
+
+  // Additive to the re-drive below: every child still owing an injection gets a
+  // watcher, rebuilt from disk. A child whose turn finished before the restart
+  // but whose job is still running would otherwise have nobody to inject its
+  // result. The seed carries the two things a watcher cannot learn from events
+  // that already fired: jobs still running, and whether the turn was cut.
+  // Started before the re-drive so its seed wins the one-watcher-per-child guard.
+  //
+  // `=== 0`, not falsiness: an ABSENT stamp is a child from before the field
+  // existed, and hundreds of those sit on disk. Watching one arms an empty set,
+  // fires after the debounce, and injects a years-old result into the parent.
+  const jobs = await BackgroundJob.list()
+  for (const child of children) {
+    if (child.time.injected !== 0) continue
+    const seed = new Set<string>()
+    for (const job of jobs) if (job.sessionID === child.id && job.status === "running") seed.add(`job:${job.id}`)
+    if (await SessionPing.interrupted(child.id)) seed.add("interrupted")
+    const task: BackgroundSubagent.Info = {
+      id: Identifier.ascending("part"),
+      parentSessionID,
+      status: "running",
+      description: child.title,
+      time: { created: child.time.created },
+      subagent: {
+        sessionID: child.id,
+        agent: child.current?.agent ?? MessageV2.UNKNOWN_AGENT,
+        prompt: "",
+        model: child.current?.model ?? MessageV2.UNKNOWN_MODEL,
+      },
+    }
+    SubagentWatch.start({
+      child,
+      task,
+      seed,
+      inject: (output) => injectCompletionResult(task, output, undefined, true),
+    })
+  }
+
   let resumed = 0
   for (const child of children) {
     if (!(await SessionPing.interrupted(child.id))) continue
@@ -473,6 +534,7 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
         })
         await Session.update(created.id, (draft) => {
           draft.allowedTools = allowed
+          draft.time.injected = 0
         })
         return created
       })

@@ -16,6 +16,7 @@ import { Vcs } from "../project/vcs"
 import { OpenProjects } from "../project/open"
 import { Global } from "../global"
 import { Bus } from "../bus"
+import { BusEvent } from "../bus/bus-event"
 import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
 import { InstructionPrompt } from "./instruction"
@@ -72,6 +73,21 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
+
+  export const Event = {
+    // A turn was cancelled from OUTSIDE its own loop (a user Stop, a session
+    // stop, a restart) rather than by the loop's own end-of-turn defer. The
+    // subagent watcher reads this to keep a child that was interrupted from
+    // injecting a half-finished result: the ordinary defer carries no reason, so
+    // only a genuine external interruption fires it.
+    Interrupted: BusEvent.define(
+      "session.prompt.interrupted",
+      z.object({
+        sessionID: z.string(),
+        interrupted: z.literal(true),
+      }),
+    ),
+  }
 
   const state = Instance.state(
     () => {
@@ -383,8 +399,13 @@ export namespace SessionPrompt {
     return controller.signal
   }
 
-  export function cancel(sessionID: string) {
-    log.info("cancel", { sessionID })
+  export function cancel(sessionID: string, reason?: "interrupted") {
+    log.info("cancel", { sessionID, reason })
+    // An external stop (a user Stop, Session.stop, the abort route) passes
+    // `reason`; the loop's own end-of-turn defer does not. The watcher keys the
+    // "interrupted" entry on this so a cut subagent never injects a partial
+    // result, while a clean end-of-turn cancel leaves the watcher free to fire.
+    if (reason === "interrupted") Bus.publish(Event.Interrupted, { sessionID, interrupted: true })
     const s = state()
     const match = s[sessionID]
     // The turn is over, so its parameter claim must go too — otherwise the next

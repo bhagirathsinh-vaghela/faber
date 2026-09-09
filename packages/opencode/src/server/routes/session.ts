@@ -509,8 +509,9 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         // Turn-only Stop: cancel() aborts the in-flight turn but never touches
         // the daemon (unlike /abort, which stops the daemon first). The session
-        // stays armed and warm.
-        SessionPrompt.cancel(sessionID)
+        // stays armed and warm. Marked "interrupted" so a subagent's watcher
+        // holds its injection rather than reporting a cut turn as a result.
+        SessionPrompt.cancel(sessionID, "interrupted")
         return c.json(true)
       },
     )
