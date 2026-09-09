@@ -6,6 +6,8 @@ import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { Visibility } from "@/utils/visibility"
 import { revalidate } from "@/utils/revalidate"
+import { shouldAbort } from "@/utils/hide-abort"
+import { createCoarsePointer } from "@/utils/mobile"
 import { HEARTBEAT_MS, IDLE_MS, RESUME_MS } from "@opencode-ai/util/stream"
 
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
@@ -139,14 +141,14 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       return pushInterest()
     }
 
-    // Close the stream while the tab is hidden and rebuild it on resume:
-    // iOS silently kills a backgrounded SSE connection anyway, and
-    // holding one open burns battery for events we are not painting. `attempt`
-    // is the current stream's abort handle; aborting it breaks the for-await and
-    // drops the loop into its wait-for-visible gate. On resume the loop
-    // re-attaches, the server emits server.connected, and global-sync heals the
-    // gap via the since-id delta. A no-op when the document API is absent.
+    // On touch-primary (coarse-pointer) devices, close the stream while hidden:
+    // iOS kills backgrounded sockets and holding one open burns battery. On
+    // desktop, `hidden` includes window occlusion (another window in front),
+    // which is ordinary multitasking — tearing the stream down there costs a
+    // reconnect and a REST resync for nothing. The heartbeat + watchdog still
+    // catch a genuinely dead desktop stream.
     let attempt: AbortController | undefined
+    const coarse = createCoarsePointer()
 
     // A device leaving a tunnel should reconnect on the signal that it left,
     // not on a timer that knows nothing about it — and that timer is longest
@@ -186,7 +188,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     }
 
     createEffect(() => {
-      if (Visibility.hidden()) attempt?.abort()
+      if (shouldAbort(Visibility.hidden(), coarse())) attempt?.abort()
     })
     // Passing a per-attempt signal to the SSE call overrides the client-level
     // lifetime signal, so cascade teardown to whatever stream is live.
