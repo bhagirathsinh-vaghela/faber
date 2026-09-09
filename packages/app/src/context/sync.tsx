@@ -13,6 +13,26 @@ const keyFor = (directory: string, id: string) => `${directory}\n${id}`
 
 const cmp = Identifier.compare
 
+// Level 2 streaming does not persist a text/reasoning part until block-end
+// (or a 256KB checkpoint), so a mid-turn REST snapshot is behind the stream.
+// Mirror the SSE handler's longer-text-wins rule for these two part types.
+export function guardParts(snapshot: Part[], held: Part[] | undefined, completed: boolean): Part[] {
+  if (completed || !held?.length) return snapshot
+  const snapshotByID = new Map(snapshot.map((p) => [p.id, p]))
+  const guarded = new Map(snapshotByID)
+  for (const hp of held) {
+    if (hp.type !== "text" && hp.type !== "reasoning") continue
+    const sp = snapshotByID.get(hp.id)
+    if (!sp) {
+      guarded.set(hp.id, hp)
+      continue
+    }
+    if ((sp.type === "text" || sp.type === "reasoning") && (hp as { text: string }).text.length > (sp as { text: string }).text.length)
+      guarded.set(hp.id, hp)
+  }
+  return [...guarded.values()].sort((a, b) => cmp(a.id, b.id))
+}
+
 export const {
   use: useSync,
   useOptional: useSyncOptional,
@@ -142,14 +162,10 @@ export const {
             input.setStore("message", input.sessionID, reconcile(next, { key: "id" }))
 
             for (const message of items) {
-              input.setStore(
-                "part",
-                message.info.id,
-                reconcile(
-                  message.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id)),
-                  { key: "id" },
-                ),
-              )
+              const held = current()[0].part[message.info.id]
+              const snapshotParts = message.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id))
+              const merged = guardParts(snapshotParts, held, !!("completed" in message.info.time && message.info.time.completed))
+              input.setStore("part", message.info.id, reconcile(merged, { key: "id" }))
             }
 
             setMeta("limit", key, input.limit)
@@ -217,27 +233,35 @@ export const {
         .then((messages) => {
           const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
           if (items.length === 0) return
+          const store = current()[0]
+          const inserts: typeof items = []
           batch(() => {
-            input.setStore(
-              "message",
-              input.sessionID,
-              produce((list) => {
-                for (const item of items) {
-                  const match = Binary.search(list, item.info.id, (m) => m.id)
-                  if (match.found) list[match.index] = item.info
-                  else list.splice(match.index, 0, item.info)
-                }
-              }),
-            )
             for (const item of items) {
+              const msgs = store.message[input.sessionID] ?? []
+              const match = Binary.search(msgs, item.info.id, (m) => m.id)
+              if (match.found) {
+                input.setStore("message", input.sessionID, match.index, reconcile(item.info, { merge: true }))
+              } else {
+                inserts.push(item)
+              }
+            }
+            if (inserts.length) {
               input.setStore(
-                "part",
-                item.info.id,
-                reconcile(
-                  item.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id)),
-                  { key: "id" },
-                ),
+                "message",
+                input.sessionID,
+                produce((list) => {
+                  for (const item of inserts) {
+                    const match = Binary.search(list, item.info.id, (m) => m.id)
+                    list.splice(match.index, 0, item.info)
+                  }
+                }),
               )
+            }
+            for (const item of items) {
+              const held = store.part[item.info.id]
+              const snapshotParts = item.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id))
+              const merged = guardParts(snapshotParts, held, !!("completed" in item.info.time && item.info.time.completed))
+              input.setStore("part", item.info.id, reconcile(merged, { key: "id" }))
             }
           })
         })
