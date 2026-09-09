@@ -1516,6 +1516,10 @@ ToolRegistry.register({
       const push = (label: string, value: string) => lines.push(`**${label}** ${value}`)
       if (props.input.description) push(i18n.t("ui.tool.subagent.label.description"), props.input.description as string)
       if (props.metadata.summary) push(i18n.t("ui.tool.subagent.label.summary"), props.metadata.summary as string)
+      push(
+        i18n.t("ui.tool.subagent.label.context"),
+        i18n.t(props.input.include_context ? "ui.tool.subagent.context.inherited" : "ui.tool.subagent.context.fresh"),
+      )
       push(i18n.t("ui.tool.subagent.label.agent"), `\`${props.input.subagent_type || props.tool}\``)
       if (props.metadata.toolset) {
         const tools = props.metadata.tools
