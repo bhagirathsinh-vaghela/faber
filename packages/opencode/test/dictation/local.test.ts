@@ -9,9 +9,10 @@ Log.init({ print: false })
 // /transcribe returns the next queued reply, and every request body is recorded
 // so a test can prove one POST happened per committed chunk — the property that
 // keeps each chunk an independent utterance.
-function sidecar(replies: string[], sampleRate = 16000) {
+function sidecar(replies: string[], sampleRate = 16000, failFirst = 0) {
   const bodies: number[] = []
   let health = 0
+  let failures = 0
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
@@ -21,6 +22,13 @@ function sidecar(replies: string[], sampleRate = 16000) {
         return Response.json({ sampleRate })
       }
       const body = await request.arrayBuffer()
+      // The first failFirst attempts return 503 to stand in for a restarting
+      // sidecar; the body is only recorded on the attempt that succeeds, so
+      // posts() counts delivered chunks, not attempts.
+      if (failures < failFirst) {
+        failures++
+        return Response.json({}, { status: 503 })
+      }
       bodies.push(body.byteLength)
       const text = replies[bodies.length - 1] ?? ""
       return Response.json({ text, ms: 1 })
@@ -153,6 +161,34 @@ describe("dictation.local", () => {
     expect(sink.transcripts()).toEqual([])
     expect(sink.done()).toBe(false)
     expect(stub.posts()).toEqual([])
+  })
+
+  test("a transient sidecar failure is retried and the transcript still lands", async () => {
+    stub = sidecar(["recovered"], 16000, 2)
+    const sink = collector()
+    const engine = local(sink.host, stub.url)
+
+    engine.frame(frame(10))
+    await engine.stop(16000)
+
+    expect(stub.posts()).toEqual([10])
+    expect(sink.transcripts()).toEqual([{ text: "recovered", final: true }])
+    expect(sink.done()).toBe(true)
+    expect(sink.failed()).toBeUndefined()
+  })
+
+  test("a sidecar down past the breaker fails the dictation without delivering", async () => {
+    stub = sidecar(["never"], 16000, 3)
+    const sink = collector()
+    const engine = local(sink.host, stub.url)
+
+    engine.frame(frame(10))
+    await engine.stop(16000)
+
+    expect(stub.posts()).toEqual([])
+    expect(sink.transcripts()).toEqual([])
+    expect(sink.failed()).toBe(`Local transcription failed — is the sidecar running at ${stub.url}?`)
+    expect(sink.done()).toBe(false)
   })
 
   test("close before stop discards the buffer and emits nothing", async () => {
