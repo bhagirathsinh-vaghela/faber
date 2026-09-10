@@ -135,9 +135,15 @@ function createIcon(path: string, slot: string) {
 // rendered children, which are Solid components) is what gives us the literal
 // source to hand to Shiki.
 type Hast = { type: string; value?: string; tagName?: string; properties?: Record<string, unknown>; children?: Hast[] }
+// Text lives only on leaf nodes; inner nodes carry children instead. A shallow
+// read of direct children drops everything under a nested node.
+function hastText(node: Hast): string {
+  if (node.value) return node.value
+  return (node.children ?? []).map(hastText).join("")
+}
 function fenceSource(node: Hast) {
   const code = node.children?.find((c) => c.tagName === "code")
-  const text = (code?.children ?? []).map((c) => c.value ?? "").join("")
+  const text = code ? hastText(code) : ""
   const cls = code?.properties?.className
   const list = Array.isArray(cls) ? cls.map(String) : []
   const lang = list.map((c) => /^language-(\w+)/.exec(c)?.[1]).find(Boolean)
@@ -337,7 +343,7 @@ function components(labels: CopyLabels, theme: () => string, complete: () => boo
     code(props) {
       if (!props.inline) return <code>{props.children}</code>
       const node = props.node as unknown as Hast
-      const text = node?.children?.map((c) => c.value ?? "").join("") ?? ""
+      const text = node ? hastText(node) : ""
       return <InlineCode text={text} label={labels.copied} children={props.children} />
     },
     pre(props) {
