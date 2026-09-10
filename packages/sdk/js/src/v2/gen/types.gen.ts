@@ -3211,6 +3211,33 @@ export type DictationConnectResponses = {
 
 export type DictationConnectResponse = DictationConnectResponses[keyof DictationConnectResponses]
 
+export type DictationRecoverData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/dictation/recover/{id}"
+}
+
+export type DictationRecoverErrors = {
+  /**
+   * No transcript held for this id
+   */
+  404: unknown
+}
+
+export type DictationRecoverResponses = {
+  /**
+   * Recovered
+   */
+  200: {
+    text: string
+  }
+}
+
+export type DictationRecoverResponse = DictationRecoverResponses[keyof DictationRecoverResponses]
+
 export type AuthRemoveData = {
   body?: never
   path: {

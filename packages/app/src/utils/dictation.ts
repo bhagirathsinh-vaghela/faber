@@ -215,7 +215,17 @@ export function registerDictationTarget(target: Target, active: () => boolean, r
 // Transcript accumulates in the store (finals append to committed, interims
 // replace) and is only handed to the host on an explicit accept; stop()
 // discards. The host renders committed/interim live and decides.
-export function createDictation(opts: { url: () => string; onError?: (message: string) => void }) {
+export function createDictation(opts: {
+  url: () => string
+  onError?: (message: string) => void
+  // Pulls the transcript the server held after an unexpected drop. The consumer
+  // owns the call because the SDK client lives in its context. Returns the text
+  // on a hit, "gone" when the server has nothing under the id (expired or never
+  // held — terminal), or undefined on a transient failure worth a later retry.
+  recover?: (id: string) => Promise<string | "gone" | undefined>
+  onRecovered?: (text: string) => void
+  onRecoverFailed?: () => void
+}) {
   const [store, setStore] = createStore({
     active: false,
     // Audio only reaches the socket once the OS route opens, which trails the
@@ -225,6 +235,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     // A batch engine transcribes only after the mic stops, so the overlay has
     // to keep rendering while the result is still in flight.
     transcribing: false,
+    // The socket dropped mid-session and the server is holding the transcript;
+    // the overlay stays up saying so until the pull lands or gives up.
+    recovering: false,
     // While paused the mic stays live but its frames are dropped, so the audio
     // spoken during the pause never reaches the server.
     paused: false,
@@ -255,6 +268,13 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   // without this a discard arriving while the engine transcribes has nothing
   // left to close.
   let draining: { socket: WebSocket; context: AudioContext; stream: MediaStream } | undefined
+  // Minted per session, sent to the server on connect, and held only in memory:
+  // a reload drops it (the user is starting over), a reconnect keeps it (the
+  // held transcript can still be pulled). The server tags its buffer with it.
+  let id: string | undefined
+  // Set on an intentional end (settle/stop) so an unexpected socket close is
+  // told apart from the user finishing. Only an unexpected close recovers.
+  let stopped = false
 
   const supported = () => !!navigator.mediaDevices?.getUserMedia
 
@@ -286,6 +306,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
   // transcript is delivered exactly once.
   const settle = () => {
     if (settling) return settling
+    stopped = true
     if (!session) {
       const transcript = text()
       setStore({ transcribing: false, committed: "", interim: "" })
@@ -326,7 +347,30 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     return settling
   }
 
-  const stop = () => teardown()
+  const stop = () => {
+    stopped = true
+    teardown()
+  }
+
+  // Pulls the transcript the server held after an unexpected drop. Fired both
+  // immediately on the drop (the socket may have died alone while the app stayed
+  // online) and again when the app reconnects (a whole-app outage). The
+  // server's one-shot delete makes a duplicate pull harmless: the second reads
+  // nothing.
+  const attemptRecover = async () => {
+    if (!store.recovering || !id || !opts.recover) return
+    const pending = id
+    const recovered = await opts.recover(pending).catch(() => undefined)
+    // A concurrent success or a new session already cleared recovery; ignore a
+    // late resolve so it cannot overwrite the next dictation.
+    if (!store.recovering || id !== pending) return
+    // A transient failure keeps recovery armed for the reconnect trigger.
+    if (recovered === undefined) return
+    setStore("recovering", false)
+    id = undefined
+    if (recovered === "gone") return opts.onRecoverFailed?.()
+    if (recovered) opts.onRecovered?.(recovered)
+  }
 
   // Pausing commits the audio so far as its own chunk, then drops incoming
   // frames until resume. Committing on pause (not resume) means a long pause's
@@ -350,9 +394,11 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     if (session) return
     active?.()
     setActive(stop)
-    // A fresh dictation starts from an empty transcript, whatever an earlier
-    // session's exit path left behind.
-    setStore({ committed: "", interim: "" })
+    // A fresh dictation starts from an empty transcript and no leftover recovery
+    // state, whatever an earlier session's exit path left behind.
+    setStore({ committed: "", interim: "", recovering: false })
+    stopped = false
+    id = crypto.randomUUID()
     const generation = ++epoch
 
     // Dial before touching the mic: the handshake crosses the network (a full
@@ -360,6 +406,9 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     // locally, so neither waits on the other. Audio produced before the socket
     // opens queues in `pending`.
     const url = new URL(opts.url() + "/dictation/connect")
+    // The server tags its audio buffer with this so an unexpected drop can hold
+    // the finished transcript for the pull.
+    url.searchParams.set("id", id)
     if (window.__OPENCODE__?.serverPassword) {
       url.username = "opencode"
       url.password = window.__OPENCODE__.serverPassword
@@ -401,6 +450,17 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     }
     socket.onclose = () => {
       if (session?.socket !== socket) return
+      // An unexpected close (the user did not stop) means the server is holding
+      // the finished transcript under our id. Release the mic but enter recovery
+      // instead of failing, then pull immediately — the socket may have died
+      // alone while the app stayed online. A whole-app outage is covered by the
+      // consumer re-firing recover() on reconnect.
+      if (!stopped && id && opts.recover) {
+        teardown()
+        setStore("recovering", true)
+        void attemptRecover()
+        return
+      }
       // A network drop otherwise leaves the overlay rendering a live-looking
       // mic forever. Error before teardown: the host dismisses while the
       // transcript is still in the store, so its unmount stash keeps the text.
@@ -492,6 +552,7 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     active: () => store.active,
     listening: () => store.listening,
     transcribing: () => store.transcribing,
+    recovering: () => store.recovering,
     paused: () => store.paused,
     committed: () => store.committed,
     interim: () => store.interim,
@@ -501,5 +562,8 @@ export function createDictation(opts: { url: () => string; onError?: (message: s
     stop,
     pause,
     resume,
+    // Re-attempts the recovery pull; the consumer calls this when the app
+    // reconnects, to cover a drop that took the whole connection down.
+    retryRecover: attemptRecover,
   }
 }

@@ -11,7 +11,16 @@ import { directive } from "micromark-extension-directive"
 import { directiveFromMarkdown } from "mdast-util-directive"
 import remend, { isWithinCodeBlock, type RemendHandler } from "remend"
 import { CALLOUTS, scanCalloutDepth, opensCallout, closesCallout } from "@opencode-ai/util/callout"
-import { ComponentProps, createEffect, createMemo, createSignal, Index, onCleanup, splitProps, type JSX } from "solid-js"
+import {
+  ComponentProps,
+  createEffect,
+  createMemo,
+  createSignal,
+  Index,
+  onCleanup,
+  splitProps,
+  type JSX,
+} from "solid-js"
 import { isServer } from "solid-js/web"
 
 // rehype-katex statically pulls the whole KaTeX engine (~280KB) into the initial

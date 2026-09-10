@@ -1724,11 +1724,13 @@ export namespace SessionPrompt {
   // keeps only the compaction request forward) -> anchor at the start of the
   // list, scope reads "since compaction" rather than "since load".
   export function skillLedger(messages: MessageV2.WithParts[], name: string) {
-    const anchor = messages.findIndex((msg) =>
-      msg.info.role === "assistant" &&
-      msg.parts.some(
-        (p) => p.type === "tool" && p.tool === "skill" && p.state.status === "completed" && p.state.input?.name === name,
-      ),
+    const anchor = messages.findIndex(
+      (msg) =>
+        msg.info.role === "assistant" &&
+        msg.parts.some(
+          (p) =>
+            p.type === "tool" && p.tool === "skill" && p.state.status === "completed" && p.state.input?.name === name,
+        ),
     )
     const since = anchor === -1 ? messages : messages.slice(anchor + 1)
     let turns = 0
@@ -1758,7 +1760,14 @@ export namespace SessionPrompt {
     // The opener itself is excluded: it is the turn this reminder rides on,
     // not a completed turn to count.
     if (since.length > 0 && since.at(-1)?.info.role === "user") turns--
-    return { scope: anchor === -1 ? "since compaction" : "since load", turns, edits, reviews, commits, editsSinceReview }
+    return {
+      scope: anchor === -1 ? "since compaction" : "since load",
+      turns,
+      edits,
+      reviews,
+      commits,
+      editsSinceReview,
+    }
   }
 
   // The newest assistant message's own text (synthetic parts excluded, since

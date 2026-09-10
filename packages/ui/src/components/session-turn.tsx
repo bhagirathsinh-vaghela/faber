@@ -748,7 +748,9 @@ export function SessionTurn(
                     <Show when={props.stepsExpanded && assistantMessages().length > 0}>
                       <div data-slot="session-turn-collapsible-content-inner">
                         <For each={assistantMessages()}>
-                          {(assistantMessage) => <AssistantMessageItem message={assistantMessage} footer={props.footer} />}
+                          {(assistantMessage) => (
+                            <AssistantMessageItem message={assistantMessage} footer={props.footer} />
+                          )}
                         </For>
                         <Show when={error()}>
                           <Card variant="error" class="error-card">

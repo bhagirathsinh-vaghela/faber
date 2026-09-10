@@ -156,7 +156,6 @@
     flex-shrink: 0;
   }
 
-
   /* Every card wears its accent across the header: index, icon, and title read
      as one coloured line. The icon-svg is scoped to the identity cluster so
      action buttons (copy, speak, chevron) keep their own colour. */

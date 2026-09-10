@@ -1055,6 +1055,32 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         description: message,
       })
     },
+    // Pull the transcript the server held after an unexpected drop. A held
+    // transcript returns its text; a 404 means the server has nothing under the
+    // id (expired or never held), which is terminal, so it maps to "gone". A
+    // transport error throws, and the caller keeps recovery armed for a retry.
+    recover: async (id) => {
+      const pull = await sdk.client.dictation.recover({ id })
+      if (pull.data) return pull.data.text
+      if (pull.response.status === 404) return "gone"
+      throw new Error("recover failed")
+    },
+    onRecovered: (text) => {
+      setStore("dictating", false)
+      if (text.trim()) insertDictation(text.trim())
+    },
+    onRecoverFailed: () => {
+      setStore("dictating", false)
+      showToast({ title: language.t("prompt.toast.dictationRecoverFailed.title") })
+    },
+  })
+
+  // A whole-app reconnect is the other moment the held transcript becomes
+  // reachable: an outage that dropped the dictation socket also dropped the SSE
+  // stream, so the immediate pull on close failed and this retries it.
+  createEffect(() => {
+    sync.reconnect()
+    if (dictation.recovering()) void dictation.retryRecover()
   })
 
   const toggleDictation = () => {

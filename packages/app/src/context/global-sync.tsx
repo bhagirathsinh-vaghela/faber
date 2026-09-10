@@ -1210,7 +1210,12 @@ function createGlobalSync() {
           // gives the record a new reference, which remounts the reference-keyed
           // <For each={assistantMessages()}> — blanking the streaming card for a
           // frame at turn completion.
-          setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info, { merge: true }))
+          setStore(
+            "message",
+            event.properties.info.sessionID,
+            result.index,
+            reconcile(event.properties.info, { merge: true }),
+          )
           break
         }
         setStore(

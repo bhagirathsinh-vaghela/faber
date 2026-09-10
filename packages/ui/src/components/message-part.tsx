@@ -1616,7 +1616,8 @@ ToolRegistry.register({
                   props.metadata.status === "async_launched"
                     ? i18n.t("ui.tool.subagent.box.launched", { label: subagentLabel(props.input.description ?? "") })
                     : i18n.t("ui.tool.subagent.box.title"),
-                subtitle: props.metadata.status !== "async_launched" ? subagentLabel(props.input.description ?? "") : undefined,
+                subtitle:
+                  props.metadata.status !== "async_launched" ? subagentLabel(props.input.description ?? "") : undefined,
                 action: openButton(),
               }}
             >

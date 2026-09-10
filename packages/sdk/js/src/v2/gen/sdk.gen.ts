@@ -39,6 +39,8 @@ import type {
   ConfigUpdateErrors,
   ConfigUpdateResponses,
   DictationConnectResponses,
+  DictationRecoverErrors,
+  DictationRecoverResponses,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -555,6 +557,25 @@ export class Dictation extends HeyApiClient {
     return (options?.client ?? this.client).get<DictationConnectResponses, unknown, ThrowOnError>({
       url: "/dictation/connect",
       ...options,
+    })
+  }
+
+  /**
+   * Recover a dropped dictation transcript
+   *
+   * Return the transcript held for a dictation whose socket dropped before delivery, once. Absent or expired ids return 404.
+   */
+  public recover<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).get<DictationRecoverResponses, DictationRecoverErrors, ThrowOnError>({
+      url: "/dictation/recover/{id}",
+      ...options,
+      ...params,
     })
   }
 }

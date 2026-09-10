@@ -21,9 +21,9 @@ function mode(overrides: Record<string, string>) {
   return renamed ?? overrides
 }
 
-export function legacyOverrides<T extends { overrides: { light: Record<string, string>; dark: Record<string, string> } }>(
-  value: T,
-): T {
+export function legacyOverrides<
+  T extends { overrides: { light: Record<string, string>; dark: Record<string, string> } },
+>(value: T): T {
   const light = mode(value.overrides.light)
   const dark = mode(value.overrides.dark)
   if (light === value.overrides.light && dark === value.overrides.dark) return value

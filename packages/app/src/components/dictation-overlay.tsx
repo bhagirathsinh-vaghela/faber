@@ -108,13 +108,15 @@ export function DictationOverlay(props: {
         <>
           <div class="shrink-0 flex items-center gap-2 px-3 pt-2">
             <span class="text-11-medium uppercase tracking-wide text-text-weak" aria-live="polite">
-              {props.dictation.transcribing()
-                ? language.t("dictation.transcribing")
-                : props.dictation.paused()
-                  ? language.t("dictation.paused")
-                  : props.dictation.listening()
-                    ? language.t("dictation.listening")
-                    : language.t("dictation.starting")}
+              {props.dictation.recovering()
+                ? language.t("dictation.recovering")
+                : props.dictation.transcribing()
+                  ? language.t("dictation.transcribing")
+                  : props.dictation.paused()
+                    ? language.t("dictation.paused")
+                    : props.dictation.listening()
+                      ? language.t("dictation.listening")
+                      : language.t("dictation.starting")}
               …
             </span>
             <div class="ml-auto flex items-center gap-1.5">

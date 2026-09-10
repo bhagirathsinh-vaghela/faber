@@ -27,7 +27,10 @@ export function guardParts(snapshot: Part[], held: Part[] | undefined, completed
       guarded.set(hp.id, hp)
       continue
     }
-    if ((sp.type === "text" || sp.type === "reasoning") && (hp as { text: string }).text.length > (sp as { text: string }).text.length)
+    if (
+      (sp.type === "text" || sp.type === "reasoning") &&
+      (hp as { text: string }).text.length > (sp as { text: string }).text.length
+    )
       guarded.set(hp.id, hp)
   }
   return [...guarded.values()].sort((a, b) => cmp(a.id, b.id))
@@ -164,7 +167,11 @@ export const {
             for (const message of items) {
               const held = current()[0].part[message.info.id]
               const snapshotParts = message.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id))
-              const merged = guardParts(snapshotParts, held, !!("completed" in message.info.time && message.info.time.completed))
+              const merged = guardParts(
+                snapshotParts,
+                held,
+                !!("completed" in message.info.time && message.info.time.completed),
+              )
               input.setStore("part", message.info.id, reconcile(merged, { key: "id" }))
             }
 
@@ -260,7 +267,11 @@ export const {
             for (const item of items) {
               const held = store.part[item.info.id]
               const snapshotParts = item.parts.filter((p) => !!p?.id).sort((a, b) => cmp(a.id, b.id))
-              const merged = guardParts(snapshotParts, held, !!("completed" in item.info.time && item.info.time.completed))
+              const merged = guardParts(
+                snapshotParts,
+                held,
+                !!("completed" in item.info.time && item.info.time.completed),
+              )
               input.setStore("part", item.info.id, reconcile(merged, { key: "id" }))
             }
           })

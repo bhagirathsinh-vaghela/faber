@@ -8651,6 +8651,17 @@
                       },
                       "content": {
                         "type": "string"
+                      },
+                      "reminder": {
+                        "type": "object",
+                        "properties": {
+                          "sparse": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "sparse"
+                        ]
                       }
                     },
                     "required": [
@@ -8990,6 +9001,52 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.event.subscribe({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/dictation/recover/{id}": {
+      "get": {
+        "operationId": "dictation.recover",
+        "summary": "Recover a dropped dictation transcript",
+        "description": "Return the transcript held for a dictation whose socket dropped before delivery, once. Absent or expired ids return 404.",
+        "responses": {
+          "200": {
+            "description": "Recovered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No transcript held for this id"
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.recover({\n  ...\n})"
           }
         ]
       }
@@ -12376,6 +12433,9 @@
               },
               "archived": {
                 "type": "number"
+              },
+              "injected": {
+                "type": "number"
               }
             },
             "required": [
@@ -12578,6 +12638,12 @@
           },
           "contextBranch": {
             "type": "string"
+          },
+          "activeSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -13636,6 +13702,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.stash.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.prompt.interrupted"
           }
         ]
       },
@@ -15387,6 +15456,23 @@
               "auto_inject": {
                 "description": "Auto-inject background subagent results when they complete (default: false)",
                 "type": "boolean"
+              },
+              "job": {
+                "description": "Settings for background shell jobs (the bash tool), distinct from background subagents",
+                "type": "object",
+                "properties": {
+                  "hard_timeout": {
+                    "description": "Default hard deadline for a background shell job before its watchdog kills it, as a duration like '30m', '1h30m', '90s', or '2h'. A bare number is seconds. Applies to bash-tool jobs only, NOT subagents. Overridden per-call by the bash tool's `timeout`. Defaults to 30m. Raise it for projects with long builds.",
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                }
               }
             }
           },
@@ -17067,6 +17153,35 @@
             },
             "required": [
               "job"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.prompt.interrupted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.prompt.interrupted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "interrupted": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "sessionID",
+              "interrupted"
             ]
           }
         },

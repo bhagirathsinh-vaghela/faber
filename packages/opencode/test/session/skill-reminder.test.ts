@@ -8,7 +8,11 @@ Log.init({ print: false })
 
 const REVIEW = "review-skill"
 
-function user(input: { synthetic?: boolean; texts?: { text: string; synthetic?: boolean }[]; review?: "completed" | "failed" }) {
+function user(input: {
+  synthetic?: boolean
+  texts?: { text: string; synthetic?: boolean }[]
+  review?: "completed" | "failed"
+}) {
   const id = Identifier.ascending("message")
   const textParts = (input.texts ?? [{ text: "go" }]).map((part) => ({
     id: Identifier.ascending("part"),
@@ -54,7 +58,14 @@ function assistant(input: { tools?: { tool: string; input?: any }[]; text?: stri
     callID: Identifier.ascending("part"),
     type: "tool" as const,
     tool: t.tool,
-    state: { status: "completed" as const, input: t.input ?? {}, output: "", title: "", metadata: {}, time: { start: 0, end: 0 } },
+    state: {
+      status: "completed" as const,
+      input: t.input ?? {},
+      output: "",
+      title: "",
+      metadata: {},
+      time: { start: 0, end: 0 },
+    },
   }))
   const textPart = input.text
     ? [
@@ -151,7 +162,12 @@ describe("skillLedger", () => {
     const msgs = [
       assistant({ tools: [{ tool: "skill", input: { name: REVIEW } }] }),
       user({}),
-      assistant({ tools: [{ tool: "bash", input: { command: "git commit -m x" } }, { tool: "bash", input: { command: "git log -1" } }] }),
+      assistant({
+        tools: [
+          { tool: "bash", input: { command: "git commit -m x" } },
+          { tool: "bash", input: { command: "git log -1" } },
+        ],
+      }),
       user({}),
     ]
     const led = SessionPrompt.skillLedger(msgs, REVIEW)

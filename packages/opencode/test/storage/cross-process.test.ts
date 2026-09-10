@@ -35,7 +35,10 @@ function child(source: string, ...args: string[]) {
 }
 
 async function output(proc: Bun.Subprocess) {
-  const [out, err] = await Promise.all([new Response(proc.stdout as ReadableStream).text(), new Response(proc.stderr as ReadableStream).text()])
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout as ReadableStream).text(),
+    new Response(proc.stderr as ReadableStream).text(),
+  ])
   await proc.exited
   return out.trim() + err.trim()
 }

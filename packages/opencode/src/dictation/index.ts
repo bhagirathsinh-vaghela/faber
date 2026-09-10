@@ -4,6 +4,7 @@ import { Log } from "../util/log"
 import { deepgram } from "./deepgram"
 import { local } from "./local"
 import { DictationRate } from "./rate"
+import { DictationRecover } from "./recover"
 import type { Engine, Host } from "./engine"
 
 export namespace Dictation {
@@ -11,9 +12,18 @@ export namespace Dictation {
 
   const DEFAULT_LOCAL_URL = "http://127.0.0.1:4100"
 
-  export function connect(client: WSContext) {
+  export function connect(client: WSContext, id?: string) {
     let engine: Engine | undefined
     let closed = false
+    // Set once a real "stop" arrives, so an unexpected socket close can be told
+    // apart from the client saying it is done.
+    let stopped = false
+    // Every final transcript accumulates here so a socket that drops mid-session
+    // can hand the finished text to recovery instead of losing it.
+    let transcript = ""
+    // While recovering, the client is gone: transcripts route to the store and
+    // done/fail must not touch the dead socket.
+    let recovering = false
     // Selecting the engine is async, and the browser starts sending as soon as
     // the socket opens, so early frames wait here rather than being dropped. A
     // commit or stop arriving in that window is replayed after the frames.
@@ -22,11 +32,12 @@ export namespace Dictation {
 
     const host: Host = {
       transcript(value) {
-        if (closed) return
+        if (value.final && value.text) transcript = transcript ? `${transcript} ${value.text}` : value.text
+        if (closed || recovering) return
         client.send(JSON.stringify({ type: "transcript", text: value.text, final: value.final }))
       },
       fail(message) {
-        if (closed) return
+        if (closed || recovering) return
         log.error("dictation failed", { message })
         client.send(JSON.stringify({ type: "error", message }))
         closed = true
@@ -34,7 +45,7 @@ export namespace Dictation {
         client.close()
       },
       done() {
-        if (closed) return
+        if (closed || recovering) return
         closed = true
         engine?.close()
         client.close()
@@ -77,6 +88,7 @@ export namespace Dictation {
             return
           }
           if (message.type !== "stop") return
+          stopped = true
           if (!engine) {
             pendingStop = message.rate
             return
@@ -91,9 +103,23 @@ export namespace Dictation {
         engine.frame(data)
       },
       onClose() {
-        log.info("client disconnected")
-        closed = true
-        engine?.close()
+        // A clean stop already ran the transcript back to the client, so its
+        // close needs nothing more. An unexpected close with an id still owes
+        // the user a transcript: finish the buffered audio and hold the text
+        // under the id for the client to pull when it reconnects.
+        if (stopped || !engine || !id) {
+          log.info("client disconnected")
+          closed = true
+          engine?.close()
+          return
+        }
+        log.info("client dropped, recovering transcript", { id })
+        recovering = true
+        Promise.resolve(engine.stop(DictationRate.DEFAULT)).finally(() => {
+          if (transcript) DictationRecover.put(id, transcript)
+          closed = true
+          engine?.close()
+        })
       },
     }
   }
