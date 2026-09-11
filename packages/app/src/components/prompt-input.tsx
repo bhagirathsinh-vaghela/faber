@@ -1044,6 +1044,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: text + " ", start: 0, end: 0 }]
     const end = promptLength(next)
     prompt.set(next, end)
+    // Dictation can land text while the reader chrome is hidden. Reveal it so the
+    // transcribed text is on screen, ready to send or edit.
+    if (layout.reader.opened()) layout.reader.reveal()
     if (editorRef?.isConnected) requestAnimationFrame(() => setCursorPosition(editorRef, end))
   }
   const dictation = createDictation({
@@ -1145,9 +1148,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     },
     {
       // Clearing is only ever asked for in order to type something else, so the
-      // caret comes along and reader is asked for the composer it hides. While
-      // the composer holds focus its own handler takes the key instead, where a
-      // live selection means the press was aimed at copying.
+      // caret comes along and reader reveals the composer it hides. While the
+      // composer holds focus its own handler takes the key instead, where a live
+      // selection means the press was aimed at copying.
       id: "prompt.clear",
       title: language.t("command.prompt.clear"),
       description: language.t("command.prompt.clear.description"),
@@ -1156,7 +1159,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       disabled: !prompt.dirty() || isFocused(),
       onSelect: () => {
         clearPrompt()
-        layout.reader.composer.summon()
+        layout.reader.reveal()
         editorRef.focus({ preventScroll: true })
       },
     },

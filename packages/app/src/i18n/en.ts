@@ -99,8 +99,8 @@ export const dict = {
   "command.subagent.pending.description": "Review and accept pending background subagent results",
   "command.reader.toggle": "Toggle reader mode",
   "command.reader.toggle.description": "Enter or exit reader mode, which hides the composer and all chrome",
-  "command.reader.composer.summon": "Write a message",
-  "command.reader.composer.summon.description": "Bring back the composer without leaving reader mode",
+  "command.reader.composer.summon": "Reveal the composer",
+  "command.reader.composer.summon.description": "Reveal the reader chrome and put the caret in the composer",
   "command.session.stopTurn": "Stop the turn",
   "command.session.stopTurn.description": "Abort the in-flight turn, leaving the session warm",
   "command.prompt.clear": "Clear the composer",
@@ -132,7 +132,6 @@ export const dict = {
   "reader.enter": "Reader mode",
   "reader.exit": "Exit reader mode",
   "reader.dictate": "Dictate",
-  "reader.compose": "Write a message",
 
   "dialog.provider.search.placeholder": "Search providers",
   "dialog.provider.empty": "No providers found",

@@ -171,18 +171,23 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       setReaderOpened(true)
       rememberReader(true)
       collapseChrome()
+      // Entering reader is itself the "let me read" gesture, so it starts clean
+      // with the chrome hidden. A deliberate dead-space click or tap reveals it,
+      // and toggles it from there; nothing shows or hides on a timer.
+      setRevealed(false)
     }
     const exitReader = () => {
       setReaderOpened(false)
       rememberReader(false)
-      setComposerSummoned(false)
+      setRevealed(false)
     }
 
-    // Reader hides the composer, and this asks for it back without leaving the
-    // mode. It is a request rather than a state the composer reads directly: a
-    // draft keeps the composer up on its own, so this only covers the empty
-    // one, which nothing else would keep on screen.
-    const [composerSummoned, setComposerSummoned] = createSignal(false)
+    // The one visibility state for every piece of reader chrome: the pill
+    // cluster and the composer show and hide together as one unit. Toggled only
+    // by a deliberate click/tap, never on a timer. Ephemeral, never persisted.
+    const [revealed, setRevealed] = createSignal(false)
+    const reveal = () => setRevealed(true)
+    const hide = () => setRevealed(false)
 
     // Reader strips the chrome around a transcript, so it only means anything on
     // a session route. The overview has no transcript, and reading the raw flag
@@ -644,12 +649,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         opened: readerActive,
         enter: enterReader,
         exit: exitReader,
-        composer: {
-          summoned: composerSummoned,
-          summon: () => setComposerSummoned(true),
-          dismiss: () => setComposerSummoned(false),
-          toggle: () => setComposerSummoned((open) => !open),
-        },
+        revealed,
+        reveal,
+        hide,
         toggle() {
           // enterReader/exitReader cannot own this: the restore effect calls
           // them on arrival, where a wipe would hit the session being left.

@@ -56,8 +56,8 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     return Math.round(cssPx("--control-height", 36) * PILL_SCALE)
   }
 
-  // The reader button, plus the two the mode adds above it.
-  const orbs = () => (layout.reader.opened() ? 3 : 1)
+  // The reader button, plus the dictate orb the mode adds above it.
+  const orbs = () => (layout.reader.opened() ? 2 : 1)
   const stack = () => orbs() * size() + (orbs() - 1) * STACK_GAP
 
   // How far the stack rises above its bottom button, which is everything the
@@ -218,11 +218,17 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     </button>
   )
 
+  // In reader the whole cluster is chrome that fades with the reveal state, so a
+  // still, unrevealed reader is pure content. Outside reader the cluster is the
+  // lone way in, so it always shows.
+  const dimmed = () => layout.reader.opened() && !layout.reader.revealed()
+
   return (
     <Portal>
       <div
         data-reader-cluster
-        class="fixed z-[100] flex flex-col items-center justify-end pointer-events-none transition-none"
+        class="fixed z-[100] flex flex-col items-center justify-end pointer-events-none transition-opacity duration-200"
+        classList={{ "opacity-0 [&_*]:pointer-events-none": dimmed() }}
         style={{
           // Positioned by its foot, so a button appearing above the bottom one
           // grows the stack upward and leaves that button where it was.
@@ -237,9 +243,6 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
         }}
       >
         <Show when={layout.reader.opened()}>
-          <Orb label={language.t("reader.compose")} onPress={() => layout.reader.composer.toggle()}>
-            <Icon name="pencil-line" class="size-full" style={{ color: "var(--icon-strong-base)" }} />
-          </Orb>
           <Orb label={language.t("reader.dictate")} onPress={() => dictationTarget()?.toggle()} dictation>
             <MicIcon class="size-full" running={dictationRunning()} targeted />
           </Orb>

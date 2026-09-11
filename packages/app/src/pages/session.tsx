@@ -409,12 +409,11 @@ export default function Page() {
   // around whichever of them is pending.
   const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
   const reader = () => layout.reader.opened()
-  // A draft is unsendable while the dock is away, and dictation from the reader
-  // pill writes one without the composer ever being on screen. Reader means "I
-  // am not typing", which a draft contradicts, so the dock returns to carry it
-  // and leaves again once it is sent or cleared. Summoning is the same request
-  // made deliberately, for the empty composer nothing else would keep up.
-  const composerWanted = createMemo(() => prompt.dirty() || layout.reader.composer.summoned())
+  const coarse = createCoarsePointer()
+  // Reader chrome is one revealed unit: the composer rides the same state as the
+  // pill cluster, with no draft exception, so a hidden draft waits off screen in
+  // prompt state until the next reveal.
+  const composerWanted = createMemo(() => layout.reader.revealed())
   const readerDocked = createMemo(() => reader() && !awaitingAnswer() && !composerWanted())
   // A signal rather than a read of document.activeElement, since the keybind
   // that stands down for the composer resolves `disabled` inside a memo, where a
@@ -437,14 +436,30 @@ export default function Page() {
     }),
   )
 
-  // Summoning is asking to type, so the caret goes with the composer. Deferred
-  // for the same reason as above: the element is still hidden on this tick.
+  // Hiding blurs so a caret left in the hidden inert composer cannot strand
+  // keyboard focus and swallow the transcript's bare-key shortcuts.
   createEffect(
-    on(layout.reader.composer.summoned, (summoned) => {
-      if (!summoned) return
-      requestAnimationFrame(() => command.trigger("prompt.focus.end"))
+    on(layout.reader.revealed, (revealed, was) => {
+      if (revealed || !was) return
+      inputRef?.blur()
     }),
   )
+
+  // Revealing the chrome takes the caret on a fine pointer, so the reader can
+  // type at once; a coarse tap does not, to keep the soft keyboard off what is
+  // being read. Deferred because the composer is still hidden on this tick.
+  const revealChrome = () => {
+    layout.reader.reveal()
+    if (coarse()) return
+    requestAnimationFrame(() => command.trigger("prompt.focus.end"))
+  }
+
+  // Sending closes the "type" loop, so the reader falls back to the clean
+  // surface to watch the reply, the way entering reader left it.
+  const onSubmit = () => {
+    resumeScroll()
+    if (reader()) layout.reader.hide()
+  }
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -975,21 +990,17 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
     },
     {
-      // Reader hides the composer, which leaves the pill the only way to ask
-      // for it back. A bare letter can be a shortcut here precisely because
-      // there is nothing to type into: the composer is gone, so nothing on
-      // screen wants the keystroke as text.
-      //
-      // Disabled once the composer is up, which is what makes the binding
-      // release the letter: from then on the focused composer takes "e" as the
-      // character it is, and there is no second press to come back to.
+      // While reader keeps the chrome hidden, "e" is free to mean "reveal it" —
+      // the keyboard's version of the dead-space click, and it takes the caret
+      // the same way. Once the chrome is up the composer holds "e" as a
+      // character, so the binding stands down the moment it is revealed.
       id: "reader.composer.summon",
       title: language.t("command.reader.composer.summon"),
       description: language.t("command.reader.composer.summon.description"),
       category: language.t("command.category.view"),
       keybind: "e",
-      disabled: !reader() || composerWanted(),
-      onSelect: () => layout.reader.composer.summon(),
+      disabled: !reader() || layout.reader.revealed(),
+      onSelect: revealChrome,
     },
     {
       // Stopping also sits in the composer's own key handler, which only runs
@@ -1894,9 +1905,35 @@ export default function Page() {
 
   const anchor = (id: string) => `message-${id}`
 
+  // A transcript element does its own thing on a tap (copy inline code, open an
+  // overlay, follow a link); only a tap that lands on none of them is read as
+  // "toggle the chrome". The dock and the pill cluster are excluded so a tap
+  // there is never mistaken for dead space. A diff renders in a shadow root, so
+  // its inner clicks retarget to the [data-component="diff"] host, which is what
+  // the closest test sees; any future shadow-DOM card needs its host listed too.
+  const interactive = (target: EventTarget | null) =>
+    target instanceof Element &&
+    !!target.closest(
+      'button, a, input, textarea, select, [contenteditable="true"], [role="button"], [data-scrollable], [data-slot="prompt-dock"], [data-reader-cluster], [data-copyable], code, [data-component="icon-button"], [data-component="diff"], [data-component="markdown-code"], [data-slot="user-message-attachment"]',
+    )
+
   const setScrollRef = (el: HTMLDivElement | undefined) => {
     scroller = el
     setScrollerBox(el)
+    if (!el) return
+
+    // A click or tap on dead space is the only thing that toggles the chrome:
+    // reveal when hidden, hide when shown, on either pointer. A tap on an
+    // interactive element does its own thing and leaves the chrome alone, and
+    // scrolling (which never fires a click) never toggles.
+    const onClick = (event: MouseEvent) => {
+      if (!reader()) return
+      if (interactive(event.target)) return
+      if (layout.reader.revealed()) layout.reader.hide()
+      else revealChrome()
+    }
+    el.addEventListener("click", onClick)
+    onCleanup(() => el.removeEventListener("click", onClick))
   }
 
   // virtua owns turn windowing: it keeps only the visible range (+overscan)
@@ -3025,7 +3062,7 @@ export default function Page() {
                     }}
                     newSessionWorktree={newSessionWorktree()}
                     onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
-                    onSubmit={resumeScroll}
+                    onSubmit={onSubmit}
                   />
                 </Show>
               </div>

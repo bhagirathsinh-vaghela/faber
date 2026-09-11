@@ -4,19 +4,20 @@ import { defocus, openSidebar, withSession } from "../actions"
 import { promptSelector, sessionItemSelector } from "../selectors"
 import { modKey, type createSdk } from "../utils"
 
-// Reader is the full-screen read: the composer and both pinned headers go, and
-// the pill is the only way in or out. The reclaim is a contract between a CSS
-// variable and the five consumers that reserve space against it.
+// Reader is the full-screen read: all chrome (the composer, both pinned headers,
+// and the pill cluster) rides one reveal state. Entering shows it; from there a
+// dead-space click or tap is the only thing that toggles it. Nothing on a timer.
 
 const PHONE = { width: 430, height: 900 }
 const DESKTOP = { width: 1500, height: 900 }
 
-// The mode toggle sits at the foot of a cluster that also holds compose and
-// dictate, so it is addressed by what it does. A positional or class-based
+// The exit orb is addressed by what it does. A positional or class-based
 // selector picks up whichever sibling the cluster gained last.
 const readerPill = (page: Page) => page.getByRole("button", { name: /reader mode/i })
+const dictateOrb = (page: Page) => page.getByRole("button", { name: /dictate/i })
 
 const scroller = (page: Page) => page.locator(".session-scroller")
+const composer = (page: Page) => page.locator('[data-slot="composer"]')
 
 // Asserting the reserved space rather than the dock's own box: the dock hides
 // by transform and keeps its height either way, so its rect proves nothing
@@ -39,10 +40,16 @@ async function seedTurn(sdk: ReturnType<typeof createSdk>, sessionID: string) {
   await sdk.session.shell({ sessionID, agent: "build", command: "echo reader" })
 }
 
-async function tapBackdrop(page: Page) {
+// A dead-space point in the transcript: the left gutter, clear of any turn box.
+function deadPoint(box: { x: number; y: number; width: number; height: number }) {
+  return { x: Math.round(box.x + 5), y: Math.round(box.y + box.height / 2) }
+}
+
+async function clickDeadSpace(page: Page) {
   const box = await scroller(page).boundingBox()
   if (!box) throw new Error("transcript scroller has no box")
-  await page.mouse.click(Math.round(box.x + 5), Math.round(box.y + box.height / 2))
+  const point = deadPoint(box)
+  await page.mouse.click(point.x, point.y)
   await settle(page)
 }
 
@@ -67,55 +74,73 @@ async function openSession(page: Page, sessionID: string) {
   await settle(page)
 }
 
-test.describe("reader mode", () => {
+test.describe("reader mode on a touch device", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: PHONE })
 
-  test("the pill reclaims the composer's space, and taking it out gives it back", async ({
-    page,
-    sdk,
-    gotoSession,
-  }) => {
-    await withSession(sdk, `reader clearance ${Date.now()}`, async (session) => {
+  test("entering reader starts clean, and stays hidden without a timer", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader entry ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
       await gotoSession(session.id)
 
-      const docked = await clearance(page)
-      expect(docked).not.toBe("0px")
-
       await enterReader(page)
-      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+      await expect(composer(page)).toBeHidden()
+      expect(await reclaimed(page), "the clean entry reclaims the composer space").toBe(true)
 
-      await readerPill(page).click()
-      await settle(page)
-      expect(await clearance(page)).toBe(docked)
+      // No timer either way: nothing reveals on its own after entry.
+      await page.waitForTimeout(3500)
+      await expect(composer(page)).toBeHidden()
     })
   })
 
-  test("nothing but the pill changes the mode", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader gestures ${Date.now()}`, async (session) => {
+  test("a tap on dead space toggles the chrome", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader tap ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
-      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+      await expect(composer(page)).toBeHidden()
 
-      await tapBackdrop(page)
-      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+      await clickDeadSpace(page)
+      await expect(composer(page)).toBeVisible()
 
-      const box = await scroller(page).boundingBox()
-      if (!box) throw new Error("transcript scroller has no box")
-      const x = Math.round(box.x + 5)
-      const y = Math.round(box.y + box.height / 2)
-      await page.mouse.move(x, y)
-      await page.mouse.down()
-      await page.mouse.move(x, y - 140, { steps: 10 })
-      await page.mouse.up()
-      await settle(page)
-      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+      await clickDeadSpace(page)
+      await expect(composer(page)).toBeHidden()
+      expect(await reclaimed(page), "the hidden composer reclaims its space").toBe(true)
+    })
+  })
+
+  test("a tap on a turn does its own thing and leaves the chrome alone", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader tap turn ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+      // Reveal first, so a stray toggle from the turn tap would show up.
+      await clickDeadSpace(page)
+      await expect(composer(page)).toBeVisible()
 
       const turn = page.locator('[data-component="session-turn"]').first()
       await expect(turn).toBeVisible()
       await turn.click({ position: { x: 5, y: 5 } })
       await settle(page)
-      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+      await expect(composer(page)).toBeVisible()
+    })
+  })
+
+  test("scrolling never toggles the chrome", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader scroll ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+      await expect(composer(page)).toBeHidden()
+
+      const box = await scroller(page).boundingBox()
+      if (!box) throw new Error("transcript scroller has no box")
+      const point = deadPoint(box)
+      await page.mouse.move(point.x, point.y)
+      await page.mouse.down()
+      await page.mouse.move(point.x, point.y - 140, { steps: 10 })
+      await page.mouse.up()
+      await settle(page)
+      await expect(composer(page)).toBeHidden()
     })
   })
 
@@ -137,37 +162,9 @@ test.describe("reader mode", () => {
     })
   })
 
-  test("a released prompt bar reserves no offset for the boxes below it", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader offsets ${Date.now()}`, async (session) => {
-      await seedTurn(sdk, session.id)
-      await gotoSession(session.id)
-
-      const turn = page.locator('[data-component="session-turn"]').first()
-      await expect(turn).toBeVisible()
-
-      // Resolved through a probe rather than read as a string: the variable
-      // holds an unevaluated calc(), so comparing its text would pass on a
-      // calc() that still sums to a stale header height.
-      const offset = () =>
-        turn.evaluate((el) => {
-          const probe = document.createElement("div")
-          probe.style.position = "absolute"
-          probe.style.top = "var(--sticky-header-height, 0px)"
-          el.appendChild(probe)
-          const top = getComputedStyle(probe).top
-          probe.remove()
-          return top
-        })
-
-      expect(await offset()).not.toBe("0px")
-
-      await enterReader(page)
-      expect(await offset()).toBe("0px")
-    })
-  })
-
   test("the hidden composer is inert, so it holds no focus and no tab stop", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader inert ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
       await gotoSession(session.id)
 
       const editor = page.locator(promptSelector)
@@ -176,28 +173,25 @@ test.describe("reader mode", () => {
 
       await enterReader(page)
 
-      // The composer carries its own hidden/inert state rather than inheriting
-      // the dock's, because a pending question keeps the dock on screen and the
-      // composer must go anyway.
-      const composer = page.locator('[data-slot="composer"]')
-      await expect(composer).toHaveAttribute("inert", "")
-      await expect(composer).toBeHidden()
+      // Reader starts clean, so the composer is hidden and inert right away. It
+      // carries its own hidden/inert state rather than inheriting the dock's,
+      // because a pending question keeps the dock on screen and the composer
+      // must go anyway.
+      await expect(composer(page)).toHaveAttribute("inert", "")
+      await expect(composer(page)).toBeHidden()
       await expect(editor).not.toBeFocused()
     })
   })
 
-  test("the pill stays on screen, so the mode is always escapable", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader escape ${Date.now()}`, async (session) => {
+  test("the cluster carries the exit and dictate orbs in a session", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader orbs ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
       await gotoSession(session.id)
+
       await enterReader(page)
-
-      const pill = readerPill(page)
-      await expect(pill).toBeVisible()
-
-      const box = await pill.boundingBox()
-      expect(box).not.toBeNull()
-      expect(box!.y).toBeGreaterThanOrEqual(0)
-      expect(box!.y + box!.height).toBeLessThanOrEqual(PHONE.height)
+      await clickDeadSpace(page)
+      await expect(readerPill(page)).toBeVisible()
+      await expect(dictateOrb(page)).toBeVisible()
     })
   })
 })
@@ -223,7 +217,7 @@ test.describe("reader mode and a new session", () => {
 
       await newSession(page)
       expect(await clearance(page), "the new session keeps its composer").toBe(docked)
-      await expect(page.locator('[data-slot="composer"]')).toBeVisible()
+      await expect(composer(page)).toBeVisible()
     })
   })
 
@@ -246,140 +240,83 @@ test.describe("reader mode and a new session", () => {
   })
 })
 
-// The mode is a declaration that the user is not interacting, which a mouse
-// makes as readily as a finger. Pointer type earns no branch.
 test.describe("reader mode on a fine pointer", () => {
   test.use({ viewport: DESKTOP })
 
-  test("a mouse gets the same reclaim a finger does", async ({ page, sdk, gotoSession }) => {
+  test("a dead-space click toggles the chrome, and it stays without a timer", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader pointer ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
       await gotoSession(session.id)
 
       const docked = await clearance(page)
       expect(docked).not.toBe("0px")
 
       await enterReader(page)
-      expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
-      await expect(page.locator('[data-slot="composer"]')).toBeHidden()
+      await expect(composer(page)).toBeHidden()
+
+      // No timer: it stays hidden until a deliberate click.
+      await page.waitForTimeout(3500)
+      await expect(composer(page)).toBeHidden()
+
+      await clickDeadSpace(page)
+      await expect(composer(page)).toBeVisible()
+
+      await clickDeadSpace(page)
+      await expect(composer(page)).toBeHidden()
     })
   })
 
-  // Fine-pointer only: a mobile browser refuses programmatic focus of a
-  // contenteditable, since it would raise the keyboard unasked. Verified with a
-  // bare editor.focus() under mobile emulation, which is also refused.
-  test("leaving reader puts the caret in the composer, wherever it was", async ({ page, sdk, gotoSession }) => {
+  test("revealing on a fine pointer lands the caret in the composer", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader focus ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
-
-      const editor = page.locator(promptSelector)
       await enterReader(page)
-      await expect(editor).not.toBeFocused()
+      await expect(composer(page)).toBeHidden()
 
-      // Park focus off the composer, so the exit has something to move rather
-      // than something to leave alone.
-      await scroller(page).click({ position: { x: 5, y: 60 } })
-      await settle(page)
-      await expect(editor).not.toBeFocused()
-
-      await readerPill(page).click()
-      await settle(page)
-      await expect(editor).toBeFocused()
+      // Revealing on a mouse takes the caret so the reader can type at once.
+      await clickDeadSpace(page)
+      await expect(composer(page)).toBeVisible()
+      await expect(page.locator(promptSelector)).toBeFocused()
     })
   })
 
-  // Reader leaves no composer to click, so the keyboard needs its own way to
-  // ask for one. Fine-pointer only for the reason the focus test above is: a
-  // mobile browser refuses to focus a contenteditable it was not tapped into.
-  test("e summons the composer and takes the caret with it", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader summon ${Date.now()}`, async (session) => {
+  test("e reveals the hidden chrome and takes the caret", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader e key ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
 
       const editor = page.locator(promptSelector)
-      const composer = page.locator('[data-slot="composer"]')
-      await expect(composer).toBeHidden()
+      await expect(composer(page)).toBeHidden()
 
+      // While hidden, "e" is the keyboard's reveal — same as a dead-space click.
       await page.keyboard.press("e")
-      await settle(page)
-
-      await expect(composer).toBeVisible()
+      await expect(composer(page)).toBeVisible()
       await expect(editor).toBeFocused()
       await expect(editor).toHaveText("")
-    })
-  })
 
-  test("e is typed rather than obeyed once the composer holds the caret", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader summon typed ${Date.now()}`, async (session) => {
-      await seedTurn(sdk, session.id)
-      await gotoSession(session.id)
-      await enterReader(page)
-
-      await page.keyboard.press("e")
-      await settle(page)
-
-      const editor = page.locator(promptSelector)
-      await expect(editor).toBeFocused()
+      // Once revealed and holding the caret, "e" is a character again.
       await page.keyboard.type("eee")
       await expect(editor).toHaveText("eee")
     })
   })
 
-  test("escape gives back an empty summoned composer", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader dismiss ${Date.now()}`, async (session) => {
+  test("submitting a message hides the chrome again", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader submit ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
 
-      const composer = page.locator('[data-slot="composer"]')
-      await page.keyboard.press("e")
-      await settle(page)
-      await expect(composer).toBeVisible()
-
-      await page.keyboard.press("Escape")
-      await settle(page)
-      await expect(composer).toBeHidden()
-      // Dismissing the composer is not leaving the mode, so the reclaim holds.
-      expect(await reclaimed(page), "reader keeps the composer's space").toBe(true)
-    })
-  })
-
-  test("escape keeps a composer that has something in it", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader dismiss draft ${Date.now()}`, async (session) => {
-      await seedTurn(sdk, session.id)
-      await gotoSession(session.id)
-      await enterReader(page)
-
-      await page.keyboard.press("e")
-      await settle(page)
+      // Reveal, type, and send: sending closes the type loop, so the chrome
+      // falls back to the clean reading surface.
       const editor = page.locator(promptSelector)
-      await page.keyboard.type("half a thought")
+      await clickDeadSpace(page)
+      await expect(editor).toBeFocused()
+      await page.keyboard.type("hello from reader")
 
-      await page.keyboard.press("Escape")
-      await settle(page)
-
-      const composer = page.locator('[data-slot="composer"]')
-      await expect(composer).toBeVisible()
-      await expect(editor).toHaveText("half a thought")
-    })
-  })
-
-  test("e does nothing outside reader, where the composer is already there", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader summon interactive ${Date.now()}`, async (session) => {
-      await seedTurn(sdk, session.id)
-      await gotoSession(session.id)
-
-      const editor = page.locator(promptSelector)
-      await scroller(page).click({ position: { x: 5, y: 60 } })
-      await settle(page)
-      await expect(editor).not.toBeFocused()
-
-      await page.keyboard.press("e")
-      await settle(page)
-      // The interactive composer answers a printable key by taking the caret
-      // and the character, which is the behavior the binding must not displace.
-      await expect(editor).toHaveText("e")
+      await page.keyboard.press("Enter")
+      await expect(composer(page)).toBeHidden()
+      expect(await reclaimed(page), "the sent composer reclaims its space").toBe(true)
     })
   })
 
