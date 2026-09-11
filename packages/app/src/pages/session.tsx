@@ -90,7 +90,6 @@ import {
   NewSessionView,
 } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
-import { overlayActive } from "@/utils/overlay"
 import { same } from "@/utils/same"
 import { probe } from "@/utils/transcript-probe"
 import { Visibility } from "@/utils/visibility"
@@ -446,21 +445,6 @@ export default function Page() {
       requestAnimationFrame(() => command.trigger("prompt.focus.end"))
     }),
   )
-
-  // A summoned composer is a question ("type something?"), and a press anywhere
-  // else answers no. Only while it is still empty: once there is a draft the
-  // composer stays regardless, since a hidden draft cannot be sent or seen.
-  onMount(() => {
-    const dismiss = (event: PointerEvent) => {
-      if (!layout.reader.composer.summoned() || prompt.dirty()) return
-      const target = event.target as HTMLElement | null
-      if (target?.closest('[data-slot="prompt-dock"]')) return
-      if (target?.closest("[data-reader-cluster]")) return
-      layout.reader.composer.dismiss()
-    }
-    document.addEventListener("pointerdown", dismiss, true)
-    onCleanup(() => document.removeEventListener("pointerdown", dismiss, true))
-  })
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -1468,19 +1452,6 @@ export default function Page() {
     }
 
     const activeElement = document.activeElement as HTMLElement | undefined
-
-    // Escape reaches the composer while it holds the caret, which the editable
-    // guard below turns every other key away at. An overlay on screen owns the
-    // key for as long as it is up, so this yields to one rather than racing it:
-    // capture-phase handlers fire in mount order, not by what is in front of
-    // the user.
-    if (activeElement === inputRef && event.key === "Escape" && !overlayActive()) {
-      inputRef?.blur()
-      // Blurring is reversible and losing typed text is not, so a draft holds
-      // the composer open where an empty one is let go.
-      if (layout.reader.composer.summoned() && !prompt.dirty()) layout.reader.composer.dismiss()
-      return
-    }
 
     if (activeElement) {
       const isProtected = activeElement.closest("[data-prevent-autofocus]")

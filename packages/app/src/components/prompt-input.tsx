@@ -1396,10 +1396,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setStore("popover", null)
         return
       }
-      // The session page dismisses the summoned composer on this same key, and
-      // it bubbles there after this handler. Aborting here too spends one press
-      // on two unrelated actions, the destructive one unasked for.
-      if (reader()) return
+      // Escape in the composer aborts a running turn and does nothing else, in
+      // reader mode the same as anywhere: the composer stays, dismissed only by
+      // the reader pill's pencil.
       if (working()) abort()
     }
   }
