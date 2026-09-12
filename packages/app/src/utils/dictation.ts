@@ -7,8 +7,11 @@ const WORKLET = `
 class DictationCapture extends AudioWorkletProcessor {
   constructor(options) {
     super()
-    // The wire rate is served by the backend, not assumed, so a model whose
-    // rate changed is fed correctly once the client reconnects with the new one.
+    // The wire rate the caller committed to. When the context already runs at
+    // this rate (the common path, since the context is asked for exactly it),
+    // frames pass straight through and the browser's own resampler did the
+    // 48k->16k work at sinc quality. The decimator below runs only when the
+    // engine ignored the requested rate and handed back a faster context.
     this.target = options.processorOptions.target
     this.buffer = []
     this.length = 0
@@ -17,23 +20,32 @@ class DictationCapture extends AudioWorkletProcessor {
   process(inputs) {
     const channel = inputs[0]?.[0]
     if (!channel) return true
-    // WebKit may hand back a rate it chose rather than the one asked for, so
-    // the wire rate is met here instead of being assumed. Averaging the samples
-    // that collapse into one output low-passes them; taking a single sample
-    // aliases voice back into the speech band.
-    const step = sampleRate / this.target
-    const out = new Float32Array(Math.ceil((channel.length - this.phase) / step))
-    let taken = 0
-    for (let at = this.phase; at < channel.length; at += step) {
-      const from = Math.floor(at)
-      const to = Math.min(channel.length, Math.floor(at + step))
-      let sum = 0
-      for (let scan = from; scan < to; scan++) sum += channel[scan]
-      out[taken++] = to > from ? sum / (to - from) : channel[from]
+    // Fast path: the context is already at the wire rate, so no resampling is
+    // needed and none is done — the browser's polyphase resampler produced
+    // these samples. This is what every shipped browser STT client relies on.
+    if (sampleRate === this.target) {
+      this.buffer.push(channel.slice())
+      this.length += channel.length
+    } else {
+      // Fallback for an engine that ignored the requested rate: a box-average
+      // decimator. Averaging the samples that collapse into one output
+      // low-passes them; taking a single sample would alias voice back into
+      // the speech band. Lower quality than the browser resampler, but only
+      // reached when the browser refused to give us the rate we asked for.
+      const step = sampleRate / this.target
+      const out = new Float32Array(Math.ceil((channel.length - this.phase) / step))
+      let taken = 0
+      for (let at = this.phase; at < channel.length; at += step) {
+        const from = Math.floor(at)
+        const to = Math.min(channel.length, Math.floor(at + step))
+        let sum = 0
+        for (let scan = from; scan < to; scan++) sum += channel[scan]
+        out[taken++] = to > from ? sum / (to - from) : channel[from]
+      }
+      this.phase = this.phase + taken * step - channel.length
+      this.buffer.push(out.subarray(0, taken))
+      this.length += taken
     }
-    this.phase = this.phase + taken * step - channel.length
-    this.buffer.push(out.subarray(0, taken))
-    this.length += taken
     if (this.length >= 1024) {
       const merged = new Float32Array(this.length)
       let offset = 0
@@ -50,6 +62,14 @@ class DictationCapture extends AudioWorkletProcessor {
 }
 registerProcessor("dictation-capture", DictationCapture)
 `
+
+// The rate every current model runs at, and the server's own default. The
+// capture context is built at this immediately on the press — inside the
+// user-gesture window, where AudioContext.resume() must run on iOS — instead
+// of waiting for the server to name a rate. The server's rate message still
+// arrives and is honored: on the rare occasion it differs (a model changed),
+// the graph is rebuilt at the rate it names.
+const DEFAULT_RATE = 16000
 
 // Ceiling on how long a batch engine may take to return its transcript after
 // the mic stops.
@@ -94,25 +114,41 @@ function afterPaint(fn: () => void) {
   setTimeout(once, 500)
 }
 
-async function acquire(target: number) {
-  // Nothing here depends on the microphone, so building the graph in parallel
-  // takes its cost off the press instead of adding to it.
-  // WebKit opens the route faster for an explicit target-rate context than for
-  // a native-rate one whose output has to be decimated afterwards.
+// Opens the microphone route without waiting on anything else. This is the
+// slow step on iOS (its voice-processing audio unit costs most of a second),
+// and it depends on nothing the server sends, so the caller fires it the
+// instant the press lands — before the socket handshake and the wire-rate
+// round-trip — rather than stacking it behind them.
+function openMic() {
+  // On WebKit, autoGainControl is coupled to echoCancellation: turning echo
+  // cancellation off ALSO turns AGC off, and a quiet built-in phone mic then
+  // reaches the recognizer far too quiet. Shipped browser STT clients keep this
+  // whole DSP chain on for one-way dictation, because AGC's loudness
+  // normalization matters more to recognition than the small latency the
+  // voice-processing unit costs.
+  return navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  })
+}
+
+// Builds the capture context at the target rate. Requesting the target rate
+// gets the browser's own polyphase resampler for the 48k->16k step (sinc
+// quality), which is what every shipped browser STT client relies on; the
+// worklet only decimates if the browser ignored the request. Called in-gesture
+// so the resume() below lands inside the user-activation window iOS requires.
+async function acquire(target: number, mic: Promise<MediaStream>) {
   const context = new AudioContext({ sampleRate: target })
+  // Fire the module load and the resume() NOW, synchronously in the gesture,
+  // before awaiting anything. iOS starts a context suspended and only honors a
+  // resume() issued inside the activation window; issuing it after `await mic`
+  // would land outside that window and audio would silently never flow.
   const ready = context.audioWorklet.addModule(workletModule())
-  const stream = await navigator.mediaDevices
-    // Echo cancellation and noise suppression put iOS on its voice-processing
-    // audio unit, which costs most of a second to instantiate, and dictation
-    // plays nothing back so there is no echo to cancel. Gain control is left on:
-    // measured against this same script, disabling it both slowed acquisition
-    // and cost a proper noun.
-    .getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false } })
-    .catch((error) => {
-      context.close().catch(() => {})
-      throw error
-    })
-  // The worklet decimates whatever arrives down to the wire rate, so a WebKit
+  const resumed = context.state === "running" ? Promise.resolve() : context.resume().catch(() => {})
+  const stream = await mic.catch((error) => {
+    context.close().catch(() => {})
+    throw error
+  })
+  // The worklet decimates whatever arrives down to the wire rate, so a browser
   // that ignored the request is fine. Only a context slower than the target is
   // unusable: decimation can discard samples, never invent them.
   if (context.sampleRate < target) {
@@ -120,9 +156,7 @@ async function acquire(target: number) {
     context.close().catch(() => {})
     throw new Error(`AudioContext sample rate is ${context.sampleRate}, below the ${target} dictation needs`)
   }
-  // WebKit starts a context suspended when it is constructed outside the
-  // gesture that began the press, and audio silently never flows.
-  if (context.state !== "running") await context.resume().catch(() => {})
+  await resumed
   await ready
   return { stream, context }
 }
@@ -401,10 +435,19 @@ export function createDictation(opts: {
     id = crypto.randomUUID()
     const generation = ++epoch
 
-    // Dial before touching the mic: the handshake crosses the network (a full
-    // RTT or two on cellular) while getUserMedia and the worklet compile run
-    // locally, so neither waits on the other. Audio produced before the socket
-    // opens queues in `pending`.
+    // Open the mic first thing, still inside the press: it is the slow step on
+    // iOS and depends on nothing the server sends, so it runs while the socket
+    // handshake happens alongside it. The abort path stops it whether or not it
+    // has resolved yet.
+    const mic = openMic()
+    // A permission denial can settle before a handler is attached (acquire() or
+    // dispose()); this keeps that rejection from surfacing as unhandled without
+    // consuming it for the awaiters below.
+    mic.catch(() => {})
+
+    // The handshake crosses the network (a full RTT or two on cellular) while
+    // the mic opens locally, so neither waits on the other. Audio produced
+    // before the socket opens queues in `pending`.
     const url = new URL(opts.url() + "/dictation/connect")
     // The server tags its audio buffer with this so an unexpected drop can hold
     // the finished transcript for the pull.
@@ -468,29 +511,60 @@ export function createDictation(opts: {
       teardown()
     }
 
+    // Build the capture graph in-gesture at the default rate, in parallel with
+    // the mic open and the socket handshake. This is what puts AudioContext
+    // creation and resume() inside the user-activation window iOS requires,
+    // rather than after the server round-trip. The server's rate is reconciled
+    // once it arrives, below.
+    const acquiring = acquire(DEFAULT_RATE, mic)
+    acquiring.catch(() => {})
+
     let stream: MediaStream | undefined
     let context: AudioContext | undefined
     const dispose = () => {
       abortStart = undefined
       socket.onclose = null
       socket.close()
+      // The mic may still be opening when the abort lands, so stop its tracks
+      // whenever they arrive rather than only the copy acquire() has handed
+      // back. If getUserMedia rejects there is nothing to stop.
       if (stream) for (const track of stream.getTracks()) track.stop()
-      context?.close().catch(() => {})
+      else void mic.then((s) => s.getTracks().forEach((track) => track.stop())).catch(() => {})
+      // Same for the context: acquire() may still be building it when we abort.
+      if (context) context.close().catch(() => {})
+      else void acquiring.then((g) => g.context.close().catch(() => {})).catch(() => {})
     }
     abortStart = dispose
 
     try {
-      const target = await wireRate
-      if (generation !== epoch) {
-        dispose()
-        return
-      }
-      const graph = await acquire(target)
+      const graph = await acquiring
+      // Adopt the graph into the outer refs immediately, so dispose() tears it
+      // down on any early return below rather than each site cleaning up by hand.
       stream = graph.stream
       context = graph.context
       if (generation !== epoch) {
         dispose()
         return
+      }
+      // Honor the server's rate. It almost always matches DEFAULT_RATE, so the
+      // graph built in-gesture stands; only a model-rate change forces a rebuild
+      // of the CONTEXT at the rate the server named, reusing the open mic. The
+      // rebuild runs after awaits, so its resume() is outside the gesture window
+      // — acceptable because a rate change is rare and the user can retry, where
+      // the common path keeps the in-gesture guarantee.
+      const target = await wireRate
+      if (generation !== epoch) {
+        dispose()
+        return
+      }
+      if (target !== DEFAULT_RATE) {
+        context.close().catch(() => {})
+        const rebuilt = await acquire(target, Promise.resolve(stream))
+        context = rebuilt.context
+        if (generation !== epoch) {
+          dispose()
+          return
+        }
       }
       if (socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) {
         throw new Error("Dictation connection closed")
@@ -516,16 +590,15 @@ export function createDictation(opts: {
       const source = context.createMediaStreamSource(stream)
       source.connect(worklet)
 
-      // Waveform reads this analyser's frequency data on its own rAF. The gain
-      // sits in front of it only: capture asks the OS for no auto-gain, so the
-      // bars would otherwise read far quieter than the speech sounds. Nothing
-      // downstream of the worklet sees this, so the model still gets the
+      // Waveform reads this analyser's frequency data on its own rAF. A modest
+      // gain sits in front of the analyser only, to keep quiet bars visible;
+      // nothing downstream of the worklet sees it, so the model still gets the
       // untouched signal.
       analyser = context.createAnalyser()
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.8
       const visual = context.createGain()
-      visual.gain.value = 4
+      visual.gain.value = 2
       source.connect(visual)
       visual.connect(analyser)
 
