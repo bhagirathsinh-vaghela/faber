@@ -204,6 +204,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     dictation?: boolean
     class?: string
     style?: JSX.CSSProperties
+    disc?: string
     children: JSX.Element
   }) => (
     <button
@@ -222,7 +223,14 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
       classList={{ [props.class ?? ""]: !!props.class }}
       style={{ width: `${size()}px`, height: `${size()}px`, ...props.style }}
     >
-      <span class="flex items-center justify-center" style={{ width: `${glyph()}px`, height: `${glyph()}px` }}>
+      {/* The glyph box. A ghost orb hangs an opaque disc here instead of on the
+          button, so the icon stays legible over content while the tap target
+          fills the full orb. */}
+      <span
+        class="flex items-center justify-center rounded-full"
+        classList={{ [props.disc ?? ""]: !!props.disc }}
+        style={{ width: `${glyph()}px`, height: `${glyph()}px` }}
+      >
         {props.children}
       </span>
     </button>
@@ -234,15 +242,20 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // ghost mic can opt out and stay tappable.
   const dimmed = () => layout.reader.opened() && !layout.reader.revealed()
 
-  // A normal orb's chrome, and the fade applied to it while the cluster is
-  // hidden. The mic overrides this when it stands alone.
+  // On a touch device every visible orb is a ghost: the full ring is the touch
+  // target, its fill is transparent so it does not cover content, and a snug
+  // opaque disc behind the glyph (a hair larger than the icon, box-content so it
+  // does not resize it) carries legibility. A fine pointer keeps solid orbs,
+  // where the space is not scarce.
   const solidOrb = "shadow-md border-border-weak-base bg-surface-raised-base text-icon-strong-base hover:bg-surface-raised-base-hover"
+  const ghostOrb = "border-border-base bg-transparent"
+  const chrome = () => (coarse() ? ghostOrb : solidOrb)
+  const disc = () => (coarse() ? "bg-surface-raised-base p-[1px] box-content" : "")
   const faded = () => (dimmed() ? "opacity-0 pointer-events-none" : "")
   // The mic is the one control a touch reader keeps within reach, so when the
-  // cluster is hidden on a touch device it stays as a ghost (transparent fill, a
-  // legible border, no shadow) at the bottom slot, where the exit orb anchors.
+  // cluster is hidden on a touch device it alone stays visible, at the bottom
+  // slot where the exit orb anchors.
   const micGhost = () => coarse() && dimmed()
-  const ghostOrb = "border-border-base bg-transparent"
 
   return (
     <Portal>
@@ -266,7 +279,8 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
           <Orb
             label={language.t("reader.minimal")}
             onPress={() => layout.reader.minimalToggle()}
-            class={`${solidOrb} ${faded()}`}
+            class={`${chrome()} ${faded()}`}
+            disc={disc()}
           >
             <Icon
               name="eye"
@@ -278,7 +292,10 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
             label={language.t("reader.dictate")}
             onPress={() => dictationTarget()?.toggle()}
             dictation
-            class={micGhost() ? ghostOrb : `${solidOrb} ${faded()}`}
+            // Same ghost chrome as the others; the mic just does not fade when it
+            // is the lone persistent control.
+            class={micGhost() ? chrome() : `${chrome()} ${faded()}`}
+            disc={disc()}
             // Ghosted, the mic drops one orb+gap into the exit slot at the foot;
             // revealed, it returns to its own slot and the transition animates it.
             style={{ transform: micGhost() ? `translateY(${size() + STACK_GAP}px)` : "translateY(0)" }}
@@ -289,7 +306,8 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
         <Orb
           label={layout.reader.opened() ? language.t("reader.exit") : language.t("reader.enter")}
           onPress={() => layout.reader.toggle()}
-          class={`${solidOrb} ${faded()}`}
+          class={`${chrome()} ${faded()}`}
+          disc={disc()}
         >
           <Icon
             name={layout.reader.opened() ? "book-check" : "book-open"}
