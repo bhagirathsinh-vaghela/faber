@@ -13,7 +13,7 @@ export function isEditable(node: unknown): boolean {
 }
 
 // Snapshot the element that currently holds focus and return a function that
-// restores focus to it. Used by overlays that hide the focused element (zen,
+// restores focus to it. Used by overlays that hide the focused element (reader,
 // the question panel, terminals) and by the dialog provider so focus returns to
 // where it was before the overlay/dialog opened, not to a fixed target.
 //

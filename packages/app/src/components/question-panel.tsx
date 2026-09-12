@@ -52,7 +52,8 @@ export function QuestionPanel(props: { onClose?: () => void }) {
   // driven by the "question" row of the box-defaults matrix for the current
   // mode (ticked = collapsed).
   const applyDefault = () => {
-    const mode = layout.reader.opened() ? "reader" : "normal"
+    const mode =
+      layout.reader.opened() && layout.reader.minimal() ? "minimal" : layout.reader.opened() ? "reader" : "normal"
     if (settings.boxes.collapsed("question", mode)) question.collapse()
     else question.expand()
   }
@@ -436,7 +437,7 @@ function Panel(props: {
   // contenteditable included) sees the key, and both preventDefault +
   // stopPropagation on the keys it consumes so the prompt's own handler never
   // fires — the question is answered before anything else can be typed. Keys it
-  // does NOT consume fall through untouched, so unrelated global keybinds (zen,
+  // does NOT consume fall through untouched, so unrelated global keybinds (reader,
   // the palette) keep working while a question is up. The custom-answer textarea
   // is the one exception: it keeps its own Enter/Escape handling, so yield while
   // it has focus.

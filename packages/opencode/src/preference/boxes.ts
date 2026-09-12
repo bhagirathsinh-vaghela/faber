@@ -8,13 +8,15 @@ export namespace BoxPreference {
   const KEY = ["preference", "boxes"]
 
   // Per-box-type collapse defaults, keyed by tool/box name. Each mode flag is
-  // `true` = collapsed by default, absent/`false` = expanded.
+  // `true` = collapsed by default, absent/`false` = expanded. Reader and minimal
+  // are the two read-focused modes; minimal collapses more of the transcript.
   export const Info = z
     .record(
       z.string(),
       z.object({
         normal: z.boolean().optional(),
         reader: z.boolean().optional(),
+        minimal: z.boolean().optional(),
       }),
     )
     .meta({
@@ -28,24 +30,8 @@ export namespace BoxPreference {
     Updated: BusEvent.define("boxes.preference.updated", Info),
   }
 
-  // Each server keeps its own copy of this record, so the reader
-  // rename migrates at read time rather than from a script: a record can never
-  // be rewritten by a binary that predates the rename. Both flags are optional,
-  // so a stale `zen` would otherwise parse clean and read as expanded, silently
-  // dropping the saved defaults.
-  function migrate(stored: Info) {
-    const legacy = stored as Record<string, { normal?: boolean; zen?: boolean; reader?: boolean }>
-    const entries = Object.entries(legacy)
-    if (!entries.some(([, box]) => "zen" in box)) return undefined
-    return Object.fromEntries(entries.map(([box, flags]) => [box, { normal: flags.normal, reader: flags.zen }])) as Info
-  }
-
   export async function get() {
-    const stored = await Storage.read<Info>(KEY).catch(() => EMPTY)
-    const migrated = migrate(stored)
-    if (!migrated) return stored
-    await set(migrated)
-    return migrated
+    return Storage.read<Info>(KEY).catch(() => EMPTY)
   }
 
   export const set = fn(Info, async (input) => {

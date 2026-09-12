@@ -1,6 +1,6 @@
 import { createContext, createSignal, useContext, type Accessor, type ParentProps } from "solid-js"
 
-export type BoxMode = "normal" | "reader"
+export type BoxMode = "normal" | "reader" | "minimal"
 
 // Bridges the app's per-box collapse defaults + current view mode into the ui
 // layer (which cannot import app's settings/layout contexts). The app supplies

@@ -192,12 +192,12 @@ export function Titlebar() {
   }
 
   return (
-    // Zen hides the titlebar via `hidden`, not <Show>. Unmounting it destroys
+    // Reader hides the titlebar via `hidden`, not <Show>. Unmounting it destroys
     // the #opencode-titlebar-{center,right} portal targets that session-header
-    // memoizes; on zen exit the header would portal into the stale detached
+    // memoizes; on reader exit the header would portal into the stale detached
     // nodes and its search box / Share button would never reappear until a
     // reload. Keeping the element mounted preserves those targets. display:none
-    // reclaims the full window height in zen (no wasted strip); the app flows
+    // reclaims the full window height in reader (no wasted strip); the app flows
     // under the WCO controls, which just float in the top corner.
     <header
       data-slot="titlebar"

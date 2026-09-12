@@ -15,6 +15,7 @@ const DESKTOP = { width: 1500, height: 900 }
 // selector picks up whichever sibling the cluster gained last.
 const readerPill = (page: Page) => page.getByRole("button", { name: /reader mode/i })
 const dictateOrb = (page: Page) => page.getByRole("button", { name: /dictate/i })
+const minimalOrb = (page: Page) => page.getByRole("button", { name: /minimal/i })
 
 const scroller = (page: Page) => page.locator(".session-scroller")
 const composer = (page: Page) => page.locator('[data-slot="composer"]')
@@ -183,7 +184,7 @@ test.describe("reader mode on a touch device", () => {
     })
   })
 
-  test("the cluster carries the exit and dictate orbs in a session", async ({ page, sdk, gotoSession }) => {
+  test("the cluster carries the exit, dictate, and minimal orbs in a session", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader orbs ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
@@ -192,6 +193,7 @@ test.describe("reader mode on a touch device", () => {
       await clickDeadSpace(page)
       await expect(readerPill(page)).toBeVisible()
       await expect(dictateOrb(page)).toBeVisible()
+      await expect(minimalOrb(page)).toBeVisible()
     })
   })
 })
@@ -280,8 +282,8 @@ test.describe("reader mode on a fine pointer", () => {
     })
   })
 
-  test("e reveals the hidden chrome and takes the caret", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader e key ${Date.now()}`, async (session) => {
+  test("space reveals the hidden chrome and takes the caret", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader space key ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
@@ -289,15 +291,15 @@ test.describe("reader mode on a fine pointer", () => {
       const editor = page.locator(promptSelector)
       await expect(composer(page)).toBeHidden()
 
-      // While hidden, "e" is the keyboard's reveal — same as a dead-space click.
-      await page.keyboard.press("e")
+      // While hidden, space is the keyboard's reveal — same as a dead-space click.
+      await page.keyboard.press("Space")
       await expect(composer(page)).toBeVisible()
       await expect(editor).toBeFocused()
       await expect(editor).toHaveText("")
 
-      // Once revealed and holding the caret, "e" is a character again.
-      await page.keyboard.type("eee")
-      await expect(editor).toHaveText("eee")
+      // Once revealed and holding the caret, space is a character again.
+      await page.keyboard.type("hi there")
+      await expect(editor).toHaveText("hi there")
     })
   })
 
@@ -392,6 +394,76 @@ test.describe("reader mode on a fine pointer", () => {
       if (!returned) throw new Error("pill has no box after the viewport returns")
       expect(Math.round(returned.y)).toBe(Math.round(parked.y))
       expect(Math.round(returned.x)).toBe(Math.round(parked.x))
+    })
+  })
+})
+
+// Minimal is reader's most-collapsed flavor: a third orb toggles a separate
+// collapse column, so more of the transcript folds away. It only exists inside
+// reader.
+test.describe("minimal reader", () => {
+  test.use({ viewport: DESKTOP })
+
+  // Kobalte's Collapsible root marks a collapsed box with data-closed. Minimal
+  // collapses the tool machinery, so more boxes carry it once minimal is on.
+  const closedBoxes = (page: Page) => page.locator('[data-component="collapsible"][data-closed]')
+
+  test("the minimal orb only exists in reader", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `minimal gating ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+
+      // Outside reader: no minimal orb.
+      await expect(minimalOrb(page)).toHaveCount(0)
+
+      await enterReader(page)
+      await clickDeadSpace(page)
+      await expect(minimalOrb(page)).toBeVisible()
+    })
+  })
+
+  test("toggling minimal collapses more of the transcript", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `minimal collapse ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+      await clickDeadSpace(page)
+
+      const before = await closedBoxes(page).count()
+
+      // Minimal on: the tool machinery folds away, so more boxes are collapsed.
+      await minimalOrb(page).click()
+      await settle(page)
+      const minimalOn = await closedBoxes(page).count()
+      expect(minimalOn).toBeGreaterThan(before)
+
+      // Minimal off: back to the reader-mode collapse set.
+      await minimalOrb(page).click()
+      await settle(page)
+      expect(await closedBoxes(page).count()).toBe(before)
+    })
+  })
+
+  test("the minimal choice rides across the reader-interactive round-trip", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `minimal persist ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+      await clickDeadSpace(page)
+
+      const readerOnly = await closedBoxes(page).count()
+      await minimalOrb(page).click()
+      await settle(page)
+      const minimalCount = await closedBoxes(page).count()
+      expect(minimalCount).toBeGreaterThan(readerOnly)
+
+      // Exit to interactive and come back: minimal is remembered, so the
+      // collapse set is the minimal one again, not reader's.
+      await readerPill(page).click()
+      await settle(page)
+      await enterReader(page)
+      await clickDeadSpace(page)
+      expect(await closedBoxes(page).count()).toBe(minimalCount)
     })
   })
 })

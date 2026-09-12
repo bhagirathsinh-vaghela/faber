@@ -1399,10 +1399,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setStore("popover", null)
         return
       }
-      // Escape in the composer aborts a running turn and does nothing else, in
-      // reader mode the same as anywhere: the composer stays, dismissed only by
-      // the reader pill's pencil.
-      if (working()) abort()
+      // A running turn takes Escape first, to abort. Otherwise, in reader with
+      // the chrome revealed, Escape hides it again — the keyboard's way back to
+      // the clean read (the hide blurs the composer). Elsewhere it does nothing.
+      if (working()) {
+        abort()
+        return
+      }
+      if (reader() && layout.reader.revealed()) layout.reader.hide()
     }
   }
 

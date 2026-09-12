@@ -13306,6 +13306,9 @@
             },
             "reader": {
               "type": "boolean"
+            },
+            "minimal": {
+              "type": "boolean"
             }
           }
         }

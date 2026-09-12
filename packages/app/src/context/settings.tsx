@@ -53,7 +53,15 @@ export type { BoxMode }
 // `true` = collapsed by default, absent/`false` = expanded. Server-persisted
 // (mirrors AppearancePreference) so it syncs across clients, unlike the
 // localStorage Settings above.
-export type BoxDefaults = Record<string, { normal?: boolean; reader?: boolean }>
+export type BoxDefaults = Record<string, { normal?: boolean; reader?: boolean; minimal?: boolean }>
+
+// Minimal's out-of-box shape: only the pure-text boxes stay expanded, every
+// other box type collapses, for the most minimal read. normal and reader
+// default to expanded. A saved value always wins over this; the seed only fills
+// the gap.
+const MINIMAL_EXPANDED = new Set(["user", "reasoning", "agent"])
+export const boxDefault = (type: string, mode: BoxMode) =>
+  mode === "minimal" ? !MINIMAL_EXPANDED.has(type) : false
 
 const defaultSettings: Settings = {
   general: {
@@ -606,9 +614,9 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         // `true` = collapsed by default in that mode; absent = expanded. Reads
         // the SAVED snapshot so the transcript reflects only persisted choices,
         // not unsaved edits open in the settings panel.
-        collapsed: (type: string, mode: BoxMode) => boxesSaved()[type]?.[mode] ?? false,
+        collapsed: (type: string, mode: BoxMode) => boxesSaved()[type]?.[mode] ?? boxDefault(type, mode),
         // Working value shown in the settings matrix (may be unsaved).
-        draft: (type: string, mode: BoxMode) => boxes[type]?.[mode] ?? false,
+        draft: (type: string, mode: BoxMode) => boxes[type]?.[mode] ?? boxDefault(type, mode),
         setCollapsed(type: string, mode: BoxMode, value: boolean) {
           setBoxes(type, (prev) => ({ ...prev, [mode]: value }))
         },

@@ -180,6 +180,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       setReaderOpened(false)
       rememberReader(false)
       setRevealed(false)
+      // Minimal is NOT reset: the normal/minimal choice rides across the
+      // reader<->interactive round-trip, so returning to reader restores the last
+      // flavor. (It stays in memory only, so a reload starts normal, like reader
+      // itself.) The round-trip flag still clears, so the next shortcut is fresh.
+      openedForMinimal = false
     }
 
     // The one visibility state for every piece of reader chrome: the pill
@@ -188,6 +193,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const [revealed, setRevealed] = createSignal(false)
     const reveal = () => setRevealed(true)
     const hide = () => setRevealed(false)
+
+    // Minimal is reader's most-collapsed flavor: it changes only which transcript
+    // boxes collapse (its own settings column), nothing about the chrome.
+    // Ephemeral like the reveal state, and only meaningful while reader is open,
+    // so leaving reader turns it off.
+    const [minimal, setMinimal] = createSignal(false)
+    // Whether the minimal keyboard shortcut is what opened reader, so its
+    // round-trip can return to interactive rather than stranding the user in
+    // reader.
+    let openedForMinimal = false
 
     // Reader strips the chrome around a transcript, so it only means anything on
     // a session route. The overview has no transcript, and reading the raw flag
@@ -652,6 +667,28 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         revealed,
         reveal,
         hide,
+        minimal,
+        minimalToggle: () => setMinimal((on) => !on),
+        // The keyboard round-trip: minimal lives inside reader, so from
+        // interactive this enters reader AND turns minimal on, and pressing again
+        // returns all the way to where it started. openedForMinimal remembers
+        // whether the shortcut opened reader itself, so turning minimal off only
+        // exits reader when the shortcut was what entered it (not when the user
+        // was already reading). The "off" branch is gated on reader being OPEN:
+        // minimal persists across the round-trip, so it can be true while
+        // interactive, where the shortcut must still enter reader rather than
+        // just clearing the flag in place.
+        minimalShortcut() {
+          if (readerOpened() && minimal()) {
+            setMinimal(false)
+            if (openedForMinimal) this.toggle()
+            openedForMinimal = false
+            return
+          }
+          openedForMinimal = !readerOpened()
+          if (openedForMinimal) this.toggle()
+          setMinimal(true)
+        },
         toggle() {
           // enterReader/exitReader cannot own this: the restore effect calls
           // them on arrival, where a wipe would hit the session being left.
@@ -664,7 +701,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       // Companion mode: hides the transcript, keeps the full prompt dock plus
       // the question/permission panels, and enlarges the dock's touch targets.
       // For driving a session by voice from a phone while reading the output on
-      // another client. Ephemeral like zen, and reset on session switch.
+      // another client. Ephemeral like reader, and reset on session switch.
       companion: {
         opened: companionOpened,
         enter: enterCompanion,

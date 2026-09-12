@@ -1274,6 +1274,7 @@ export type BoxPreference = {
   [key: string]: {
     normal?: boolean
     reader?: boolean
+    minimal?: boolean
   }
 }
 

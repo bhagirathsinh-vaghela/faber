@@ -74,14 +74,15 @@ export const SettingsLayout: Component = () => {
           <p class="text-12-regular text-text-weak pb-2">{language.t("settings.layout.boxes.description")}</p>
 
           <div class="box-matrix bg-surface-raised-base px-4 rounded-lg max-w-[720px]">
-            <div class="grid grid-cols-[1fr_4rem_4rem] items-center py-2 border-b border-border-weak-base text-11-medium text-text-weak">
+            <div class="grid grid-cols-[1fr_4rem_4rem_4rem] items-center py-2 border-b border-border-weak-base text-11-medium text-text-weak">
               <span />
               <span class="text-center">{language.t("settings.layout.boxes.normal")}</span>
               <span class="text-center">{language.t("settings.layout.boxes.reader")}</span>
+              <span class="text-center">{language.t("settings.layout.boxes.minimal")}</span>
             </div>
             <For each={BOX_TYPES}>
               {(box) => (
-                <div class="grid grid-cols-[1fr_4rem_4rem] items-center py-3 border-b border-border-weak-base last:border-none">
+                <div class="grid grid-cols-[1fr_4rem_4rem_4rem] items-center py-3 border-b border-border-weak-base last:border-none">
                   <span class="text-14-medium text-text-strong truncate">{box.label}</span>
                   <div class="flex justify-center" data-action={`settings-box-${box.key}-normal`}>
                     <Checkbox
@@ -93,6 +94,12 @@ export const SettingsLayout: Component = () => {
                     <Checkbox
                       checked={settings.boxes.draft(box.key, "reader")}
                       onChange={(checked) => settings.boxes.setCollapsed(box.key, "reader", checked)}
+                    />
+                  </div>
+                  <div class="flex justify-center" data-action={`settings-box-${box.key}-minimal`}>
+                    <Checkbox
+                      checked={settings.boxes.draft(box.key, "minimal")}
+                      onChange={(checked) => settings.boxes.setCollapsed(box.key, "minimal", checked)}
                     />
                   </div>
                 </div>

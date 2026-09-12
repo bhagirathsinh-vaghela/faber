@@ -2411,7 +2411,7 @@ export default function Layout(props: ParentProps) {
             >
               <DragDropSensors />
               <ConstrainDragXAxis />
-              {/* In zen the titlebar is gone. When the PWA's window-controls
+              {/* In reader the titlebar is gone. When the PWA's window-controls
                   overlay is collapsed the OS controls float in the top corner and
                   the app fills the full height, so the first project would sit
                   under them. env(titlebar-area-height) is the overlay's height in

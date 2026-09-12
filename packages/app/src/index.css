@@ -298,7 +298,7 @@
 }
 
 /* Busy bar: an indeterminate track trailing the last message, in the gap between
-   the last box and the dock. The busy cue in both modes (zen and normal). Shares
+   the last box and the dock. The busy cue in both modes (reader and normal). Shares
    the tool streaming bar's shape + traveling band (opacity + transform only,
    dodging the Lightning CSS custom-property @keyframes bug), and tints with the
    --stream-accent (agent color, set inline). While a subagent runs, a task-accent
@@ -409,7 +409,7 @@
   }
 }
 
-/* Busy dot, in the shared two-color language (dock/zen bar). The dot renders a
+/* Busy dot, in the shared two-color language (dock/reader bar). The dot renders a
    solid center in --busy-tint, plus a radar-ping halo, and one further halo per
    additional reason the session is busy, cross-fading over the base so the tint
    oscillates through every contributing colour — same idiom as

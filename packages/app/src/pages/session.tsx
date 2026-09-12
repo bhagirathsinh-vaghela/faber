@@ -990,15 +990,16 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
     },
     {
-      // While reader keeps the chrome hidden, "e" is free to mean "reveal it" —
+      // While reader keeps the chrome hidden, space is free to mean "reveal it" —
       // the keyboard's version of the dead-space click, and it takes the caret
-      // the same way. Once the chrome is up the composer holds "e" as a
-      // character, so the binding stands down the moment it is revealed.
+      // the same way. The command layer swallows the key (no page-scroll) only
+      // while this is enabled; once the chrome is up the composer holds space as
+      // a character, so the binding stands down the moment it is revealed.
       id: "reader.composer.summon",
       title: language.t("command.reader.composer.summon"),
       description: language.t("command.reader.composer.summon.description"),
       category: language.t("command.category.view"),
-      keybind: "e",
+      keybind: "space",
       disabled: !reader() || layout.reader.revealed(),
       onSelect: revealChrome,
     },
@@ -1367,6 +1368,14 @@ export default function Page() {
       category: language.t("command.category.session"),
       keybind: "alt+z",
       onSelect: () => layout.reader.toggle(),
+    },
+    {
+      id: "reader.minimal.toggle",
+      title: language.t("command.reader.minimal.toggle"),
+      description: language.t("command.reader.minimal.toggle.description"),
+      category: language.t("command.category.session"),
+      keybind: "alt+shift+z",
+      onSelect: () => layout.reader.minimalShortcut(),
     },
     {
       id: "companion.toggle",
@@ -1785,7 +1794,7 @@ export default function Page() {
 
   const atBottom = (el: HTMLElement) => el.scrollHeight - el.clientHeight - el.scrollTop <= 4
 
-  // Live "is the tail visible" flag, updated on every scroll. The zen-toggle
+  // Live "is the tail visible" flag, updated on every scroll. The reader-toggle
   // re-pin needs the PRE-toggle state, but its effect runs after Solid has
   // already reflowed the transcript (title unmount, dock swap), so reading
   // atBottom() there is too late. This snapshot answers "were we at the bottom
@@ -1865,7 +1874,7 @@ export default function Page() {
   // else observes that, so the last card slides under the dock. Observe the
   // scroller's own box instead of viewport/focus events — iOS drops those
   // across some keyboard transitions, but the DOM resize is unmissable
-  // whatever triggered it. Like the zen re-pin: a fresh following() read is
+  // whatever triggered it. Like the reader re-pin: a fresh following() read is
   // unreliable here (the transition's programmatic scroll churn can drop it),
   // so consult the pre-reflow tailVisible snapshot, re-assert, then settle.
   createResizeObserver(scrollerBox, (_, el) => {
@@ -2452,7 +2461,7 @@ export default function Page() {
     >
       <SessionHeader />
       {/* Anchored just above the prompt dock; the held dock height keeps it put
-          across the zen toggle. */}
+          across the reader toggle. */}
       <ReaderPill anchor={dockRect} />
       <div class="flex-1 min-h-0 flex flex-col wide:flex-row">
         {/* Session panel */}
@@ -2467,7 +2476,7 @@ export default function Page() {
           }}
           style={{
             width: wide() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
-            // Zen hides the titlebar, so on mobile the panel must clear the top
+            // Reader hides the titlebar, so on mobile the panel must clear the top
             // safe-area inset the titlebar was covering; --sat is 0 elsewhere, so
             // this reserves exactly the status bar and nothing more.
             "padding-top": layout.reader.opened() ? "var(--sat)" : undefined,
@@ -2652,7 +2661,7 @@ export default function Page() {
                         }}
                         onScroll={(e) => {
                           // Keep the pre-toggle tail snapshot current on EVERY
-                          // scroll (gesture or programmatic pin), so the zen
+                          // scroll (gesture or programmatic pin), so the reader
                           // re-pin knows we were at the bottom before the reflow.
                           tailVisible = atBottom(e.currentTarget)
                           // Only a user gesture (wheel/touch/scrollbar/keys —
@@ -2681,7 +2690,7 @@ export default function Page() {
                             // A NON-gesture scroll knocked us off the bottom while
                             // following. This is virtua re-applying an eagerly
                             // captured offset on a size change (dock/title reflow
-                            // on a zen toggle, async content) — overflow-anchor is
+                            // on a reader toggle, async content) — overflow-anchor is
                             // off, so nothing else corrects it. Re-pin so following
                             // keeps meaning "glued to the tail".
                             pinToBottom()

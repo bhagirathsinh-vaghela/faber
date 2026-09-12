@@ -79,7 +79,9 @@ function BoxDefaultsBridge(props: ParentProps) {
   const layout = useLayout()
   return (
     <BoxDefaultsProvider
-      mode={() => (layout.reader.opened() ? "reader" : "normal")}
+      mode={() =>
+        layout.reader.opened() && layout.reader.minimal() ? "minimal" : layout.reader.opened() ? "reader" : "normal"
+      }
       collapsed={settings.boxes.collapsed}
       open={layout.boxes.open}
       setOpen={layout.boxes.setOpen}
