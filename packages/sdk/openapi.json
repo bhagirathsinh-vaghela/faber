@@ -515,7 +515,7 @@
       "get": {
         "operationId": "dictation.connect",
         "summary": "Connect dictation stream",
-        "description": "Establish a WebSocket connection that proxies microphone audio to Deepgram and streams transcript text back.",
+        "description": "Establish a WebSocket connection that proxies microphone audio to the local transcription sidecar and streams transcript text back.",
         "responses": {
           "200": {
             "description": "Connected",
@@ -15079,14 +15079,6 @@
             "description": "Speech-to-text engine for the prompt microphone",
             "type": "object",
             "properties": {
-              "engine": {
-                "description": "Transcription backend: 'deepgram' streams to the cloud, 'local' posts to a sidecar",
-                "type": "string",
-                "enum": [
-                  "deepgram",
-                  "local"
-                ]
-              },
               "url": {
                 "description": "Base URL of the local transcription sidecar",
                 "type": "string"

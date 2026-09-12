@@ -2239,10 +2239,6 @@ export type Config = {
    */
   dictation?: {
     /**
-     * Transcription backend: 'deepgram' streams to the cloud, 'local' posts to a sidecar
-     */
-    engine?: "deepgram" | "local"
-    /**
      * Base URL of the local transcription sidecar
      */
     url?: string

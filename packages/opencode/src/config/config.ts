@@ -706,10 +706,6 @@ export namespace Config {
   export type Skills = z.infer<typeof Skills>
 
   export const Dictation = z.object({
-    engine: z
-      .enum(["deepgram", "local"])
-      .optional()
-      .describe("Transcription backend: 'deepgram' streams to the cloud, 'local' posts to a sidecar"),
     url: z.string().optional().describe("Base URL of the local transcription sidecar"),
   })
   export type Dictation = z.infer<typeof Dictation>

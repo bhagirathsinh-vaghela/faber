@@ -551,7 +551,7 @@ export class Dictation extends HeyApiClient {
   /**
    * Connect dictation stream
    *
-   * Establish a WebSocket connection that proxies microphone audio to Deepgram and streams transcript text back.
+   * Establish a WebSocket connection that proxies microphone audio to the local transcription sidecar and streams transcript text back.
    */
   public connect<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<DictationConnectResponses, unknown, ThrowOnError>({

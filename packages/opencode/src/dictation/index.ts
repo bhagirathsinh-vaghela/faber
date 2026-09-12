@@ -1,7 +1,6 @@
 import type { WSContext } from "hono/ws"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
-import { deepgram } from "./deepgram"
 import { local } from "./local"
 import { DictationRate } from "./rate"
 import { DictationRecover } from "./recover"
@@ -56,19 +55,18 @@ export namespace Dictation {
     // global config rather than Config.get().
     Config.getGlobal()
       .then(async (config) => {
-        const chosen = config.dictation?.engine ?? "deepgram"
-        log.info("starting engine", { engine: chosen })
         const url = config.dictation?.url ?? DEFAULT_LOCAL_URL
         // The browser is told the rate to sample at rather than assuming one, so
         // a model whose rate differs from the default is fed correctly.
-        const rate = chosen === "local" ? await DictationRate.get(url) : DictationRate.DEFAULT
+        const rate = await DictationRate.get(url)
         if (closed) return
         client.send(JSON.stringify({ type: "rate", rate }))
-        engine = chosen === "local" ? local(host, url) : deepgram(host)
-        if (closed) engine.close()
-        for (const frame of buffered) frame === "commit" ? engine.commit() : engine.frame(frame)
+        const started = local(host, url)
+        engine = started
+        if (closed) started.close()
+        for (const frame of buffered) frame === "commit" ? started.commit() : started.frame(frame)
         buffered.length = 0
-        if (pendingStop !== undefined) engine.stop(pendingStop)
+        if (pendingStop !== undefined) started.stop(pendingStop)
       })
       .catch((error) => {
         log.error("engine failed to start", { error })

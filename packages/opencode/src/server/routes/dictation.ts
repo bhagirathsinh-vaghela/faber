@@ -13,7 +13,7 @@ export const DictationRoutes = lazy(() =>
       describeRoute({
         summary: "Connect dictation stream",
         description:
-          "Establish a WebSocket connection that proxies microphone audio to Deepgram and streams transcript text back.",
+          "Establish a WebSocket connection that proxies microphone audio to the local transcription sidecar and streams transcript text back.",
         operationId: "dictation.connect",
         responses: {
           200: {
