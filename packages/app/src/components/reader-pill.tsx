@@ -242,20 +242,20 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // ghost mic can opt out and stay tappable.
   const dimmed = () => layout.reader.opened() && !layout.reader.revealed()
 
-  // On a touch device every visible orb is a ghost: the full ring is the touch
-  // target, its fill is transparent so it does not cover content, and a snug
-  // opaque disc behind the glyph (a hair larger than the icon, box-content so it
-  // does not resize it) carries legibility. A fine pointer keeps solid orbs,
-  // where the space is not scarce.
+  // A normal orb's chrome, and the fade applied to it while the cluster is
+  // hidden.
   const solidOrb = "shadow-md border-border-weak-base bg-surface-raised-base text-icon-strong-base hover:bg-surface-raised-base-hover"
-  const ghostOrb = "border-border-base bg-transparent"
-  const chrome = () => (coarse() ? ghostOrb : solidOrb)
-  const disc = () => (coarse() ? "bg-surface-raised-base p-[1px] box-content" : "")
   const faded = () => (dimmed() ? "opacity-0 pointer-events-none" : "")
   // The mic is the one control a touch reader keeps within reach, so when the
   // cluster is hidden on a touch device it alone stays visible, at the bottom
-  // slot where the exit orb anchors.
+  // slot where the exit orb anchors. Only it becomes a ghost: the full ring is
+  // the touch target, the fill goes transparent so it does not cover content,
+  // and a snug opaque disc behind the glyph (a hair larger than the icon,
+  // box-content so it does not resize it) carries legibility. Every other orb,
+  // and a fine pointer, stays a solid orb.
   const micGhost = () => coarse() && dimmed()
+  const ghostOrb = "border-border-base bg-transparent"
+  const ghostDisc = "bg-surface-raised-base p-[1px] box-content"
 
   return (
     <Portal>
@@ -279,8 +279,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
           <Orb
             label={language.t("reader.minimal")}
             onPress={() => layout.reader.minimalToggle()}
-            class={`${chrome()} ${faded()}`}
-            disc={disc()}
+            class={`${solidOrb} ${faded()}`}
           >
             <Icon
               name="eye"
@@ -292,10 +291,10 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
             label={language.t("reader.dictate")}
             onPress={() => dictationTarget()?.toggle()}
             dictation
-            // Same ghost chrome as the others; the mic just does not fade when it
-            // is the lone persistent control.
-            class={micGhost() ? chrome() : `${chrome()} ${faded()}`}
-            disc={disc()}
+            // Ghosted only when it stands alone; otherwise a normal orb that
+            // fades with the cluster.
+            class={micGhost() ? ghostOrb : `${solidOrb} ${faded()}`}
+            disc={micGhost() ? ghostDisc : ""}
             // Ghosted, the mic drops one orb+gap into the exit slot at the foot;
             // revealed, it returns to its own slot and the transition animates it.
             style={{ transform: micGhost() ? `translateY(${size() + STACK_GAP}px)` : "translateY(0)" }}
@@ -306,8 +305,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
         <Orb
           label={layout.reader.opened() ? language.t("reader.exit") : language.t("reader.enter")}
           onPress={() => layout.reader.toggle()}
-          class={`${chrome()} ${faded()}`}
-          disc={disc()}
+          class={`${solidOrb} ${faded()}`}
         >
           <Icon
             name={layout.reader.opened() ? "book-check" : "book-open"}
