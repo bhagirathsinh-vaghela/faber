@@ -12,7 +12,7 @@ import {
   untrack,
   type JSX,
 } from "solid-js"
-import { createCoarsePointer, preserveFocus, useShell } from "@/utils/mobile"
+import { createCoarsePointer, preserveFocus, TOUCH_SLOP, useShell } from "@/utils/mobile"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
@@ -1931,18 +1931,36 @@ export default function Page() {
     setScrollerBox(el)
     if (!el) return
 
-    // A click or tap on dead space is the only thing that toggles the chrome:
-    // reveal when hidden, hide when shown, on either pointer. A tap on an
-    // interactive element does its own thing and leaves the chrome alone, and
-    // scrolling (which never fires a click) never toggles.
-    const onClick = (event: MouseEvent) => {
+    // A tap on dead space is the only thing that toggles the chrome: reveal
+    // when hidden, hide when shown, on either pointer. A tap on an interactive
+    // element does its own thing and leaves the chrome alone, and a scroll
+    // (pointer travels past the slop) never toggles.
+    //
+    // Fired on pointerup rather than click to skip the touch browsers' tap
+    // latency: click waits out the double-tap/scroll window before dispatching,
+    // which lags the reveal on touch. pointerup lands the moment the finger
+    // lifts. The slop check is what click gave for free (a scroll fires no
+    // click); we re-derive it from the pointerdown position.
+    let downX = 0
+    let downY = 0
+    const onDown = (event: PointerEvent) => {
+      downX = event.clientX
+      downY = event.clientY
+    }
+    const onUp = (event: PointerEvent) => {
       if (!reader()) return
+      if (event.button !== 0) return
+      if (Math.hypot(event.clientX - downX, event.clientY - downY) >= TOUCH_SLOP) return
       if (interactive(event.target)) return
       if (layout.reader.revealed()) layout.reader.hide()
       else revealChrome()
     }
-    el.addEventListener("click", onClick)
-    onCleanup(() => el.removeEventListener("click", onClick))
+    el.addEventListener("pointerdown", onDown)
+    el.addEventListener("pointerup", onUp)
+    onCleanup(() => {
+      el.removeEventListener("pointerdown", onDown)
+      el.removeEventListener("pointerup", onUp)
+    })
   }
 
   // virtua owns turn windowing: it keeps only the visible range (+overscan)

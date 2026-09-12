@@ -219,7 +219,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
       }}
       aria-label={props.label}
       data-dictation-toggle={props.dictation ? "" : undefined}
-      class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing transition-[opacity,transform,background-color,box-shadow,border-color] duration-200"
+      class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing"
       classList={{ [props.class ?? ""]: !!props.class }}
       style={{ width: `${size()}px`, height: `${size()}px`, ...props.style }}
     >
@@ -244,7 +244,8 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
 
   // A normal orb's chrome, and the fade applied to it while the cluster is
   // hidden.
-  const solidOrb = "shadow-md border-border-weak-base bg-surface-raised-base text-icon-strong-base hover:bg-surface-raised-base-hover"
+  const solidOrb =
+    "shadow-md border-border-weak-base bg-surface-raised-base text-icon-strong-base hover:bg-surface-raised-base-hover"
   const faded = () => (dimmed() ? "opacity-0 pointer-events-none" : "")
   // The mic is the one control a touch reader keeps within reach, so when the
   // cluster is hidden on a touch device it alone stays visible, at the bottom
@@ -296,7 +297,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
             class={micGhost() ? ghostOrb : `${solidOrb} ${faded()}`}
             disc={micGhost() ? ghostDisc : ""}
             // Ghosted, the mic drops one orb+gap into the exit slot at the foot;
-            // revealed, it returns to its own slot and the transition animates it.
+            // revealed, it snaps back to its own slot.
             style={{ transform: micGhost() ? `translateY(${size() + STACK_GAP}px)` : "translateY(0)" }}
           >
             <MicIcon class="size-full" running={dictationRunning()} targeted />
