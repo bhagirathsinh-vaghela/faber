@@ -6,12 +6,26 @@ const WAVES = [
   { color: "173, 57, 76", freq: 2.3, amp: 0.7, opacity: 0.6 },
   { color: "48, 220, 155", freq: 3.0, amp: 0.5, opacity: 0.5 },
 ]
-// Averaging this low-end FFT slice stands in for a voice-activity level.
-const BAND_START = 0.05
-const BAND_END = 0.42
 // Idle breathing so a live-but-silent mic still ripples instead of flatlining.
 const IDLE_LEVEL = 0.08
-const SENSITIVITY = 2.4
+// The floor tracks the quietest recent level and is subtracted before expansion,
+// so auto-gain raising the ambient noise up does not beach the bars at mid-level.
+// It falls fast toward a new quiet (catches a room going silent) and rises slowly
+// (a word does not drag the floor up with it).
+const FLOOR_FALL = 0.05
+const FLOOR_RISE = 0.002
+// The peak tracks the loudest recent level so speech normalizes to near-full
+// height regardless of absolute loudness. It rises instantly to a new peak and
+// decays slowly, so the scale does not collapse between words.
+const PEAK_DECAY = 0.0015
+const PEAK_FLOOR = 0.02
+// Below 1 expands the quiet end: normalized loudness is pushed up so present-but-
+// soft speech still drives the bars, the "snap" a raw linear level lacks.
+const EXPANSION = 0.6
+// Asymmetric smoothing: the level jumps toward a louder target (attack) and eases
+// down from it (release), which reads as lively rather than laggy.
+const ATTACK = 0.6
+const RELEASE = 0.15
 
 export function DictationWaveform(props: {
   analyser: () => AnalyserNode | undefined
@@ -36,7 +50,13 @@ export function DictationWaveform(props: {
     let height = 0
     let last = 0
     let displayLevel = 0
-    let bins: Uint8Array<ArrayBuffer> | undefined
+    let samples: Float32Array<ArrayBuffer> | undefined
+    // Running quiet floor and loud peak, adapted per frame so the level is scaled
+    // to the recent dynamic range rather than to absolute loudness (which auto-gain
+    // keeps shifting). The floor seeds at silence: real mic RMS sits well under 1,
+    // so a high seed would stay above the signal for seconds and beach the bars.
+    let floor = 0
+    let peak = PEAK_FLOOR
     const FRAME = 1000 / 60
     const STEP = 1
 
@@ -57,14 +77,26 @@ export function DictationWaveform(props: {
     const target = () => {
       const analyser = props.analyser()
       if (!analyser) return IDLE_LEVEL
-      if (bins?.length !== analyser.frequencyBinCount) bins = new Uint8Array(analyser.frequencyBinCount)
-      analyser.getByteFrequencyData(bins)
-      const from = Math.floor(bins.length * BAND_START)
-      const to = Math.floor(bins.length * BAND_END)
+      if (samples?.length !== analyser.fftSize) samples = new Float32Array(analyser.fftSize)
+      // Time-domain RMS tracks perceived loudness; FFT magnitude does not, which
+      // is why a frequency read looks flat once auto-gain compresses the signal.
+      analyser.getFloatTimeDomainData(samples)
       let sum = 0
-      for (let i = from; i < to; i++) sum += bins[i]!
-      const avg = sum / (to - from) / 255
-      return Math.max(IDLE_LEVEL, Math.min(1, avg * SENSITIVITY))
+      for (let i = 0; i < samples.length; i++) sum += samples[i]! * samples[i]!
+      const rms = Math.sqrt(sum / samples.length)
+
+      // Adapt the floor toward the current level: fall fast to a new quiet, rise
+      // slowly so a word cannot drag it up. Adapt the peak the other way: jump to
+      // a new loud, decay slowly so the scale holds between words.
+      floor += (rms - floor) * (rms < floor ? FLOOR_FALL : FLOOR_RISE)
+      peak = rms > peak ? rms : Math.max(PEAK_FLOOR, peak - (peak - PEAK_FLOOR) * PEAK_DECAY)
+
+      // Normalize the above-floor loudness to the adapted range, then expand the
+      // quiet end so soft speech still drives the bars.
+      const span = peak - floor
+      const norm = span > 0.0001 ? (rms - floor) / span : 0
+      const level = Math.pow(Math.max(0, Math.min(1, norm)), EXPANSION)
+      return Math.max(IDLE_LEVEL, level)
     }
 
     const support = () => {
@@ -88,10 +120,11 @@ export function DictationWaveform(props: {
       last = now
 
       // Snap within a hair of the target so a settled level stops churning
-      // sub-pixel redraws; ease otherwise.
+      // sub-pixel redraws; otherwise ease asymmetrically: jump toward a louder
+      // goal (attack) and fall away from it slowly (release), which reads lively.
       const goal = target()
       if (Math.abs(goal - displayLevel) < 0.001) displayLevel = goal
-      else displayLevel += (goal - displayLevel) * 0.55
+      else displayLevel += (goal - displayLevel) * (goal > displayLevel ? ATTACK : RELEASE)
 
       const paused = props.paused?.() ?? false
       ctx.clearRect(0, 0, width, height)

@@ -590,17 +590,14 @@ export function createDictation(opts: {
       const source = context.createMediaStreamSource(stream)
       source.connect(worklet)
 
-      // Waveform reads this analyser's frequency data on its own rAF. A modest
-      // gain sits in front of the analyser only, to keep quiet bars visible;
-      // nothing downstream of the worklet sees it, so the model still gets the
-      // untouched signal.
+      // Waveform reads this analyser's time-domain data on its own rAF and scales
+      // it to its own adapted range, so no gain node sits in front: the raw
+      // capture is what it measures, and nothing downstream of the worklet sees
+      // the analyser, so the model still gets the untouched signal. fftSize sets
+      // the RMS window; 1024 samples is enough to average out per-sample jitter.
       analyser = context.createAnalyser()
-      analyser.fftSize = 256
-      analyser.smoothingTimeConstant = 0.8
-      const visual = context.createGain()
-      visual.gain.value = 2
-      source.connect(visual)
-      visual.connect(analyser)
+      analyser.fftSize = 1024
+      source.connect(analyser)
 
       session = { socket, context, stream, target }
       abortStart = undefined
