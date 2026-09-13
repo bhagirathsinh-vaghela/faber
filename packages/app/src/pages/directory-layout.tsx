@@ -156,9 +156,9 @@ export default function Layout(props: ParentProps) {
                   <SpeechOverlay
                     speech={speech}
                     onClose={() => speech.close()}
-                    voice={sync.data.voice_preference.name ?? undefined}
+                    voice={sync.data.voice_preference?.name ?? undefined}
                     onVoiceChange={(name) =>
-                      sdk.client.preference.voice.set({ voicePreference: { name } }).catch(() => undefined)
+                      sdk.client.preference.voice?.set?.({ voicePreference: { name } })?.catch(() => undefined)
                     }
                   />
                 </Show>

@@ -747,8 +747,11 @@ function createGlobalSync() {
         sdk.preference.model.get().then((x) => {
           if (x.data) setStore("model_preference", reconcile(x.data))
         }),
-        sdk.preference.voice.get().then((x) => {
-          if (x.data) setStore("voice_preference", reconcile(x.data))
+        // Guarded so a client bundle predating this preference (a tab loaded
+        // before the deploy) degrades to no voice rather than rejecting the
+        // whole bootstrap: a missing method leaves the element a resolved noop.
+        Promise.resolve(sdk.preference.voice?.get?.()).then((x) => {
+          if (x?.data) setStore("voice_preference", reconcile(x.data))
         }),
         sdk.preference.stash.list().then((x) => {
           setStore("stash", reconcile(x.data ?? [], { key: "timestamp" }))
@@ -1636,8 +1639,8 @@ function createGlobalSync() {
         }),
       ),
       retry(() =>
-        globalSDK.client.preference.voice.get().then((x) => {
-          if (x.data) setGlobalStore("voice_preference", x.data)
+        Promise.resolve(globalSDK.client.preference.voice?.get?.()).then((x) => {
+          if (x?.data) setGlobalStore("voice_preference", x.data)
         }),
       ),
       retry(() =>
