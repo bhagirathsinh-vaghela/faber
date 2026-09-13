@@ -119,6 +119,12 @@ export default function Layout(props: ParentProps) {
             // instance here serves every message box rather than each owning one.
             const speech = createSpeech({
               url: () => sdk.url,
+              // The rewrite pass runs under the current session; the reading
+              // always happens inside an open session, so the route's id is it.
+              session: () => params.id ?? "",
+              // Scopes the rewrite's server-side instance context, since /tts is
+              // mounted ahead of the directory middleware.
+              directory: () => directory(),
               onError: (message) =>
                 showToast({ variant: "error", title: language.t("speech.failed"), description: message }),
             })

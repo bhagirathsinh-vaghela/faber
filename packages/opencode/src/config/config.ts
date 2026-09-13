@@ -708,6 +708,10 @@ export namespace Config {
   export const Dictation = z.object({
     url: z.string().optional().describe("Base URL of the local transcription sidecar"),
     voice: z.string().optional().describe("Read-aloud voice name, e.g. af_bella or af_sarah"),
+    rewriteModel: z
+      .string()
+      .optional()
+      .describe("Model (provider/model) that rewrites a message into natural speech before read-aloud"),
   })
   export type Dictation = z.infer<typeof Dictation>
 

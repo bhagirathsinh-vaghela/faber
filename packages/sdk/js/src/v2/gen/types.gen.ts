@@ -2256,6 +2256,10 @@ export type Config = {
      * Read-aloud voice name, e.g. af_bella or af_sarah
      */
     voice?: string
+    /**
+     * Model (provider/model) that rewrites a message into natural speech before read-aloud
+     */
+    rewriteModel?: string
   }
   watcher?: {
     ignore?: Array<string>

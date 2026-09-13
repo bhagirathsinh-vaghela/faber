@@ -1,6 +1,9 @@
 import { Hono } from "hono"
 import { Config } from "../../config/config"
+import { Instance } from "../../project/instance"
+import { InstanceBootstrap } from "../../project/bootstrap"
 import { VoicePreference } from "../../preference/voice"
+import { TtsRewrite } from "../../session/tts-rewrite"
 import { lazy } from "../../util/lazy"
 
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:4100"
@@ -43,6 +46,25 @@ export const TtsRoutes = lazy(() =>
             : {}),
         },
       })
+    })
+    .post("/prepare", async (c) => {
+      const body = await c.req.json().catch(() => undefined)
+      if (!body?.text?.trim() || !body?.sessionID) return c.text("empty", 400)
+      // /tts mounts ahead of the server's Instance.provide middleware, so this
+      // handler has no instance context; SessionJudge.run reaches instance-scoped
+      // APIs (LLM.stream) and would throw "No context found".
+      // Wrap the work in the context the middleware would have supplied, using
+      // the directory the client sends (the same header the middleware reads).
+      const directory = c.req.header("x-opencode-directory") || process.cwd()
+      const model = (await Config.getGlobal()).dictation?.rewriteModel
+      const text = await Instance.provide({
+        directory,
+        init: InstanceBootstrap,
+        // prepare() fails open to the original text, so a rewrite miss just means
+        // the client falls back to its deterministic pass.
+        fn: () => TtsRewrite.prepare(body.text, body.sessionID, model),
+      })
+      return c.json({ text })
     })
     .post("/done", async (c) => {
       await fetch(`${await sidecar()}/done`, { method: "POST", headers: forward(c) }).catch(() => undefined)

@@ -201,10 +201,14 @@ function chunks(text: string, budget: number) {
 
 const OPENING = 90
 
-export function toSpeech(markdown: string) {
+// `skipSpeakable` is set when the text is already rewritten prose from the
+// server: the LLM pass owns cleansing, so running the deterministic speakable()
+// over it would be a second, competing cleaner. On the fallback path (no
+// rewrite) speakable() still runs. Chunking is the same either way.
+export function toSpeech(markdown: string, skipSpeakable = false) {
   const out: string[] = []
   let budget = OPENING
-  for (const part of regions(speakable(markdown))) {
+  for (const part of regions(skipSpeakable ? markdown : speakable(markdown))) {
     // A table or code block is one utterance by design, since splitting it
     // would make a single skip land inside it rather than past it. It still
     // advances the ramp, because the time spent speaking it is cover like any
@@ -290,7 +294,13 @@ function remember(text: string, at: number) {
   }
 }
 
-export function createSpeech(opts?: { url?: () => string; onDone?: () => void; onError?: (message: string) => void }) {
+export function createSpeech(opts?: {
+  url?: () => string
+  session?: () => string
+  directory?: () => string
+  onDone?: () => void
+  onError?: (message: string) => void
+}) {
   const [store, setStore] = createStore({
     speaking: false,
     paused: false,
@@ -405,28 +415,59 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
       audio.play().catch(reject)
     })
 
+  // The whole raw message rewritten into speakable chunks. The server rewrites
+  // the markdown into natural prose (owning cleansing, so speakable() is
+  // skipped), and only the FALLBACK — an empty/failed rewrite that comes back
+  // as the original text — runs the deterministic speakable() path. The result
+  // is memoized per raw text so a resume or restart of the same message does not
+  // pay for the rewrite twice within this reading.
+  const built = new Map<string, string[]>()
+  const queueFor = async (raw: string) => {
+    const cached = built.get(raw)
+    if (cached) return cached
+    const base = opts?.url?.() ?? ""
+    const sessionID = opts?.session?.() ?? ""
+    const prose = await fetch(`${base}/tts/prepare`, {
+      method: "POST",
+      body: JSON.stringify({ text: raw, sessionID }),
+      // The directory scopes the rewrite's instance context server-side, the
+      // same header the SDK client sends on every other request.
+      headers: { "content-type": "application/json", "x-opencode-directory": opts?.directory?.() ?? "" },
+    })
+      .then((r) => (r.ok ? r.json() : undefined))
+      .then((body) => body?.text as string | undefined)
+      .catch(() => undefined)
+    // No rewrite (or it returned the input unchanged) means the deterministic
+    // path; a real rewrite skips speakable() since the model already cleansed it.
+    const out = prose && prose !== raw ? toSpeech(prose, true) : toSpeech(raw)
+    built.set(raw, out)
+    return out
+  }
+
   // The speaker button on a message calls this. A message never heard before
   // has one obvious action, so it just plays; one with a remembered position
   // has two, so the HUD opens on that chunk and waits rather than guessing
   // between resuming and starting over.
-  const show = (text: string) => {
+  const show = async (text: string) => {
     if (!supported()) return
     const held = progress.get(text)
     active?.()
     active = stop
+    // source stays the RAW text so resume-progress keys are stable regardless of
+    // how the message was rewritten.
     setStore("source", text)
-    queue = toSpeech(text)
-    cursor = Math.min(held ?? 0, Math.max(queue.length - 1, 0))
+    if (held === undefined) return start()
+    setStore({ armed: true, speaking: false, paused: false, loading: true, chunk: "" })
+    queue = await queueFor(text)
+    if (store.source !== text) return
+    cursor = Math.min(held, Math.max(queue.length - 1, 0))
     setStore({
       armed: true,
-      speaking: false,
-      paused: false,
       loading: false,
       total: queue.length,
       index: cursor,
       chunk: queue[cursor] ?? "",
     })
-    if (held === undefined) start()
   }
 
   const start = async (text?: string) => {
@@ -434,25 +475,31 @@ export function createSpeech(opts?: { url?: () => string; onDone?: () => void; o
     const reading = text ?? store.source
     active?.()
     active = stop
-    // A different message restarts; the same one continues from where it
-    // stopped, which is the whole point of keeping the cursor.
-    if (reading !== store.source || !queue.length) {
-      setStore("source", reading)
-      queue = toSpeech(reading)
-      cursor = progress.get(reading) ?? 0
-    }
-    if (!queue.length) return finish(true)
-    if (cursor >= queue.length) cursor = 0
     const generation = ++epoch
     abort = new AbortController()
     const signal = abort.signal
     const base = opts?.url?.() ?? ""
 
-    setStore({ armed: false, speaking: true, paused: false, loading: true, total: queue.length, index: cursor })
-    // Before the first await, so the gesture that called start() is still what
-    // the platform sees granting this element permission.
+    setStore({ armed: false, speaking: true, paused: false, loading: true, chunk: "" })
+    // Unlock BEFORE the rewrite await: playback permission is granted to the
+    // element inside the user gesture and lost across an await, so the silent
+    // sample must play while the click is still on the stack — before the
+    // rewrite round-trip, not after it.
     session("playback")
     unlock()
+
+    // A different message restarts; the same one continues from where it
+    // stopped. Building the queue is async now (the server rewrite), so it is
+    // awaited here rather than computed synchronously.
+    if (reading !== store.source || !queue.length) {
+      setStore("source", reading)
+      queue = await queueFor(reading)
+      if (generation !== epoch) return
+      cursor = progress.get(reading) ?? 0
+    }
+    if (!queue.length) return finish(true)
+    if (cursor >= queue.length) cursor = 0
+    setStore({ total: queue.length, index: cursor })
 
     // Nothing awaits a prefetch until its chunk is due, so it carries its own
     // catch: stopping mid-flight aborts it, and an unhandled rejection would
