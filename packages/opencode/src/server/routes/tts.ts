@@ -22,9 +22,12 @@ export const TtsRoutes = lazy(() =>
     .post("/speak", async (c) => {
       const body = await c.req.json().catch(() => undefined)
       if (!body?.text?.trim()) return c.text("empty", 400)
-      const response = await fetch(`${await sidecar()}/speak`, {
+      const dictation = (await Config.getGlobal()).dictation
+      const response = await fetch(`${dictation?.url ?? DEFAULT_LOCAL_URL}/speak`, {
         method: "POST",
-        body: JSON.stringify({ text: body.text, next: body.next }),
+        // The voice is chosen server-side so the browser never needs to know it.
+        // Omitted when unset, which leaves the sidecar on its default speaker.
+        body: JSON.stringify({ text: body.text, next: body.next, voice: dictation?.voice }),
         headers: forward(c),
       }).catch(() => undefined)
       if (!response?.ok) return c.text("speech unavailable", 503)

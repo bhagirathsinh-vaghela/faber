@@ -2242,6 +2242,10 @@ export type Config = {
      * Base URL of the local transcription sidecar
      */
     url?: string
+    /**
+     * Read-aloud voice name, e.g. af_bella or af_sarah
+     */
+    voice?: string
   }
   watcher?: {
     ignore?: Array<string>
