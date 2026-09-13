@@ -137,6 +137,9 @@ import type {
   PreferenceThemeSaveResponses,
   PreferenceThemeSetActiveErrors,
   PreferenceThemeSetActiveResponses,
+  PreferenceVoiceGetResponses,
+  PreferenceVoiceSetErrors,
+  PreferenceVoiceSetResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -250,6 +253,7 @@ import type {
   TuiSubmitPromptResponses,
   UserTheme,
   VcsGetResponses,
+  VoicePreference,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -2563,6 +2567,62 @@ export class Model extends HeyApiClient {
   }
 }
 
+export class Voice extends HeyApiClient {
+  /**
+   * Get voice preference
+   *
+   * Get the server-owned read-aloud voice, or null when unset.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<PreferenceVoiceGetResponses, unknown, ThrowOnError>({
+      url: "/preference/voice",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set voice preference
+   *
+   * Set the server-owned read-aloud voice (null clears it).
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      voicePreference?: VoicePreference
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "voicePreference", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<PreferenceVoiceSetResponses, PreferenceVoiceSetErrors, ThrowOnError>({
+      url: "/preference/voice",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Appearance extends HeyApiClient {
   /**
    * Get appearance preferences
@@ -2923,6 +2983,11 @@ export class Preference extends HeyApiClient {
   private _model?: Model
   get model(): Model {
     return (this._model ??= new Model({ client: this.client }))
+  }
+
+  private _voice?: Voice
+  get voice(): Voice {
+    return (this._voice ??= new Voice({ client: this.client }))
   }
 
   private _appearance?: Appearance

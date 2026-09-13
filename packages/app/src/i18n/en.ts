@@ -294,6 +294,7 @@ export const dict = {
   "speech.restart": "Start over",
   "speech.slower": "Slower",
   "speech.faster": "Faster",
+  "speech.voice": "Voice",
 
   "companion.enter": "Enter companion mode",
   "companion.exit": "Exit companion mode",

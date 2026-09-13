@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import { Config } from "../../config/config"
+import { VoicePreference } from "../../preference/voice"
 import { lazy } from "../../util/lazy"
 
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:4100"
@@ -23,11 +24,13 @@ export const TtsRoutes = lazy(() =>
       const body = await c.req.json().catch(() => undefined)
       if (!body?.text?.trim()) return c.text("empty", 400)
       const dictation = (await Config.getGlobal()).dictation
+      // A voice picked in any client's UI wins over the config default; the
+      // sidecar falls back to its own default when both are unset. The browser
+      // never sends a voice, so a stale tab cannot pin an old one.
+      const voice = (await VoicePreference.get()).name ?? dictation?.voice
       const response = await fetch(`${dictation?.url ?? DEFAULT_LOCAL_URL}/speak`, {
         method: "POST",
-        // The voice is chosen server-side so the browser never needs to know it.
-        // Omitted when unset, which leaves the sidecar on its default speaker.
-        body: JSON.stringify({ text: body.text, next: body.next, voice: dictation?.voice }),
+        body: JSON.stringify({ text: body.text, next: body.next, voice }),
         headers: forward(c),
       }).catch(() => undefined)
       if (!response?.ok) return c.text("speech unavailable", 503)

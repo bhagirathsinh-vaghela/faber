@@ -10,6 +10,7 @@ import {
   type Todo,
   type SessionStatus,
   type ModelPreference,
+  type VoicePreference,
   type StashEntry,
   type ProviderListResponse,
   type ProviderDefaultResponse,
@@ -81,6 +82,7 @@ type State = {
   // Global server-owned UI preferences, persisted on the server and streamed to
   // every client so all tabs stay in sync.
   model_preference: ModelPreference
+  voice_preference: VoicePreference
   stash: StashEntry[]
   session: Session[]
   sessionTotal: number
@@ -268,6 +270,7 @@ function createGlobalSync() {
     provider_auth: ProviderAuthResponse
     config: Config
     model_preference: ModelPreference
+    voice_preference: VoicePreference
     stash: StashEntry[]
     reload: undefined | "pending" | "complete"
     // The complete home overview, server-owned so every client renders the same
@@ -303,6 +306,7 @@ function createGlobalSync() {
     provider_auth: {},
     config: {},
     model_preference: { user: [], recent: [], variant: {} },
+    voice_preference: { name: null },
     stash: [],
     reload: undefined,
     recent_hub: [],
@@ -537,6 +541,7 @@ function createGlobalSync() {
           default_model: null,
           path: { state: "", config: "", worktree: "", directory: "", home: "" },
           model_preference: { user: [], recent: [], variant: {} },
+          voice_preference: { name: null },
           stash: [],
           status: "loading" as const,
           agent: [],
@@ -741,6 +746,9 @@ function createGlobalSync() {
         }),
         sdk.preference.model.get().then((x) => {
           if (x.data) setStore("model_preference", reconcile(x.data))
+        }),
+        sdk.preference.voice.get().then((x) => {
+          if (x.data) setStore("voice_preference", reconcile(x.data))
         }),
         sdk.preference.stash.list().then((x) => {
           setStore("stash", reconcile(x.data ?? [], { key: "timestamp" }))
@@ -973,6 +981,11 @@ function createGlobalSync() {
         case "model.preference.updated": {
           setGlobalStore("model_preference", reconcile(event.properties))
           for (const [, set] of Object.values(children)) set("model_preference", reconcile(event.properties))
+          return
+        }
+        case "voice.preference.updated": {
+          setGlobalStore("voice_preference", reconcile(event.properties))
+          for (const [, set] of Object.values(children)) set("voice_preference", reconcile(event.properties))
           return
         }
         case "stash.updated": {
@@ -1620,6 +1633,11 @@ function createGlobalSync() {
       retry(() =>
         globalSDK.client.preference.model.get().then((x) => {
           if (x.data) setGlobalStore("model_preference", x.data)
+        }),
+      ),
+      retry(() =>
+        globalSDK.client.preference.voice.get().then((x) => {
+          if (x.data) setGlobalStore("voice_preference", x.data)
         }),
       ),
       retry(() =>

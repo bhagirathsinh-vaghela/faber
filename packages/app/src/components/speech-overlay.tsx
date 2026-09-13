@@ -1,16 +1,20 @@
-import { Show, createEffect } from "solid-js"
+import { For, Show, createEffect } from "solid-js"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
-import { RATE, type createSpeech } from "@/utils/speak"
+import { RATE, VOICES, type createSpeech } from "@/utils/speak"
 import { OverlayPanel } from "./overlay-panel"
 
 // Playback HUD for an assistant message being read aloud: pause/resume, a speed
-// cycle, and a stop, over the shared overlay shell.
+// cycle, a voice picker, and a stop, over the shared overlay shell.
 export function SpeechOverlay(props: {
   speech: ReturnType<typeof createSpeech>
   onClose: () => void
   accent?: string
+  // The voice picker reflects and sets the server-owned preference. Empty means
+  // no preference set, so the sidecar's default speaker is used.
+  voice?: string
+  onVoiceChange?: (id: string) => void
 }) {
   const language = useLanguage()
 
@@ -64,6 +68,16 @@ export function SpeechOverlay(props: {
                     : language.t("speech.ready")}
             </span>
             <div class="ml-auto flex items-center gap-1.5">
+              <Show when={props.onVoiceChange}>
+                <select
+                  aria-label={language.t("speech.voice")}
+                  value={props.voice ?? ""}
+                  onChange={(e) => props.onVoiceChange?.(e.currentTarget.value)}
+                  class="rounded-lg border border-border-base bg-surface-inset-base px-2 h-7 text-11-medium text-text-base hover:text-text-base focus:outline-none"
+                >
+                  <For each={VOICES}>{(v) => <option value={v.id}>{v.label}</option>}</For>
+                </select>
+              </Show>
               <span class="flex size-2.5 shrink-0">
                 <Show
                   when={props.speech.speaking() && !props.speech.paused()}

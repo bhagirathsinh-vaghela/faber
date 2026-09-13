@@ -153,7 +153,14 @@ export default function Layout(props: ParentProps) {
                   <QuestionProvider>{props.children}</QuestionProvider>
                 </LocalProvider>
                 <Show when={speech.open()}>
-                  <SpeechOverlay speech={speech} onClose={() => speech.close()} />
+                  <SpeechOverlay
+                    speech={speech}
+                    onClose={() => speech.close()}
+                    voice={sync.data.voice_preference.name ?? undefined}
+                    onVoiceChange={(name) =>
+                      sdk.client.preference.voice.set({ voicePreference: { name } }).catch(() => undefined)
+                    }
+                  />
                 </Show>
               </DataProvider>
             )

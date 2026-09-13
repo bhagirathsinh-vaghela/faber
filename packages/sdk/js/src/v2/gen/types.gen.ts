@@ -1245,6 +1245,15 @@ export type EventModelPreferenceUpdated = {
   properties: ModelPreference
 }
 
+export type VoicePreference = {
+  name: string | null
+}
+
+export type EventVoicePreferenceUpdated = {
+  type: "voice.preference.updated"
+  properties: VoicePreference
+}
+
 export type AppearancePreference = {
   fontSize: number
   font: string
@@ -1393,6 +1402,7 @@ export type Event =
   | EventWorktreeReady
   | EventWorktreeFailed
   | EventModelPreferenceUpdated
+  | EventVoicePreferenceUpdated
   | EventAppearancePreferenceUpdated
   | EventBoxesPreferenceUpdated
   | EventThemePreferenceUpdated
@@ -5176,6 +5186,51 @@ export type PreferenceModelSetResponses = {
 }
 
 export type PreferenceModelSetResponse = PreferenceModelSetResponses[keyof PreferenceModelSetResponses]
+
+export type PreferenceVoiceGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/voice"
+}
+
+export type PreferenceVoiceGetResponses = {
+  /**
+   * Voice preference
+   */
+  200: VoicePreference
+}
+
+export type PreferenceVoiceGetResponse = PreferenceVoiceGetResponses[keyof PreferenceVoiceGetResponses]
+
+export type PreferenceVoiceSetData = {
+  body?: VoicePreference
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/preference/voice"
+}
+
+export type PreferenceVoiceSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PreferenceVoiceSetError = PreferenceVoiceSetErrors[keyof PreferenceVoiceSetErrors]
+
+export type PreferenceVoiceSetResponses = {
+  /**
+   * Voice preference updated
+   */
+  200: boolean
+}
+
+export type PreferenceVoiceSetResponse = PreferenceVoiceSetResponses[keyof PreferenceVoiceSetResponses]
 
 export type PreferenceAppearanceGetData = {
   body?: never

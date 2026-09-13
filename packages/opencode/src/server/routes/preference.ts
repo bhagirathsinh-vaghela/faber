@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { ModelPreference } from "@/preference/model"
+import { VoicePreference } from "@/preference/voice"
 import { AppearancePreference } from "@/preference/appearance"
 import { BoxPreference } from "@/preference/boxes"
 import { ThemePreference } from "@/preference/theme"
@@ -53,6 +54,51 @@ export const PreferenceRoutes = lazy(() =>
       validator("json", ModelPreference.Info),
       async (c) => {
         await ModelPreference.set(c.req.valid("json"))
+        return c.json(true)
+      },
+    )
+    .get(
+      "/voice",
+      describeRoute({
+        summary: "Get voice preference",
+        description: "Get the server-owned read-aloud voice, or null when unset.",
+        operationId: "preference.voice.get",
+        responses: {
+          200: {
+            description: "Voice preference",
+            content: {
+              "application/json": {
+                schema: resolver(VoicePreference.Info),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await VoicePreference.get())
+      },
+    )
+    .put(
+      "/voice",
+      describeRoute({
+        summary: "Set voice preference",
+        description: "Set the server-owned read-aloud voice (null clears it).",
+        operationId: "preference.voice.set",
+        responses: {
+          200: {
+            description: "Voice preference updated",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", VoicePreference.Info),
+      async (c) => {
+        await VoicePreference.set(c.req.valid("json"))
         return c.json(true)
       },
     )
