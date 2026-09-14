@@ -2722,13 +2722,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       "hidden dock-wide:contents": !dockInfoOpen(),
                     }}
                   >
-                    <Tooltip placement="top" value="Customize fields">
+                    <Tooltip placement="top" value="Dock & input preferences">
                       <Button
                         type="button"
                         variant="ghost"
                         class={`flex ${companion() ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)" : ""} items-center justify-center`}
                         onClick={() => dialog.show(() => <DialogDock />)}
-                        aria-label="Customize fields"
+                        aria-label="Dock & input preferences"
                       >
                         <Icon name="sliders" size="medium" />
                       </Button>

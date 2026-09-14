@@ -114,20 +114,50 @@ function afterPaint(fn: () => void) {
   setTimeout(once, 500)
 }
 
+// The browser's voice-processing DSP (echo cancellation, noise suppression,
+// auto gain) is tuned for two-way calls on quiet built-in mics. On a good
+// external mic it HURTS recognition — noise suppression clips consonants, AGC
+// pumps levels, echo cancellation subtracts parts of the speaker's own voice —
+// and the damage is at capture, so the server can never recover it. The flags
+// are therefore a per-device runtime choice: off ("raw") for a good mic, on
+// ("enhanced") for a quiet built-in one.
+//
+// Every client defaults to raw. A user on a quiet built-in mic flips to
+// enhanced, and that choice persists per-device and wins here. On WebKit the
+// three flags are coupled — turning echoCancellation off ALSO turns AGC off —
+// so "enhanced" is the only way to restore AGC for a mic that captures too
+// quiet. openMic reads the flag fresh, so a switch lands on the next capture.
+const DSP_KEY = "opencode.dictation.enhanced"
+
+const [enhanced, setEnhancedSignal] = createSignal(
+  (() => {
+    try {
+      return localStorage.getItem(DSP_KEY) === "on"
+    } catch {}
+    return false
+  })(),
+)
+
+// Whether the browser DSP chain is engaged. Reactive so the overlay's toggle
+// paints live; read by openMic at capture time so a flip lands on the next mic.
+export const dictationEnhanced = enhanced
+
+export function setDictationEnhanced(next: boolean) {
+  setEnhancedSignal(next)
+  try {
+    localStorage.setItem(DSP_KEY, next ? "on" : "off")
+  } catch {}
+}
+
 // Opens the microphone route without waiting on anything else. This is the
 // slow step on iOS (its voice-processing audio unit costs most of a second),
 // and it depends on nothing the server sends, so the caller fires it the
 // instant the press lands — before the socket handshake and the wire-rate
 // round-trip — rather than stacking it behind them.
 function openMic() {
-  // On WebKit, autoGainControl is coupled to echoCancellation: turning echo
-  // cancellation off ALSO turns AGC off, and a quiet built-in phone mic then
-  // reaches the recognizer far too quiet. Shipped browser STT clients keep this
-  // whole DSP chain on for one-way dictation, because AGC's loudness
-  // normalization matters more to recognition than the small latency the
-  // voice-processing unit costs.
+  const dsp = enhanced()
   return navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    audio: { channelCount: 1, echoCancellation: dsp, noiseSuppression: dsp, autoGainControl: dsp },
   })
 }
 
