@@ -114,6 +114,108 @@ function regions(text: string) {
 // heard as the speech stopping short — takes prose that never ends a sentence.
 const CHUNK = 600
 
+// Chunk sizes for the rewrite path, in characters, following the streaming-TTS
+// field (ElevenLabs' [120,160,250,290] escalating schedule, Deepgram's 50-100
+// voice / 200-400 long-form, LiveKit's min/max buffer). Read-aloud of prose is
+// long-form, so these sit at the larger end. Only the FIRST chunk gates when
+// audio starts (the next is prefetched while it plays), so it alone is kept
+// small for a fast start; the rest group larger for better prosody and fewer
+// round-trips.
+const FIRST_CHUNK = 90
+const MIN_CHUNK = 180
+const MAX_CHUNK = 500
+
+// A segment ending in one of these is not a sentence end: Intl.Segmenter's one
+// real weakness is splitting after a title abbreviation ("Dr. Chen"), which the
+// field repairs with a merge pass over the output rather than a different
+// splitter. Decimals and "e.g."/"i.e." it already handles.
+const TITLE = /\b(?:mr|mrs|ms|dr|prof|sr|jr|st|rev|gen|sen|rep|gov|lt|col|sgt|capt|vs|fig|no|vol|pp)\.$/i
+
+const segmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter("en", { granularity: "sentence" }) : undefined
+
+// Sentence boundaries via Intl.Segmenter (ICU-backed, decimal-safe), with the
+// merge pass that rejoins a title abbreviation to the sentence it wrongly split
+// from. Falls back to the coarse SENTENCE regex where Intl.Segmenter is absent.
+function segment(text: string) {
+  if (!segmenter) return sentences(text)
+  const out: string[] = []
+  for (const { segment } of segmenter.segment(text)) {
+    const prev = out[out.length - 1]
+    if (prev && TITLE.test(prev.trimEnd())) out[out.length - 1] = prev + segment
+    else out.push(segment)
+  }
+  return out
+}
+
+// The rewrite path uses this instead of chunks(): the LLM already produced clean
+// paragraph-structured prose (blank line between paragraphs, no atomic Table./
+// Code block. regions), so it needs neither region-splitting nor the per-newline
+// flush that fragmented list-shaped text into a chunk per line. This is the
+// established streaming-TTS design: split into sentences, MERGE short ones up to
+// a floor, never split a sentence (only an over-long one, at clauses then
+// words), force a break at every blank-line paragraph, and keep the first chunk
+// small for a fast start.
+function proseChunks(text: string) {
+  const out: string[] = []
+  let held = ""
+  // The first chunk aims small (fast first audio); every chunk after it aims
+  // larger, since it is prefetched while the previous one plays.
+  const target = () => (out.length ? MIN_CHUNK : FIRST_CHUNK)
+  const flush = () => {
+    const clean = held.replace(/\s+/g, " ").trim()
+    held = ""
+    if (clean) out.push(clean)
+  }
+  const add = (piece: string) => {
+    const s = piece.trim()
+    if (!s) return
+    // An over-long sentence is the only thing split below the sentence level:
+    // at clause punctuation first, then at word boundaries, never mid-word.
+    if (s.length > MAX_CHUNK) {
+      flush()
+      for (const clause of splitLong(s)) out.push(clause)
+      return
+    }
+    if (held && held.length + 1 + s.length > MAX_CHUNK) flush()
+    held = held ? `${held} ${s}` : s
+    if (held.length >= target()) flush()
+  }
+  for (const paragraph of text.split(/\n\s*\n/)) {
+    for (const sentence of segment(paragraph)) add(sentence)
+    // A blank-line paragraph break is a real pause the rewrite placed on
+    // purpose, so it always ends the current chunk.
+    flush()
+  }
+  return out
+}
+
+// An over-long sentence, broken at clause punctuation and then at word
+// boundaries so no piece exceeds the cap. A monster is never sent whole and a
+// word is never cut.
+function splitLong(sentence: string) {
+  const out: string[] = []
+  let held = ""
+  const flush = () => {
+    if (held.trim()) out.push(held.trim())
+    held = ""
+  }
+  for (const clause of sentence.split(/(?<=[,;:])\s+/)) {
+    if (held && held.length + 1 + clause.length > MAX_CHUNK) flush()
+    if (clause.length > MAX_CHUNK) {
+      flush()
+      for (const word of clause.split(/\s+/)) {
+        if (held && held.length + 1 + word.length > MAX_CHUNK) flush()
+        held = held ? `${held} ${word}` : word
+      }
+      continue
+    }
+    held = held ? `${held} ${clause}` : clause
+  }
+  flush()
+  return out
+}
+
 // How much the cap rises per chunk. Synthesis is linear in length and the
 // sidecar renders one chunk at a time, so a chunk arrives in time only when the
 // chunk playing now lasts longer than the next takes to render. The slowest
@@ -203,12 +305,15 @@ const OPENING = 90
 
 // `skipSpeakable` is set when the text is already rewritten prose from the
 // server: the LLM pass owns cleansing, so running the deterministic speakable()
-// over it would be a second, competing cleaner. On the fallback path (no
-// rewrite) speakable() still runs. Chunking is the same either way.
+// over it would be a second, competing cleaner.
 export function toSpeech(markdown: string, skipSpeakable = false) {
+  // The rewrite path is clean paragraph prose, chunked by the streaming-TTS
+  // aggregation design; the fallback path is deterministic speakable() output
+  // with atomic Table./Code block. regions, chunked by the region+ramp path.
+  if (skipSpeakable) return proseChunks(markdown)
   const out: string[] = []
   let budget = OPENING
-  for (const part of regions(skipSpeakable ? markdown : speakable(markdown))) {
+  for (const part of regions(speakable(markdown))) {
     // A table or code block is one utterance by design, since splitting it
     // would make a single skip land inside it rather than past it. It still
     // advances the ramp, because the time spent speaking it is cover like any
