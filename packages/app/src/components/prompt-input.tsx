@@ -413,6 +413,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     prompt.set(next, prompt.cursor())
   }
 
+  // Sorts a clipboard into the buckets the composer can act on: image/pdf files
+  // to attach, any other file kind it can't use, plain text, or nothing. Shared
+  // by the focused-composer handler and the reader-mode global handler so a
+  // paste classifies the same either way.
+  const classifyClipboard = (clipboardData: DataTransfer) => {
+    const fileItems = Array.from(clipboardData.items).filter((item) => item.kind === "file")
+    const imageItems = fileItems.filter((item) => ACCEPTED_FILE_TYPES.includes(item.type))
+    if (imageItems.length > 0) return { kind: "image" as const, imageItems }
+    if (fileItems.length > 0) return { kind: "unsupported" as const }
+    const text = clipboardData.getData("text/plain") ?? ""
+    if (text) return { kind: "text" as const, text }
+    return { kind: "empty" as const }
+  }
+
+  const attachImages = async (imageItems: DataTransferItem[]) => {
+    for (const item of imageItems) {
+      const file = item.getAsFile()
+      if (file) await addImageAttachment(file)
+    }
+  }
+
+  const pasteUnsupportedToast = () =>
+    showToast({
+      title: language.t("prompt.toast.pasteUnsupported.title"),
+      description: language.t("prompt.toast.pasteUnsupported.description"),
+    })
+
   const handlePaste = async (event: ClipboardEvent) => {
     if (!isFocused()) return
     const clipboardData = event.clipboardData
@@ -421,29 +448,49 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     event.preventDefault()
     event.stopPropagation()
 
-    const items = Array.from(clipboardData.items)
-    const fileItems = items.filter((item) => item.kind === "file")
-    const imageItems = fileItems.filter((item) => ACCEPTED_FILE_TYPES.includes(item.type))
+    const result = classifyClipboard(clipboardData)
+    if (result.kind === "image") return attachImages(result.imageItems)
+    if (result.kind === "unsupported") return pasteUnsupportedToast()
+    if (result.kind === "text") addPart({ type: "text", content: result.text, start: 0, end: 0 })
+  }
 
-    if (imageItems.length > 0) {
-      for (const item of imageItems) {
-        const file = item.getAsFile()
-        if (file) await addImageAttachment(file)
-      }
-      return
-    }
+  // Reader hides the composer, so a paste never reaches the editor's own
+  // onPaste (it bails on lost focus, and the wrapper is inert besides). This
+  // catches the paste at the document, reveals the composer the way space/tap
+  // do, and lands the clipboard from the same event — the browser can't replay
+  // it after the async reveal. Only fires in reader with the chrome still
+  // hidden; the focused composer keeps its own handler everywhere else. Nothing
+  // in the clipboard we'd act on means no reveal, so a stray paste of unusable
+  // content doesn't yank the reader out of a clean read for nothing.
+  const handleGlobalPaste = async (event: ClipboardEvent) => {
+    if (!layout.reader.opened() || layout.reader.revealed()) return
+    if (dialog.active) return
+    // A real editable with focus owns the paste — the question overlay's answer
+    // field, a dialog input, anything the browser will insert into. Only claim
+    // the paste when it would otherwise land nowhere.
+    const target = event.target as HTMLElement | null
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
+    const clipboardData = event.clipboardData
+    if (!clipboardData) return
 
-    if (fileItems.length > 0) {
-      showToast({
-        title: language.t("prompt.toast.pasteUnsupported.title"),
-        description: language.t("prompt.toast.pasteUnsupported.description"),
-      })
-      return
-    }
+    const result = classifyClipboard(clipboardData)
+    if (result.kind === "empty") return
 
-    const plainText = clipboardData.getData("text/plain") ?? ""
-    if (!plainText) return
-    addPart({ type: "text", content: plainText, start: 0, end: 0 })
+    event.preventDefault()
+    event.stopPropagation()
+    layout.reader.reveal()
+
+    if (result.kind === "unsupported") return pasteUnsupportedToast()
+    if (result.kind === "image") return attachImages(result.imageItems)
+
+    // Text writes straight to prompt state rather than through addPart, which
+    // needs a live in-editor selection the just-revealed composer doesn't have
+    // yet. This mirrors insertDictation, the other path that lands text while
+    // the chrome is hidden. Focus and caret follow on the next frame.
+    const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: result.text, start: 0, end: 0 }]
+    const end = promptLength(next)
+    prompt.set(next, end)
+    if (!coarse()) requestAnimationFrame(() => command.trigger("prompt.focus.end"))
   }
 
   const handleGlobalDragOver = (event: DragEvent) => {
@@ -485,11 +532,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     document.addEventListener("dragover", handleGlobalDragOver)
     document.addEventListener("dragleave", handleGlobalDragLeave)
     document.addEventListener("drop", handleGlobalDrop)
+    // Capture phase so it runs before the editor's own onPaste and while the
+    // hidden composer holds no focus for a bubbling listener to reach.
+    document.addEventListener("paste", handleGlobalPaste, true)
   })
   onCleanup(() => {
     document.removeEventListener("dragover", handleGlobalDragOver)
     document.removeEventListener("dragleave", handleGlobalDragLeave)
     document.removeEventListener("drop", handleGlobalDrop)
+    document.removeEventListener("paste", handleGlobalPaste, true)
   })
 
   createEffect(() => {
