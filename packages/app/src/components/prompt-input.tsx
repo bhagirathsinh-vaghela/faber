@@ -1450,14 +1450,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setStore("popover", null)
         return
       }
-      // A running turn takes Escape first, to abort. Otherwise, in reader with
-      // the chrome revealed, Escape hides it again — the keyboard's way back to
-      // the clean read (the hide blurs the composer). Elsewhere it does nothing.
-      if (working()) {
-        abort()
+      // Escape peels one layer per press. With the reader chrome revealed it
+      // hides — busy or idle — which is the keyboard's way back to the clean
+      // read and blurs the composer. Aborting a running turn is the next layer:
+      // once the chrome is hidden the composer no longer holds the caret, so the
+      // session's Escape command (disabled while the composer is focused) takes
+      // over and stops the turn. This handler runs only while focused, so it owns
+      // the hide layer alone and never the abort.
+      if (reader() && layout.reader.revealed()) {
+        layout.reader.hide()
         return
       }
-      if (reader() && layout.reader.revealed()) layout.reader.hide()
+      if (working()) abort()
     }
   }
 
