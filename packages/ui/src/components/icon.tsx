@@ -139,11 +139,6 @@ const icons = {
   mic: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></g>`,
   // Reload (Lucide `rotate-cw`). Scaled ×0.8333.
   "rotate-right": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></g>`,
-  // Companion mode (Lucide `text-cursor-input`): a text field with an I-beam,
-  // for the view that hides the transcript and leaves only the composer. A mic
-  // would collide with the dock's dictation button, and the layout-* family is
-  // already taken by the sidebar/terminal/review panel toggles. Scaled ×0.8333.
-  "text-cursor-input": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"/><path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"/><path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"/><path d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1"/><path d="M9 6v12"/></g>`,
   monitor: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></g>`,
   "monitor-smartphone": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8"/><path d="M10 19v-3.96 3.15"/><path d="M7 19h5"/><rect width="6" height="10" x="16" y="12" rx="2"/></g>`,
   smartphone: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></g>`,

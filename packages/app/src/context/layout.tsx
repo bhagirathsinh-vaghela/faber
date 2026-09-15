@@ -2,7 +2,6 @@ import { createStore, produce, unwrap } from "solid-js/store"
 import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js"
 import { useLocation } from "@solidjs/router"
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { captureFocus } from "@opencode-ai/ui/util/focus"
 import { useGlobalSync } from "./global-sync"
 import { useGlobalSDK } from "./global-sdk"
 import { useSettings } from "./settings"
@@ -167,7 +166,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // would fight it, and would hand focus back to whatever the user was
     // reading rather than to the thing they just chose to type into.
     const enterReader = () => {
-      if (companionOpened()) exitCompanion()
       setReaderOpened(true)
       rememberReader(true)
       collapseChrome()
@@ -247,33 +245,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     createEffect(
       on(readerSession, (session) => {
         if (!session) return
-        if (companionOpened()) exitCompanion()
         const next = readerMemory.get(session) ?? false
         if (next === readerOpened()) return
         if (next) enterReader()
         else exitReader()
       }),
     )
-
-    // Companion mode is reader inverted: reader keeps the transcript and drops
-    // the dock, companion drops the transcript and keeps the dock whole.
-    // Ephemeral for the same reason reader is, and mutually exclusive with it —
-    // the two together would leave a near-blank screen.
-    const [companionOpened, setCompanionOpened] = createSignal(false)
-    let companionFocus: (() => boolean) | undefined
-    const enterCompanion = () => {
-      if (readerOpened()) exitReader()
-      const restore = captureFocus()
-      companionFocus = restore
-      setCompanionOpened(true)
-      restore()
-    }
-    const exitCompanion = () => {
-      const restore = companionFocus
-      companionFocus = undefined
-      setCompanionOpened(false)
-      restore?.()
-    }
 
     const MAX_SESSION_KEYS = 50
     const meta = { active: undefined as string | undefined, pruned: false }
@@ -696,19 +673,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (session) setBoxOpen(produce((draft) => delete draft[session]))
           if (readerOpened()) exitReader()
           else enterReader()
-        },
-      },
-      // Companion mode: hides the transcript, keeps the full prompt dock plus
-      // the question/permission panels, and enlarges the dock's touch targets.
-      // For driving a session by voice from a phone while reading the output on
-      // another client. Ephemeral like reader, and reset on session switch.
-      companion: {
-        opened: companionOpened,
-        enter: enterCompanion,
-        exit: exitCompanion,
-        toggle() {
-          if (companionOpened()) exitCompanion()
-          else enterCompanion()
         },
       },
       // Keyed by session id, not the dir/session composite the persisted stores

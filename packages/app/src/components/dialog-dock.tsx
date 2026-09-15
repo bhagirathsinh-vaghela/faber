@@ -52,7 +52,6 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
     title: "Titlebar",
     fields: [
       { id: "back-forward", label: "Back / forward (desktop only)" },
-      { id: "companion", label: "Companion mode" },
       { id: "terminal", label: "Terminal (desktop only)" },
       { id: "review", label: "Review panel" },
     ],

@@ -591,10 +591,9 @@ function Panel(props: {
       // content and a tall question overflows off the TOP of the screen, where
       // nothing scrolls and the options become unreachable.
       //
-      // This replaced a hardcoded `max-h-[calc(100dvh-16rem)]`, where 16rem was a
-      // guess at the dock's height. Companion mode grows the composer past that
-      // guess and the panel silently overflowed. Measuring beats guessing, and
-      // the flex chain measures itself.
+      // The height comes from the flex chain rather than a hardcoded dock-height
+      // guess: the composer's height varies with its content, so a fixed cap
+      // silently overflows whenever the dock grows past the guess.
       class="relative mb-3 flex min-h-0 flex-col overflow-hidden rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
       classList={{ "border-border-base cursor-default": !focused() }}
       style={

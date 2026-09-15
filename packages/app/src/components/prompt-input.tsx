@@ -137,28 +137,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // (model/agent/variant selectors, the bottom status/action row, the permission
   // auto-accept toggle) is gated behind !reader().
   const reader = () => layout.reader.opened()
-  // Companion mode keeps every control (this dock is the only interface on that
-  // device) but hands the freed transcript space to the touch targets: double
-  // the usual control, with the icons scaled to match. Five of them at that size
-  // still fit a 393px-wide phone. Applied at EVERY width, so the mode looks like
-  // itself on desktop too.
-  const companion = () => layout.companion.opened()
-  // The tall writing surface only earns its space when the composer IS the
-  // screen. A pending question or permission prompt stacks directly above the
-  // dock and is what you're actually answering, so the reserved height stops
-  // being a feature and starts squeezing the thing you need to read. The flex
-  // chain would now shrink the editor on its own, but yielding outright gives
-  // the panel the whole gap rather than making it fight for a share.
-  const companionTall = () => companion() && question.pending().length === 0
-  const actionButton = () => (companion() ? "size-[calc(var(--control-height)*2)]! px-1" : "px-1")
-  // Icon sizes through its WRAPPER: [data-component=icon] is the sized box and
-  // the svg inside is width:100% of it, so a class on the svg alone only moves
-  // its height and leaves a stretched sliver. Target the wrapper instead. The
-  // component's own size prop tops out well below what this button needs.
-  const actionIcon = () =>
-    companion()
-      ? "[&>[data-component=icon]]:!size-(--control-height)"
-      : ""
   const comments = useComments()
   const stash = useStash()
   const params = useParams()
@@ -2402,17 +2380,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </For>
             </div>
           </Show>
-          {/* Companion hands the freed transcript space to the writing surface.
-            The dock is bottom-anchored, so a taller cap grows it upward into
-            the reachable lower half rather than pushing controls off-thumb.
-            Applied at every width — the dock keeps its normal full width. */}
           <div class="contents">
             <div
-              classList={{
-                "relative overflow-y-auto min-w-0": true,
-                "max-h-[240px]": !companionTall(),
-                "max-h-[45vh]": companionTall(),
-              }}
+              class="relative overflow-y-auto min-w-0 max-h-[240px]"
               ref={(el) => (scrollRef = el)}
             >
               <div
@@ -2448,9 +2418,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   // The clear button overlays this corner; the first line stops
                   // short of it and the rest of the draft wraps underneath.
                   "pr-9": prompt.dirty(),
-                  // Hold the tall surface open on an empty draft, so entering
-                  // companion doesn't collapse the dock back to one line.
-                  "min-h-[28vh]": companionTall(),
                   "[&_[data-type=file]]:text-syntax-property": true,
                   "[&_[data-type=agent]]:text-syntax-type": true,
                   "font-mono!": store.mode === "shell",
@@ -2699,7 +2666,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Button
                       type="button"
                       variant="ghost"
-                      class={`dock-wide:hidden flex ${companion() ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)" : ""} items-center justify-center`}
+                      class="dock-wide:hidden flex items-center justify-center"
                       onClick={() => setDockInfoOpen((v) => !v)}
                       aria-label={dockInfoOpen() ? "Hide session info" : "Show session info"}
                       aria-expanded={dockInfoOpen()}
@@ -2726,7 +2693,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <Button
                         type="button"
                         variant="ghost"
-                        class={`flex ${companion() ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)" : ""} items-center justify-center`}
+                        class="flex items-center justify-center"
                         onClick={() => dialog.show(() => <DialogDock />)}
                         aria-label="Dock & input preferences"
                       >
@@ -2793,7 +2760,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <Button
                         type="button"
                         variant="ghost"
-                        class={`${actionButton()} ${actionIcon()}`}
+                        class="px-1"
                         onClick={() => fileInputRef.click()}
                         aria-label={language.t("prompt.action.attachFile")}
                       >
@@ -2811,7 +2778,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <Button
                         type="button"
                         variant="ghost"
-                        class={`${actionButton()} ${actionIcon()}`}
+                        class="px-1"
                         data-dictation-toggle
                         data-dictation-focused={dictationTargeted() ? "" : undefined}
                         onClick={toggleDictation}
@@ -2847,14 +2814,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       variant="primary"
                       // Icon sizes are fixed pixel steps, so a button grown past
                       // the shared control height keeps a glyph scaled for the
-                      // smaller one and the square looks lost inside it. These
-                      // two size their icon from the button instead, at the same
+                      // smaller one and the square looks lost inside it. This
+                      // sizes its icon from the button instead, at the same
                       // fraction every other control paints.
-                      class={
-                        companion()
-                          ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : "size-10! any-pointer-coarse:size-11! [&>[data-component=icon]]:!size-6 any-pointer-coarse:[&>[data-component=icon]]:!size-7"
-                      }
+                      class="size-10! any-pointer-coarse:size-11! [&>[data-component=icon]]:!size-6 any-pointer-coarse:[&>[data-component=icon]]:!size-7"
                       aria-label={language.t("prompt.action.stop")}
                       onClick={abort}
                     />
@@ -2888,11 +2851,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       // asks for, a mouse keeps the compact 40. The two appear
                       // together whenever a draft is typed into a running turn,
                       // so they take one rule between them.
-                      class={
-                        companion()
-                          ? "size-[calc(var(--control-height)*2)]! [&>[data-component=icon]]:!size-(--control-height)"
-                          : "size-10! any-pointer-coarse:size-11! [&>[data-component=icon]]:!size-6 any-pointer-coarse:[&>[data-component=icon]]:!size-7"
-                      }
+                      class="size-10! any-pointer-coarse:size-11! [&>[data-component=icon]]:!size-6 any-pointer-coarse:[&>[data-component=icon]]:!size-7"
                       aria-label={language.t("prompt.action.send")}
                       {...preserveFocus()}
                     />

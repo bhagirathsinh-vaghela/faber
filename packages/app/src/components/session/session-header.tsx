@@ -121,28 +121,6 @@ export function SessionHeader() {
                 they show on every route. Only the session-scoped controls
                 portal here. */}
             <Show when={currentSession()}>
-              {/* Companion toggle sits immediately left of Stop. It lives here
-                  rather than in the shared Titlebar so it can be ordered among
-                  the session-scoped controls, which all portal into this mount. */}
-              <Show when={local.dock.isVisibleOn("mobile", "companion")}>
-                <Tooltip
-                  value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
-                  placement="top"
-                  gutter={8}
-                >
-                  <IconButton
-                    icon="text-cursor-input"
-                    iconSize="medium"
-                    variant={layout.companion.opened() ? "primary" : "ghost"}
-                    class="shrink-0 p-0"
-                    onClick={() => layout.companion.toggle()}
-                    aria-pressed={layout.companion.opened()}
-                    aria-label={
-                      layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")
-                    }
-                  />
-                </Tooltip>
-              </Show>
               <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
                 <JobsButton />
               </Tooltip>
@@ -184,25 +162,6 @@ export function SessionHeader() {
             <div class="flex items-center gap-3">
               <Show when={currentSession()}>
                 <div class="flex items-center shrink-0 gap-1">
-                  <Show when={local.dock.isVisibleOn("desktop", "companion")}>
-                    <Tooltip
-                      value={layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")}
-                      placement="top"
-                      gutter={8}
-                    >
-                      <IconButton
-                        icon="text-cursor-input"
-                        iconSize="medium"
-                        variant={layout.companion.opened() ? "primary" : "ghost"}
-                        class=""
-                        onClick={() => layout.companion.toggle()}
-                        aria-pressed={layout.companion.opened()}
-                        aria-label={
-                          layout.companion.opened() ? language.t("companion.exit") : language.t("companion.enter")
-                        }
-                      />
-                    </Tooltip>
-                  </Show>
                   <Tooltip value={language.t("common.jobs")} placement="top" gutter={8}>
                     <JobsButton />
                   </Tooltip>

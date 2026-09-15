@@ -108,8 +108,6 @@ export const dict = {
   "command.session.stopTurn.description": "Abort the in-flight turn, leaving the session warm",
   "command.prompt.clear": "Clear the composer",
   "command.prompt.clear.description": "Discard whatever is typed in the composer",
-  "command.companion.toggle": "Toggle companion mode",
-  "command.companion.toggle.description": "Hide the transcript and show only the prompt input",
   "command.question.list": "Show pending questions",
   "command.question.list.description": "Expand the collapsed question panel",
   "question.collapsed": "{{count}} question(s) pending",
@@ -295,9 +293,6 @@ export const dict = {
   "speech.slower": "Slower",
   "speech.faster": "Faster",
   "speech.voice": "Voice",
-
-  "companion.enter": "Enter companion mode",
-  "companion.exit": "Exit companion mode",
 
   "prompt.toast.pasteUnsupported.title": "Unsupported paste",
   "prompt.toast.pasteUnsupported.description": "Only images or PDFs can be pasted here.",

@@ -46,7 +46,6 @@ export namespace Dock {
       "mcp",
       "auto-accept",
       "back-forward",
-      "companion",
       "terminal",
       "review",
     ],
@@ -61,7 +60,6 @@ export namespace Dock {
       "available",
       "auto-inject",
       "mcp",
-      "companion",
       "review",
     ],
   }

@@ -1377,14 +1377,6 @@ export default function Page() {
       keybind: "alt+shift+z",
       onSelect: () => layout.reader.minimalShortcut(),
     },
-    {
-      id: "companion.toggle",
-      title: language.t("command.companion.toggle"),
-      description: language.t("command.companion.toggle.description"),
-      category: language.t("command.category.session"),
-      keybind: "alt+c",
-      onSelect: () => layout.companion.toggle(),
-    },
     ...(sync.data.config.share !== "disabled"
       ? [
           {
@@ -2500,16 +2492,7 @@ export default function Page() {
             "padding-top": layout.reader.opened() ? "var(--sat)" : undefined,
           }}
         >
-          {/* Companion mode hides the transcript with CSS rather than
-              unmounting it: the session stays fully subscribed and the scroll
-              position survives, so leaving companion restores the exact view.
-              The dock is absolutely bottom-anchored, so it stays put. */}
-          <div
-            classList={{
-              "flex-1 min-h-0 overflow-hidden": true,
-              hidden: layout.companion.opened(),
-            }}
-          >
+          <div class="flex-1 min-h-0 overflow-hidden">
             <Switch>
               <Match when={params.id}>
                 <Show
