@@ -61,6 +61,9 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // no mic is present (interactive). In a
   // reader session the mic replaces it, and the exit orb joins on top once the
   // non-sticky composer is up.
+  // Every orb is a transparent ghost ring; the glyph carries its own backing via
+  // an interior filled with the disc color (--orb-glyph-fill), so it floats over
+  // content without a solid disc covering it.
   type Orb = { label: string; press: () => void; icon: JSX.Element; dictation?: boolean }
   const orbs = createMemo<Orb[]>(() => {
     if (!layout.reader.opened()) {
@@ -69,7 +72,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
           label: language.t("reader.enter"),
           press: () => layout.reader.toggle(),
           icon: (
-            <Icon name="book-open" class="size-full" style={{ color: "var(--icon-strong-base)" }} />
+            <Icon name="book-open-filled" class="size-full" style={{ color: "var(--icon-strong-base)" }} />
           ),
         },
       ]
@@ -79,7 +82,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
         label: language.t("reader.dictate"),
         press: () => dictationTarget()?.toggle(),
         dictation: true,
-        icon: <MicIcon class="size-full" running={dictationRunning()} targeted />,
+        icon: <MicIcon class="size-full" running={dictationRunning()} targeted filled />,
       },
     ]
     if (layout.reader.revealed()) {
@@ -87,7 +90,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
       list.push({
         label: language.t("reader.exit"),
         press: () => layout.reader.exitToInteractive(),
-        icon: <Icon name="book-check" class="size-full" style={{ color: "var(--icon-strong-base)" }} />,
+        icon: <Icon name="book-check-filled" class="size-full" style={{ color: "var(--icon-strong-base)" }} />,
       })
     }
     return list
@@ -252,12 +255,23 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
               }}
               aria-label={orb.label}
               data-dictation-toggle={orb.dictation ? "" : undefined}
-              class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing shadow-md border-border-weak-base bg-surface-raised-base text-icon-strong-base hover:bg-surface-raised-base-hover"
+              // Frosted-glass ring: a low-alpha fill plus a light backdrop blur,
+              // so the text and borders behind it read as blurred SHAPES through
+              // the glass, still recognizable rather than smeared. No saturate: it
+              // muddies the letters together. The fallback (no backdrop-filter)
+              // keeps a more opaque fill so it still reads as a surface.
+              class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing border-border-base text-icon-strong-base bg-surface-raised-base/65 supports-[backdrop-filter]:bg-surface-raised-base/8 supports-[backdrop-filter]:backdrop-blur-[8px]"
               style={{ width: `${size()}px`, height: `${size()}px` }}
             >
               <span
                 class="flex items-center justify-center rounded-full"
-                style={{ width: `${glyph()}px`, height: `${glyph()}px` }}
+                // The glyph interior fills with the disc color, so it reads over
+                // content without a solid orb behind it.
+                style={{
+                  width: `${glyph()}px`,
+                  height: `${glyph()}px`,
+                  "--orb-glyph-fill": "var(--surface-raised-base)",
+                }}
               >
                 {orb.icon}
               </span>

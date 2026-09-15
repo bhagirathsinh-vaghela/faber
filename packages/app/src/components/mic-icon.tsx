@@ -12,7 +12,7 @@ import { agentColor } from "@/utils/agent"
 //
 // Local is optional: outside a session's LocalProvider there is no agent to
 // tint by, so it falls back to the plain interactive color.
-export function MicIcon(props: { targeted?: boolean; running?: boolean; class?: string }) {
+export function MicIcon(props: { targeted?: boolean; running?: boolean; filled?: boolean; class?: string }) {
   const local = useLocalOptional()
   const tint = () => {
     const agent = local?.agent.current()
@@ -20,7 +20,7 @@ export function MicIcon(props: { targeted?: boolean; running?: boolean; class?: 
   }
   return (
     <Icon
-      name="mic"
+      name={props.filled ? "mic-filled" : "mic"}
       class={props.class}
       classList={{ "text-icon-critical-base animate-pulse": !!props.running }}
       style={props.running || !props.targeted ? undefined : { color: tint() }}

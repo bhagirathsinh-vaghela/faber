@@ -137,12 +137,21 @@ const icons = {
   clock: `<g transform="scale(0.8333)" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></g>`,
   // Dictation (Lucide `mic`). Scaled ×0.8333.
   mic: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></g>`,
+  // Filled dictation mic: the capsule interior is filled in currentColor, so the
+  // whole mic reads as one solid color (its own stroke color), on a transparent
+  // ghost orb. Unlike the filled book glyphs, it does NOT take --orb-glyph-fill.
+  "mic-filled": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3" fill="currentColor"/></g>`,
   // Reload (Lucide `rotate-cw`). Scaled ×0.8333.
   "rotate-right": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></g>`,
   monitor: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></g>`,
   "monitor-smartphone": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8"/><path d="M10 19v-3.96 3.15"/><path d="M7 19h5"/><rect width="6" height="10" x="16" y="12" rx="2"/></g>`,
   smartphone: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></g>`,
   "book-open": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></g>`,
+  // Filled book variants for the reader ghost pill: the book body is filled with
+  // --orb-glyph-fill (the disc color) so the glyph carries its own backing on a
+  // transparent orb; the outline and inner mark stay stroked in currentColor.
+  "book-open-filled": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" fill="var(--orb-glyph-fill, currentColor)"/><path d="M12 7v14"/></g>`,
+  "book-check-filled": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" fill="var(--orb-glyph-fill, currentColor)"/><path d="m9 9.5 2 2 4-4"/></g>`,
   "book-x": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="m14.5 7.5-5 5"/><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9.5 7.5 5 5"/></g>`,
   "book-check": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></g>`,
 }
