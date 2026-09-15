@@ -128,9 +128,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     // Which session each reader state belongs to, so leaving a session for the
     // overview and coming back restores the toggle. Deliberately a plain Map,
-    // not persisted state: a reload must still land outside reader, since that
-    // is the only way out of a session whose composer is hidden.
+    // not persisted state: a fresh load always starts interactive.
     const readerMemory = new Map<string, boolean>()
+
+    // Non-sticky interactive: while sticky reader stays on, a temporary composer
+    // (plus the exit orb) is overlaid so text can land and be sent without
+    // leaving reader. Entered by tap/space/dictation/paste; a submit or clear
+    // drops it back to the clean read. Ephemeral, never persisted.
+    const [revealed, setRevealed] = createSignal(false)
+    const reveal = () => setRevealed(true)
+    const unreveal = () => setRevealed(false)
 
     // Manual expand/collapse of transcript boxes, session id -> box id -> open.
     // Ephemeral for reader's reason, and lifted here for it too: the
@@ -162,45 +169,19 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     // Focus across the toggle belongs to the session page, which blurs on entry
-    // and lands the caret in the composer on exit. A snapshot restored here
-    // would fight it, and would hand focus back to whatever the user was
-    // reading rather than to the thing they just chose to type into.
+    // and lands the caret in the composer on exit. Entering sticky reader always
+    // starts clean, with no non-sticky composer overlaid.
     const enterReader = () => {
       setReaderOpened(true)
       rememberReader(true)
-      collapseChrome()
-      // Entering reader is itself the "let me read" gesture, so it starts clean
-      // with the chrome hidden. A deliberate dead-space click or tap reveals it,
-      // and toggles it from there; nothing shows or hides on a timer.
       setRevealed(false)
+      collapseChrome()
     }
     const exitReader = () => {
       setReaderOpened(false)
       rememberReader(false)
       setRevealed(false)
-      // Minimal is NOT reset: the normal/minimal choice rides across the
-      // reader<->interactive round-trip, so returning to reader restores the last
-      // flavor. (It stays in memory only, so a reload starts normal, like reader
-      // itself.) The round-trip flag still clears, so the next shortcut is fresh.
-      openedForMinimal = false
     }
-
-    // The one visibility state for every piece of reader chrome: the pill
-    // cluster and the composer show and hide together as one unit. Toggled only
-    // by a deliberate click/tap, never on a timer. Ephemeral, never persisted.
-    const [revealed, setRevealed] = createSignal(false)
-    const reveal = () => setRevealed(true)
-    const hide = () => setRevealed(false)
-
-    // Minimal is reader's most-collapsed flavor: it changes only which transcript
-    // boxes collapse (its own settings column), nothing about the chrome.
-    // Ephemeral like the reveal state, and only meaningful while reader is open,
-    // so leaving reader turns it off.
-    const [minimal, setMinimal] = createSignal(false)
-    // Whether the minimal keyboard shortcut is what opened reader, so its
-    // round-trip can return to interactive rather than stranding the user in
-    // reader.
-    let openedForMinimal = false
 
     // Reader strips the chrome around a transcript, so it only means anything on
     // a session route. The overview has no transcript, and reading the raw flag
@@ -244,6 +225,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // the trip this memory has to survive.
     createEffect(
       on(readerSession, (session) => {
+        // A non-sticky composer belongs to the session it was raised in, so
+        // leaving drops it.
+        setRevealed(false)
         if (!session) return
         const next = readerMemory.get(session) ?? false
         if (next === readerOpened()) return
@@ -637,35 +621,34 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       // Reader mode: hides all chrome (titlebar, tab bar, composer), leaving the
       // scrollable message list, the busy indicator, and any pending question.
       // Deliberately NOT persisted — it always resets to off on load/reload.
+      //
+      // Two independent flags. `opened` (sticky reader) is the persistent mode.
+      // `revealed` (non-sticky) overlays a temporary composer + exit orb WHILE
+      // sticky reader stays on, so text can land and be sent without leaving the
+      // read. A submit/clear drops the overlay back to the clean read; the exit
+      // orb commits up to sticky interactive.
       reader: {
         opened: readerActive,
         enter: enterReader,
         exit: exitReader,
+        // The non-sticky composer overlay: raised by a tap, space, dictation, or
+        // paste while sticky reader is on.
         revealed,
         reveal,
-        hide,
-        minimal,
-        minimalToggle: () => setMinimal((on) => !on),
-        // The keyboard round-trip: minimal lives inside reader, so from
-        // interactive this enters reader AND turns minimal on, and pressing again
-        // returns all the way to where it started. openedForMinimal remembers
-        // whether the shortcut opened reader itself, so turning minimal off only
-        // exits reader when the shortcut was what entered it (not when the user
-        // was already reading). The "off" branch is gated on reader being OPEN:
-        // minimal persists across the round-trip, so it can be true while
-        // interactive, where the shortcut must still enter reader rather than
-        // just clearing the flag in place.
-        minimalShortcut() {
-          if (readerOpened() && minimal()) {
-            setMinimal(false)
-            if (openedForMinimal) this.toggle()
-            openedForMinimal = false
-            return
-          }
-          openedForMinimal = !readerOpened()
-          if (openedForMinimal) this.toggle()
-          setMinimal(true)
+        // The clean read: reader on with no overlay up. This is the only state
+        // that strips the chrome; the non-sticky overlay restores everything a
+        // sticky-interactive session shows except the sidebar project rail, so
+        // chrome that hides in reader keys on this, not on `opened`.
+        cleanRead: createMemo(() => readerActive() && !revealed()),
+        // Dropping the overlay back to the clean read, on a submit or clear. A
+        // no-op outside the overlay, so a normal interactive submit is untouched.
+        returnIfRevealed() {
+          if (!revealed()) return
+          unreveal()
         },
+        // The exit orb: commit up from the non-sticky overlay to sticky
+        // interactive, leaving reader entirely.
+        exitToInteractive: exitReader,
         toggle() {
           // enterReader/exitReader cannot own this: the restore effect calls
           // them on arrival, where a wipe would hit the session being left.

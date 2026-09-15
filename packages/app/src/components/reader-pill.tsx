@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js"
+import { For, createEffect, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Icon } from "@opencode-ai/ui/icon"
 import { MicIcon } from "@/components/mic-icon"
@@ -31,20 +31,21 @@ const cssPx = (name: string, fallback: number) =>
   parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || fallback
 
 // Bigger than a dock button: it floats over content with no neighbours to
-// separate it from, and it is the only way out of reader.
+// separate it from.
 const PILL_SCALE = 1.45
 
-// The mic sits above the reader button in one stack, so speaking does not cost
-// a trip out of reader. It rides the same coordinates: two separately parked
-// controls would need two clamps and could be dragged on top of each other.
+// Orbs above the bottom one are separated by this gap, and the whole stack is
+// clamped as one so a sibling appearing on top can't push it off screen.
 const STACK_GAP = 10
 
 // The glyph fills the same fraction of this control that an icon fills of any
 // other, read from the ratio the stylesheet already applies.
 const iconRatio = () => cssPx("--control-icon", 20) / cssPx("--control-height", 36)
 
-// The one reader control. `anchor` is the box it hovers above; a page without
-// one passes nothing and gets the corner.
+// The floating reader controls. The orb set is mode-dependent: a lone book orb
+// enters sticky reader from interactive; in a reader session the mic floats,
+// joined by an exit orb once a non-sticky composer is up. `anchor` is the box
+// the stack hovers above; a page without one passes nothing and gets the corner.
 export function ReaderPill(props: { anchor?: () => { right: number; top: number } | null }) {
   const layout = useLayout()
   const language = useLanguage()
@@ -56,27 +57,53 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     return Math.round(cssPx("--control-height", 36) * PILL_SCALE)
   }
 
-  // The reader button, plus the minimal and dictate orbs the mode adds above it.
-  const orbs = () => (layout.reader.opened() ? 3 : 1)
-  const stack = () => orbs() * size() + (orbs() - 1) * STACK_GAP
+  // Bottom-to-top. The book orb is the deliberate sticky toggle, shown whenever
+  // no mic is present (interactive). In a
+  // reader session the mic replaces it, and the exit orb joins on top once the
+  // non-sticky composer is up.
+  type Orb = { label: string; press: () => void; icon: JSX.Element; dictation?: boolean }
+  const orbs = createMemo<Orb[]>(() => {
+    if (!layout.reader.opened()) {
+      return [
+        {
+          label: language.t("reader.enter"),
+          press: () => layout.reader.toggle(),
+          icon: (
+            <Icon name="book-open" class="size-full" style={{ color: "var(--icon-strong-base)" }} />
+          ),
+        },
+      ]
+    }
+    const list: Orb[] = [
+      {
+        label: language.t("reader.dictate"),
+        press: () => dictationTarget()?.toggle(),
+        dictation: true,
+        icon: <MicIcon class="size-full" running={dictationRunning()} targeted />,
+      },
+    ]
+    if (layout.reader.revealed()) {
+      // On top, so pressing it never disturbs the mic beneath.
+      list.push({
+        label: language.t("reader.exit"),
+        press: () => layout.reader.exitToInteractive(),
+        icon: <Icon name="book-check" class="size-full" style={{ color: "var(--icon-strong-base)" }} />,
+      })
+    }
+    return list
+  })
 
-  // How far the stack rises above its bottom button, which is everything the
-  // bottom button does not occupy itself.
+  const stack = () => orbs().length * size() + (orbs().length - 1) * STACK_GAP
+  // How far the stack rises above its bottom orb.
   const above = () => stack() - size()
 
-  // x/y address the BOTTOM button, and the rest of the cluster hangs off it
-  // upward. That button is the one constant: it is present in every mode, and
-  // it is where a parked position was aimed, so it must not move when a
-  // sibling appears above it and changes the stack's height.
-  //
-  // The upper bound is still the stack's, since a bottom button pinned legally
-  // can still push its neighbours off the top of the screen.
+  // x/y address the BOTTOM orb, and the rest hang off it upward. That orb is the
+  // one constant across modes and where a parked position was aimed, so it must
+  // not move when a sibling appears above it. The upper bound stays the stack's,
+  // since a legal bottom orb can still push a sibling off the top.
   const clamp = (x: number, y: number) => ({
     x: Math.max(MARGIN + inset("--sal"), Math.min(x, window.innerWidth - size() - MARGIN - inset("--sar"))),
-    y: Math.max(
-      MARGIN + inset("--sat") + above(),
-      Math.min(y, window.innerHeight - size() - MARGIN - inset("--sab")),
-    ),
+    y: Math.max(MARGIN + inset("--sat") + above(), Math.min(y, window.innerHeight - size() - MARGIN - inset("--sab"))),
   })
 
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
@@ -193,79 +220,14 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
 
   const glyph = () => Math.round(size() * iconRatio())
 
-  // One button of the cluster. Every one of them is a drag handle, so the whole
-  // stack moves from wherever it is grabbed, and each suppresses the click that
-  // a drag ending on it would otherwise deliver. The visual chrome (fill,
-  // border, shadow) and any transform come from the caller's `class`/`style`, so
-  // an orb can fade with the cluster or stand alone as a ghost.
-  const Orb = (props: {
-    label: string
-    onPress: () => void
-    dictation?: boolean
-    class?: string
-    style?: JSX.CSSProperties
-    disc?: string
-    children: JSX.Element
-  }) => (
-    <button
-      type="button"
-      onPointerDown={start}
-      onClick={() => {
-        if (dragged) {
-          dragged = false
-          return
-        }
-        props.onPress()
-      }}
-      aria-label={props.label}
-      data-dictation-toggle={props.dictation ? "" : undefined}
-      class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing"
-      classList={{ [props.class ?? ""]: !!props.class }}
-      style={{ width: `${size()}px`, height: `${size()}px`, ...props.style }}
-    >
-      {/* The glyph box. A ghost orb hangs an opaque disc here instead of on the
-          button, so the icon stays legible over content while the tap target
-          fills the full orb. */}
-      <span
-        class="flex items-center justify-center rounded-full"
-        classList={{ [props.disc ?? ""]: !!props.disc }}
-        style={{ width: `${glyph()}px`, height: `${glyph()}px` }}
-      >
-        {props.children}
-      </span>
-    </button>
-  )
-
-  // In reader the cluster is chrome that fades with the reveal state, so a still,
-  // unrevealed reader is pure content. Outside reader the cluster is the lone way
-  // in, so it always shows. The fade lives per-orb (not on the container) so the
-  // ghost mic can opt out and stay tappable.
-  const dimmed = () => layout.reader.opened() && !layout.reader.revealed()
-
-  // A normal orb's chrome, and the fade applied to it while the cluster is
-  // hidden.
-  const solidOrb =
-    "shadow-md border-border-weak-base bg-surface-raised-base text-icon-strong-base hover:bg-surface-raised-base-hover"
-  const faded = () => (dimmed() ? "opacity-0 pointer-events-none" : "")
-  // The mic is the one control a touch reader keeps within reach, so when the
-  // cluster is hidden on a touch device it alone stays visible, at the bottom
-  // slot where the exit orb anchors. Only it becomes a ghost: the full ring is
-  // the touch target, the fill goes transparent so it does not cover content,
-  // and a snug opaque disc behind the glyph (a hair larger than the icon,
-  // box-content so it does not resize it) carries legibility. Every other orb,
-  // and a fine pointer, stays a solid orb.
-  const micGhost = () => coarse() && dimmed()
-  const ghostOrb = "border-border-base bg-transparent"
-  const ghostDisc = "bg-surface-raised-base p-[1px] box-content"
-
   return (
     <Portal>
       <div
         data-reader-cluster
         class="fixed z-[100] flex flex-col items-center justify-end pointer-events-none"
         style={{
-          // Positioned by its foot, so a button appearing above the bottom one
-          // grows the stack upward and leaves that button where it was.
+          // Positioned by its foot, so an orb appearing above the bottom one
+          // grows the stack upward and leaves that orb where it was.
           ...(coords()
             ? { left: `${coords()!.x}px`, top: `${coords()!.y - above()}px` }
             : {
@@ -276,44 +238,32 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
           gap: `${STACK_GAP}px`,
         }}
       >
-        <Show when={layout.reader.opened()}>
-          <Orb
-            label={language.t("reader.minimal")}
-            onPress={() => layout.reader.minimalToggle()}
-            class={`${solidOrb} ${faded()}`}
-          >
-            <Icon
-              name="eye"
-              class="size-full"
-              style={{ color: layout.reader.minimal() ? "var(--icon-strong-base)" : "var(--icon-weak-base)" }}
-            />
-          </Orb>
-          <Orb
-            label={language.t("reader.dictate")}
-            onPress={() => dictationTarget()?.toggle()}
-            dictation
-            // Ghosted only when it stands alone; otherwise a normal orb that
-            // fades with the cluster.
-            class={micGhost() ? ghostOrb : `${solidOrb} ${faded()}`}
-            disc={micGhost() ? ghostDisc : ""}
-            // Ghosted, the mic drops one orb+gap into the exit slot at the foot;
-            // revealed, it snaps back to its own slot.
-            style={{ transform: micGhost() ? `translateY(${size() + STACK_GAP}px)` : "translateY(0)" }}
-          >
-            <MicIcon class="size-full" running={dictationRunning()} targeted />
-          </Orb>
-        </Show>
-        <Orb
-          label={layout.reader.opened() ? language.t("reader.exit") : language.t("reader.enter")}
-          onPress={() => layout.reader.toggle()}
-          class={`${solidOrb} ${faded()}`}
-        >
-          <Icon
-            name={layout.reader.opened() ? "book-check" : "book-open"}
-            class="size-full"
-            style={{ color: "var(--icon-strong-base)" }}
-          />
-        </Orb>
+        <For each={orbs()}>
+          {(orb) => (
+            <button
+              type="button"
+              onPointerDown={start}
+              onClick={() => {
+                if (dragged) {
+                  dragged = false
+                  return
+                }
+                orb.press()
+              }}
+              aria-label={orb.label}
+              data-dictation-toggle={orb.dictation ? "" : undefined}
+              class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing shadow-md border-border-weak-base bg-surface-raised-base text-icon-strong-base hover:bg-surface-raised-base-hover"
+              style={{ width: `${size()}px`, height: `${size()}px` }}
+            >
+              <span
+                class="flex items-center justify-center rounded-full"
+                style={{ width: `${glyph()}px`, height: `${glyph()}px` }}
+              >
+                {orb.icon}
+              </span>
+            </button>
+          )}
+        </For>
       </div>
     </Portal>
   )

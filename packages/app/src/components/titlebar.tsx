@@ -192,18 +192,18 @@ export function Titlebar() {
   }
 
   return (
-    // Reader hides the titlebar via `hidden`, not <Show>. Unmounting it destroys
-    // the #opencode-titlebar-{center,right} portal targets that session-header
-    // memoizes; on reader exit the header would portal into the stale detached
-    // nodes and its search box / Share button would never reappear until a
-    // reload. Keeping the element mounted preserves those targets. display:none
-    // reclaims the full window height in reader (no wasted strip); the app flows
-    // under the WCO controls, which just float in the top corner.
+    // The clean read hides the titlebar via `hidden`, not <Show>. Unmounting it
+    // destroys the #opencode-titlebar-{center,right} portal targets that
+    // session-header memoizes; on reader exit the header would portal into the
+    // stale detached nodes and its search box / Share button would never reappear
+    // until a reload. Keeping the element mounted preserves those targets.
+    // display:none reclaims the full window height (no wasted strip); the app
+    // flows under the WCO controls, which just float in the top corner.
     <header
       data-slot="titlebar"
       data-wco={overlay() ? "" : undefined}
       class="@container/titlebar h-(--titlebar-height) shrink-0 bg-background-base relative"
-      classList={{ hidden: layout.reader.opened() }}
+      classList={{ hidden: layout.reader.cleanRead() }}
       style={{
         "min-height": minHeight(),
         ...(overlay()

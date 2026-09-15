@@ -4,18 +4,21 @@ import { defocus, openSidebar, withSession } from "../actions"
 import { promptSelector, sessionItemSelector } from "../selectors"
 import { modKey, type createSdk } from "../utils"
 
-// Reader is the full-screen read: all chrome (the composer, both pinned headers,
-// and the pill cluster) rides one reveal state. Entering shows it; from there a
-// dead-space click or tap is the only thing that toggles it. Nothing on a timer.
+// Two axes. Sticky reader (`opened`) is the persistent mode, entered by the book
+// orb or alt+z; it hides all chrome and floats the mic. The non-sticky overlay
+// (`revealed`) raises a temporary composer + exit orb OVER the read, entered by
+// a dead-space tap, space, dictation, or paste. A submit or clear drops the
+// overlay back to the clean read; the exit orb commits up to sticky interactive.
+// Nothing is on a timer.
 
 const PHONE = { width: 430, height: 900 }
 const DESKTOP = { width: 1500, height: 900 }
 
-// The exit orb is addressed by what it does. A positional or class-based
-// selector picks up whichever sibling the cluster gained last.
-const readerPill = (page: Page) => page.getByRole("button", { name: /reader mode/i })
+// Orbs are addressed by what they do. The enter book orb and the exit orb share
+// the word "reader", so they are matched exactly apart.
+const enterOrb = (page: Page) => page.getByRole("button", { name: "Reader mode", exact: true })
+const exitOrb = (page: Page) => page.getByRole("button", { name: /exit reader mode/i })
 const dictateOrb = (page: Page) => page.getByRole("button", { name: /dictate/i })
-const minimalOrb = (page: Page) => page.getByRole("button", { name: /minimal/i })
 
 const scroller = (page: Page) => page.locator(".session-scroller")
 const composer = (page: Page) => page.locator('[data-slot="composer"]')
@@ -55,7 +58,7 @@ async function clickDeadSpace(page: Page) {
 }
 
 async function enterReader(page: Page) {
-  await readerPill(page).click()
+  await enterOrb(page).click()
   await settle(page)
 }
 
@@ -93,7 +96,11 @@ test.describe("reader mode on a touch device", () => {
     })
   })
 
-  test("a tap on dead space toggles the chrome", async ({ page, sdk, gotoSession }) => {
+  test("a tap on dead space raises the non-sticky composer, and a second tap drops it", async ({
+    page,
+    sdk,
+    gotoSession,
+  }) => {
     await withSession(sdk, `reader tap ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
@@ -105,16 +112,16 @@ test.describe("reader mode on a touch device", () => {
 
       await clickDeadSpace(page)
       await expect(composer(page)).toBeHidden()
-      expect(await reclaimed(page), "the hidden composer reclaims its space").toBe(true)
+      expect(await reclaimed(page), "the dropped overlay reclaims its space").toBe(true)
     })
   })
 
-  test("a tap on a turn does its own thing and leaves the chrome alone", async ({ page, sdk, gotoSession }) => {
+  test("a tap on a turn does its own thing and leaves the overlay alone", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader tap turn ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
-      // Reveal first, so a stray toggle from the turn tap would show up.
+      // Raise the overlay first, so a stray drop from the turn tap would show up.
       await clickDeadSpace(page)
       await expect(composer(page)).toBeVisible()
 
@@ -126,7 +133,7 @@ test.describe("reader mode on a touch device", () => {
     })
   })
 
-  test("scrolling never toggles the chrome", async ({ page, sdk, gotoSession }) => {
+  test("scrolling never raises the overlay", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader scroll ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
@@ -184,16 +191,45 @@ test.describe("reader mode on a touch device", () => {
     })
   })
 
-  test("the cluster carries the exit, dictate, and minimal orbs in a session", async ({ page, sdk, gotoSession }) => {
+  test("the mic floats in sticky reader; the exit orb joins only with the overlay up", async ({
+    page,
+    sdk,
+    gotoSession,
+  }) => {
     await withSession(sdk, `reader orbs ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
 
       await enterReader(page)
-      await clickDeadSpace(page)
-      await expect(readerPill(page)).toBeVisible()
+      // Plain sticky reader: the mic floats, no exit orb yet.
       await expect(dictateOrb(page)).toBeVisible()
-      await expect(minimalOrb(page)).toBeVisible()
+      await expect(exitOrb(page)).toHaveCount(0)
+
+      // Raising the non-sticky overlay adds the exit orb.
+      await clickDeadSpace(page)
+      await expect(dictateOrb(page)).toBeVisible()
+      await expect(exitOrb(page)).toBeVisible()
+    })
+  })
+
+  test("the exit orb commits up to sticky interactive", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader exit orb ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+
+      const docked = await clearance(page)
+      await enterReader(page)
+      await clickDeadSpace(page)
+      await expect(exitOrb(page)).toBeVisible()
+
+      // Pressing exit leaves reader entirely: full chrome is back and the enter
+      // book orb replaces the mic.
+      await exitOrb(page).click()
+      await settle(page)
+      await expect(composer(page)).toBeVisible()
+      expect(await clearance(page), "back to full interactive chrome").toBe(docked)
+      await expect(enterOrb(page)).toBeVisible()
+      await expect(dictateOrb(page)).toHaveCount(0)
     })
   })
 })
@@ -245,7 +281,7 @@ test.describe("reader mode and a new session", () => {
 test.describe("reader mode on a fine pointer", () => {
   test.use({ viewport: DESKTOP })
 
-  test("a dead-space click toggles the chrome, and it stays without a timer", async ({ page, sdk, gotoSession }) => {
+  test("a dead-space click toggles the overlay, and it stays without a timer", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader pointer ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
@@ -268,21 +304,39 @@ test.describe("reader mode on a fine pointer", () => {
     })
   })
 
-  test("revealing on a fine pointer lands the caret in the composer", async ({ page, sdk, gotoSession }) => {
+  test("alt+z toggles sticky mode both ways", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader altz ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await defocus(page)
+
+      const docked = await clearance(page)
+      await page.keyboard.press("Alt+z")
+      await settle(page)
+      expect(await reclaimed(page), "alt+z entered sticky reader").toBe(true)
+
+      await page.keyboard.press("Alt+z")
+      await settle(page)
+      expect(await clearance(page), "alt+z returned to interactive").toBe(docked)
+      await expect(composer(page)).toBeVisible()
+    })
+  })
+
+  test("raising the overlay on a fine pointer lands the caret in the composer", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader focus ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
       await expect(composer(page)).toBeHidden()
 
-      // Revealing on a mouse takes the caret so the reader can type at once.
+      // Raising the overlay on a mouse takes the caret so the reader can type at once.
       await clickDeadSpace(page)
       await expect(composer(page)).toBeVisible()
       await expect(page.locator(promptSelector)).toBeFocused()
     })
   })
 
-  test("space reveals the hidden chrome and takes the caret", async ({ page, sdk, gotoSession }) => {
+  test("space raises the overlay and takes the caret", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader space key ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
@@ -291,26 +345,26 @@ test.describe("reader mode on a fine pointer", () => {
       const editor = page.locator(promptSelector)
       await expect(composer(page)).toBeHidden()
 
-      // While hidden, space is the keyboard's reveal — same as a dead-space click.
+      // While hidden, space raises the overlay — the keyboard twin of a tap.
       await page.keyboard.press("Space")
       await expect(composer(page)).toBeVisible()
       await expect(editor).toBeFocused()
       await expect(editor).toHaveText("")
 
-      // Once revealed and holding the caret, space is a character again.
+      // Once the overlay is up and holding the caret, space is a character again.
       await page.keyboard.type("hi there")
       await expect(editor).toHaveText("hi there")
     })
   })
 
-  test("submitting a message hides the chrome again", async ({ page, sdk, gotoSession }) => {
+  test("submitting from the overlay drops back to the clean read", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader submit ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)
       await gotoSession(session.id)
       await enterReader(page)
 
-      // Reveal, type, and send: sending closes the type loop, so the chrome
-      // falls back to the clean reading surface.
+      // Raise the overlay, type, and send: sending drops the overlay, so the
+      // read is clean again and reader is still on.
       const editor = page.locator(promptSelector)
       await clickDeadSpace(page)
       await expect(editor).toBeFocused()
@@ -318,17 +372,62 @@ test.describe("reader mode on a fine pointer", () => {
 
       await page.keyboard.press("Enter")
       await expect(composer(page)).toBeHidden()
-      expect(await reclaimed(page), "the sent composer reclaims its space").toBe(true)
+      expect(await reclaimed(page), "the sent overlay reclaims its space").toBe(true)
+      // Still in sticky reader: the mic floats, no full chrome.
+      await expect(dictateOrb(page)).toBeVisible()
     })
   })
 
-  test("the pill is draggable, and the parked position survives a mode toggle", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `reader drag ${Date.now()}`, async (session) => {
+  test("clearing the overlay draft drops back to the clean read", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader clear ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
       await gotoSession(session.id)
+      await enterReader(page)
 
-      const pill = readerPill(page)
+      const editor = page.locator(promptSelector)
+      await clickDeadSpace(page)
+      await expect(editor).toBeFocused()
+      await page.keyboard.type("never mind")
+
+      // The composer's clear (X / ctrl+c) is the "back to reading" gesture.
+      await page.getByRole("button", { name: /clear the composer/i }).click()
+      await settle(page)
+      await expect(composer(page)).toBeHidden()
+      expect(await reclaimed(page), "the cleared overlay reclaims its space").toBe(true)
+      await expect(dictateOrb(page)).toBeVisible()
+    })
+  })
+
+  test("a draft survives dropping the overlay by tap", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader draft survives ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+
+      const editor = page.locator(promptSelector)
+      await clickDeadSpace(page)
+      await page.keyboard.type("kept draft")
+      await expect(editor).toHaveText("kept draft")
+
+      // Tap dead space to drop the overlay: the draft is not cleared, so it is
+      // still there when the overlay comes back up.
+      await clickDeadSpace(page)
+      await expect(composer(page)).toBeHidden()
+
+      await clickDeadSpace(page)
+      await expect(editor).toHaveText("kept draft")
+    })
+  })
+
+  test("the mic is draggable, and the parked position survives a mode toggle", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader drag ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+
+      const pill = dictateOrb(page)
       const start = await pill.boundingBox()
-      if (!start) throw new Error("pill has no box")
+      if (!start) throw new Error("mic has no box")
 
       await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
       await page.mouse.down()
@@ -337,16 +436,19 @@ test.describe("reader mode on a fine pointer", () => {
       await settle(page)
 
       const parked = await pill.boundingBox()
-      if (!parked) throw new Error("pill has no box after drag")
+      if (!parked) throw new Error("mic has no box after drag")
       expect(Math.abs(parked.y - start.y)).toBeGreaterThan(100)
 
       // Moving the control and activating it are the two things the gesture
-      // must keep apart, so a drag past the slop cannot also toggle.
-      expect(await reclaimed(page), "the composer holds its space").toBe(false)
+      // must keep apart, so a drag past the slop cannot also raise the overlay.
+      await expect(composer(page)).toBeHidden()
 
+      // Leave and re-enter reader: the mic returns to where it was parked.
+      await page.keyboard.press("Alt+z")
+      await settle(page)
       await enterReader(page)
       const afterToggle = await pill.boundingBox()
-      if (!afterToggle) throw new Error("pill has no box in reader")
+      if (!afterToggle) throw new Error("mic has no box in reader")
       expect(Math.round(afterToggle.y)).toBe(Math.round(parked.y))
     })
   })
@@ -354,19 +456,21 @@ test.describe("reader mode on a fine pointer", () => {
   // A shrunken viewport is temporary, so the bounds it imposes are a matter of
   // what is drawn, and the parked position outlives them. The soft keyboard is
   // the case that reaches this: it takes the lower part of the viewport for as
-  // long as it is up, and a pill parked there must be reachable meanwhile and
+  // long as it is up, and a mic parked there must be reachable meanwhile and
   // back in place afterward.
-  test("a viewport shrinking under the pill lends it space rather than taking it", async ({
+  test("a viewport shrinking under the mic lends it space rather than taking it", async ({
     page,
     sdk,
     gotoSession,
   }) => {
     await withSession(sdk, `reader keyboard ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
       await gotoSession(session.id)
+      await enterReader(page)
 
-      const pill = readerPill(page)
+      const pill = dictateOrb(page)
       const start = await pill.boundingBox()
-      if (!start) throw new Error("pill has no box")
+      if (!start) throw new Error("mic has no box")
 
       // Park it in the lower band, which is the room a keyboard claims.
       await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
@@ -376,94 +480,24 @@ test.describe("reader mode on a fine pointer", () => {
       await settle(page)
 
       const parked = await pill.boundingBox()
-      if (!parked) throw new Error("pill has no box after drag")
+      if (!parked) throw new Error("mic has no box after drag")
 
       const shrunk = Math.round(DESKTOP.height * 0.6)
       await page.setViewportSize({ width: DESKTOP.width, height: shrunk })
       await settle(page)
 
       const lifted = await pill.boundingBox()
-      if (!lifted) throw new Error("pill has no box in the shrunken viewport")
-      expect(lifted.y, "the pill stays reachable above the keyboard").toBeGreaterThanOrEqual(0)
-      expect(lifted.y + lifted.height, "the pill stays reachable above the keyboard").toBeLessThanOrEqual(shrunk)
+      if (!lifted) throw new Error("mic has no box in the shrunken viewport")
+      expect(lifted.y, "the mic stays reachable above the keyboard").toBeGreaterThanOrEqual(0)
+      expect(lifted.y + lifted.height, "the mic stays reachable above the keyboard").toBeLessThanOrEqual(shrunk)
 
       await page.setViewportSize(DESKTOP)
       await settle(page)
 
       const returned = await pill.boundingBox()
-      if (!returned) throw new Error("pill has no box after the viewport returns")
+      if (!returned) throw new Error("mic has no box after the viewport returns")
       expect(Math.round(returned.y)).toBe(Math.round(parked.y))
       expect(Math.round(returned.x)).toBe(Math.round(parked.x))
-    })
-  })
-})
-
-// Minimal is reader's most-collapsed flavor: a third orb toggles a separate
-// collapse column, so more of the transcript folds away. It only exists inside
-// reader.
-test.describe("minimal reader", () => {
-  test.use({ viewport: DESKTOP })
-
-  // Kobalte's Collapsible root marks a collapsed box with data-closed. Minimal
-  // collapses the tool machinery, so more boxes carry it once minimal is on.
-  const closedBoxes = (page: Page) => page.locator('[data-component="collapsible"][data-closed]')
-
-  test("the minimal orb only exists in reader", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `minimal gating ${Date.now()}`, async (session) => {
-      await seedTurn(sdk, session.id)
-      await gotoSession(session.id)
-
-      // Outside reader: no minimal orb.
-      await expect(minimalOrb(page)).toHaveCount(0)
-
-      await enterReader(page)
-      await clickDeadSpace(page)
-      await expect(minimalOrb(page)).toBeVisible()
-    })
-  })
-
-  test("toggling minimal collapses more of the transcript", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `minimal collapse ${Date.now()}`, async (session) => {
-      await seedTurn(sdk, session.id)
-      await gotoSession(session.id)
-      await enterReader(page)
-      await clickDeadSpace(page)
-
-      const before = await closedBoxes(page).count()
-
-      // Minimal on: the tool machinery folds away, so more boxes are collapsed.
-      await minimalOrb(page).click()
-      await settle(page)
-      const minimalOn = await closedBoxes(page).count()
-      expect(minimalOn).toBeGreaterThan(before)
-
-      // Minimal off: back to the reader-mode collapse set.
-      await minimalOrb(page).click()
-      await settle(page)
-      expect(await closedBoxes(page).count()).toBe(before)
-    })
-  })
-
-  test("the minimal choice rides across the reader-interactive round-trip", async ({ page, sdk, gotoSession }) => {
-    await withSession(sdk, `minimal persist ${Date.now()}`, async (session) => {
-      await seedTurn(sdk, session.id)
-      await gotoSession(session.id)
-      await enterReader(page)
-      await clickDeadSpace(page)
-
-      const readerOnly = await closedBoxes(page).count()
-      await minimalOrb(page).click()
-      await settle(page)
-      const minimalCount = await closedBoxes(page).count()
-      expect(minimalCount).toBeGreaterThan(readerOnly)
-
-      // Exit to interactive and come back: minimal is remembered, so the
-      // collapse set is the minimal one again, not reader's.
-      await readerPill(page).click()
-      await settle(page)
-      await enterReader(page)
-      await clickDeadSpace(page)
-      expect(await closedBoxes(page).count()).toBe(minimalCount)
     })
   })
 })

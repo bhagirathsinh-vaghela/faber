@@ -99,11 +99,8 @@ export const dict = {
   "command.subagent.pending.description": "Review and accept pending background subagent results",
   "command.reader.toggle": "Toggle reader mode",
   "command.reader.toggle.description": "Enter or exit reader mode, which hides the composer and all chrome",
-  "command.reader.minimal.toggle": "Toggle minimal reader",
-  "command.reader.minimal.toggle.description":
-    "Enter or leave the minimal reader, its most collapsed read, returning to where you started",
   "command.reader.composer.summon": "Reveal the composer",
-  "command.reader.composer.summon.description": "Reveal the reader chrome and put the caret in the composer",
+  "command.reader.composer.summon.description": "Raise the composer over the read to reply, then send or clear to return",
   "command.session.stopTurn": "Stop the turn",
   "command.session.stopTurn.description": "Abort the in-flight turn, leaving the session warm",
   "command.prompt.clear": "Clear the composer",
@@ -133,7 +130,6 @@ export const dict = {
   "reader.enter": "Reader mode",
   "reader.exit": "Exit reader mode",
   "reader.dictate": "Dictate",
-  "reader.minimal": "Toggle minimal reader",
 
   "dialog.provider.search.placeholder": "Search providers",
   "dialog.provider.empty": "No providers found",
@@ -638,10 +634,9 @@ export const dict = {
   "settings.tab.layout": "Layout",
   "settings.layout.section.boxes": "Box defaults",
   "settings.layout.boxes.description":
-    "For each box type, choose whether it starts collapsed in normal, reader, and minimal reader mode. Checked = collapsed. Save to apply. Manual expand/collapse lasts until you switch modes.",
+    "For each box type, choose whether it starts collapsed in normal and reader mode. Checked = collapsed. Save to apply. Manual expand/collapse lasts until you switch modes.",
   "settings.layout.boxes.normal": "Normal",
   "settings.layout.boxes.reader": "Reader",
-  "settings.layout.boxes.minimal": "Minimal",
   "settings.customization.resetAll": "Reset all",
   "settings.customization.reset": "Reset",
   "settings.customization.save": "Save",

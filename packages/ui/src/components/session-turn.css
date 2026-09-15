@@ -2,15 +2,17 @@
   --session-turn-sticky-height: 0px;
   --sticky-header-height: calc(var(--session-title-height, 0px) + var(--session-turn-sticky-height, 0px) + 24px);
 
-  /* An ancestor in reader mode hides every pinned header, so the prompt bar
-     scrolls away with its turn and contributes no offset. Both halves live here
-     because they are one state: releasing the pin while still reserving the
-     bar's height leaves every consumer of --sticky-header-height (accordion
-     headers, in-transcript permission and question boxes) offset by a header
-     that is no longer on screen. The derived value is overridden rather than
-     its --session-turn-sticky-height input, which the measuring observer writes
-     inline and which therefore outranks any rule here. */
-  :where([data-reader]) & {
+  /* The clean read (sticky reader with no composer overlay) releases every
+     pinned header, so the prompt bar scrolls away with its turn and contributes
+     no offset. Both halves live here because they are one state: releasing the
+     pin while still reserving the bar's height leaves every consumer of
+     --sticky-header-height (accordion headers, in-transcript permission and
+     question boxes) offset by a header that is no longer on screen. The
+     non-sticky composer overlay keeps the pin, which is why the attribute tracks
+     the clean read rather than reader mode at large. The derived value is
+     overridden rather than its --session-turn-sticky-height input, which the
+     measuring observer writes inline and therefore outranks any rule here. */
+  :where([data-reader-sticky]) & {
     --sticky-header-height: 0px;
   }
   /* flex: 1; */
@@ -94,9 +96,11 @@
       pointer-events: none;
     }
 
-    /* Reader mode releases the pin, so the ::before backdrop needs a positioned
-       box of its own or it resolves against a distant ancestor. */
-    :where([data-reader]) & {
+    /* The clean read releases the pin, so the ::before backdrop needs a
+       positioned box of its own or it resolves against a distant ancestor. The
+       non-sticky overlay keeps the pin, so the attribute tracks the clean read
+       rather than reader mode at large. */
+    :where([data-reader-sticky]) & {
       position: relative;
     }
   }

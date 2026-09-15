@@ -410,11 +410,15 @@ export default function Page() {
   const awaitingAnswer = createMemo(() => !!request() || question.count > 0)
   const reader = () => layout.reader.opened()
   const coarse = createCoarsePointer()
-  // Reader chrome is one revealed unit: the composer rides the same state as the
-  // pill cluster, with no draft exception, so a hidden draft waits off screen in
-  // prompt state until the next reveal.
+  // Sticky reader hides the composer; the non-sticky overlay (revealed) brings
+  // it back over the transcript. Docked = reader on, nothing pending, and no
+  // overlay up.
   const composerWanted = createMemo(() => layout.reader.revealed())
   const readerDocked = createMemo(() => reader() && !awaitingAnswer() && !composerWanted())
+  // The clean read: sticky reader with no composer overlay up. This is the only
+  // state that strips the pinned headers; non-sticky interactive keeps them, so
+  // it looks exactly like sticky interactive apart from the mode being non-sticky.
+  const cleanRead = createMemo(() => reader() && !layout.reader.revealed())
   // A signal rather than a read of document.activeElement, since the keybind
   // that stands down for the composer resolves `disabled` inside a memo, where a
   // bare DOM read is not tracked and so is never re-run when focus moves.
@@ -436,29 +440,32 @@ export default function Page() {
     }),
   )
 
-  // Hiding blurs so a caret left in the hidden inert composer cannot strand
-  // keyboard focus and swallow the transcript's bare-key shortcuts.
+  // Dropping the non-sticky overlay blurs so a caret left in the now-inert
+  // composer cannot strand keyboard focus and swallow the transcript's bare-key
+  // shortcuts.
   createEffect(
-    on(layout.reader.revealed, (revealed, was) => {
-      if (revealed || !was) return
+    on(composerWanted, (wanted, was) => {
+      if (wanted || !was) return
       inputRef?.blur()
     }),
   )
 
-  // Revealing the chrome takes the caret on a fine pointer, so the reader can
-  // type at once; a coarse tap does not, to keep the soft keyboard off what is
-  // being read. Deferred because the composer is still hidden on this tick.
-  const revealChrome = () => {
+  // Raising the non-sticky overlay. Whether it takes the caret depends on how it
+  // was summoned, not the pointer: a keyboard summon (space) always focuses,
+  // since the user is already typing; a tap focuses only on a fine pointer, so a
+  // coarse tap doesn't raise the soft keyboard over what is being read. Deferred
+  // because the composer is still hidden on this tick.
+  const revealComposer = (focus = !coarse()) => {
     layout.reader.reveal()
-    if (coarse()) return
+    if (!focus) return
     requestAnimationFrame(() => command.trigger("prompt.focus.end"))
   }
 
-  // Sending closes the "type" loop, so the reader falls back to the clean
-  // surface to watch the reply, the way entering reader left it.
+  // A submit from the non-sticky overlay drops it back to the clean read; a
+  // normal interactive submit leaves the mode alone.
   const onSubmit = () => {
     resumeScroll()
-    if (reader()) layout.reader.hide()
+    layout.reader.returnIfRevealed()
   }
 
   function normalizeTab(tab: string) {
@@ -990,18 +997,20 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
     },
     {
-      // While reader keeps the chrome hidden, space is free to mean "reveal it" —
-      // the keyboard's version of the dead-space click, and it takes the caret
-      // the same way. The command layer swallows the key (no page-scroll) only
-      // while this is enabled; once the chrome is up the composer holds space as
-      // a character, so the binding stands down the moment it is revealed.
+      // In sticky reader, space raises the non-sticky composer — the keyboard
+      // twin of the dead-space tap, and it takes the caret the same way. The
+      // command layer swallows the key (no page-scroll) only while enabled; once
+      // the overlay is up the composer holds space as a character, so the binding
+      // stands down the moment it is revealed.
       id: "reader.composer.summon",
       title: language.t("command.reader.composer.summon"),
       description: language.t("command.reader.composer.summon.description"),
       category: language.t("command.category.view"),
       keybind: "space",
       disabled: !reader() || layout.reader.revealed(),
-      onSelect: revealChrome,
+      // A keyboard summon always takes the caret, whatever the pointer: the user
+      // is already typing.
+      onSelect: () => revealComposer(true),
     },
     {
       // Stopping also sits in the composer's own key handler, which only runs
@@ -1368,14 +1377,6 @@ export default function Page() {
       category: language.t("command.category.session"),
       keybind: "alt+z",
       onSelect: () => layout.reader.toggle(),
-    },
-    {
-      id: "reader.minimal.toggle",
-      title: language.t("command.reader.minimal.toggle"),
-      description: language.t("command.reader.minimal.toggle.description"),
-      category: language.t("command.category.session"),
-      keybind: "alt+shift+z",
-      onSelect: () => layout.reader.minimalShortcut(),
     },
     ...(sync.data.config.share !== "disabled"
       ? [
@@ -1923,14 +1924,17 @@ export default function Page() {
     setScrollerBox(el)
     if (!el) return
 
-    // A tap on dead space is the only thing that toggles the chrome: reveal
-    // when hidden, hide when shown, on either pointer. A tap on an interactive
-    // element does its own thing and leaves the chrome alone, and a scroll
-    // (pointer travels past the slop) never toggles.
+    // A tap on dead space drives the NON-STICKY overlay, never the sticky mode:
+    // in sticky reader it raises the composer, and while that overlay is up it
+    // drops it back to the clean read. So a stray tap only summons or dismisses
+    // a composer, never flips sticky mode (that is the book orb / alt+z). In
+    // sticky interactive there is no dead space to speak of and nothing to do.
+    // A tap on an interactive element does its own thing, and a scroll (pointer
+    // past the slop) never toggles.
     //
     // Fired on pointerup rather than click to skip the touch browsers' tap
     // latency: click waits out the double-tap/scroll window before dispatching,
-    // which lags the reveal on touch. pointerup lands the moment the finger
+    // which lags the toggle on touch. pointerup lands the moment the finger
     // lifts. The slop check is what click gave for free (a scroll fires no
     // click); we re-derive it from the pointerdown position.
     let downX = 0
@@ -1944,8 +1948,8 @@ export default function Page() {
       if (event.button !== 0) return
       if (Math.hypot(event.clientX - downX, event.clientY - downY) >= TOUCH_SLOP) return
       if (interactive(event.target)) return
-      if (layout.reader.revealed()) layout.reader.hide()
-      else revealChrome()
+      if (layout.reader.revealed()) layout.reader.returnIfRevealed()
+      else revealComposer()
     }
     el.addEventListener("pointerdown", onDown)
     el.addEventListener("pointerup", onUp)
@@ -2486,10 +2490,10 @@ export default function Page() {
           }}
           style={{
             width: wide() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
-            // Reader hides the titlebar, so on mobile the panel must clear the top
-            // safe-area inset the titlebar was covering; --sat is 0 elsewhere, so
-            // this reserves exactly the status bar and nothing more.
-            "padding-top": layout.reader.opened() ? "var(--sat)" : undefined,
+            // The clean read hides the titlebar, so on mobile the panel must clear
+            // the top safe-area inset the titlebar was covering; --sat is 0
+            // elsewhere, so this reserves exactly the status bar and nothing more.
+            "padding-top": layout.reader.cleanRead() ? "var(--sat)" : undefined,
           }}
         >
           <div class="flex-1 min-h-0 overflow-hidden">
@@ -2707,15 +2711,13 @@ export default function Page() {
                           if (wide() && !settling && hasScrollGesture()) scheduleScrollSpy(e.currentTarget)
                         }}
                         class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
-                        data-reader={reader() ? "" : undefined}
+                        data-reader-sticky={cleanRead() ? "" : undefined}
                         style={{
                           "--session-title-height":
-                            reader() || !(info()?.title || info()?.parentID)
-                              ? "0px"
-                              : "var(--control-height)",
+                            cleanRead() || !(info()?.title || info()?.parentID) ? "0px" : "var(--control-height)",
                         }}
                       >
-                        <Show when={(info()?.title || info()?.parentID) && !reader()}>
+                        <Show when={(info()?.title || info()?.parentID) && !cleanRead()}>
                           <div
                             classList={{
                               "sticky top-0 z-30 bg-background-stronger": true,

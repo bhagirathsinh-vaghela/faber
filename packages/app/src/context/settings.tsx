@@ -53,15 +53,10 @@ export type { BoxMode }
 // `true` = collapsed by default, absent/`false` = expanded. Server-persisted
 // (mirrors AppearancePreference) so it syncs across clients, unlike the
 // localStorage Settings above.
-export type BoxDefaults = Record<string, { normal?: boolean; reader?: boolean; minimal?: boolean }>
+export type BoxDefaults = Record<string, { normal?: boolean; reader?: boolean }>
 
-// Minimal's out-of-box shape: only the pure-text boxes stay expanded, every
-// other box type collapses, for the most minimal read. normal and reader
-// default to expanded. A saved value always wins over this; the seed only fills
-// the gap.
-const MINIMAL_EXPANDED = new Set(["user", "reasoning", "agent"])
-export const boxDefault = (type: string, mode: BoxMode) =>
-  mode === "minimal" ? !MINIMAL_EXPANDED.has(type) : false
+// Both modes default every box to expanded; a saved value wins over this.
+export const boxDefault = (_type: string, _mode: BoxMode) => false
 
 const defaultSettings: Settings = {
   general: {

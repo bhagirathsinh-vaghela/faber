@@ -434,12 +434,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   // Reader hides the composer, so a paste never reaches the editor's own
   // onPaste (it bails on lost focus, and the wrapper is inert besides). This
-  // catches the paste at the document, reveals the composer the way space/tap
-  // do, and lands the clipboard from the same event — the browser can't replay
-  // it after the async reveal. Only fires in reader with the chrome still
-  // hidden; the focused composer keeps its own handler everywhere else. Nothing
-  // in the clipboard we'd act on means no reveal, so a stray paste of unusable
-  // content doesn't yank the reader out of a clean read for nothing.
+  // catches the paste at the document, raises the non-sticky composer, and
+  // lands the clipboard from the same event — the browser can't replay it after
+  // the async reveal. Only fires in reader with the composer still hidden; the
+  // focused composer keeps its own handler everywhere else. Nothing in the
+  // clipboard we'd act on means no reveal, so a stray paste of unusable content
+  // doesn't yank the reader out of a clean read for nothing.
   const handleGlobalPaste = async (event: ClipboardEvent) => {
     if (!layout.reader.opened() || layout.reader.revealed()) return
     if (dialog.active) return
@@ -464,7 +464,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // Text writes straight to prompt state rather than through addPart, which
     // needs a live in-editor selection the just-revealed composer doesn't have
     // yet. This mirrors insertDictation, the other path that lands text while
-    // the chrome is hidden. Focus and caret follow on the next frame.
+    // the composer is hidden. Focus and caret follow on the next frame.
     const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: result.text, start: 0, end: 0 }]
     const end = promptLength(next)
     prompt.set(next, end)
@@ -1073,8 +1073,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: text + " ", start: 0, end: 0 }]
     const end = promptLength(next)
     prompt.set(next, end)
-    // Dictation can land text while the reader chrome is hidden. Reveal it so the
-    // transcribed text is on screen, ready to send or edit.
+    // Dictation can land text while reader hides the composer. Raise the
+    // non-sticky composer so the transcribed text is on screen, ready to send or
+    // edit; a send or clear drops it back to the clean read.
     if (layout.reader.opened()) layout.reader.reveal()
     if (editorRef?.isConnected) requestAnimationFrame(() => setCursorPosition(editorRef, end))
   }
@@ -1176,10 +1177,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
     },
     {
-      // Clearing is only ever asked for in order to type something else, so the
-      // caret comes along and reader reveals the composer it hides. While the
-      // composer holds focus its own handler takes the key instead, where a live
-      // selection means the press was aimed at copying.
+      // From sticky interactive, clearing is asked for in order to type
+      // something else, so the caret comes along. From the non-sticky overlay,
+      // clearPrompt drops back to the clean read instead, so the focus is
+      // skipped there. While the composer holds focus its own handler takes the
+      // key, where a live selection means the press was aimed at copying.
       id: "prompt.clear",
       title: language.t("command.prompt.clear"),
       description: language.t("command.prompt.clear.description"),
@@ -1188,8 +1190,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       disabled: !prompt.dirty() || isFocused(),
       onSelect: () => {
         clearPrompt()
-        layout.reader.reveal()
-        editorRef.focus({ preventScroll: true })
+        if (!reader()) editorRef.focus({ preventScroll: true })
       },
     },
     {
@@ -1236,10 +1237,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   // Empty the composer. Attachments and pinned context survive: this is the
   // text field's own clear, and each attachment carries its own remove control.
+  // A clear from the non-sticky overlay is the deliberate "never mind" gesture,
+  // so it also drops back to the clean read — the caller then skips re-focusing.
   const clearPrompt = () => {
     prompt.reset()
     setStore("mode", "normal")
     setStore("popover", null)
+    layout.reader.returnIfRevealed()
   }
 
   // Leaving shell mode stashes the command rather than carrying it into normal
@@ -1428,15 +1432,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setStore("popover", null)
         return
       }
-      // Escape peels one layer per press. With the reader chrome revealed it
-      // hides — busy or idle — which is the keyboard's way back to the clean
-      // read and blurs the composer. Aborting a running turn is the next layer:
-      // once the chrome is hidden the composer no longer holds the caret, so the
-      // session's Escape command (disabled while the composer is focused) takes
-      // over and stops the turn. This handler runs only while focused, so it owns
-      // the hide layer alone and never the abort.
+      // Escape peels one layer per press. With the non-sticky composer up it
+      // drops back to the clean read — busy or idle — which is the keyboard's
+      // way out of the overlay, and blurs the composer. Aborting a running turn
+      // is the next layer: once the overlay is gone the composer no longer holds
+      // the caret, so the session's Escape command (disabled while the composer
+      // is focused) takes over and stops the turn. This handler runs only while
+      // focused, so it owns the overlay-dismiss layer alone and never the abort.
       if (reader() && layout.reader.revealed()) {
-        layout.reader.hide()
+        layout.reader.returnIfRevealed()
         return
       }
       if (working()) abort()
@@ -2252,7 +2256,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   aria-label={language.t("prompt.action.clear")}
                   onClick={() => {
                     clearPrompt()
-                    editorRef.focus()
+                    if (!reader()) editorRef.focus()
                   }}
                 />
               </Tooltip>

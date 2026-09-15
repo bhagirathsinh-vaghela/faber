@@ -52,8 +52,7 @@ export function QuestionPanel(props: { onClose?: () => void }) {
   // driven by the "question" row of the box-defaults matrix for the current
   // mode (ticked = collapsed).
   const applyDefault = () => {
-    const mode =
-      layout.reader.opened() && layout.reader.minimal() ? "minimal" : layout.reader.opened() ? "reader" : "normal"
+    const mode = layout.reader.opened() ? "reader" : "normal"
     if (settings.boxes.collapsed("question", mode)) question.collapse()
     else question.expand()
   }
