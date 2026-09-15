@@ -432,20 +432,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (result.kind === "text") addPart({ type: "text", content: result.text, start: 0, end: 0 })
   }
 
-  // Reader hides the composer, so a paste never reaches the editor's own
-  // onPaste (it bails on lost focus, and the wrapper is inert besides). This
-  // catches the paste at the document, raises the non-sticky composer, and
-  // lands the clipboard from the same event — the browser can't replay it after
-  // the async reveal. Only fires in reader with the composer still hidden; the
-  // focused composer keeps its own handler everywhere else. Nothing in the
-  // clipboard we'd act on means no reveal, so a stray paste of unusable content
-  // doesn't yank the reader out of a clean read for nothing.
+  // A paste with nothing editable focused reaches no onPaste — the editor's own
+  // handler bails on lost focus, and in reader the composer is hidden besides.
+  // This catches it at the document and lands the clipboard on the composer:
+  // reader raises the non-sticky composer first, interactive just fills the
+  // idle one. The clipboard is read from the same event because the browser
+  // can't replay it after the async reveal. A focused editable keeps its own
+  // paste, and nothing we'd act on means we don't claim it — so a stray paste
+  // of unusable content doesn't reveal the reader or steal focus for nothing.
   const handleGlobalPaste = async (event: ClipboardEvent) => {
-    if (!layout.reader.opened() || layout.reader.revealed()) return
+    if (layout.reader.revealed()) return
     if (dialog.active) return
-    // A real editable with focus owns the paste — the question overlay's answer
-    // field, a dialog input, anything the browser will insert into. Only claim
-    // the paste when it would otherwise land nowhere.
+    // A real editable with focus owns the paste — the composer itself, the
+    // question overlay's answer field, a dialog input, anything the browser
+    // will insert into. Only claim the paste when it would otherwise land
+    // nowhere; a focused composer falls through to its own onPaste handler.
     const target = event.target as HTMLElement | null
     if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
     const clipboardData = event.clipboardData
@@ -456,15 +457,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     event.preventDefault()
     event.stopPropagation()
-    layout.reader.reveal()
+    if (layout.reader.opened()) layout.reader.reveal()
 
     if (result.kind === "unsupported") return pasteUnsupportedToast()
     if (result.kind === "image") return attachImages(result.imageItems)
 
     // Text writes straight to prompt state rather than through addPart, which
-    // needs a live in-editor selection the just-revealed composer doesn't have
-    // yet. This mirrors insertDictation, the other path that lands text while
-    // the composer is hidden. Focus and caret follow on the next frame.
+    // needs a live in-editor selection the unfocused composer doesn't have yet.
+    // This mirrors insertDictation, the other path that lands text on a composer
+    // holding no focus. Focus and caret follow on the next frame.
     const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: result.text, start: 0, end: 0 }]
     const end = promptLength(next)
     prompt.set(next, end)
