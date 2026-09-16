@@ -997,19 +997,16 @@ export default function Page() {
       onSelect: () => dialog.show(() => <DialogSelectFile onOpenFile={() => showAllFiles()} />),
     },
     {
-      // In sticky reader, space raises the non-sticky composer — the keyboard
-      // twin of the dead-space tap, and it takes the caret the same way. The
-      // command layer swallows the key (no page-scroll) only while enabled; once
-      // the overlay is up the composer holds space as a character, so the binding
-      // stands down the moment it is revealed.
+      // Opens an empty non-sticky composer, the palette twin of the dead-space
+      // tap. No keybind: typing a character reveals and lands that character
+      // (the global type-to-reveal handler), so a bare space would type a space,
+      // not open empty. Offered only in a clean read, where there is something to
+      // reveal.
       id: "reader.composer.summon",
       title: language.t("command.reader.composer.summon"),
       description: language.t("command.reader.composer.summon.description"),
       category: language.t("command.category.view"),
-      keybind: "space",
       disabled: !reader() || layout.reader.revealed(),
-      // A keyboard summon always takes the caret, whatever the pointer: the user
-      // is already typing.
       onSelect: () => revealComposer(true),
     },
     {

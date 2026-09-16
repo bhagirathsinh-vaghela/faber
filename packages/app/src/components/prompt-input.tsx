@@ -39,6 +39,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
 import { busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
+import { isEditable } from "@opencode-ai/ui/util/focus"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -306,6 +307,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const promptLength = (prompt: Prompt) =>
     prompt.reduce((len, part) => len + ("content" in part ? part.content.length : 0), 0)
 
+  // The one path that lands text on a composer that may be unfocused or hidden:
+  // a paste with nothing focused, dictation, a keystroke in reader's clean read.
+  // It writes straight to prompt state, which needs no live in-editor selection
+  // the way addPart does, and raises the non-sticky composer when reader has it
+  // hidden. The caller decides how the caret follows — focus differs by intent —
+  // so this returns the end offset for it. `content` is appended verbatim.
+  const landText = (content: string) => {
+    const next = [...clonePrompt(prompt.current()), { type: "text" as const, content, start: 0, end: 0 }]
+    const end = promptLength(next)
+    prompt.set(next, end)
+    if (layout.reader.opened()) layout.reader.reveal()
+    return end
+  }
+
   const applyHistoryPrompt = (p: Prompt, position: "start" | "end") => {
     const length = position === "start" ? 0 : promptLength(p)
     setStore("applyingHistory", true)
@@ -447,8 +462,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // question overlay's answer field, a dialog input, anything the browser
     // will insert into. Only claim the paste when it would otherwise land
     // nowhere; a focused composer falls through to its own onPaste handler.
-    const target = event.target as HTMLElement | null
-    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
+    if (isEditable(event.target)) return
     const clipboardData = event.clipboardData
     if (!clipboardData) return
 
@@ -462,14 +476,31 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (result.kind === "unsupported") return pasteUnsupportedToast()
     if (result.kind === "image") return attachImages(result.imageItems)
 
-    // Text writes straight to prompt state rather than through addPart, which
-    // needs a live in-editor selection the unfocused composer doesn't have yet.
-    // This mirrors insertDictation, the other path that lands text on a composer
-    // holding no focus. Focus and caret follow on the next frame.
-    const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: result.text, start: 0, end: 0 }]
-    const end = promptLength(next)
-    prompt.set(next, end)
+    // A coarse tap shouldn't raise the soft keyboard over what is being read, so
+    // the pasted text lands but the caret waits for a deliberate focus.
+    landText(result.text)
     if (!coarse()) requestAnimationFrame(() => command.trigger("prompt.focus.end"))
+  }
+
+  // Reader's clean read hides the composer, so typing a character has nothing
+  // focused to receive it. This is the twin of the interactive type-to-focus
+  // (session page): there the composer is live, so a synchronous focus() lets
+  // the browser deliver the keystroke itself; here it is inert until the reveal,
+  // which lands a frame later — too late for that keystroke's own default. So
+  // the character is captured and injected rather than relying on focus to carry
+  // it. Only a bare printable key qualifies; named keys (Escape, Tab, arrows)
+  // and shortcuts stay transcript controls, matching `typing`.
+  const handleGlobalKeyDown = (event: KeyboardEvent) => {
+    if (!layout.reader.opened() || layout.reader.revealed()) return
+    if (dialog.active || overlayActive()) return
+    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return
+    if (isImeComposing(event)) return
+    if (isEditable(document.activeElement)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    landText(event.key)
+    requestAnimationFrame(() => command.trigger("prompt.focus.end"))
   }
 
   const handleGlobalDragOver = (event: DragEvent) => {
@@ -514,12 +545,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // Capture phase so it runs before the editor's own onPaste and while the
     // hidden composer holds no focus for a bubbling listener to reach.
     document.addEventListener("paste", handleGlobalPaste, true)
+    // Capture too, so the character is claimed before it reaches the transcript
+    // as a bare-key shortcut.
+    document.addEventListener("keydown", handleGlobalKeyDown, true)
   })
   onCleanup(() => {
     document.removeEventListener("dragover", handleGlobalDragOver)
     document.removeEventListener("dragleave", handleGlobalDragLeave)
     document.removeEventListener("drop", handleGlobalDrop)
     document.removeEventListener("paste", handleGlobalPaste, true)
+    document.removeEventListener("keydown", handleGlobalKeyDown, true)
   })
 
   // Close the popover when the editor blurs to ANOTHER element (the user moved
@@ -1074,19 +1109,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const insertDictation = (text: string) => {
-    // Write straight to prompt state. The old path focused the editor and
-    // deferred addPart to a rAF, because addPart reads window.getSelection()
-    // and needs focus first. On touch that focus raises the soft keyboard, so
-    // the rAF landed behind the viewport resize and the text visibly lagged the
-    // tap. State needs no selection, so it lands immediately, and it outlives
-    // this component so an unmount cannot lose the transcript.
-    const next = [...clonePrompt(prompt.current()), { type: "text" as const, content: text + " ", start: 0, end: 0 }]
-    const end = promptLength(next)
-    prompt.set(next, end)
-    // Dictation can land text while reader hides the composer. Raise the
-    // non-sticky composer so the transcribed text is on screen, ready to send or
-    // edit; a send or clear drops it back to the clean read.
-    if (layout.reader.opened()) layout.reader.reveal()
+    // Caret-only, no focus: focusing on touch raises the soft keyboard behind
+    // the viewport resize, so the text visibly lags the tap. A trailing space
+    // separates successive utterances.
+    const end = landText(text + " ")
     if (editorRef?.isConnected) requestAnimationFrame(() => setCursorPosition(editorRef, end))
   }
   const dictation = createDictation({
