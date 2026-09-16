@@ -1916,7 +1916,7 @@ export default function Page() {
   const interactive = (target: EventTarget | null) =>
     target instanceof Element &&
     !!target.closest(
-      'button, a, input, textarea, select, [contenteditable="true"], [role="button"], [data-scrollable], [data-slot="prompt-dock"], [data-reader-cluster], [data-copyable], code, [data-component="icon-button"], [data-component="diff"], [data-component="markdown-code"], [data-slot="user-message-attachment"]',
+      'button, a, input, textarea, select, [contenteditable="true"], [role="button"], [data-scrollable], [data-slot="prompt-dock"], [data-reader-cluster], [data-copyable], code, details, summary, [data-component="icon-button"], [data-component="diff"], [data-component="markdown-code"], [data-slot="user-message-attachment"]',
     )
 
   const setScrollRef = (el: HTMLDivElement | undefined) => {
