@@ -522,8 +522,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     document.removeEventListener("paste", handleGlobalPaste, true)
   })
 
+  // Close the popover when the editor blurs to ANOTHER element (the user moved
+  // to a different field or control, genuinely leaving the composer). Do NOT
+  // close when it blurs to nothing: dismissing the soft keyboard (its own
+  // dismiss key) blurs the editor to <body> while the composer stays active, and
+  // closing then would tear the list down mid-use. The text remains the source
+  // of truth, so a keyboard-dismissed popover still reflects the typed trigger.
   createEffect(() => {
-    if (!isFocused()) setStore("popover", null)
+    if (isFocused()) return
+    const active = document.activeElement
+    if (!active || active === document.body || active === editorRef) return
+    setStore("popover", null)
   })
 
   // Safety: reset composing state on focus change to prevent stuck state
@@ -2108,17 +2117,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   return (
     /* An element cannot match a container query against itself, so the styled
        classes sit one level inside the declaration. */
-    <div class="@container/dock size-full">
-      <div class="relative size-full _max-h-[320px] flex flex-col gap-1 dock-wide:gap-3 [--dock-font-size:var(--font-size-x-small)] dock-wide:[--dock-font-size:var(--font-size-small)]">
+    <div class="@container/dock size-full min-h-0 flex flex-col">
+      <div class="relative w-full min-h-0 flex-1 _max-h-[320px] flex flex-col gap-1 dock-wide:gap-3 [--dock-font-size:var(--font-size-x-small)] dock-wide:[--dock-font-size:var(--font-size-small)]">
         <Show when={store.popover}>
           <div
             ref={(el) => {
               if (store.popover === "slash") slashPopoverRef = el
             }}
-            class="absolute inset-x-0 -top-3 -translate-y-full origin-bottom-left max-h-80 min-h-10
+            data-scrollable
+            class="min-h-0
                  overflow-auto no-scrollbar flex flex-col p-2 rounded-md
                  border border-border-base bg-surface-raised-stronger-non-alpha shadow-md"
-            onMouseDown={(e) => e.preventDefault()}
+            // Keep the caret in the composer when a row is pressed, on every
+            // pointer type: a press that blurred the editor would close the
+            // popover (the blur effect) before the tap resolved, which on touch
+            // dropped the keyboard and the list. A press that lands on the
+            // scroll surface itself is left alone so the list still scrolls.
+            onPointerDown={(e) => {
+              if (e.target === e.currentTarget) return
+              e.preventDefault()
+            }}
           >
             <Switch>
               <Match when={store.popover === "at"}>
@@ -2133,7 +2151,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         data-cursor={atActive() === atKey(item)}
                         data-hovered={atHovered() === atKey(item)}
                         classList={{
-                          "w-full flex items-center gap-x-2 rounded-md px-2 py-0.5": true,
+                          "w-full flex items-center gap-x-2 rounded-md px-2 py-0.5 min-h-(--control-height)": true,
                         }}
                         onClick={() => handleAtSelect(item)}
                         onMouseMove={(event) => atHover(event, atKey(item))}
@@ -2186,7 +2204,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         data-cursor={slashActive() === cmd.id}
                         data-hovered={slashHovered() === cmd.id}
                         classList={{
-                          "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1": true,
+                          "w-full flex items-center justify-between gap-4 rounded-md px-2 py-1 min-h-(--control-height)": true,
                         }}
                         onClick={() => handleSlashSelect(cmd)}
                         onMouseMove={(event) => slashHover(event, cmd.id)}

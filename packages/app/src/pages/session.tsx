@@ -2922,16 +2922,19 @@ export default function Page() {
             ref={(el) => (promptDock = el)}
             data-slot="prompt-dock"
             classList={{
-              // max-h-full + min-h-0 bound the dock to the viewport instead of
-              // letting it grow upward without limit. Without a bound, nothing
+              // The max-height + min-h-0 bound the dock to the viewport instead
+              // of letting it grow upward without limit. Without a bound, nothing
               // inside can know how much room it has, which is why the question
               // panel used to guess with a hardcoded max-height. With the chain
               // bounded, its inner scroller resolves a real height and engages.
+              // The titlebar is reserved from the ceiling so an upward-growing
+              // child (the slash/at popover) stops below the sticky title bar
+              // rather than sliding behind it.
               // The column owns every gap around and between its children, so
               // nothing inside adds its own and stacks two spacings into one
               // edge. py + gap are the single source: 8px above, between, and
               // below, whatever the column happens to hold.
-              "absolute inset-x-0 bottom-0 max-h-full min-h-0 py-2 gap-2 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 pointer-events-none": true,
+              "absolute inset-x-0 bottom-0 max-h-[calc(100%-var(--titlebar-height))] min-h-0 py-2 gap-2 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 pointer-events-none": true,
               // The mobile Changes tab hides the dock outright.
               hidden: reviewReplacesTranscript(),
               // Opaque under the content so the transcript cannot read through
