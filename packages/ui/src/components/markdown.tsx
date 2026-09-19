@@ -320,11 +320,15 @@ function flashCopied(x: number, y: number, label: string) {
 }
 
 // An inline <code> pill with click-to-copy. Clicking copies and flashes the
-// "Copied" bubble at the pointer.
-function InlineCode(props: { children: JSX.Element; text: string; label: string }) {
+// "Copied" bubble at the pointer. `text` is read lazily at click time: during
+// streaming, reconcile grows the node's children in place, so a value
+// snapshotted at render time freezes at the partial prefix present on first
+// paint. Reading on click always sees the fully-reconciled node.
+function InlineCode(props: { children: JSX.Element; text: () => string; label: string }) {
   const onClick = async (e: MouseEvent) => {
-    if (!props.text) return
-    await copyText(props.text)
+    const text = props.text()
+    if (!text) return
+    await copyText(text)
     flashCopied(e.clientX, e.clientY, props.label)
   }
   return (
@@ -342,9 +346,19 @@ function components(labels: CopyLabels, theme: () => string, complete: () => boo
     // `code` is passed straight through so CodeBlock owns the fence.
     code(props) {
       if (!props.inline) return <code>{props.children}</code>
-      const node = props.node as unknown as Hast
-      const text = node ? hastText(node) : ""
-      return <InlineCode text={text} label={labels.copied} children={props.children} />
+      // Read props.node inside the accessor (mirrors the `pre` memo below) so
+      // reconcile's in-place child growth during streaming is reflected when
+      // the user clicks, instead of freezing at the first-paint prefix.
+      return (
+        <InlineCode
+          text={() => {
+            const node = props.node as unknown as Hast
+            return node ? hastText(node) : ""
+          }}
+          label={labels.copied}
+          children={props.children}
+        />
+      )
     },
     pre(props) {
       // Read props.node inside a memo so reconcile's in-place node mutations

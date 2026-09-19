@@ -261,6 +261,14 @@
     padding: 0.15em 0.35em;
     border-radius: 4px;
     cursor: pointer;
+    /* The pill copies on tap. Inside a user-select:text region a touch
+       long-press otherwise raises the OS text-selection/callout UI on the code
+       text, and the tap resolves to a PARTIAL native selection that lands on
+       the clipboard instead of the whole pill. Suppressing selection + callout
+       makes every touch resolve to the copy onClick, matching tooltip.tsx. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
     transition:
       filter 0.12s ease,
       box-shadow 0.12s ease;
