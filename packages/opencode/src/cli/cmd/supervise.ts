@@ -54,7 +54,7 @@ export const SuperviseCommand = cmd({
     const base = compiled ? [process.execPath] : [process.execPath, "run", "--conditions=browser", entry]
 
     function serveArgs(port: number, restore = false) {
-      const args = [...base, "serve", "--port", String(port), "--hostname", "0.0.0.0"]
+      const args = [...base, "serve", "--port", String(port), "--hostname", "127.0.0.1"]
       if (restore) args.push("--restore")
       return args
     }
@@ -356,7 +356,7 @@ export const SuperviseCommand = cmd({
 
     Bun.serve({
       port: SUPERVISOR_PORT,
-      hostname: "0.0.0.0",
+      hostname: "127.0.0.1",
       // /restart holds the request through stage-boot + health-check + cutover
       // + resume — well past the 10s default idle timeout. 255 is Bun's max.
       idleTimeout: 255,
@@ -377,7 +377,7 @@ export const SuperviseCommand = cmd({
     })
 
     console.log(
-      `supervisor listening on 0.0.0.0:${SUPERVISOR_PORT} (local: http://localhost:${SUPERVISOR_PORT}, opencode :${PORT}, stage :${ALT_PORT})`,
+      `supervisor listening on 127.0.0.1:${SUPERVISOR_PORT} (local: http://localhost:${SUPERVISOR_PORT}, opencode :${PORT}, stage :${ALT_PORT})`,
     )
 
     // Boot the server the supervisor exists to own, so a machine that just
