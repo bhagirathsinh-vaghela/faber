@@ -267,24 +267,24 @@ export function Overview(props: {
       .map((x) => x.row)
   })
 
-  // The Ctrl+Tab switcher is OS Alt+Tab: every session in view order, so the one
-  // on screen leads and the one before it is a single tap away whether or not it
-  // is still live. Sessions never viewed here follow in the overview's order.
-  // Snapshotted at open, so a session changing state mid-cycle cannot move a
-  // row out from under the highlight.
+  // The Ctrl+Tab switcher is OS Alt+Tab within each section: live sessions
+  // first, then the rest, each in view order. The overview keeps the recent
+  // section in server order, so the switcher re-sorts it. Snapshotted at open,
+  // so a session changing state mid-cycle cannot move a row out from under the
+  // highlight.
   const switched = props.switcher
     ? untrack(() => {
         const rank = new Map(mru.order().map((id, i) => [id, i]))
-        const at = (row: OverviewRow) => rank.get(row.sessionID) ?? rank.size
-        return overview().toSorted((a, b) => at(a) - at(b))
+        const at = (row: Entry) => rank.get(row.sessionID) ?? rank.size
+        const section = (row: Entry) => (row.section === "attention" ? 0 : 1)
+        return overview().toSorted((a, b) => section(a) - section(b) || at(a) - at(b))
       })
     : undefined
   const items = () => switched ?? overview()
   const empty = () => items().length === 0
-  // Ctrl+Tab advances one step on the opening press, past the session on screen,
-  // so one tap flips between the two most recent. With no session on screen the
-  // first row is already somewhere else. Ctrl+Shift+Tab rests on the session on
-  // screen, since the far end of a full list is the least recent session of all.
+  // Ctrl+Tab opens on the first row that is not the session on screen: the next
+  // live session from a live one, the most recent live session from one that is
+  // not. Ctrl+Shift+Tab rests on the session on screen.
   // Landing here from a stop (navigate carried the stopped id) skips that row: at
   // mount the abort hasn't resolved, so the stopped session is still busy and
   // still sits atop attention — without the skip the cursor would seed on it and,
@@ -295,7 +295,7 @@ export function Overview(props: {
   const initial = !props.attention
     ? undefined
     : props.switcher
-      ? (items()[props.advance && props.current ? 1 : 0] ?? items()[0])
+      ? (items().find((row) => (row.sessionID === props.current) !== !!props.advance) ?? items()[0])
       : stopped
         ? (items().find((row) => row.sessionID !== stopped) ?? items()[0])
         : items()[0]
@@ -390,8 +390,8 @@ export function Overview(props: {
         items={items}
         key={(row) => row.sessionID}
         filterKeys={["title", "directory"]}
-        groupBy={switched ? undefined : (row) => (row.section === "attention" ? attentionGroup() : recentGroup())}
-        groups={switched ? undefined : [attentionGroup(), recentGroup()]}
+        groupBy={(row) => (row.section === "attention" ? attentionGroup() : recentGroup())}
+        groups={[attentionGroup(), recentGroup()]}
         onSelect={(row) => {
           if (row) open(row)
         }}

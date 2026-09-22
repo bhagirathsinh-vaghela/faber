@@ -83,16 +83,16 @@ export const DialogSubagents: Component<{
     setTasks(reconcile(res.data ?? [], { key: "id" }))
   }
 
-  // The Ctrl+Tab switcher is OS Alt+Tab over siblings: every one in view order,
-  // so the one on screen leads and the one before it is a single tap away even
-  // once it has finished. Siblings never viewed follow, newest launch first.
-  // Snapshotted from the first fetch, so a sibling finishing mid-cycle cannot
-  // move a row out from under the highlight.
+  // The Ctrl+Tab switcher is OS Alt+Tab over siblings within each section:
+  // running first, then finished, each in view order, with siblings never viewed
+  // last, newest launch first. Snapshotted from the first fetch, so a sibling
+  // finishing mid-cycle cannot move a row out from under the highlight.
   const [switched, setSwitched] = createSignal<BackgroundSubagent[]>()
   const snapshot = () => {
     const rank = new Map(mru.order().map((id, i) => [id, i]))
     const at = (task: BackgroundSubagent) => rank.get(task.subagent?.sessionID ?? "") ?? rank.size
-    setSwitched(tasks.toSorted((a, b) => at(a) - at(b) || b.time.created - a.time.created))
+    const section = (task: BackgroundSubagent) => (task.status === "running" ? 0 : 1)
+    setSwitched(tasks.toSorted((a, b) => section(a) - section(b) || at(a) - at(b) || b.time.created - a.time.created))
   }
 
   onMount(() => refetch().then(() => props.switcher && snapshot()))
@@ -131,10 +131,11 @@ export const DialogSubagents: Component<{
     }),
   )
   const items = () => switched() ?? sections()
-  // Ctrl+Tab advances one step on the opening press, past the sibling on screen,
-  // so one tap flips between the two most recent. Ctrl+Shift+Tab rests on the
-  // sibling on screen.
-  const initial = () => items()[props.switcher && props.advance && props.current ? 1 : 0] ?? items()[0]
+  // Ctrl+Tab opens on the first row that is not the sibling on screen, and
+  // Ctrl+Shift+Tab rests on the sibling on screen.
+  const initial = () =>
+    (props.switcher && items().find((task) => (task.subagent?.sessionID === props.current) !== !!props.advance)) ||
+    items()[0]
 
   const select = (task: BackgroundSubagent | undefined) => {
     if (!task?.subagent?.sessionID) return
@@ -236,8 +237,8 @@ export const DialogSubagents: Component<{
             onMove={setHighlight}
             key={(x) => x.id}
             items={items}
-            groupBy={props.switcher ? undefined : (x) => (x.status === "running" ? running : completed)}
-            groups={props.switcher ? undefined : [running, completed]}
+            groupBy={(x) => (x.status === "running" ? running : completed)}
+            groups={[running, completed]}
             onSelect={select}
             onKeyEvent={(event, task) => {
               if (event.key.toLowerCase() === "x" && !event.ctrlKey && !event.metaKey && task?.status === "running") {
