@@ -573,6 +573,7 @@ export namespace Provider {
       headers: z.record(z.string(), z.string()),
       release_date: z.string(),
       variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),
+      variant: z.string().optional(),
     })
     .meta({
       ref: "Model",
@@ -980,6 +981,18 @@ export namespace Provider {
             (v) => omit(v, ["disabled"]),
           )
         }
+
+        const variant = configProvider?.models?.[modelID]?.variant
+        if (variant && provider.models[modelID]) {
+          if (!model.variants?.[variant])
+            throw new DefaultVariantError({
+              providerID,
+              modelID,
+              variant,
+              available: Object.keys(model.variants ?? {}),
+            })
+          model.variant = variant
+        }
       }
 
       if (Object.keys(provider.models).length === 0) {
@@ -1352,6 +1365,16 @@ export namespace Provider {
       providerID: z.string(),
       modelID: z.string(),
       missing: z.array(z.string()),
+    }),
+  )
+
+  export const DefaultVariantError = NamedError.create(
+    "ProviderDefaultVariantError",
+    z.object({
+      providerID: z.string(),
+      modelID: z.string(),
+      variant: z.string(),
+      available: z.array(z.string()),
     }),
   )
 }

@@ -100,7 +100,8 @@ export const dict = {
   "command.reader.toggle": "Toggle reader mode",
   "command.reader.toggle.description": "Enter or exit reader mode, which hides the composer and all chrome",
   "command.reader.composer.summon": "Reveal the composer",
-  "command.reader.composer.summon.description": "Raise the composer over the read to reply, then send or clear to return",
+  "command.reader.composer.summon.description":
+    "Raise the composer over the read to reply, then send or clear to return",
   "command.session.stopTurn": "Stop the turn",
   "command.session.stopTurn.description": "Abort the in-flight turn, leaving the session warm",
   "command.prompt.clear": "Clear the composer",

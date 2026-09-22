@@ -5564,6 +5564,10 @@
                                     },
                                     "additionalProperties": {}
                                   }
+                                },
+                                "variant": {
+                                  "description": "Variant the model runs with when neither the request nor the agent names one. Must be one of its enabled variants.",
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -9047,6 +9051,91 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.recover({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/preference/voice": {
+      "get": {
+        "operationId": "preference.voice.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get voice preference",
+        "description": "Get the server-owned read-aloud voice, or null when unset.",
+        "responses": {
+          "200": {
+            "description": "Voice preference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoicePreference"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.voice.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "preference.voice.set",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Set voice preference",
+        "description": "Set the server-owned read-aloud voice (null clears it).",
+        "responses": {
+          "200": {
+            "description": "Voice preference updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoicePreference"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.preference.voice.set({\n  ...\n})"
           }
         ]
       }
@@ -13708,6 +13797,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.prompt.interrupted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.voice.preference.updated"
           }
         ]
       },
@@ -14757,6 +14849,10 @@
                     },
                     "additionalProperties": {}
                   }
+                },
+                "variant": {
+                  "description": "Variant the model runs with when neither the request nor the agent names one. Must be one of its enabled variants.",
+                  "type": "string"
                 }
               }
             }
@@ -15081,6 +15177,14 @@
             "properties": {
               "url": {
                 "description": "Base URL of the local transcription sidecar",
+                "type": "string"
+              },
+              "voice": {
+                "description": "Read-aloud voice name, e.g. af_bella or af_sarah",
+                "type": "string"
+              },
+              "rewriteModel": {
+                "description": "Model (provider/model) that rewrites a message into natural speech before read-aloud",
                 "type": "string"
               }
             }
@@ -16025,6 +16129,9 @@
               },
               "additionalProperties": {}
             }
+          },
+          "variant": {
+            "type": "string"
           }
         },
         "required": [
@@ -17178,6 +17285,40 @@
               "sessionID",
               "interrupted"
             ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "VoicePreference": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "Event.voice.preference.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "voice.preference.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/VoicePreference"
           }
         },
         "required": [

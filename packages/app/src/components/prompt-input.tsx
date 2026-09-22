@@ -2430,10 +2430,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
           <div class="contents">
-            <div
-              class="relative overflow-y-auto min-w-0 max-h-[240px]"
-              ref={(el) => (scrollRef = el)}
-            >
+            <div class="relative overflow-y-auto min-w-0 max-h-[240px]" ref={(el) => (scrollRef = el)}>
               <div
                 data-component="prompt-input"
                 ref={(el) => {

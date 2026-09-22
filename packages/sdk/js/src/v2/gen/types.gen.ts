@@ -2065,6 +2065,10 @@ export type ProviderConfig = {
           [key: string]: unknown | boolean | undefined
         }
       }
+      /**
+       * Variant the model runs with when neither the request nor the agent names one. Must be one of its enabled variants.
+       */
+      variant?: string
     }
   }
   whitelist?: Array<string>
@@ -2660,6 +2664,7 @@ export type Model = {
       [key: string]: unknown
     }
   }
+  variant?: string
 }
 
 export type Provider = {
@@ -5684,6 +5689,10 @@ export type ProviderListResponses = {
               [key: string]: unknown
             }
           }
+          /**
+           * Variant the model runs with when neither the request nor the agent names one. Must be one of its enabled variants.
+           */
+          variant?: string
         }
       }
     }>

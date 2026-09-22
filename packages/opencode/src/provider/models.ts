@@ -66,6 +66,12 @@ export namespace ModelsDev {
     headers: z.record(z.string(), z.string()).optional(),
     provider: z.object({ npm: z.string() }).optional(),
     variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),
+    variant: z
+      .string()
+      .optional()
+      .describe(
+        "Variant the model runs with when neither the request nor the agent names one. Must be one of its enabled variants.",
+      ),
   })
   export type Model = z.infer<typeof Model>
 

@@ -2262,3 +2262,87 @@ test("custom model with variants enabled and disabled", async () => {
     },
   })
 })
+
+test("model default variant from config is exposed on the registry model", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          provider: {
+            "custom-reasoning": {
+              name: "Custom Reasoning",
+              npm: "@ai-sdk/openai-compatible",
+              env: [],
+              models: {
+                "reasoning-model": {
+                  ...COMPLETE_MODEL,
+                  reasoning: true,
+                  variants: {
+                    low: { reasoningEffort: "low" },
+                    high: { reasoningEffort: "high" },
+                  },
+                  variant: "high",
+                },
+              },
+              options: { apiKey: "test-key" },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const providers = await Provider.list()
+      expect(providers["custom-reasoning"].models["reasoning-model"].variant).toBe("high")
+    },
+  })
+})
+
+test("model default variant naming a disabled variant throws DefaultVariantError", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          provider: {
+            "custom-reasoning": {
+              name: "Custom Reasoning",
+              npm: "@ai-sdk/openai-compatible",
+              env: [],
+              models: {
+                "reasoning-model": {
+                  ...COMPLETE_MODEL,
+                  reasoning: true,
+                  variants: {
+                    low: { reasoningEffort: "low" },
+                    high: { reasoningEffort: "high", disabled: true },
+                  },
+                  variant: "high",
+                },
+              },
+              options: { apiKey: "test-key" },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const error = await listError()
+      expect(Provider.DefaultVariantError.isInstance(error)).toBe(true)
+      expect(error.data).toEqual({
+        providerID: "custom-reasoning",
+        modelID: "reasoning-model",
+        variant: "high",
+        available: ["low", "medium"],
+      })
+    },
+  })
+})

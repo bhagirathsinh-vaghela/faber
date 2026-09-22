@@ -185,7 +185,7 @@ export const {
         if (!m) return { value: undefined, baseline: undefined }
         const offered = (value: string | undefined) => value === undefined || !!m.variants?.[value]
         const pref = models.variant.get({ providerID: m.provider.id, modelID: m.id })
-        const base = offered(pref) ? pref : undefined
+        const base = offered(pref) ? pref : offered(m.variant) ? m.variant : undefined
         const id = activeSessionID()
         if (id) {
           const named = sync.data.message[id]?.findLast((msg) => msg.role === "user" && msg.variant !== undefined)

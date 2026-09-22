@@ -1246,14 +1246,24 @@ export namespace SessionPrompt {
     // picker values the client echoed since. Changing them is a conscious
     // idle-time act: interrupt, change, then send. An idle send reads the
     // session's persistent parameters, letting a client override (a dock pick)
-    // take precedence and fall through to the agent default when neither names one.
-    const resolved = joined
-      ? await joined
-      : {
-          agent: agent.name,
-          model: input.model ?? current?.model ?? agent.model ?? (await MessageV2.model(input.sessionID)),
-          variant: input.variant ?? current?.variant ?? agent.variant,
-        }
+    // take precedence and fall through to the agent default, then the model's own
+    // configured default, when neither names one.
+    const fresh = async () => {
+      const model = input.model ?? current?.model ?? agent.model ?? (await MessageV2.model(input.sessionID))
+      // A variant only means something to the model that offers it, so the
+      // session's carries forward only while the model is unchanged.
+      const same = current?.model?.providerID === model.providerID && current?.model?.modelID === model.modelID
+      const variant =
+        input.variant ??
+        (same ? current?.variant : undefined) ??
+        agent.variant ??
+        (await Provider.getModel(model.providerID, model.modelID).then(
+          (info) => info.variant,
+          () => undefined,
+        ))
+      return { agent: agent.name, model, variant }
+    }
+    const resolved = joined ? await joined : await fresh()
     const info: MessageV2.User = {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
