@@ -729,11 +729,7 @@ export namespace SessionPrompt {
       }
 
       // context overflow, needs compaction
-      if (
-        lastFinished &&
-        lastFinished.summary !== true &&
-        (await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model }))
-      ) {
+      if (lastFinished && (await SessionCompaction.isOverflow({ message: lastFinished, model }))) {
         await SessionCompaction.create({
           sessionID,
           agent: lastUser.agent,

@@ -39,12 +39,19 @@ export namespace SessionCompaction {
     ),
   }
 
-  export async function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
+  export async function isOverflow(input: {
+    message: Pick<MessageV2.Assistant, "tokens" | "summary">
+    model: Provider.Model
+  }) {
+    // A summary's usage measures the history it just replaced, which is always
+    // near the threshold, so it can never be what calls for the next compaction.
+    if (input.message.summary) return false
     const config = await Config.get()
     if (config.compaction?.auto === false) return false
     const context = input.model.limit.context
     if (context === 0) return false
-    const count = input.tokens.input + input.tokens.cache.read + input.tokens.output
+    const tokens = input.message.tokens
+    const count = tokens.input + tokens.cache.read + tokens.output
     const output = Math.min(input.model.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX
     const usable = input.model.limit.input || context - output
     // The usable window still caps the threshold: a fraction that lands above it

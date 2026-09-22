@@ -47,7 +47,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 100_000, output: 32_000 })
         const tokens = { input: 75_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(true)
       },
     })
   })
@@ -59,7 +59,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 200_000, output: 32_000 })
         const tokens = { input: 100_000, output: 10_000, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(false)
       },
     })
   })
@@ -71,7 +71,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 100_000, output: 32_000 })
         const tokens = { input: 50_000, output: 10_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(true)
       },
     })
   })
@@ -83,7 +83,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
         const tokens = { input: 271_000, output: 1_000, reasoning: 0, cache: { read: 2_000, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(true)
       },
     })
   })
@@ -95,7 +95,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
         const tokens = { input: 200_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(false)
       },
     })
   })
@@ -107,7 +107,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 200_000, input: 120_000, output: 10_000 })
         const tokens = { input: 50_000, output: 9_999, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(false)
       },
     })
   })
@@ -119,7 +119,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 0, output: 32_000 })
         const tokens = { input: 100_000, output: 10_000, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(false)
       },
     })
   })
@@ -136,8 +136,8 @@ describe("session.compaction.isOverflow", () => {
         const model = createModel({ context: 1_000_000, output: 128_000 })
         const under = { input: 899_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
         const over = { input: 901_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens: under, model })).toBe(false)
-        expect(await SessionCompaction.isOverflow({ tokens: over, model })).toBe(true)
+        expect(await SessionCompaction.isOverflow({ message: { tokens: under }, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ message: { tokens: over }, model })).toBe(true)
       },
     })
   })
@@ -155,7 +155,24 @@ describe("session.compaction.isOverflow", () => {
         // the 100_000 that a bare 1.0 threshold would allow.
         const model = createModel({ context: 100_000, output: 32_000 })
         const tokens = { input: 75_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(true)
+      },
+    })
+  })
+
+  test("a summary never overflows, whatever its usage", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "opencode.json"), JSON.stringify({ compaction: { threshold: 0.95 } }))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const model = createModel({ context: 1_000_000, output: 128_000 })
+        const tokens = { input: 2, output: 7_076, reasoning: 0, cache: { read: 957_593, write: 0 } }
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(true)
+        expect(await SessionCompaction.isOverflow({ message: { tokens, summary: true }, model })).toBe(false)
       },
     })
   })
@@ -176,7 +193,7 @@ describe("session.compaction.isOverflow", () => {
       fn: async () => {
         const model = createModel({ context: 100_000, output: 32_000 })
         const tokens = { input: 75_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(false)
+        expect(await SessionCompaction.isOverflow({ message: { tokens }, model })).toBe(false)
       },
     })
   })
