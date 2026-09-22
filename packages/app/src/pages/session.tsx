@@ -1343,8 +1343,9 @@ export default function Page() {
       keybind: "ctrl+tab",
       onSelect: () => {
         const parent = info()?.parentID
-        if (parent) return dialog.show(() => <DialogSubagents sessionID={parent} parentID={parent} switcher />)
-        dialog.show(() => <DialogOverview advance switcher />)
+        if (parent)
+          return dialog.show(() => <DialogSubagents sessionID={parent} current={params.id} advance switcher />)
+        dialog.show(() => <DialogOverview advance switcher current={params.id} />)
       },
     },
     {
@@ -1354,8 +1355,8 @@ export default function Page() {
       keybind: "ctrl+shift+tab",
       onSelect: () => {
         const parent = info()?.parentID
-        if (parent) return dialog.show(() => <DialogSubagents sessionID={parent} parentID={parent} switcher />)
-        dialog.show(() => <DialogOverview switcher />)
+        if (parent) return dialog.show(() => <DialogSubagents sessionID={parent} current={params.id} switcher />)
+        dialog.show(() => <DialogOverview switcher current={params.id} />)
       },
     },
     {

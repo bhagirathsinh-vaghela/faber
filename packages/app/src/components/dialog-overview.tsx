@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useLocation, useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
@@ -224,7 +224,13 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
 // Both the home page (`/`) and DialogOverview render this body inside their
 // own frame, so any change to what the overview shows lands in both views. The
 // search input holds focus so the arrow keys drive the list and typing filters.
-export function Overview(props: { onOpen?: () => void; attention?: boolean; advance?: boolean; switcher?: boolean }) {
+export function Overview(props: {
+  onOpen?: () => void
+  attention?: boolean
+  advance?: boolean
+  switcher?: boolean
+  current?: string
+}) {
   const frozen = useFrozen()
   const sdk = useGlobalSDK()
   const location = useLocation<{ stopped?: string }>()
@@ -234,11 +240,6 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   const mru = useMru()
 
   const live = createMemo(() => [...frozen.attention(), ...frozen.recent()])
-
-  // Drop stale MRU ids (session archived or deleted) whenever the live set
-  // changes. prune guards against a transient empty list so mid-load churn can't
-  // wipe the MRU. Kept out of the ordering memo so it never writes during a read.
-  createEffect(() => mru.prune(new Set(live().map((r) => r.sessionID))))
 
   // Sections stay fixed — "Live sessions" always above "Recent sessions" —
   // because section is the primary sort key (attention=0, recent=1), so the
@@ -253,7 +254,7 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   // screen reading it is rarely the one that opened those sessions. Within live,
   // unviewed rows keep their normal order after the viewed ones (Infinity rank,
   // original index as final tiebreak).
-  const items = createMemo(() => {
+  const overview = createMemo(() => {
     const rank = new Map(mru.order().map((id, i) => [id, i]))
     return live()
       .map((row, i) => ({
@@ -265,10 +266,25 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
       .sort((a, b) => a.section - b.section || a.mru - b.mru || a.i - b.i)
       .map((x) => x.row)
   })
+
+  // The Ctrl+Tab switcher is OS Alt+Tab: every session in view order, so the one
+  // on screen leads and the one before it is a single tap away whether or not it
+  // is still live. Sessions never viewed here follow in the overview's order.
+  // Snapshotted at open, so a session changing state mid-cycle cannot move a
+  // row out from under the highlight.
+  const switched = props.switcher
+    ? untrack(() => {
+        const rank = new Map(mru.order().map((id, i) => [id, i]))
+        const at = (row: OverviewRow) => rank.get(row.sessionID) ?? rank.size
+        return overview().toSorted((a, b) => at(a) - at(b))
+      })
+    : undefined
+  const items = () => switched ?? overview()
   const empty = () => items().length === 0
-  // Ctrl+Tab advances one step on the opening press (highlight the next session,
-  // position 1), so two live sessions flip with a single tap. Ctrl+Shift+Tab and
-  // the home page rest on the current session (position 0). Further taps cycle.
+  // Ctrl+Tab advances one step on the opening press, past the session on screen,
+  // so one tap flips between the two most recent. With no session on screen the
+  // first row is already somewhere else. Ctrl+Shift+Tab rests on the session on
+  // screen, since the far end of a full list is the least recent session of all.
   // Landing here from a stop (navigate carried the stopped id) skips that row: at
   // mount the abort hasn't resolved, so the stopped session is still busy and
   // still sits atop attention — without the skip the cursor would seed on it and,
@@ -278,8 +294,8 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   const stopped = props.attention && !props.advance && !props.switcher ? location.state?.stopped : undefined
   const initial = !props.attention
     ? undefined
-    : props.advance
-      ? (items()[1] ?? items()[0])
+    : props.switcher
+      ? (items()[props.advance && props.current ? 1 : 0] ?? items()[0])
       : stopped
         ? (items().find((row) => row.sessionID !== stopped) ?? items()[0])
         : items()[0]
@@ -374,8 +390,8 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
         items={items}
         key={(row) => row.sessionID}
         filterKeys={["title", "directory"]}
-        groupBy={(row) => (row.section === "attention" ? attentionGroup() : recentGroup())}
-        groups={[attentionGroup(), recentGroup()]}
+        groupBy={switched ? undefined : (row) => (row.section === "attention" ? attentionGroup() : recentGroup())}
+        groups={switched ? undefined : [attentionGroup(), recentGroup()]}
         onSelect={(row) => {
           if (row) open(row)
         }}
@@ -394,13 +410,19 @@ export function Overview(props: { onOpen?: () => void; attention?: boolean; adva
   )
 }
 
-export function DialogOverview(props: { advance?: boolean; switcher?: boolean }) {
+export function DialogOverview(props: { advance?: boolean; switcher?: boolean; current?: string }) {
   const dialog = useDialog()
   const language = useLanguage()
 
   return (
     <Dialog size="large" title={language.t("home.title")} transition>
-      <Overview attention advance={props.advance} switcher={props.switcher} onOpen={() => dialog.close()} />
+      <Overview
+        attention
+        advance={props.advance}
+        switcher={props.switcher}
+        current={props.current}
+        onOpen={() => dialog.close()}
+      />
     </Dialog>
   )
 }

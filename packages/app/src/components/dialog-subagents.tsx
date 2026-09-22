@@ -1,4 +1,4 @@
-import { Component, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { Component, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -11,6 +11,7 @@ import { useSDK } from "@/context/sdk"
 import { useLanguage } from "@/context/language"
 import type { BackgroundSubagent } from "@opencode-ai/sdk/v2/client"
 import { base64Encode } from "@opencode-ai/util/encode"
+import { useMru } from "@/context/mru"
 
 function duration(task: BackgroundSubagent): string {
   const end = task.time.completed ?? Date.now()
@@ -32,12 +33,19 @@ function StatusIcon(props: { status: BackgroundSubagent["status"] }) {
 // the parent so its children — the current session's siblings — are shown).
 // `parentID` is the target of the "Parent session" escape button, passed by the
 // caller (which already holds the session record) rather than looked up here.
-export const DialogSubagents: Component<{ sessionID?: string; parentID?: string; switcher?: boolean }> = (props) => {
+export const DialogSubagents: Component<{
+  sessionID?: string
+  parentID?: string
+  switcher?: boolean
+  advance?: boolean
+  current?: string
+}> = (props) => {
   const sdk = useSDK()
   const params = useParams()
   const navigate = useNavigate()
   const dialog = useDialog()
   const language = useLanguage()
+  const mru = useMru()
 
   const source = () => props.sessionID ?? params.id
   const parentID = () => props.parentID
@@ -75,7 +83,19 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
     setTasks(reconcile(res.data ?? [], { key: "id" }))
   }
 
-  onMount(refetch)
+  // The Ctrl+Tab switcher is OS Alt+Tab over siblings: every one in view order,
+  // so the one on screen leads and the one before it is a single tap away even
+  // once it has finished. Siblings never viewed follow, newest launch first.
+  // Snapshotted from the first fetch, so a sibling finishing mid-cycle cannot
+  // move a row out from under the highlight.
+  const [switched, setSwitched] = createSignal<BackgroundSubagent[]>()
+  const snapshot = () => {
+    const rank = new Map(mru.order().map((id, i) => [id, i]))
+    const at = (task: BackgroundSubagent) => rank.get(task.subagent?.sessionID ?? "") ?? rank.size
+    setSwitched(tasks.toSorted((a, b) => at(a) - at(b) || b.time.created - a.time.created))
+  }
+
+  onMount(() => refetch().then(() => props.switcher && snapshot()))
 
   const unsubs = [
     sdk.event.on("background.subagent.created", (evt) => {
@@ -103,13 +123,18 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
   const completed = language.t("dialog.subagents.section.completed")
 
   // Both sections chronological by launch time (newest first).
-  const items = createMemo(() =>
+  const sections = createMemo(() =>
     tasks.toSorted((a, b) => {
       if (a.status === "running" && b.status !== "running") return -1
       if (a.status !== "running" && b.status === "running") return 1
       return b.time.created - a.time.created
     }),
   )
+  const items = () => switched() ?? sections()
+  // Ctrl+Tab advances one step on the opening press, past the sibling on screen,
+  // so one tap flips between the two most recent. Ctrl+Shift+Tab rests on the
+  // sibling on screen.
+  const initial = () => items()[props.switcher && props.advance && props.current ? 1 : 0] ?? items()[0]
 
   const select = (task: BackgroundSubagent | undefined) => {
     if (!task?.subagent?.sessionID) return
@@ -134,7 +159,7 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
   // session as between root sessions. `armed` from mount so a single tap+release
   // commits; a bare Control keyup on a non-switcher open never navigates.
   let listRef: ListRef | undefined
-  const [highlight, setHighlight] = createSignal<BackgroundSubagent | undefined>(items()[0])
+  const [highlight, setHighlight] = createSignal<BackgroundSubagent | undefined>()
 
   // The list has no search box and no focused row on open, so nothing inside it
   // would receive arrow/Enter keys. Forward them from the window into the list's
@@ -159,6 +184,12 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
 
   if (props.switcher) {
     let armed = true
+    // A release that beats the first fetch is held until the list exists, or a
+    // quick tap would commit an empty highlight and leave the dialog open.
+    const [released, setReleased] = createSignal(false)
+    createEffect(() => {
+      if (released() && highlight()) select(highlight())
+    })
     const cycle = (event: KeyboardEvent) => {
       if (!(event.ctrlKey && event.key === "Tab")) return
       event.preventDefault()
@@ -169,7 +200,7 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
     const commit = (event: KeyboardEvent) => {
       if (event.key !== "Control" || !armed) return
       armed = false
-      select(highlight())
+      setReleased(true)
     }
     onMount(() => {
       window.addEventListener("keydown", cycle, true)
@@ -194,35 +225,40 @@ export const DialogSubagents: Component<{ sessionID?: string; parentID?: string;
           </div>
         }
       >
-        <List
-          ref={(r) => (listRef = r)}
-          class="flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
-          initial={items()[0]}
-          onMove={setHighlight}
-          key={(x) => x.id}
-          items={items}
-          groupBy={(x) => (x.status === "running" ? running : completed)}
-          groups={[running, completed]}
-          onSelect={select}
-          onKeyEvent={(event, task) => {
-            if (event.key.toLowerCase() === "x" && !event.ctrlKey && !event.metaKey && task?.status === "running") {
-              event.preventDefault()
-              cancel(task)
-            }
-          }}
-        >
-          {(task) => (
-            <div class="w-full flex items-center gap-2">
-              <StatusIcon status={task.status} />
-              <div class="flex-1 min-w-0 flex flex-col text-left">
-                <span class="truncate font-normal">{task.description}</span>
-                <span class="truncate text-text-weak font-normal">
-                  {(task.subagent?.agent ?? "subagent") + " · " + duration(task)}
-                </span>
+        {/* The List reads `initial` once at creation, so the switcher holds it
+            back until its snapshot exists. */}
+        <Show when={!props.switcher || switched()}>
+          <List
+            ref={(r) => (listRef = r)}
+            class="flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
+            initial={initial()}
+            preserveActive={props.switcher}
+            onMove={setHighlight}
+            key={(x) => x.id}
+            items={items}
+            groupBy={props.switcher ? undefined : (x) => (x.status === "running" ? running : completed)}
+            groups={props.switcher ? undefined : [running, completed]}
+            onSelect={select}
+            onKeyEvent={(event, task) => {
+              if (event.key.toLowerCase() === "x" && !event.ctrlKey && !event.metaKey && task?.status === "running") {
+                event.preventDefault()
+                cancel(task)
+              }
+            }}
+          >
+            {(task) => (
+              <div class="w-full flex items-center gap-2">
+                <StatusIcon status={task.status} />
+                <div class="flex-1 min-w-0 flex flex-col text-left">
+                  <span class="truncate font-normal">{task.description}</span>
+                  <span class="truncate text-text-weak font-normal">
+                    {(task.subagent?.agent ?? "subagent") + " · " + duration(task)}
+                  </span>
+                </div>
               </div>
-            </div>
-          )}
-        </List>
+            )}
+          </List>
+        </Show>
       </Show>
     </Dialog>
   )
