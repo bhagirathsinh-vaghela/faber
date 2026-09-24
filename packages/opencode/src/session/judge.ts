@@ -14,16 +14,12 @@ export namespace SessionJudge {
     /** The text being judged. */
     input: string
     sessionID: string
-    model?: { providerID: string; modelID: string }
     abort?: AbortSignal
     /** Milliseconds before the call is abandoned. Defaults to 30s. */
     timeout?: number
-    /** Completion budget. Defaults to 4096: enough for a verdict with a rewrite, small enough to bound the cost. */
-    maxOutputTokens?: number
   }
 
   const DEFAULT_TIMEOUT = 30_000
-  const DEFAULT_MAX_OUTPUT = 4_096
 
   /**
    * A caller-supplied instruction evaluated against caller-supplied text, with
@@ -61,10 +57,8 @@ export namespace SessionJudge {
       // Model resolution is inside the try so a provider/registry failure here
       // fails open like any other, rather than throwing to the caller — the
       // "enforcement never ends the turn" guarantee covers the whole call.
-      const model = input.model
-        ? await Provider.getModel(input.model.providerID, input.model.modelID)
-        : await Provider.getSmallModel("anthropic")
-      if (!model) throw new Error("no model available for judge")
+      const configured = await Provider.defaultModel()
+      const model = await Provider.getModel(configured.providerID, configured.modelID)
 
       const { stream } = await LLM.stream({
         agent,
@@ -75,25 +69,14 @@ export namespace SessionJudge {
           time: { created: Date.now() },
           agent: agent.name,
           model: { providerID: model.providerID, modelID: model.id },
+          variant: model.variant,
         } as MessageV2.User,
         model,
-        // An explicit model is a deliberate capability choice, so only fall back to
-        // the small-model options when the caller left the model unspecified.
-        small: !input.model,
-        // A verdict is a few lines. Under the beta headers the Anthropic
-        // provider sends, a sonnet-class model thinks implicitly when the body
-        // omits `thinking`, and measured against real rule checks that thinking
-        // consumed the whole budget on 60 of 100 calls and returned an empty
-        // reply, which the caller reads as an off-contract PASS. Disabling it is
-        // what makes the cap safe.
-        thinking: "disabled",
-        maxOutputTokens: input.maxOutputTokens ?? DEFAULT_MAX_OUTPUT,
         tools: {},
         messages: [{ role: "user" as const, content: input.input }],
         system: { env: [], globalInstructions: [], projectInstructions: [] },
         sessionID: input.sessionID,
         abort: deadline.signal,
-        retries: 1,
       })
 
       // Drive the stream to completion explicitly. text/usage resolve off the

@@ -1,4 +1,3 @@
-import { Provider } from "@/provider/provider"
 import { SessionJudge } from "./judge"
 
 export namespace TtsRewrite {
@@ -140,15 +139,11 @@ Output ONLY the spoken text. Do not add anything before it or after it. No pream
   // model). Never throws: read-aloud must survive a rewrite failure by falling
   // back to the client's deterministic path, so this returns the input on any
   // miss rather than an error.
-  export async function prepare(text: string, sessionID: string, model?: string) {
+  export async function prepare(text: string, sessionID: string) {
     const rewritten = await SessionJudge.run({
       prompt: PROMPT,
       input: wrap(text),
       sessionID,
-      model: model ? Provider.parseModel(model) : undefined,
-      // A whole message is far longer than a judge verdict, so the default
-      // 4096 cap would truncate a long reading mid-sentence.
-      maxOutputTokens: 8192,
       // The reading waits on this, so it cannot hang the way an enforcement
       // gate can afford to.
       timeout: 20_000,

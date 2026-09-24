@@ -56,13 +56,12 @@ export const TtsRoutes = lazy(() =>
       // Wrap the work in the context the middleware would have supplied, using
       // the directory the client sends (the same header the middleware reads).
       const directory = c.req.header("x-opencode-directory") || process.cwd()
-      const model = (await Config.getGlobal()).dictation?.rewriteModel
       const text = await Instance.provide({
         directory,
         init: InstanceBootstrap,
         // prepare() fails open to the original text, so a rewrite miss just means
         // the client falls back to its deterministic pass.
-        fn: () => TtsRewrite.prepare(body.text, body.sessionID, model),
+        fn: () => TtsRewrite.prepare(body.text, body.sessionID),
       })
       return c.json({ text })
     })

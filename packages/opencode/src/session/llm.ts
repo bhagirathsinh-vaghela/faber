@@ -50,10 +50,6 @@ export namespace LLM {
     /** Persist the computed promptIndex. Only a caller that OWNS the turn may set this. */
     persistPromptIndex?: boolean
     small?: boolean
-    /** Send `thinking: disabled` on the wire. Under the Anthropic provider's beta headers the model otherwise thinks implicitly when the body omits it. */
-    thinking?: "disabled"
-    /** Hard cap on completion tokens, overriding the model default. */
-    maxOutputTokens?: number
     tools: Record<string, Tool>
     retries?: number
     /** One-shot probe: place an extra cache marker at this block index for testing */
@@ -264,22 +260,19 @@ export namespace LLM {
         headers["anthropic-beta"] = [...betas].join(",")
       }
     }
-    if (input.model.providerID === "anthropic" && input.thinking === "disabled") headers[Provider.NO_THINKING_HEADER] = "1"
 
     const maxOutputTokens =
       isCodex || provider.id.includes("github-copilot")
         ? undefined
-        : input.maxOutputTokens !== undefined
-          ? input.maxOutputTokens
-          : anthropicOverride?.maxTokens !== undefined
-            ? anthropicOverride.maxTokens
-            : ProviderTransform.maxOutputTokens(
-                input.model.api.npm,
-                params.options,
-                input.model.limit.output,
-                OUTPUT_TOKEN_MAX,
-                input.model.id,
-              )
+        : anthropicOverride?.maxTokens !== undefined
+          ? anthropicOverride.maxTokens
+          : ProviderTransform.maxOutputTokens(
+              input.model.api.npm,
+              params.options,
+              input.model.limit.output,
+              OUTPUT_TOKEN_MAX,
+              input.model.id,
+            )
 
     const tools = await resolveTools(input)
 

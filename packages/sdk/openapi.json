@@ -15182,10 +15182,6 @@
               "voice": {
                 "description": "Read-aloud voice name, e.g. af_bella or af_sarah",
                 "type": "string"
-              },
-              "rewriteModel": {
-                "description": "Model (provider/model) that rewrites a message into natural speech before read-aloud",
-                "type": "string"
               }
             }
           },

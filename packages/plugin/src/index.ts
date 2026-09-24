@@ -37,15 +37,12 @@ export type PluginInput = {
    *
    * Intended for enforcement checks that must weigh one instruction against
    * one artifact, where the session's own context would dilute the judgment.
-   * Omit `model` to use the provider's small model.
+   * Runs on the configured default model and its default variant.
    */
   judge: (input: {
     prompt: string
     input: string
     sessionID: string
-    model?: { providerID: string; modelID: string }
-    /** Completion budget; the call never thinks, so this bounds the whole reply. */
-    maxOutputTokens?: number
   }) => Promise<string>
 }
 
