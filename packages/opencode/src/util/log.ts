@@ -81,16 +81,22 @@ export namespace Log {
     }
 
     write = (msg: any) => {
-      // Bun's FileSink.write is synchronous (returns the byte count); the SDK
-      // type widens it to number | Promise<number>, so narrow it back here.
-      const num = writer.write(msg) as number
-      writer.flush()
-      size += num
-      if (size < MAXSIZE) return num
-      writer.end()
-      writer = open()
-      cleanup(Global.Path.log)
-      return num
+      // A full disk must cost the line, never the process: the uncaughtException
+      // handler logs through here too, so a throw from this write is fatal.
+      try {
+        // Bun's FileSink.write is synchronous (returns the byte count); the SDK
+        // type widens it to number | Promise<number>, so narrow it back here.
+        const num = writer.write(msg) as number
+        writer.flush()
+        size += num
+        if (size < MAXSIZE) return num
+        writer.end()
+        writer = open()
+        cleanup(Global.Path.log)
+        return num
+      } catch {
+        return 0
+      }
     }
   }
 
