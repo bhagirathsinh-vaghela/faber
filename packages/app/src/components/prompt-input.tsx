@@ -1287,14 +1287,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const exitShell = () => {
     setStore("mode", "normal")
     if (!prompt.dirty()) return
-    stash.push(prompt.current(), prompt.context.items())
-    prompt.reset()
-    prompt.context.clear()
     // Clearing a typed command reads as losing it unless the stash is named.
-    showToast({
+    void stash.push(prompt.current(), prompt.context.items(), {
       title: language.t("prompt.mode.shell.stashed.title"),
       description: language.t("prompt.mode.shell.stashed.description"),
     })
+    prompt.reset()
+    prompt.context.clear()
   }
 
   const navigateHistory = (direction: "up" | "down") => {

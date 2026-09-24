@@ -3,7 +3,8 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
 import { IconButton } from "@opencode-ai/ui/icon-button"
-import { useStash } from "@/context/stash"
+import { showToast } from "@opencode-ai/ui/toast"
+import { STASH_TOAST_MS, useStash } from "@/context/stash"
 import { usePrompt, type ContextItem, type Prompt } from "@/context/prompt"
 import { useLanguage } from "@/context/language"
 import { useCommand } from "@/context/command"
@@ -69,8 +70,14 @@ export const DialogStash: Component = () => {
     prompt.set(item.prompt, end)
     prompt.context.clear()
     for (const contextItem of item.context) prompt.context.add(contextItem)
-    stash.removeAt(item.index)
-    if (current) stash.push(current, currentContext)
+    // The server's remove and push each rewrite the whole list, so the push
+    // waits for the remove or the popped entry is written back.
+    void stash.removeAt(item.index).then(() => current && stash.push(current, currentContext, false))
+    showToast({
+      title: language.t("stash.toast.restored"),
+      description: current ? language.t("stash.toast.swapped") : undefined,
+      duration: STASH_TOAST_MS,
+    })
     // The stash content is now in the dock, so put the caret there at the end.
     // Deferred so it runs after the dialog tears down, otherwise Kobalte
     // restores focus to the trigger on close and clobbers this.

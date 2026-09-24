@@ -68,8 +68,9 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { UserMessage } from "@opencode-ai/sdk/v2"
 import type { FileDiff } from "@opencode-ai/sdk/v2/client"
 import { useSDK } from "@/context/sdk"
-import { usePrompt } from "@/context/prompt"
-import { useStash } from "@/context/stash"
+import { DEFAULT_PROMPT, isPromptEqual, usePrompt, type Prompt } from "@/context/prompt"
+import { STASH_TOAST_MS, useStash } from "@/context/stash"
+import { useRevertHost } from "@/context/revert"
 import { DialogStash } from "@/components/dialog-stash"
 import { DialogSubagents } from "@/components/dialog-subagents"
 import { DialogOverview } from "@/components/dialog-overview"
@@ -294,6 +295,7 @@ export default function Page() {
   const sdk = useSDK()
   const prompt = usePrompt()
   const stash = useStash()
+  const revertHost = useRevertHost()
   const comments = useComments()
   const permission = usePermission()
   const question = useQuestion()
@@ -978,6 +980,81 @@ export default function Page() {
     })
   }
 
+  // What undo/redo last put in the prompt box. A box still holding exactly this
+  // is ours to replace; anything else is a draft the user typed.
+  let mirrored: Prompt | undefined
+
+  // Undo never stops anything. Only the session's own turn blocks it: the
+  // server refuses a revert while that turn runs, and a running subagent or job
+  // is left alone on purpose, its late result committing the undo. The server's
+  // refusal is checked too, since a delivered result can wake the turn a moment
+  // before the client sees it.
+  const reverting = async (sessionID: string, run: () => Promise<unknown>) => {
+    const busyToast = () =>
+      showToast({
+        title: language.t("session.revert.busy.title"),
+        description: language.t("session.revert.busy.description"),
+        duration: STASH_TOAST_MS,
+      })
+    if (sync.data.session_busy[sessionID]?.busySelf) {
+      busyToast()
+      return false
+    }
+    return run().then(
+      () => true,
+      (err: unknown) => {
+        const text = err instanceof Error ? err.message : ((err as { data?: { message?: string } })?.data?.message ?? "")
+        if (text.includes("is busy")) busyToast()
+        else
+          showToast({
+            variant: "error",
+            title: language.t("session.revert.failed.title"),
+            description: text.split("\n")[0],
+          })
+        return false
+      },
+    )
+  }
+
+  // The prompt box shows the first hidden message. A draft the user typed is
+  // stashed before it is replaced, and kept in place if the stash fails. When
+  // there is nothing typed to show (a job or subagent result is first hidden, or
+  // a full redo hides nothing), only our own mirrored text is cleared; a real
+  // draft stays put, since nothing would replace it.
+  const mirror = async (message: UserMessage | undefined) => {
+    const ours = mirrored !== undefined && isPromptEqual(prompt.current(), mirrored)
+    const context = prompt.context.items()
+    const draft = context.length > 0 || (prompt.dirty() && !ours)
+    const next =
+      message && !message.synthetic
+        ? extractPromptFromParts(sync.data.part[message.id] ?? [], { directory: sdk.directory })
+        : undefined
+    if (!next || isPromptEqual(next, DEFAULT_PROMPT)) {
+      if (draft) return
+      prompt.reset()
+      mirrored = undefined
+      return
+    }
+    if (draft && !(await stash.push(prompt.current(), context, { title: language.t("stash.toast.draft") }))) return
+    prompt.context.clear()
+    prompt.set(next)
+    mirrored = next
+  }
+
+  // "Revert here" on a user card. Cache-safe: the unrevert and the ping probe at
+  // the prior assistant prime the cache before the new bookmark lands.
+  revertHost.register(async (input) => {
+    const target = userMessages().find((x) => x.id === input.messageID)
+    const prior = messages().findLast((m) => m.id < input.messageID && m.role === "assistant")
+    const done = await reverting(input.sessionID, async () => {
+      await sdk.client.session.unrevert({ sessionID: input.sessionID })
+      if (prior) await sdk.client.session.ping({ sessionID: input.sessionID, cacheProbeMessageID: prior.id })
+      await sdk.client.session.revert({ sessionID: input.sessionID, messageID: input.messageID })
+    })
+    if (!done || input.sessionID !== params.id || !target) return
+    await mirror(target)
+  })
+
   command.register(() => [
     {
       id: "session.new",
@@ -1219,20 +1296,13 @@ export default function Page() {
       onSelect: async () => {
         const sessionID = params.id
         if (!sessionID) return
-        if (busy().busy) {
-          await sdk.client.session.abort({ sessionID }).catch(() => {})
-        }
         const revert = info()?.revert?.messageID
         // Find the last user message that's not already reverted
         const message = findLast(userMessages(), (x) => !revert || x.id < revert)
         if (!message) return
-        await sdk.client.session.revert({ sessionID, messageID: message.id })
-        // Restore the prompt from the reverted message
-        const parts = sync.data.part[message.id]
-        if (parts) {
-          const restored = extractPromptFromParts(parts, { directory: sdk.directory })
-          prompt.set(restored)
-        }
+        if (!(await reverting(sessionID, () => sdk.client.session.revert({ sessionID, messageID: message.id }))))
+          return
+        await mirror(message)
         // Navigate to the message before the reverted one (which will be the new last visible message)
         const priorMessage = findLast(userMessages(), (x) => x.id < message.id)
         setActiveMessage(priorMessage)
@@ -1254,15 +1324,17 @@ export default function Page() {
         const nextMessage = userMessages().find((x) => x.id > revertMessageID)
         if (!nextMessage) {
           // Full unrevert - restore all messages and navigate to last
-          await sdk.client.session.unrevert({ sessionID })
-          prompt.reset()
+          if (!(await reverting(sessionID, () => sdk.client.session.unrevert({ sessionID })))) return
+          await mirror(undefined)
           // Navigate to the last message (the one that was at the revert point)
           const lastMsg = findLast(userMessages(), (x) => x.id >= revertMessageID)
           setActiveMessage(lastMsg)
           return
         }
         // Partial redo - move forward to next message
-        await sdk.client.session.revert({ sessionID, messageID: nextMessage.id })
+        if (!(await reverting(sessionID, () => sdk.client.session.revert({ sessionID, messageID: nextMessage.id }))))
+          return
+        await mirror(nextMessage)
         // Navigate to the message before the new revert point
         const priorMsg = findLast(userMessages(), (x) => x.id < nextMessage.id)
         setActiveMessage(priorMsg)
@@ -1311,7 +1383,7 @@ export default function Page() {
       keybind: "ctrl+s",
       disabled: !prompt.dirty(),
       onSelect: () => {
-        stash.push(prompt.current(), prompt.context.items())
+        void stash.push(prompt.current(), prompt.context.items())
         prompt.reset()
         prompt.context.clear()
       },

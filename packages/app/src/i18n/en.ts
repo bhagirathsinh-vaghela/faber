@@ -77,6 +77,9 @@ export const dict = {
   "command.session.undo.description": "Undo the last message",
   "command.session.redo": "Redo",
   "command.session.redo.description": "Redo the last undone message",
+  "session.revert.busy.title": "Session is busy",
+  "session.revert.busy.description": "Undo and redo wait for the current turn to finish. Nothing was changed.",
+  "session.revert.failed.title": "Undo failed",
   "command.session.compact": "Compact session",
   "command.session.compact.description": "Summarize the session to reduce context size",
   "command.session.fork": "Fork from message",
@@ -329,6 +332,12 @@ export const dict = {
   "mcp.chip.view": "View MCP tools",
 
   "dialog.fork.empty": "No messages to fork from",
+
+  "stash.toast.saved": "Prompt saved to stash",
+  "stash.toast.draft": "Draft saved to stash",
+  "stash.toast.restored": "Prompt restored from stash",
+  "stash.toast.swapped": "Your draft was swapped into the stash.",
+  "stash.toast.failed": "Could not save to stash",
 
   "dialog.stash.title": "Stash",
   "dialog.stash.empty": "Stash is empty",

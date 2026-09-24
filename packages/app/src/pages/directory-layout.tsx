@@ -15,6 +15,7 @@ import { SpeechOverlay } from "@/components/speech-overlay"
 import { Visibility } from "@/utils/visibility"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useLanguage } from "@/context/language"
+import { RevertHostProvider, useRevertHost } from "@/context/revert"
 
 export default function Layout(props: ParentProps) {
   const params = useParams()
@@ -38,6 +39,7 @@ export default function Layout(props: ParentProps) {
     <Show when={directory()}>
       <SDKProvider directory={directory()}>
         <SyncProvider>
+          <RevertHostProvider>
           {iife(() => {
             const sync = useSync()
             const sdk = useSDK()
@@ -130,17 +132,7 @@ export default function Layout(props: ParentProps) {
             })
             const speakText = (text: string) => speech.show(text)
 
-            // Cache-safe revert: prime the cache at the prior assistant via a
-            // ping probe before reverting, so the conversation cache survives.
-            const revertMessage = async (input: { sessionID: string; messageID: string }) => {
-              const msgs = sync.data.message[input.sessionID] ?? []
-              const prevAssistant = msgs.findLast((m) => m.id < input.messageID && m.role === "assistant")
-              await sdk.client.session.unrevert({ sessionID: input.sessionID })
-              if (prevAssistant) {
-                await sdk.client.session.ping({ sessionID: input.sessionID, cacheProbeMessageID: prevAssistant.id })
-              }
-              await sdk.client.session.revert({ sessionID: input.sessionID, messageID: input.messageID })
-            }
+            const revertHost = useRevertHost()
 
             return (
               <DataProvider
@@ -150,7 +142,7 @@ export default function Layout(props: ParentProps) {
                 onQuestionReply={replyToQuestion}
                 onQuestionReject={rejectQuestion}
                 onNavigateToSession={navigateToSession}
-                onRevertMessage={revertMessage}
+                onRevertMessage={revertHost.revert}
                 onFetchMessageDiff={fetchMessageDiff}
                 onSpeakText={speakText}
                 onSpeaking={(text: string) => speech.reading(text)}
@@ -171,6 +163,7 @@ export default function Layout(props: ParentProps) {
               </DataProvider>
             )
           })}
+          </RevertHostProvider>
         </SyncProvider>
       </SDKProvider>
     </Show>
