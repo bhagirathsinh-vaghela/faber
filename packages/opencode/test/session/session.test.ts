@@ -231,7 +231,9 @@ describe("archive and unarchive", () => {
         const { SessionBusy } = await import("../../src/session/busy")
         const session = await Session.create({})
         const live = async () =>
-          (await Server.App().request(`/session/${session.id}/live?directory=${encodeURIComponent(projectRoot)}`)).json()
+          (
+            await Server.App().request(`/session/${session.id}/live?directory=${encodeURIComponent(projectRoot)}`)
+          ).json()
 
         const other = path.join(projectRoot, "src")
         const elsewhere = async () =>
@@ -247,7 +249,9 @@ describe("archive and unarchive", () => {
         SessionBusy.exit(session.id)
         expect(await live()).toEqual({ live: false, busy: false, pinging: false, job: false })
 
-        const missing = await Server.App().request(`/session/ses_nope/live?directory=${encodeURIComponent(projectRoot)}`)
+        const missing = await Server.App().request(
+          `/session/ses_nope/live?directory=${encodeURIComponent(projectRoot)}`,
+        )
         expect(missing.status).toBe(404)
 
         await Session.remove(session.id)

@@ -39,11 +39,7 @@ export type PluginInput = {
    * one artifact, where the session's own context would dilute the judgment.
    * Runs on the configured default model and its default variant.
    */
-  judge: (input: {
-    prompt: string
-    input: string
-    sessionID: string
-  }) => Promise<string>
+  judge: (input: { prompt: string; input: string; sessionID: string }) => Promise<string>
 }
 
 export type Plugin = (input: PluginInput) => Promise<Hooks>

@@ -101,6 +101,8 @@ import type {
   McpStatusResponses,
   McpToolsResponses,
   ModelPreference,
+  OneshotErrors,
+  OneshotResponses,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -4962,6 +4964,49 @@ export class OpencodeClient extends HeyApiClient {
   constructor(args?: { client?: Client; key?: string }) {
     super(args)
     OpencodeClient.__registry.set(this, args?.key)
+  }
+
+  /**
+   * One-shot model call
+   *
+   * Send a system prompt and a prompt; get the model's text back. No session, no tools, no instructions, nothing persisted.
+   */
+  public oneshot<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      system?: string
+      prompt?: string
+      model?: string
+      cache?: boolean
+      timeoutMs?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "system" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "model" },
+            { in: "body", key: "cache" },
+            { in: "body", key: "timeoutMs" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OneshotResponses, OneshotErrors, ThrowOnError>({
+      url: "/oneshot",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
   }
 
   private _global?: Global

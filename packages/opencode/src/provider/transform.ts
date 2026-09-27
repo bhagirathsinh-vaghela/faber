@@ -396,16 +396,18 @@ export namespace ProviderTransform {
     model: Provider.Model,
     options: Record<string, unknown>,
     probeIndex?: number,
+    cache = true,
   ) {
     msgs = unsupportedParts(msgs, model)
     msgs = normalizeMessages(msgs, model, options)
     if (
-      model.providerID === "anthropic" ||
-      model.api.id.includes("anthropic") ||
-      model.api.id.includes("claude") ||
-      model.id.includes("anthropic") ||
-      model.id.includes("claude") ||
-      model.api.npm === "@ai-sdk/anthropic"
+      cache &&
+      (model.providerID === "anthropic" ||
+        model.api.id.includes("anthropic") ||
+        model.api.id.includes("claude") ||
+        model.id.includes("anthropic") ||
+        model.id.includes("claude") ||
+        model.api.npm === "@ai-sdk/anthropic")
     ) {
       msgs = applyCaching(msgs, model.providerID, probeIndex)
     }

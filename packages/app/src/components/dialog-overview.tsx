@@ -118,10 +118,7 @@ function useFrozen() {
   const place = (ids: string[], arrived: string[], current: Map<string, Entry>) =>
     arrived
       .filter((id) => restored.has(id))
-      .reduce(
-        (held, id) => slot(held, id, current),
-        [...arrived.filter((id) => !restored.has(id)), ...ids],
-      )
+      .reduce((held, id) => slot(held, id, current), [...arrived.filter((id) => !restored.has(id)), ...ids])
 
   const seed = live()
   const [order, setOrder] = createStore({
@@ -634,36 +631,36 @@ export function Overview(props: {
       }
     >
       <div ref={container} class="contents">
-      <List
-        ref={(r) => (ref = r)}
-        preserveActive
-        initial={initial}
-        onMove={setHighlight}
-        search={{
-          placeholder: language.t("common.search.placeholder"),
-          autofocus: true,
-          action: searchAction,
-        }}
-        items={items}
-        key={(row) => row.sessionID}
-        filterKeys={["title", "directory"]}
-        groupBy={group}
-        groups={[attentionGroup(), recentGroup(), ...(props.manage && archive.shown ? [archivedGroup()] : [])]}
-        actions={props.manage ? menu : undefined}
-        onSelect={(row) => {
-          if (row) open(row)
-        }}
-        // content-visibility skips layout/paint for offscreen rows, which this
-        // list needs because it is the one List that runs to hundreds of rows.
-        // Deliberately NOT windowing: List resolves the keyboard-active row by
-        // querying the live DOM (findByKey), so unmounting offscreen rows would
-        // strand arrow-key navigation. Every row stays mounted here.
-        // The `auto` in contain-intrinsic-size makes a row remember its measured
-        // height, so scroll-into-view math doesn't drift off the estimate.
-        class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_36px] any-pointer-coarse:[&_[data-slot=list-item]]:[contain-intrinsic-size:auto_56px]"
-      >
-        {(row) => <Row row={row} />}
-      </List>
+        <List
+          ref={(r) => (ref = r)}
+          preserveActive
+          initial={initial}
+          onMove={setHighlight}
+          search={{
+            placeholder: language.t("common.search.placeholder"),
+            autofocus: true,
+            action: searchAction,
+          }}
+          items={items}
+          key={(row) => row.sessionID}
+          filterKeys={["title", "directory"]}
+          groupBy={group}
+          groups={[attentionGroup(), recentGroup(), ...(props.manage && archive.shown ? [archivedGroup()] : [])]}
+          actions={props.manage ? menu : undefined}
+          onSelect={(row) => {
+            if (row) open(row)
+          }}
+          // content-visibility skips layout/paint for offscreen rows, which this
+          // list needs because it is the one List that runs to hundreds of rows.
+          // Deliberately NOT windowing: List resolves the keyboard-active row by
+          // querying the live DOM (findByKey), so unmounting offscreen rows would
+          // strand arrow-key navigation. Every row stays mounted here.
+          // The `auto` in contain-intrinsic-size makes a row remember its measured
+          // height, so scroll-into-view math doesn't drift off the estimate.
+          class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_36px] any-pointer-coarse:[&_[data-slot=list-item]]:[contain-intrinsic-size:auto_56px]"
+        >
+          {(row) => <Row row={row} />}
+        </List>
       </div>
     </Show>
   )

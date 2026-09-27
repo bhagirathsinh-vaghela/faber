@@ -56,6 +56,8 @@ export namespace LLM {
     cacheProbeIndex?: number
     /** One-shot probe by message ID: resolved to block index using messageIdToIndex + system offset */
     cacheProbeMessageID?: string
+    /** Place cache markers. Off for a single call that will never read its own write. Defaults to true. */
+    cache?: boolean
   }
 
   export type StreamOutput = {
@@ -351,7 +353,8 @@ export namespace LLM {
     }
 
     // Calculate cache marker indices based on the final messages
-    const cacheMarkers = ProviderTransform.cacheMarkerIndices(finalMessages, probeIndex)
+    const cache = input.cache ?? true
+    const cacheMarkers = cache ? ProviderTransform.cacheMarkerIndices(finalMessages, probeIndex) : []
 
     const stream = streamText({
       onError(error) {
@@ -413,7 +416,13 @@ export namespace LLM {
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options, probeIndex)
+                args.params.prompt = ProviderTransform.message(
+                  args.params.prompt,
+                  input.model,
+                  options,
+                  probeIndex,
+                  cache,
+                )
               }
               return args.params
             },

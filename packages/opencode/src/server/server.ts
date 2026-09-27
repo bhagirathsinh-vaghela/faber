@@ -26,6 +26,7 @@ import { SessionPin } from "../session/pin"
 import { Global } from "../global"
 import { ProjectRoutes } from "./routes/project"
 import { SessionRoutes } from "./routes/session"
+import { OneshotRoutes } from "./routes/oneshot"
 import { PtyRoutes } from "./routes/pty"
 import { McpRoutes } from "./routes/mcp"
 import { FileRoutes } from "./routes/file"
@@ -282,6 +283,7 @@ export namespace Server {
         .route("/config", ConfigRoutes())
         .route("/experimental", ExperimentalRoutes())
         .route("/session", SessionRoutes())
+        .route("/oneshot", OneshotRoutes())
         .route("/permission", PermissionRoutes())
         .route("/preference", PreferenceRoutes())
         .route("/question", QuestionRoutes())

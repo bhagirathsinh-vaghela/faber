@@ -1003,7 +1003,8 @@ export default function Page() {
     return run().then(
       () => true,
       (err: unknown) => {
-        const text = err instanceof Error ? err.message : ((err as { data?: { message?: string } })?.data?.message ?? "")
+        const text =
+          err instanceof Error ? err.message : ((err as { data?: { message?: string } })?.data?.message ?? "")
         if (text.includes("is busy")) busyToast()
         else
           showToast({
@@ -1300,8 +1301,7 @@ export default function Page() {
         // Find the last user message that's not already reverted
         const message = findLast(userMessages(), (x) => !revert || x.id < revert)
         if (!message) return
-        if (!(await reverting(sessionID, () => sdk.client.session.revert({ sessionID, messageID: message.id }))))
-          return
+        if (!(await reverting(sessionID, () => sdk.client.session.revert({ sessionID, messageID: message.id })))) return
         await mirror(message)
         // Navigate to the message before the reverted one (which will be the new last visible message)
         const priorMessage = findLast(userMessages(), (x) => x.id < message.id)

@@ -5104,6 +5104,59 @@ export type PermissionRespondResponses = {
 
 export type PermissionRespondResponse = PermissionRespondResponses[keyof PermissionRespondResponses]
 
+export type OneshotData = {
+  body?: {
+    system?: string
+    prompt: string
+    /**
+     * provider/model; defaults to the configured model
+     */
+    model?: string
+    /**
+     * Place prompt-cache markers. Off by default.
+     */
+    cache?: boolean
+    timeoutMs?: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/oneshot"
+}
+
+export type OneshotErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type OneshotError = OneshotErrors[keyof OneshotErrors]
+
+export type OneshotResponses = {
+  /**
+   * The model's answer, or an error result
+   */
+  200: {
+    result: string
+    finish?: string
+    usage: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    cost: number
+    model?: string
+    is_error: boolean
+    errors: Array<string>
+  }
+}
+
+export type OneshotResponse = OneshotResponses[keyof OneshotResponses]
+
 export type PermissionReplyData = {
   body?: {
     reply: "once" | "always" | "reject"
