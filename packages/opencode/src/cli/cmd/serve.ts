@@ -6,6 +6,7 @@ import { SessionPing } from "../../session/ping"
 import { SessionPrompt } from "../../session/prompt"
 import { BackgroundOrchestrator } from "../../background/orchestrator"
 import { Db } from "../../storage/db"
+import { HeadlessAgent } from "../../session/headless"
 
 export const ServeCommand = cmd({
   command: "serve",
@@ -17,6 +18,7 @@ export const ServeCommand = cmd({
     }),
   describe: "starts a headless opencode server",
   handler: async (args) => {
+    const startedAt = Date.now()
     if (!Flag.OPENCODE_SERVER_PASSWORD) {
       console.log("Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.")
     }
@@ -52,6 +54,8 @@ export const ServeCommand = cmd({
     // point, so an ownership verdict here would kill healthy jobs whose
     // sessions are about to come back. The first timer pass makes that call.
     void BackgroundOrchestrator.sweep({ adopting: true })
+    // Detached for the same reason as the orphan GC above.
+    void HeadlessAgent.sweep(startedAt).catch(() => {})
     await new Promise(() => {})
     await server.stop()
   },

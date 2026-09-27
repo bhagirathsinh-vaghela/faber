@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import path from "path"
 import { HeadlessAgent } from "../../src/session/headless"
 import { Session } from "../../src/session"
+import { Sessions } from "../../src/storage/sessions"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { BackgroundSpawn } from "../../src/background/spawn"
@@ -200,6 +201,23 @@ describe("HeadlessAgent.run", () => {
       { bash: "allow" },
     )
   }, 120_000)
+
+  test("sweep removes headless sessions created before the cutoff and leaves ordinary sessions alone", async () => {
+    await withProject(async () => {
+      respond(() => reply([text("ok")], "end_turn"))
+      const kept = await HeadlessAgent.run({ agent: "build", prompt: "hi", keep: true })
+      const ordinary = await Session.create({})
+      const cutoff = Date.now() + 1
+      const survivor = await Sessions.listEphemeral(cutoff).then((all) => all.map((s) => s.id))
+      expect(survivor).toContain(kept.session_id!)
+
+      await HeadlessAgent.sweep(cutoff)
+
+      expect(await Sessions.listEphemeral(cutoff)).toEqual([])
+      await expect(Sessions.read(kept.session_id!)).rejects.toThrow()
+      expect((await Sessions.read(ordinary.id)).id).toBe(ordinary.id)
+    })
+  }, 60_000)
 
   test("rejects an unknown agent without creating a session", async () => {
     await withProject(async () => {

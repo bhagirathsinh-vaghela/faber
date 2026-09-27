@@ -8,6 +8,7 @@ import { Session } from "."
 import { SessionPrompt } from "./prompt"
 import { MessageV2 } from "./message-v2"
 import { SubagentWatch } from "@/tool/subagent-watch"
+import { Sessions } from "@/storage/sessions"
 
 // An agent run with no parent and no human: the loop a subagent runs, started
 // over HTTP, returning only its final message. Every permission prompt is
@@ -140,6 +141,25 @@ export namespace HeadlessAgent {
       permission_denials,
       ...(input.keep && { session_id: session.id }),
     }
+  }
+
+  // A run lives only as long as the request that started it, so a headless
+  // session created before this server started belongs to a run whose server
+  // died and whose caller's connection died with it. Stop first: its jobs
+  // outlive the server and would otherwise deliver into a removed session.
+  export async function sweep(before: number) {
+    const orphans = await Sessions.listEphemeral(before)
+    for (const orphan of orphans) {
+      await Instance.provide({
+        directory: orphan.directory,
+        fn: async () => {
+          await Session.stop({ sessionID: orphan.id })
+          await Session.remove(orphan.id)
+        },
+      }).catch((error) => log.error("headless sweep failed", { sessionID: orphan.id, error }))
+    }
+    if (orphans.length > 0) log.info("swept orphaned headless sessions", { count: orphans.length })
+    return orphans.length
   }
 
   async function summarize(sessionID: string): Promise<Result> {

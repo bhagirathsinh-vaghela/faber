@@ -42,6 +42,9 @@ export namespace Sessions {
          WHERE json_extract(json, '$.time.archived') > 0 AND json_extract(json, '$.parentID') IS NULL
          ORDER BY json_extract(json, '$.time.archived') DESC`,
       ),
+      listEphemeral: db.query<{ json: string }, [number]>(
+        `SELECT json FROM session WHERE json_extract(json, '$.ephemeral') = 1 AND time_created < ?`,
+      ),
       remove: db.query<void, [string]>(`DELETE FROM session WHERE id = ?`),
       db,
     }
@@ -131,6 +134,12 @@ export namespace Sessions {
 
   export async function listArchived() {
     const rows = await open().then((q) => q.listArchived.all())
+    return Promise.all(rows.map((r) => normalize(r.json)))
+  }
+
+  // Headless-run sessions created before `before`, across every project.
+  export async function listEphemeral(before: number) {
+    const rows = await open().then((q) => q.listEphemeral.all(before))
     return Promise.all(rows.map((r) => normalize(r.json)))
   }
 
