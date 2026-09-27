@@ -3,6 +3,8 @@
 import { client } from "./client.gen.js"
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js"
 import type {
+  AgentHeadlessErrors,
+  AgentHeadlessResponses,
   AgentPartInput,
   AppAgentsResponses,
   AppDockConfigResponses,
@@ -2561,6 +2563,55 @@ export class Permission extends HeyApiClient {
   }
 }
 
+export class Agent extends HeyApiClient {
+  /**
+   * Run an agent headless
+   *
+   * Run a named agent to completion with no human attached and get its final message back. Permission prompts are denied and listed; the session is removed afterwards.
+   */
+  public headless<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      agent?: string
+      prompt?: string
+      system?: string
+      model?: string
+      bare?: boolean
+      timeoutMs?: number
+      keep?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "agent" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "system" },
+            { in: "body", key: "model" },
+            { in: "body", key: "bare" },
+            { in: "body", key: "timeoutMs" },
+            { in: "body", key: "keep" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AgentHeadlessResponses, AgentHeadlessErrors, ThrowOnError>({
+      url: "/agent/headless",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Model extends HeyApiClient {
   /**
    * Get model preferences
@@ -5067,6 +5118,11 @@ export class OpencodeClient extends HeyApiClient {
   private _permission?: Permission
   get permission(): Permission {
     return (this._permission ??= new Permission({ client: this.client }))
+  }
+
+  private _agent?: Agent
+  get agent(): Agent {
+    return (this._agent ??= new Agent({ client: this.client }))
   }
 
   private _preference?: Preference

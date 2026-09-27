@@ -66,6 +66,7 @@ export const SessionRoutes = lazy(() =>
         const sessions: Session.Info[] = []
         for await (const session of Session.list()) {
           if (query.directory !== undefined && session.directory !== query.directory) continue
+          if (session.ephemeral) continue
           if (query.roots && session.parentID) continue
           if (query.start !== undefined && session.time.updated < query.start) continue
           if (term !== undefined && !session.title.toLowerCase().includes(term)) continue

@@ -41,6 +41,13 @@ export namespace Session {
     return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
   }
 
+  // A session a person reads: a root, not a subagent and not a headless agent
+  // run. Keep-warm pings, titles, reminders, the recent list, and sharing are
+  // for these only.
+  export function attended(session: { parentID?: string; ephemeral?: boolean }) {
+    return !session.parentID && !session.ephemeral
+  }
+
   export function isDefaultTitle(title: string) {
     return new RegExp(
       `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
@@ -278,6 +285,13 @@ export namespace Session {
       // alone goes blind across a compaction boundary, and this flag is what
       // lets the reminder survive it.
       activeSkills: z.string().array().optional(),
+      // A headless agent run: no parent, no human, removed when the run ends.
+      // Skips everything a subagent skips (pings, title, reminders) plus the
+      // diff summary, snapshots, and the recent list.
+      ephemeral: z.boolean().optional(),
+      // Leave out global/project instructions, MCP tools, and skills, so the
+      // run gets the agent's own prompt and built-in tools only.
+      bare: z.boolean().optional(),
     })
     .meta({
       ref: "Session",
@@ -461,6 +475,8 @@ export namespace Session {
     // model/variant instead of snapping to the default). The spawn seed below
     // takes precedence when both apply.
     current?: Info["current"]
+    ephemeral?: boolean
+    bare?: boolean
   }) {
     const branch = Instance.project.vcs === "git" ? await Vcs.branch() : undefined
     // A spawned helper runs as its spawner, so it starts from the spawner's
@@ -500,6 +516,8 @@ export namespace Session {
       tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
       total: { input: 0, output: 0, cacheWrite: 0 },
       cost: 0,
+      ...(input.ephemeral && { ephemeral: true }),
+      ...(input.bare && { bare: true }),
     }
     log.info("created", result)
     await Sessions.write(result)
@@ -508,7 +526,7 @@ export namespace Session {
       info: result,
     })
     const cfg = await Config.get()
-    if (!result.parentID && (Flag.OPENCODE_AUTO_SHARE || cfg.share === "auto"))
+    if (attended(result) && (Flag.OPENCODE_AUTO_SHARE || cfg.share === "auto"))
       share(result.id)
         .then((share) => {
           update(result.id, (draft) => {
@@ -878,7 +896,7 @@ export namespace Session {
     ).catch(() => undefined)
     // An archived session stays out of the overview even when a late write lands
     // on it (the final message of a turn cancelled by stop-and-archive, for one).
-    if (session && !session.parentID && !session.time.archived)
+    if (session && attended(session) && !session.time.archived)
       void SessionRecent.touch({
         sessionID: session.id,
         directory: session.directory,

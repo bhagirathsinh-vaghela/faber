@@ -11,6 +11,7 @@ import { Filesystem } from "../util/filesystem"
 import { Identifier } from "../id/id"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
+import { Session } from "../session"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -68,7 +69,11 @@ export const ReadTool = Tool.define("read", {
       throw new Error(`File not found: ${filepath}`)
     }
 
-    const instructions = await InstructionPrompt.resolve(ctx.messages, filepath, ctx.messageID)
+    const bare = await Promise.resolve()
+      .then(() => Session.get(ctx.sessionID))
+      .then((session) => session.bare === true)
+      .catch(() => false)
+    const instructions = bare ? [] : await InstructionPrompt.resolve(ctx.messages, filepath, ctx.messageID)
 
     // Exclude SVG (XML-based) and vnd.fastbidsheet (.fbs extension, commonly FlatBuffers schema files)
     const isImage =

@@ -230,7 +230,7 @@ export namespace SessionPrompt {
     // window, which is exactly the mid-turn gap we want it to catch. The upshot
     // is the session reads warm the whole time it is busy, and a client that
     // Stopped it can't leave it cold once real work resumes.
-    if (!session.parentID) SessionPing.start(session.id)
+    if (Session.attended(session)) SessionPing.start(session.id)
     // Adopt before any pin read (createUserMessage pins otherwise): a child
     // must share its parent's snapshot, not the current generation.
     if (session.parentID) SessionPin.adopt(session.id, session.parentID)
@@ -797,7 +797,7 @@ export namespace SessionPrompt {
         snapshot,
       })
 
-      if (step === 1) {
+      if (step === 1 && !session.ephemeral) {
         SessionSummary.summarize({
           sessionID: sessionID,
           messageID: lastUser.id,
@@ -835,8 +835,8 @@ export namespace SessionPrompt {
         sessionID,
         system: {
           env: SystemPrompt.environment(),
-          globalInstructions: instructions.global,
-          projectInstructions: instructions.project,
+          globalInstructions: session.bare ? [] : instructions.global,
+          projectInstructions: session.bare ? [] : instructions.project,
           sessionContext: SystemPrompt.sessionContext({
             created: session.time.created,
             branch: session.branch,
@@ -888,7 +888,7 @@ export namespace SessionPrompt {
       continue
     }
     SessionCompaction.prune({ sessionID })
-    if (!session.parentID) {
+    if (Session.attended(session)) {
       // The daemon is already armed from turn start. On a clean finish leave it
       // armed (re-assert is a no-op) and mark unread. An aborted turn is torn
       // down elsewhere: a user Stop goes through the /abort route (stops the
@@ -1047,6 +1047,7 @@ export namespace SessionPrompt {
     )
     for (const item of registered) {
       if (denied.has(item.id)) continue
+      if (input.session.bare && BARE_EXCLUDED.has(item.id)) continue
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
         id: item.id as any,
@@ -1087,6 +1088,8 @@ export namespace SessionPrompt {
         },
       })
     }
+
+    if (input.session.bare) return tools
 
     const mcpTitles = await MCP.titles()
     for (const [key, item] of Object.entries(await MCP.tools())) {
@@ -1679,6 +1682,9 @@ export namespace SessionPrompt {
   const PLAN_REMINDER_MARKER = "<!-- plan-mode-reminder -->"
   const PLAN_EXIT_MARKER = "<!-- plan-mode-exit -->"
   const SUBAGENT_MARKER = "<!-- subagent-no-delegation -->"
+  // Built-ins that only exist to reach the user's setup, which a bare session
+  // leaves out along with the MCP tools and instructions.
+  const BARE_EXCLUDED = new Set(["skill", "mcp_search"])
   const CONCISE_MARKER = "<!-- concise-reminder -->"
   const CONCISE =
     "Keep replies concise: lead with the answer, no preamble, no recap. " +
@@ -1903,6 +1909,7 @@ export namespace SessionPrompt {
   // NOT wrapped in <system-reminder> (that would make provider/transform.ts
   // treat it as a meta message).
   async function insertMcpCatalog(input: { messages: MessageV2.WithParts[]; session: Session.Info }) {
+    if (input.session.bare) return
     const catalog = McpCatalog.build(await MCP.corpus())
 
     // Already reflects the current instance catalog (incl. both being empty).
@@ -1931,7 +1938,7 @@ export namespace SessionPrompt {
     // A subagent cannot spawn another subagent, so the list would be dead weight
     // in its prompt, and a subagent started without include_context is meant to
     // begin from a blank conversation.
-    if (input.session.parentID) return
+    if (!Session.attended(input.session)) return
     const scoped = await Config.projectAgents()
     if (scoped.size === 0) return
     const agents = (await Agent.list()).filter((a) => a.mode !== "primary" && scoped.has(a.name))
@@ -2057,7 +2064,7 @@ export namespace SessionPrompt {
     // behind it stays byte-identical. A subagent's output is read by its parent
     // model, not the user, so terseness tuned for a human reader would cost the
     // parent detail — hence the parentID guard.
-    if (!input.session.parentID && conciseDue(input.messages)) {
+    if (Session.attended(input.session) && conciseDue(input.messages)) {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
       if (concise) await persistReminder(input.messages, CONCISE, CONCISE_MARKER)
     }
@@ -2065,7 +2072,7 @@ export namespace SessionPrompt {
     // Subagents run for their parent's benefit, not the user's — the loop's
     // exit checklist and ledger are meaningless without a human deciding
     // whether to trust "done".
-    if (!input.session.parentID) await insertSkillReminders(input)
+    if (Session.attended(input.session)) await insertSkillReminders(input)
 
     // A subagent reaches for the agent tool, gets a denial back, and only then
     // does the work itself, having spent a turn learning it. The tool stays in
@@ -2676,7 +2683,7 @@ export namespace SessionPrompt {
 
   // The ordinal to generate at, or undefined to leave the title as it is.
   export function titleTrigger(session: Session.Info, history: MessageV2.WithParts[]) {
-    if (session.parentID) return
+    if (!Session.attended(session)) return
     if (!generatorOwns(session)) return
     // The last titleable prompt. Skipping ordinal-less infra switches (a plan
     // mode switch) is what stops one from reading as "no title" and suppressing

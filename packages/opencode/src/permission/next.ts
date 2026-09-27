@@ -124,11 +124,15 @@ export namespace PermissionNext {
       > = {}
 
       const autoAccept: Record<string, boolean> = {}
+      // Sessions with no human to answer a prompt. An `ask` is denied on the
+      // spot and recorded, so the caller learns what the run was refused.
+      const headless: Record<string, Denial[]> = {}
 
       return {
         pending,
         approved: stored,
         autoAccept,
+        headless,
       }
     },
     async (s) => {
@@ -154,6 +158,11 @@ export namespace PermissionNext {
           throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
         if (rule.action === "ask") {
           if (request.permission === "edit" && s.autoAccept[request.sessionID]) continue
+          const denials = s.headless[request.sessionID]
+          if (denials) {
+            denials.push({ permission: request.permission, patterns: request.patterns, metadata: request.metadata })
+            throw new DeniedError([{ permission: request.permission, pattern, action: "deny" }])
+          }
           const id = input.id ?? Identifier.ascending("permission")
           return new Promise<void>((resolve, reject) => {
             const info: Request = {
@@ -322,6 +331,25 @@ export namespace PermissionNext {
 
   export async function list() {
     return state().then((x) => Object.values(x.pending).map((x) => x.info))
+  }
+
+  export const Denial = z.object({
+    permission: z.string(),
+    patterns: z.string().array(),
+    metadata: z.record(z.string(), z.any()),
+  })
+  export type Denial = z.infer<typeof Denial>
+
+  // Registers a session as headless (every `ask` denied and recorded) and
+  // returns a function that ends it, handing back what was denied.
+  export async function headless(sessionID: string) {
+    const s = await state()
+    s.headless[sessionID] = []
+    return () => {
+      const denials = s.headless[sessionID] ?? []
+      delete s.headless[sessionID]
+      return denials
+    }
   }
 
   export async function autoAccepting() {

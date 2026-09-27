@@ -35,6 +35,12 @@ export namespace SessionProcessor {
     abort: AbortSignal
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
+    // A headless run is deleted when it ends, so nobody reverts or reviews its
+    // diffs: skip the git snapshots and the summary. Read once per processor.
+    const ephemeral = Promise.resolve()
+      .then(() => Session.get(input.sessionID))
+      .then((session) => session.ephemeral === true)
+      .catch(() => false)
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
@@ -357,7 +363,7 @@ export namespace SessionProcessor {
                 case "start-step":
                   {
                     using _t = log.time("snapshot.track", { phase: "start-step" })
-                    snapshot = await Snapshot.track()
+                    snapshot = (await ephemeral) ? undefined : await Snapshot.track()
                   }
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
@@ -412,7 +418,7 @@ export namespace SessionProcessor {
                   let finishSnapshot: string | undefined
                   {
                     using _t = log.time("snapshot.track", { phase: "finish-step" })
-                    finishSnapshot = await Snapshot.track()
+                    finishSnapshot = (await ephemeral) ? undefined : await Snapshot.track()
                   }
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
@@ -440,10 +446,11 @@ export namespace SessionProcessor {
                     }
                     snapshot = undefined
                   }
-                  SessionSummary.summarize({
-                    sessionID: input.sessionID,
-                    messageID: input.assistantMessage.parentID,
-                  })
+                  if (!(await ephemeral))
+                    SessionSummary.summarize({
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.parentID,
+                    })
                   if (await SessionCompaction.isOverflow({ message: input.assistantMessage, model: input.model })) {
                     needsCompaction = true
                   }

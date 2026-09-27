@@ -142,6 +142,8 @@ export type Session = {
   contextDate?: string
   contextBranch?: string
   activeSkills?: Array<string>
+  ephemeral?: boolean
+  bare?: boolean
 }
 
 export type OpenProject = {
@@ -5156,6 +5158,79 @@ export type OneshotResponses = {
 }
 
 export type OneshotResponse = OneshotResponses[keyof OneshotResponses]
+
+export type AgentHeadlessData = {
+  body?: {
+    /**
+     * Agent name, e.g. build or plan
+     */
+    agent: string
+    prompt: string
+    /**
+     * Extra instructions, sent ahead of the prompt
+     */
+    system?: string
+    /**
+     * provider/model; defaults to the agent's model, then the configured one
+     */
+    model?: string
+    /**
+     * Leave out AGENTS.md, MCP tools, and skills. Defaults to true.
+     */
+    bare?: boolean
+    timeoutMs?: number
+    /**
+     * Keep the session after the run, for debugging
+     */
+    keep?: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/agent/headless"
+}
+
+export type AgentHeadlessErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AgentHeadlessError = AgentHeadlessErrors[keyof AgentHeadlessErrors]
+
+export type AgentHeadlessResponses = {
+  /**
+   * The agent's final message, or an error result
+   */
+  200: {
+    result: string
+    finish?: string
+    num_turns: number
+    usage: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    cost: number
+    permission_denials: Array<{
+      permission: string
+      patterns: Array<string>
+      metadata: {
+        [key: string]: unknown
+      }
+    }>
+    model?: string
+    session_id?: string
+    is_error: boolean
+    errors: Array<string>
+  }
+}
+
+export type AgentHeadlessResponse = AgentHeadlessResponses[keyof AgentHeadlessResponses]
 
 export type PermissionReplyData = {
   body?: {

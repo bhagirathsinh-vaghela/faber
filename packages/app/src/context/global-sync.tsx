@@ -1092,6 +1092,7 @@ function createGlobalSync() {
       }
       case "session.created": {
         const info = event.properties.info
+        if (info.ephemeral) break
         const result = Binary.search(store.session, info.id, (s) => s.id)
         if (result.found) {
           setStore("session", result.index, reconcile(info))
@@ -1108,6 +1109,7 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const info = event.properties.info
+        if (info.ephemeral) break
         const result = Binary.search(store.session, info.id, (s) => s.id)
         // Within session.updated the root count moves only on the server's
         // archive transitions. An archived session can sit in the store (opened
@@ -1180,8 +1182,10 @@ function createGlobalSync() {
           )
         }
         cleanupSessionCaches(sessionID)
-        // An archived session was uncounted by its archive transition.
-        if (event.properties.info.parentID || event.properties.info.time.archived) break
+        // An archived session was uncounted by its archive transition, and a
+        // headless run was never counted.
+        const gone = event.properties.info
+        if (gone.parentID || gone.time.archived || gone.ephemeral) break
         setStore("sessionTotal", (value) => Math.max(0, value - 1))
         break
       }

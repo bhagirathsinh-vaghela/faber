@@ -688,3 +688,48 @@ test("ask - allows all patterns when all match allow rules", async () => {
     },
   })
 })
+
+test("ask - a headless session denies an ask immediately and records it, leaving allow and other sessions alone", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const ruleset: PermissionNext.Ruleset = [
+        { permission: "bash", pattern: "*", action: "ask" },
+        { permission: "read", pattern: "*", action: "allow" },
+      ]
+      const end = await PermissionNext.headless("session_headless")
+
+      await expect(
+        PermissionNext.ask({
+          sessionID: "session_headless",
+          permission: "bash",
+          patterns: ["rm -rf build"],
+          metadata: { command: "rm -rf build" },
+          always: [],
+          ruleset,
+        }),
+      ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+      await PermissionNext.ask({
+        sessionID: "session_headless",
+        permission: "read",
+        patterns: ["src/a.ts"],
+        metadata: {},
+        always: [],
+        ruleset,
+      })
+      void PermissionNext.ask({
+        sessionID: "session_attended",
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        always: [],
+        ruleset,
+      })
+
+      expect((await PermissionNext.list()).map((x) => x.sessionID)).toEqual(["session_attended"])
+      expect(end()).toEqual([{ permission: "bash", patterns: ["rm -rf build"], metadata: { command: "rm -rf build" } }])
+      expect(end()).toEqual([])
+    },
+  })
+})

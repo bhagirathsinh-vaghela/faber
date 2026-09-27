@@ -27,6 +27,7 @@ import { Global } from "../global"
 import { ProjectRoutes } from "./routes/project"
 import { SessionRoutes } from "./routes/session"
 import { OneshotRoutes } from "./routes/oneshot"
+import { HeadlessRoutes } from "./routes/headless"
 import { PtyRoutes } from "./routes/pty"
 import { McpRoutes } from "./routes/mcp"
 import { FileRoutes } from "./routes/file"
@@ -284,6 +285,7 @@ export namespace Server {
         .route("/experimental", ExperimentalRoutes())
         .route("/session", SessionRoutes())
         .route("/oneshot", OneshotRoutes())
+        .route("/agent/headless", HeadlessRoutes())
         .route("/permission", PermissionRoutes())
         .route("/preference", PreferenceRoutes())
         .route("/question", QuestionRoutes())
