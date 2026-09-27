@@ -111,7 +111,7 @@ describe("SubagentWatch", () => {
   test("fires after the turn ends and the debounce elapses", async () => {
     await withChild(async (child) => {
       const { outputs, task } = harness(child)
-      SubagentWatch.start({ child, task, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
+      SubagentWatch.start({ child, parentID: task.parentSessionID, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
 
       enterTurn(child.id)
       exitTurn(child.id)
@@ -127,7 +127,7 @@ describe("SubagentWatch", () => {
   test("waits for a running job before firing", async () => {
     await withChild(async (child) => {
       const { outputs, task } = harness(child)
-      SubagentWatch.start({ child, task, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
+      SubagentWatch.start({ child, parentID: task.parentSessionID, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
 
       enterTurn(child.id)
       job(child.id, "job-a", "running")
@@ -148,7 +148,7 @@ describe("SubagentWatch", () => {
   test("a turn add within the debounce cancels the pending fire", async () => {
     await withChild(async (child) => {
       const { outputs, task } = harness(child)
-      SubagentWatch.start({ child, task, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
+      SubagentWatch.start({ child, parentID: task.parentSessionID, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
 
       enterTurn(child.id)
       exitTurn(child.id)
@@ -169,7 +169,7 @@ describe("SubagentWatch", () => {
   test("an interruption blocks firing until a turn clears it", async () => {
     await withChild(async (child) => {
       const { outputs, task } = harness(child)
-      SubagentWatch.start({ child, task, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
+      SubagentWatch.start({ child, parentID: task.parentSessionID, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
 
       interrupt(child.id)
       await new Promise((r) => setTimeout(r, DEBOUNCE * 3))
@@ -188,7 +188,7 @@ describe("SubagentWatch", () => {
   test("fires only after two staggered jobs both finish", async () => {
     await withChild(async (child) => {
       const { outputs, task } = harness(child)
-      SubagentWatch.start({ child, task, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
+      SubagentWatch.start({ child, parentID: task.parentSessionID, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
 
       enterTurn(child.id)
       job(child.id, "job-a", "running")
@@ -212,7 +212,7 @@ describe("SubagentWatch", () => {
       const { outputs, task } = harness(child)
       SubagentWatch.start({
         child,
-        task,
+        parentID: task.parentSessionID,
         seed: new Set(["job:seed-1"]),
         debounceMs: DEBOUNCE,
         inject: async (o) => void outputs.push(o),
@@ -232,12 +232,12 @@ describe("SubagentWatch", () => {
   test("a second start for the same child is a no-op", async () => {
     await withChild(async (child) => {
       const { outputs, task } = harness(child)
-      SubagentWatch.start({ child, task, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
+      SubagentWatch.start({ child, parentID: task.parentSessionID, debounceMs: DEBOUNCE, inject: async (o) => void outputs.push(o) })
       expect(SubagentWatch.count()).toBe(1)
 
       // A second start with a DIFFERENT inject must be ignored entirely.
       const second: string[] = []
-      SubagentWatch.start({ child, task, debounceMs: DEBOUNCE, inject: async (o) => void second.push(o) })
+      SubagentWatch.start({ child, parentID: task.parentSessionID, debounceMs: DEBOUNCE, inject: async (o) => void second.push(o) })
       expect(SubagentWatch.count()).toBe(1)
 
       enterTurn(child.id)

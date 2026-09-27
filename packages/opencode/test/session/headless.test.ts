@@ -4,6 +4,7 @@ import { HeadlessAgent } from "../../src/session/headless"
 import { Session } from "../../src/session"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
+import { BackgroundSpawn } from "../../src/background/spawn"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 
@@ -84,7 +85,7 @@ function reply(blocks: Record<string, any>[][], stop: string) {
   ])
 }
 
-async function withProject(fn: (dir: string) => Promise<void>) {
+async function withProject(fn: (dir: string) => Promise<void>, permission: Record<string, string> = { bash: "ask" }) {
   const server = state.server!
   await using project = await tmpdir({
     git: true,
@@ -96,7 +97,7 @@ async function withProject(fn: (dir: string) => Promise<void>) {
           enabled_providers: ["anthropic"],
           model: `anthropic/${MODEL}`,
           provider: { anthropic: { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } },
-          permission: { bash: "ask" },
+          permission,
         }),
       )
       await Bun.write(path.join(dir, "AGENTS.md"), "PROJECT-RULES-MUST-NOT-LEAK")
@@ -173,6 +174,32 @@ describe("HeadlessAgent.run", () => {
       expect(kept.title).toBe("headless build")
     })
   }, 60_000)
+
+  test("waits for a bash job that outlives the turn, and returns the answer written after it lands", async () => {
+    await withProject(
+      async () => {
+        // serve starts this in production; it is what delivers a finished job's
+        // result into its session and wakes the turn.
+        const { BackgroundOrchestrator } = await import("../../src/background/orchestrator")
+        BackgroundOrchestrator.init()
+        const command = `sleep ${BackgroundSpawn.GRACE_MS / 1000 + 3}; echo JOB-DONE-9913`
+        respond(() => reply([toolUse("bash", { command, description: "slow step" })], "tool_use"))
+        respond(() => reply([text("Started it, waiting.")], "end_turn"))
+        const wake = respond(() => reply([text("The job printed JOB-DONE-9913.")], "end_turn"))
+
+        const outcome = await HeadlessAgent.run({ agent: "build", prompt: "Run the slow step." })
+
+        expect(JSON.stringify((await wake).body)).toContain("JOB-DONE-9913")
+        expect(outcome).toMatchObject({
+          result: "The job printed JOB-DONE-9913.",
+          num_turns: 3,
+          permission_denials: [],
+          is_error: false,
+        })
+      },
+      { bash: "allow" },
+    )
+  }, 120_000)
 
   test("rejects an unknown agent without creating a session", async () => {
     await withProject(async () => {

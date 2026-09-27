@@ -5,7 +5,6 @@ import { Session } from "../session"
 import { SessionBusy } from "../session/busy"
 import { SessionPrompt } from "../session/prompt"
 import { BackgroundJob } from "../background/job"
-import type { BackgroundSubagent } from "../background"
 import { Log } from "../util/log"
 
 // Watches a subagent's session for true quiescence and injects its result into
@@ -25,11 +24,13 @@ import { Log } from "../util/log"
 export namespace SubagentWatch {
   const log = Log.create({ service: "subagent-watch" })
 
-  export const DEFAULT_DEBOUNCE_MS = 3000
+  export const DEFAULT_DEBOUNCE_MS = 7000
 
   export interface StartInput {
     child: Session.Info
-    task: BackgroundSubagent.Info
+    // The session the result goes to, for the log line. Absent for a headless
+    // run, whose result goes to an HTTP caller rather than a session.
+    parentID?: string
     // The initial in-flight set, rebuilt from disk on a resume (running jobs +
     // an unfinished turn). A fresh launch seeds nothing and lets the events
     // populate it.
@@ -59,7 +60,7 @@ export namespace SubagentWatch {
     if (watchers.has(input.child.id)) return
 
     const childID = input.child.id
-    const parentID = input.task.parentSessionID
+    const parentID = input.parentID
     const directory = input.child.directory
     const debounceMs = input.debounceMs ?? DEFAULT_DEBOUNCE_MS
     const inflight = new Set(input.seed ?? [])

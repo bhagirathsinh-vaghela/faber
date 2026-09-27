@@ -65,7 +65,7 @@ async function runSubagentInBackground(input: BackgroundSubagentInput) {
   // never doubles a result the error path already delivered.
   SubagentWatch.start({
     child: session,
-    task,
+    parentID: task.parentSessionID,
     inject: (output) => {
       // Stamped HERE, not when prompt() returns: `time.completed` is what the
       // parent's notification reports as duration, and the watcher can fire long
@@ -291,7 +291,7 @@ export async function resumeSubagents(parentSessionID: string): Promise<number> 
     }
     SubagentWatch.start({
       child,
-      task,
+      parentID: task.parentSessionID,
       seed,
       inject: (output) => injectCompletionResult(task, output, undefined, true),
     })

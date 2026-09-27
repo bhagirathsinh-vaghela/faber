@@ -7,6 +7,7 @@ import { Log } from "@/util/log"
 import { Session } from "."
 import { SessionPrompt } from "./prompt"
 import { MessageV2 } from "./message-v2"
+import { SubagentWatch } from "@/tool/subagent-watch"
 
 // An agent run with no parent and no human: the loop a subagent runs, started
 // over HTTP, returning only its final message. Every permission prompt is
@@ -66,9 +67,8 @@ export namespace HeadlessAgent {
   }
 
   // A headless run cannot ask the user anything or switch modes on their behalf.
-  // It cannot delegate either: a subagent reports back after the turn ends, and
-  // the run returns (and is removed) when the turn ends, so the result would be
-  // lost.
+  // It does not delegate either: the watcher below waits on this session's own
+  // turns and jobs, and a child subagent is neither.
   const RULES: PermissionNext.Ruleset = [
     { permission: "question", pattern: "*", action: "deny" },
     { permission: "plan_enter", pattern: "*", action: "deny" },
@@ -93,7 +93,18 @@ export namespace HeadlessAgent {
       bare: input.bare ?? true,
     })
     const denials = await PermissionNext.headless(session.id)
-    const timer = setTimeout(() => SessionPrompt.cancel(session.id, "interrupted"), input.timeoutMs ?? DEFAULT_TIMEOUT)
+
+    // The turn can end while a bash job it started is still running; the job's
+    // result wakes the session for another turn. The run is over only when the
+    // subagent watcher sees the turn idle and no job running for its whole
+    // debounce window, which is the same rule a subagent's result waits on.
+    const quiet = Promise.withResolvers<void>()
+    SubagentWatch.start({ child: session, inject: async () => quiet.resolve() })
+    const deadline = setTimeout(() => {
+      SubagentWatch.stop(session.id)
+      quiet.reject(new Error(`timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`))
+      SessionPrompt.cancel(session.id, "interrupted")
+    }, input.timeoutMs ?? DEFAULT_TIMEOUT)
 
     const outcome = await SessionPrompt.prompt({
       sessionID: session.id,
@@ -104,9 +115,13 @@ export namespace HeadlessAgent {
         { type: "text" as const, text: input.prompt },
       ],
     })
+      .then(() => quiet.promise)
       .then(() => summarize(session.id))
       .catch((error) => failure([`headless: ${agent.name} in ${Instance.directory}: ${describe(error)}`]))
-      .finally(() => clearTimeout(timer))
+      .finally(() => {
+        clearTimeout(deadline)
+        SubagentWatch.stop(session.id)
+      })
 
     const permission_denials = denials()
     if (!input.keep) {
