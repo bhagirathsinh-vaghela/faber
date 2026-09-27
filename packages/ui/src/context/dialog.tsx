@@ -27,6 +27,8 @@ type Active = {
 }
 
 const Context = createContext<ReturnType<typeof init>>()
+// Per dialog, provided to its own content: whether close() has started for it.
+const Instance = createContext<() => boolean>()
 
 function init() {
   const [active, setActive] = createSignal<Active | undefined>()
@@ -145,7 +147,7 @@ function init() {
           >
             <Kobalte.Portal>
               <Kobalte.Overlay data-component="dialog-overlay" onClick={close} />
-              {element()}
+              <Instance.Provider value={closing}>{element()}</Instance.Provider>
             </Kobalte.Portal>
           </Kobalte>
         )
@@ -177,6 +179,16 @@ export function DialogProvider(props: ParentProps) {
       <div data-component="dialog-stack">{ctx.active?.node}</div>
     </Context.Provider>
   )
+}
+
+// For code inside a dialog's content: false once that dialog is dismissed
+// (close() started) or disposed (closed, or replaced by another dialog). A
+// request that outlives its dialog checks this before acting on the dialog.
+export function useDialogOpen() {
+  const closing = useContext(Instance)
+  let disposed = false
+  onCleanup(() => (disposed = true))
+  return () => !disposed && !closing?.()
 }
 
 export function useDialog() {

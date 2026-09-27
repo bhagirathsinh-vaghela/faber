@@ -1109,6 +1109,13 @@ function createGlobalSync() {
       case "session.updated": {
         const info = event.properties.info
         const result = Binary.search(store.session, info.id, (s) => s.id)
+        // Within session.updated the root count moves only on the server's
+        // archive transitions. An archived session can sit in the store (opened
+        // for viewing) and gets other updates (seen, rename), so neither store
+        // membership nor the archived field alone says whether this update
+        // changed the count.
+        if (!info.parentID && event.properties.archived) setStore("sessionTotal", (value) => Math.max(0, value - 1))
+        if (!info.parentID && event.properties.unarchived) setStore("sessionTotal", (value) => value + 1)
         if (info.time.archived) {
           if (result.found) {
             setStore(
@@ -1119,8 +1126,6 @@ function createGlobalSync() {
             )
           }
           cleanupSessionCaches(info.id)
-          if (info.parentID) break
-          setStore("sessionTotal", (value) => Math.max(0, value - 1))
           break
         }
         if (result.found) {
@@ -1175,7 +1180,8 @@ function createGlobalSync() {
           )
         }
         cleanupSessionCaches(sessionID)
-        if (event.properties.info.parentID) break
+        // An archived session was uncounted by its archive transition.
+        if (event.properties.info.parentID || event.properties.info.time.archived) break
         setStore("sessionTotal", (value) => Math.max(0, value - 1))
         break
       }
@@ -1771,6 +1777,9 @@ function createGlobalSync() {
     },
     reconnect,
     child,
+    // The directory's store when this client already holds one; unlike child,
+    // never creates one as a side effect.
+    existing: (directory: string) => children[directory] as (typeof children)[string] | undefined,
     disposeChild,
     evictSession,
     busy,

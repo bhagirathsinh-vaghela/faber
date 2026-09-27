@@ -34,6 +34,14 @@ export namespace Sessions {
         `INSERT OR IGNORE INTO session (id, project_id, time_created, time_updated, json) VALUES (?, ?, ?, ?, ?)`,
       ),
       listProject: db.query<{ json: string }, [string]>(`SELECT json FROM session WHERE project_id = ?`),
+      archived: db.query<{ archived: number | null }, [string]>(
+        `SELECT json_extract(json, '$.time.archived') AS archived FROM session WHERE id = ?`,
+      ),
+      listArchived: db.query<{ json: string }, []>(
+        `SELECT json FROM session
+         WHERE json_extract(json, '$.time.archived') > 0 AND json_extract(json, '$.parentID') IS NULL
+         ORDER BY json_extract(json, '$.time.archived') DESC`,
+      ),
       remove: db.query<void, [string]>(`DELETE FROM session WHERE id = ?`),
       db,
     }
@@ -108,6 +116,21 @@ export namespace Sessions {
 
   export async function listProject(projectID: string) {
     const rows = await open().then((q) => q.listProject.all(projectID))
+    return Promise.all(rows.map((r) => normalize(r.json)))
+  }
+
+  // Returns a synchronous reader of the stored archive flag, for a caller that
+  // must check it in the same tick as an action the check gates.
+  export async function archivedReader() {
+    const q = await open()
+    return (sessionID: string) => {
+      const stored = q.archived.get(sessionID)
+      return (stored?.archived ?? 0) > 0
+    }
+  }
+
+  export async function listArchived() {
+    const rows = await open().then((q) => q.listArchived.all())
     return Promise.all(rows.map((r) => normalize(r.json)))
   }
 

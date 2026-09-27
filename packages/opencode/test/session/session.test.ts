@@ -6,6 +6,7 @@ import { Identifier } from "../../src/id/id"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
 import { Instance } from "../../src/project/instance"
+import { Server } from "../../src/server/server"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
@@ -103,6 +104,249 @@ describe("session.remove", () => {
         expect((await Parts.list(messageID)).parts).toEqual([])
         expect(await Messages.read(messageID).catch(() => undefined)).toBeUndefined()
         expect(await Sessions.read(session.id).catch(() => undefined)).toBeUndefined()
+      },
+    })
+  })
+})
+
+describe("archive and unarchive", () => {
+  test("archiving evicts the recent entry and unarchiving restores it at its last-activity slot", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { SessionRecent } = await import("../../src/session/recent")
+        const session = await Session.create({})
+        const activity = Date.now() - 60_000
+        await Session.update(session.id, (draft) => {
+          draft.lastActivity = activity
+        })
+        await SessionRecent.touch({
+          sessionID: session.id,
+          directory: session.directory,
+          title: session.title,
+          updated: activity,
+        })
+        const entry = async () => (await SessionRecent.list()).find((row) => row.sessionID === session.id)
+
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(await entry()).toBeUndefined()
+
+        await Session.markUnseen(session.id)
+        await Session.update(session.id, (draft) => {
+          delete draft.time.archived
+        })
+        const restored = await entry()
+        expect(restored?.updated).toBe(activity)
+        expect(restored?.unseen).toBe(true)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("PATCH archived:null unarchives, a number archives, and an omitted field leaves it", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const session = await Session.create({})
+        const patch = (body: object) =>
+          Server.App().request(`/session/${session.id}?directory=${encodeURIComponent(projectRoot)}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          })
+
+        expect((await patch({ time: { archived: 5_000 } })).status).toBe(200)
+        expect((await Session.get(session.id)).time.archived).toBe(5_000)
+        expect((await patch({ title: "kept archived" })).status).toBe(200)
+        expect((await Session.get(session.id)).time.archived).toBe(5_000)
+        expect((await patch({ time: { archived: null } })).status).toBe(200)
+        expect((await Session.get(session.id)).time.archived).toBeUndefined()
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("unarchive restores a root only, and a never-archived session is left out", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { SessionRecent } = await import("../../src/session/recent")
+        const parent = await Session.create({})
+        const child = await Session.create({ parentID: parent.id })
+        const plain = await Session.create({})
+        const listed = async () =>
+          (await SessionRecent.list()).map((row) => row.sessionID).filter((id) => [child.id, plain.id].includes(id))
+
+        await Session.update(child.id, (draft) => {
+          draft.time.archived = 1_000
+        })
+        await Session.update(child.id, (draft) => {
+          delete draft.time.archived
+        })
+        await Session.update(plain.id, (draft) => {
+          delete draft.time.archived
+        })
+        expect(await listed()).toEqual([])
+
+        for (const s of [child, parent, plain]) await Session.remove(s.id)
+      },
+    })
+  })
+
+  test("a message written to an archived session does not put it back in the overview", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { SessionRecent } = await import("../../src/session/recent")
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+        await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "build",
+          model: { providerID: "anthropic", modelID: "claude-x" },
+        } as MessageV2.User)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+
+        expect((await SessionRecent.list()).some((row) => row.sessionID === session.id)).toBe(false)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("GET /session/:id/live reports a running turn even after the session is archived", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { SessionBusy } = await import("../../src/session/busy")
+        const session = await Session.create({})
+        const live = async () =>
+          (await Server.App().request(`/session/${session.id}/live?directory=${encodeURIComponent(projectRoot)}`)).json()
+
+        const other = path.join(projectRoot, "src")
+        const elsewhere = async () =>
+          (await Server.App().request(`/session/${session.id}/live?directory=${encodeURIComponent(other)}`)).json()
+
+        expect(await live()).toEqual({ live: false, busy: false, pinging: false, job: false })
+        SessionBusy.enter(session.id)
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+        expect(await live()).toEqual({ live: true, busy: true, pinging: false, job: false })
+        expect(await elsewhere()).toEqual({ live: true, busy: true, pinging: false, job: false })
+        SessionBusy.exit(session.id)
+        expect(await live()).toEqual({ live: false, busy: false, pinging: false, job: false })
+
+        const missing = await Server.App().request(`/session/ses_nope/live?directory=${encodeURIComponent(projectRoot)}`)
+        expect(missing.status).toBe(404)
+
+        await Session.remove(session.id)
+      },
+    })
+  }, 20_000)
+
+  test("unarchive restores the busy flags a turn set while archived and marks the event", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { SessionRecent } = await import("../../src/session/recent")
+        const { SessionBusy } = await import("../../src/session/busy")
+        const session = await Session.create({})
+        const events: string[] = []
+        const unsub = Bus.subscribe(Session.Event.Updated, (event) => {
+          if (event.properties.info.id !== session.id) return
+          events.push(event.properties.archived ? "archived" : event.properties.unarchived ? "unarchived" : "other")
+        })
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+        await Session.update(session.id, (draft) => {
+          draft.title = "renamed while archived"
+        })
+        SessionBusy.enter(session.id)
+
+        await Session.update(session.id, (draft) => {
+          delete draft.time.archived
+        })
+        await Session.update(session.id, (draft) => {
+          draft.title = "renamed after unarchive"
+        })
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        unsub()
+
+        const entry = (await SessionRecent.list()).find((row) => row.sessionID === session.id)
+        expect(entry?.busy).toBe(true)
+        expect(entry?.busySelf).toBe(true)
+        expect(events).toEqual(["archived", "other", "unarchived", "other"])
+
+        SessionBusy.exit(session.id)
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("restore skips the insert when the session was archived again before it landed", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { SessionRecent } = await import("../../src/session/recent")
+        const session = await Session.create({})
+        const input = {
+          sessionID: session.id,
+          directory: session.directory,
+          title: session.title,
+          updated: 1,
+          unseen: false,
+          flags: () => ({ busy: false, busySelf: false, busyDescendant: false }),
+          running: false,
+        }
+        const listed = async () => (await SessionRecent.list()).some((row) => row.sessionID === session.id)
+
+        await SessionRecent.restore({ ...input, still: () => false })
+        expect(await listed()).toBe(false)
+        await SessionRecent.restore({ ...input, still: () => true })
+        expect(await listed()).toBe(true)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("listArchived returns only archived root sessions, most recently archived first", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { Sessions } = await import("../../src/storage/sessions")
+        const older = await Session.create({})
+        const newer = await Session.create({})
+        const child = await Session.create({ parentID: newer.id })
+        const plain = await Session.create({})
+        await Session.update(older.id, (draft) => {
+          draft.time.archived = 1_000
+        })
+        await Session.update(newer.id, (draft) => {
+          draft.time.archived = 2_000
+        })
+        await Session.update(child.id, (draft) => {
+          draft.time.archived = 3_000
+        })
+
+        const ids = (await Sessions.listArchived())
+          .map((s) => s.id)
+          .filter((id) => [older.id, newer.id, child.id, plain.id].includes(id))
+        expect(ids).toEqual([newer.id, older.id])
+
+        for (const s of [child, older, newer, plain]) await Session.remove(s.id)
       },
     })
   })

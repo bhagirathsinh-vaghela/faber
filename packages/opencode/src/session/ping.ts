@@ -76,6 +76,18 @@ export namespace SessionPing {
     return [...active.keys()]
   }
 
+  // Whether a ping is actually scheduled: armed AND inside the cache window. An
+  // armed daemon whose window lapsed waits for the next turn and does nothing,
+  // which is the same line the overview draws between Live and Recent.
+  // Evaluated under the directory captured at arm time, as the daemon does: the
+  // session index is per directory, and only the turn's own one is kept current.
+  export async function scheduled(sessionID: string) {
+    const entry = active.get(sessionID)
+    if (!entry) return false
+    const next = await Instance.provide({ directory: entry.directory, fn: () => evaluate(sessionID) })
+    return next.type === "ping"
+  }
+
   export const Armed = z.object({
     sessionID: z.string(),
     directory: z.string(),
@@ -302,8 +314,9 @@ export namespace SessionPing {
   // so the overview snaps to the new deadline at once. No-op unless armed;
   // setPing itself no-ops when the value is unchanged.
   export async function refresh(sessionID: string) {
-    if (!active.has(sessionID)) return
-    const next = await evaluate(sessionID)
+    const entry = active.get(sessionID)
+    if (!entry) return
+    const next = await Instance.provide({ directory: entry.directory, fn: () => evaluate(sessionID) })
     if (next.type === "ping") void SessionRecent.setPing(sessionID, next.at)
   }
 

@@ -1,7 +1,10 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useLocation, useNavigate } from "@solidjs/router"
 import { base64Encode } from "@opencode-ai/util/encode"
+import type { Session } from "@opencode-ai/sdk/v2/client"
+import { Button } from "@opencode-ai/ui/button"
+import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
 import { CountdownRing } from "@opencode-ai/ui/countdown-ring"
@@ -15,6 +18,13 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { isStopKey, useStopSession } from "@/hooks/use-stop-session"
+import {
+  DialogDeleteSession,
+  DialogRenameSession,
+  useSessionActions,
+  type SessionRef,
+} from "@/hooks/use-session-actions"
+import { formatKeybind, matchKeybind, parseKeybind } from "@/context/command"
 import { attention, busy, flat } from "@/utils/attention"
 import { busyDelay } from "@opencode-ai/ui/util/busy-tint"
 
@@ -25,6 +35,33 @@ function getFilename(dir: string) {
 
 type Section = "attention" | "recent"
 type Entry = OverviewRow & { section: Section }
+type Item = OverviewRow & { section: Section | "archived" }
+
+const ORDER: Record<Item["section"], number> = { attention: 0, recent: 1, archived: 2 }
+const DELETE_KEYBIND = "mod+backspace,mod+delete"
+const deleteKeys = parseKeybind(DELETE_KEYBIND)
+
+// An archived session is out of the recent hub, which is what carries the live
+// flags, so the row shows none. Whether it is still running is asked of the
+// server when it matters: the delete confirm refuses a running one.
+function archivedRow(session: Session): Item {
+  return {
+    sessionID: session.id,
+    directory: session.directory,
+    title: session.title,
+    updated: session.time.archived ?? session.time.updated,
+    busy: false,
+    busySelf: false,
+    busyDescendant: false,
+    busyJob: false,
+    unseen: false,
+    question: false,
+    permission: false,
+    error: false,
+    interacted: session.time.archived ?? session.time.updated,
+    section: "archived",
+  }
+}
 
 // The overview freezes item ORDER at open so keyboard navigation can't land on
 // the wrong session when the server reorders the live list underneath. Content
@@ -40,6 +77,11 @@ type Entry = OverviewRow & { section: Section }
 // open was started somewhere else, so it is unviewed here and belongs behind
 // everything the user is actually cycling. Slotting either by the server's rank
 // is not on offer — held rows have drifted from that order by then.
+//
+// The one exception is a session the user just unarchived. That is not new
+// activity, so it goes back where its own last interaction ranks among the held
+// rows. `restore` marks the id before the unarchive request, since the server
+// republishes the hub before it answers.
 function useFrozen() {
   const recent = useRecent()
 
@@ -67,6 +109,20 @@ function useFrozen() {
     return map
   })
 
+  const restored = new Set<string>()
+  const slot = (ids: string[], id: string, current: Map<string, Entry>) => {
+    const at = current.get(id)?.interacted ?? 0
+    const index = ids.findIndex((other) => (current.get(other)?.interacted ?? 0) < at)
+    return index === -1 ? [...ids, id] : [...ids.slice(0, index), id, ...ids.slice(index)]
+  }
+  const place = (ids: string[], arrived: string[], current: Map<string, Entry>) =>
+    arrived
+      .filter((id) => restored.has(id))
+      .reduce(
+        (held, id) => slot(held, id, current),
+        [...arrived.filter((id) => !restored.has(id)), ...ids],
+      )
+
   const seed = live()
   const [order, setOrder] = createStore({
     attention: [...seed.values()].filter((e) => e.section === "attention").map((e) => e.sessionID),
@@ -92,9 +148,11 @@ function useFrozen() {
           if (entry.section === "attention") draft.attention.push(id)
           if (entry.section === "recent") arrived.push(id)
         }
-        // Prepended as a batch, not one unshift each: current runs newest-first,
-        // so unshifting in turn would reverse them against each other.
-        if (arrived.length) draft.recent = [...arrived, ...draft.recent]
+        // New arrivals are prepended as a batch, not one unshift each: current
+        // runs newest-first, so unshifting in turn would reverse them against
+        // each other. `place` does the prepend and slots restored ids.
+        if (arrived.length) draft.recent = place(draft.recent, arrived, current)
+        for (const id of arrived) restored.delete(id)
       }),
     )
   })
@@ -111,18 +169,24 @@ function useFrozen() {
     createMemo(() => {
       const current = live()
       const listed = new Set(order[section])
-      const held = order[section]
-        .map((id) => current.get(id))
-        .filter((entry): entry is Entry => entry !== undefined && entry.section === section)
-      const arrived = [...current.values()].filter((entry) => entry.section === section && !listed.has(entry.sessionID))
-      if (arrived.length === 0) return held
-      return section === "attention" ? [...held, ...arrived] : [...arrived, ...held]
+      const held = order[section].filter((id) => current.get(id)?.section === section)
+      const arrived = [...current.values()]
+        .filter((entry) => entry.section === section && !listed.has(entry.sessionID))
+        .map((entry) => entry.sessionID)
+      const ids =
+        arrived.length === 0 ? held : section === "attention" ? [...held, ...arrived] : place(held, arrived, current)
+      return ids.map((id) => current.get(id)).filter((entry): entry is Entry => entry !== undefined)
     })
 
-  return { attention: rows("attention"), recent: rows("recent") }
+  return {
+    attention: rows("attention"),
+    recent: rows("recent"),
+    restore: (id: string) => restored.add(id),
+    forget: (id: string) => restored.delete(id),
+  }
 }
 
-function Row(props: { row: OverviewRow; showTime?: boolean }) {
+function Row(props: { row: Item }) {
   const language = useLanguage()
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
@@ -148,7 +212,7 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
         {props.row.title || language.t("command.session.new")}
       </span>
       <span class="text-12-regular text-text-weak truncate">{getFilename(props.row.directory)}</span>
-      <Show when={props.showTime}>
+      <Show when={props.row.section !== "attention"}>
         <span class="text-12-regular text-text-weak shrink-0">
           {DateTime.fromMillis(props.row.updated).toRelative()}
         </span>
@@ -200,14 +264,16 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
           />
         )}
       </Show>
-      <ChipGroup>
-        <Chip
-          class={countdown() ? undefined : "opacity-35"}
-          icon={<CountdownRing fraction={countdown() ? recent.remaining(props.row) : 0} />}
-        >
-          {countdown() ?? "--"}
-        </Chip>
-      </ChipGroup>
+      <Show when={props.row.section !== "archived"}>
+        <ChipGroup>
+          <Chip
+            class={countdown() ? undefined : "opacity-35"}
+            icon={<CountdownRing fraction={countdown() ? recent.remaining(props.row) : 0} />}
+          >
+            {countdown() ?? "--"}
+          </Chip>
+        </ChipGroup>
+      </Show>
       <Show when={props.row.pingAt}>
         <IconButton
           icon="circle-ban-sign"
@@ -224,22 +290,100 @@ function Row(props: { row: OverviewRow; showTime?: boolean }) {
 // Both the home page (`/`) and DialogOverview render this body inside their
 // own frame, so any change to what the overview shows lands in both views. The
 // search input holds focus so the arrow keys drive the list and typing filters.
+//
+// `manage` turns on the per-row session menu, the delete shortcut, and the
+// archived section. Only the home page passes it: inside the overview dialog a
+// confirm would replace the dialog itself, and the Ctrl+Tab switcher commits on
+// Ctrl release.
 export function Overview(props: {
   onOpen?: () => void
   attention?: boolean
   advance?: boolean
   switcher?: boolean
   current?: string
+  manage?: boolean
 }) {
   const frozen = useFrozen()
   const sdk = useGlobalSDK()
+  const globalSync = useGlobalSync()
+  const dialog = useDialog()
+  const actions = useSessionActions()
   const location = useLocation<{ stopped?: string }>()
   const navigate = useNavigate()
   const runStop = useStopSession()
   const language = useLanguage()
   const mru = useMru()
 
-  const live = createMemo(() => [...frozen.attention(), ...frozen.recent()])
+  const [archive, setArchive] = createStore({ shown: false, rows: [] as Item[] })
+  // Fetched rather than streamed: archived sessions live outside the recent hub,
+  // so a membership change (archive, unarchive, delete) refetches the list. Only
+  // the latest request may write, and a local change bumps the counter too, so
+  // a snapshot taken before that change cannot resurrect a row it removed.
+  let seq = 0
+  const refetch = () => {
+    const mine = ++seq
+    return sdk.client.global
+      .archived()
+      .then((x) => (x.data ?? []).map(archivedRow))
+      .catch(() => [] as Item[])
+      .then((rows) => {
+        if (mine === seq) setArchive("rows", rows)
+      })
+  }
+  createEffect(
+    on(
+      () => archive.shown,
+      (shown) => {
+        if (shown) void refetch()
+      },
+    ),
+  )
+
+  const target = (row: OverviewRow): SessionRef => ({ id: row.sessionID, directory: row.directory, title: row.title })
+  // The dialog system restores focus on close to whatever held it when the
+  // dialog opened. Opening from search makes that search, so the arrow keys
+  // drive the list again afterwards rather than the row control that opened it.
+  const show = (element: () => JSX.Element) => {
+    refocus()
+    dialog.show(element)
+  }
+  const confirmDelete = (row: Item) =>
+    show(() => (
+      <DialogDeleteSession
+        session={target(row)}
+        guard
+        onDeleted={() => {
+          if (row.section === "archived") void refetch()
+        }}
+      />
+    ))
+  // Only rows shown as not live offer Archive, but a row can start working
+  // between the render and the choice; hiding it then would leave it running
+  // out of sight.
+  const archiveRow = async (row: Item) => {
+    if (!(await actions.idle(target(row), "archive"))) return
+    if ((await actions.archive(target(row))) && archive.shown) void refetch()
+  }
+  const unarchiveRow = (row: Item) => {
+    frozen.restore(row.sessionID)
+    seq++
+    setArchive("rows", (rows) => rows.filter((x) => x.sessionID !== row.sessionID))
+    return actions.unarchive(target(row)).then((ok) => {
+      if (!ok) frozen.forget(row.sessionID)
+      return refetch().then(() => {
+        if (!globalSync.data.recent_hub.some((e) => e.sessionID === row.sessionID)) frozen.forget(row.sessionID)
+      })
+    })
+  }
+
+  // A session briefly sits in both the hub and the fetched archive list while
+  // the two sources catch up; the hub copy wins so the list keys stay unique.
+  const live = createMemo<Item[]>(() => {
+    const hub = [...frozen.attention(), ...frozen.recent()]
+    if (!props.manage || !archive.shown) return hub
+    const ids = new Set(hub.map((row) => row.sessionID))
+    return [...hub, ...archive.rows.filter((row) => !ids.has(row.sessionID))]
+  })
 
   // Sections stay fixed — "Live sessions" always above "Recent sessions" —
   // because section is the primary sort key (attention=0, recent=1), so the
@@ -260,7 +404,7 @@ export function Overview(props: {
       .map((row, i) => ({
         row,
         i,
-        section: row.section === "attention" ? 0 : 1,
+        section: ORDER[row.section],
         mru: row.section === "attention" ? (rank.get(row.sessionID) ?? Infinity) : 0,
       }))
       .sort((a, b) => a.section - b.section || a.mru - b.mru || a.i - b.i)
@@ -275,8 +419,8 @@ export function Overview(props: {
   const switched = props.switcher
     ? untrack(() => {
         const rank = new Map(mru.order().map((id, i) => [id, i]))
-        const at = (row: Entry) => rank.get(row.sessionID) ?? rank.size
-        const section = (row: Entry) => (row.section === "attention" ? 0 : 1)
+        const at = (row: Item) => rank.get(row.sessionID) ?? rank.size
+        const section = (row: Item) => ORDER[row.section]
         return overview().toSorted((a, b) => section(a) - section(b) || at(a) - at(b))
       })
     : undefined
@@ -300,11 +444,12 @@ export function Overview(props: {
         ? (items().find((row) => row.sessionID !== stopped) ?? items()[0])
         : items()[0]
 
-  const open = (row: OverviewRow) => {
-    void sdk.client.session.seen({ directory: row.directory, sessionID: row.sessionID })
+  const open = (row: Item) => {
     // Opening from the overview is an explicit open — declare keep-warm intent
     // so the ping daemon arms. A plain reload/reconnect does not hit this path.
-    void sdk.client.session.arm({ directory: row.directory, sessionID: row.sessionID })
+    // An archived session is being looked at, not resumed, so it stays cold.
+    void sdk.client.session.seen({ directory: row.directory, sessionID: row.sessionID })
+    if (row.section !== "archived") void sdk.client.session.arm({ directory: row.directory, sessionID: row.sessionID })
     navigate(`/${base64Encode(row.directory)}/session/${row.sessionID}`)
     props.onOpen?.()
   }
@@ -321,6 +466,33 @@ export function Overview(props: {
 
   const attentionGroup = () => language.t("home.attention")
   const recentGroup = () => language.t("home.recentSessions")
+  const archivedGroup = () => language.t("home.archivedSessions")
+  const group = (row: Item) =>
+    ({ attention: attentionGroup, recent: recentGroup, archived: archivedGroup })[row.section]()
+
+  let container: HTMLDivElement | undefined
+  const search = () => container?.querySelector<HTMLInputElement>("[data-slot=list-search] input")
+  const refocus = () => search()?.focus()
+
+  // Never on a live row: the server deletes a busy session without complaint,
+  // and a live one is what the user is watching. The chord is taken only while
+  // the empty search box holds focus, which is where the arrow keys drive the
+  // list; typed text keeps it for the input (macOS Cmd+Backspace clears the
+  // line), and any other focus (a row's open menu, the toggle) keeps its own.
+  const remove = (event: KeyboardEvent) => {
+    if (dialog.active || !matchKeybind(deleteKeys, event)) return
+    const input = search()
+    if (!input || event.target !== input || input.value) return
+    const row = highlight()
+    if (!row || row.section === "attention") return
+    event.preventDefault()
+    event.stopPropagation()
+    confirmDelete(row)
+  }
+  if (props.manage) {
+    onMount(() => window.addEventListener("keydown", remove, true))
+    onCleanup(() => window.removeEventListener("keydown", remove, true))
+  }
 
   // A stop key fires the highlighted row's stop button: a full stop, matching
   // the session header's stopSession (abort the running turn AND drop the cache
@@ -376,22 +548,108 @@ export function Overview(props: {
     })
   }
 
+  const toggle = () => (
+    <Button
+      variant="ghost"
+      size="small"
+      class="shrink-0"
+      onClick={() => {
+        setArchive("shown", (shown) => !shown)
+        refocus()
+      }}
+    >
+      {archive.shown ? language.t("home.archived.hide") : language.t("home.archived.show")}
+    </Button>
+  )
+  // Built once: List reads its search options at several sites, and an element
+  // inside that object would be rebuilt on each read.
+  const searchAction = props.manage ? toggle() : undefined
+
+  const menu = (row: Item) => {
+    // Kobalte's DropdownMenuContent calls focus on its trigger right
+    // after onCloseAutoFocus returns, even when the handler prevents default,
+    // so a dialog opened from onSelect loses focus to it. The choice is held
+    // until the menu has closed and run a task later, when that refocus is done.
+    let pending: (() => void) | undefined
+    const choose = (run: () => void) => () => {
+      pending = run
+    }
+    const rename = choose(() => show(() => <DialogRenameSession session={target(row)} />))
+    const archiveOne = choose(() => void archiveRow(row).then(refocus))
+    const unarchiveOne = choose(() => void unarchiveRow(row).then(refocus))
+    const deleteOne = choose(() => confirmDelete(row))
+    return (
+      <DropdownMenu>
+        <DropdownMenu.Trigger
+          as={IconButton}
+          icon="dot-grid"
+          variant="ghost"
+          aria-label={language.t("common.moreOptions")}
+          class="size-(--control-height) rounded-md opacity-0 focus-visible:opacity-100 data-[expanded]:opacity-100 data-[expanded]:bg-surface-base-active any-pointer-coarse:opacity-100 [[data-slot=list-item-row]:is(:hover,[data-active=true])_&]:opacity-100"
+        />
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            onCloseAutoFocus={() => {
+              const run = pending ?? refocus
+              pending = undefined
+              setTimeout(run)
+            }}
+          >
+            <Show when={row.section !== "archived"}>
+              <DropdownMenu.Item onSelect={rename}>
+                <DropdownMenu.ItemLabel>{language.t("common.rename")}</DropdownMenu.ItemLabel>
+              </DropdownMenu.Item>
+            </Show>
+            <Show when={row.section === "recent"}>
+              <DropdownMenu.Item onSelect={archiveOne}>
+                <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
+              </DropdownMenu.Item>
+            </Show>
+            <Show when={row.section === "archived"}>
+              <DropdownMenu.Item onSelect={unarchiveOne}>
+                <DropdownMenu.ItemLabel>{language.t("common.unarchive")}</DropdownMenu.ItemLabel>
+              </DropdownMenu.Item>
+            </Show>
+            <Show when={row.section !== "attention"}>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item onSelect={deleteOne}>
+                <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
+                <span class="ml-auto pl-4 text-12-regular text-text-weak">{formatKeybind(DELETE_KEYBIND)}</span>
+              </DropdownMenu.Item>
+            </Show>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu>
+    )
+  }
+
   return (
     <Show
       when={!empty()}
-      fallback={<div class="px-3 py-6 text-14-regular text-text-weak">{language.t("home.empty.description")}</div>}
+      fallback={
+        <div class="flex items-center justify-between px-3 py-6">
+          <span class="text-14-regular text-text-weak">{language.t("home.empty.description")}</span>
+          <Show when={props.manage}>{toggle()}</Show>
+        </div>
+      }
     >
+      <div ref={container} class="contents">
       <List
         ref={(r) => (ref = r)}
         preserveActive
         initial={initial}
         onMove={setHighlight}
-        search={{ placeholder: language.t("common.search.placeholder"), autofocus: true }}
+        search={{
+          placeholder: language.t("common.search.placeholder"),
+          autofocus: true,
+          action: searchAction,
+        }}
         items={items}
         key={(row) => row.sessionID}
         filterKeys={["title", "directory"]}
-        groupBy={(row) => (row.section === "attention" ? attentionGroup() : recentGroup())}
-        groups={[attentionGroup(), recentGroup()]}
+        groupBy={group}
+        groups={[attentionGroup(), recentGroup(), ...(props.manage && archive.shown ? [archivedGroup()] : [])]}
+        actions={props.manage ? menu : undefined}
         onSelect={(row) => {
           if (row) open(row)
         }}
@@ -404,8 +662,9 @@ export function Overview(props: {
         // height, so scroll-into-view math doesn't drift off the estimate.
         class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_36px] any-pointer-coarse:[&_[data-slot=list-item]]:[contain-intrinsic-size:auto_56px]"
       >
-        {(row) => <Row row={row} showTime={row.section === "recent"} />}
+        {(row) => <Row row={row} />}
       </List>
+      </div>
     </Show>
   )
 }

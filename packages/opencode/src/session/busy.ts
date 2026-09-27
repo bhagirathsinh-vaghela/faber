@@ -186,6 +186,17 @@ export namespace SessionBusy {
     return false
   }
 
+  // The busy facts straight from the in-flight set, for a caller that cannot
+  // rely on the recent hub (a session archived or aged out of it). Turns are
+  // keyed by the directory the prompt request named, which need not match the
+  // record's spelling, so every directory is consulted and any busy one wins.
+  // Descendants are found through each directory's own edges, so a chain that
+  // crosses directories is seen only as far as its first hop.
+  export function effective(sessionID: string) {
+    const idle = { busy: false, busySelf: false, busyDescendant: false }
+    return [...self.keys()].map((directory) => facts(directory, sessionID)).find((f) => f.busy) ?? idle
+  }
+
   // Level-triggered reconcile snapshot for the 5s tick, scoped to ONE open
   // session's subtree (the only thing the tick heals: the open session + its
   // descendant subagents, whose children the hub can't carry). Given the open

@@ -34,7 +34,7 @@ export default function Home() {
         </Button>
       </div>
       <div class="flex-1 min-h-0 w-full max-w-2xl flex flex-col">
-        <Overview attention />
+        <Overview attention manage />
       </div>
     </div>
   )

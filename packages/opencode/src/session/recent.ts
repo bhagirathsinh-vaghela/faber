@@ -186,6 +186,13 @@ export namespace SessionRecent {
     > & { agent?: string },
   ) {
     await hydrate()
+    insert(input)
+    // Recency only — the order moved, no actionable flag changed. Let it ride the
+    // safety-net timer (or the next transition) instead of emitting per step.
+    publishLazy()
+  }
+
+  function insert(input: Parameters<typeof touch>[0]) {
     const prev = entries.get(input.sessionID)
     entries.delete(input.sessionID)
     entries.set(input.sessionID, {
@@ -208,9 +215,31 @@ export namespace SessionRecent {
       for (const entry of drop) entries.delete(entry.sessionID)
     }
     flush()
-    // Recency only — the order moved, no actionable flag changed. Let it ride the
-    // safety-net timer (or the next transition) instead of emitting per step.
-    publishLazy()
+  }
+
+  // An unarchive is a membership change the user just asked for, so it goes out
+  // at once instead of riding the recency-only lazy emit. Archiving dropped the
+  // entry, so the caller supplies what it held: the unread dot and the live
+  // flags. An entry older than the whole capped list is evicted by the insert.
+  //
+  // `still` and `flags` are called after the last await, in the same tick as
+  // the insert, so an archive that lands while the caller gathers the rest wins
+  // and the busy flags cannot be stale against the entry they are written to.
+  export async function restore(
+    input: Parameters<typeof touch>[0] & {
+      unseen: boolean
+      flags: () => { busy: boolean; busySelf: boolean; busyDescendant: boolean }
+      running: boolean
+      still: () => boolean
+    },
+  ) {
+    const { unseen, flags, running, still, ...fields } = input
+    await hydrate()
+    if (!still()) return
+    insert(fields)
+    const entry = entries.get(input.sessionID)
+    if (entry) Object.assign(entry, flags(), { unseen, busyJob: running })
+    publish()
   }
 
   // Live-flag flips. The entry is guaranteed present (the turn that set the flag

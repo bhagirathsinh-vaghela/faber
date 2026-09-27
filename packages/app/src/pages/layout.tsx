@@ -40,7 +40,7 @@ import { getFilename } from "@opencode-ai/util/path"
 import { Session, type Message, type TextPart } from "@opencode-ai/sdk/v2/client"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
-import { createStore, produce, reconcile } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import {
   DragDropProvider,
   DragDropSensors,
@@ -80,6 +80,8 @@ import { NotificationCenter } from "@/components/notification-center"
 import { Titlebar } from "@/components/titlebar"
 import { useServer } from "@/context/server"
 import { useLanguage } from "@/context/language"
+import { DialogDeleteSession, useSessionActions } from "@/hooks/use-session-actions"
+import { errorMessage as describeError } from "@/utils/error-message"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore, , ready] = persisted(
@@ -110,6 +112,7 @@ export default function Layout(props: ParentProps) {
   const command = useCommand()
   const theme = useTheme()
   const language = useLanguage()
+  const sessionActions = useSessionActions()
   const availableThemeEntries = createMemo(() => Object.entries(theme.themes()))
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
   const colorSchemeKey: Record<ColorScheme, "theme.scheme.system" | "theme.scheme.light" | "theme.scheme.dark"> = {
@@ -918,93 +921,35 @@ export default function Layout(props: ParentProps) {
     }
   }
 
-  async function archiveSession(session: Session) {
-    const [store, setStore] = globalSync.child(session.directory)
-    const sessions = store.session ?? []
-    const index = sessions.findIndex((s) => s.id === session.id)
-    const nextSession = sessions[index + 1] ?? sessions[index - 1]
-
-    await globalSDK.client.session.update({
-      directory: session.directory,
-      sessionID: session.id,
-      time: { archived: Date.now() },
-    })
-    setStore(
-      produce((draft) => {
-        const match = Binary.search(draft.session, session.id, (s) => s.id)
-        if (match.found) draft.session.splice(match.index, 1)
-      }),
-    )
-    if (session.id === params.id) {
-      if (nextSession) {
-        navigate(`/${params.dir}/session/${nextSession.id}`)
-      } else {
-        navigate(`/${params.dir}/session`)
-      }
-    }
-  }
-
-  async function deleteSession(session: Session) {
-    const [store, setStore] = globalSync.child(session.directory)
+  // Read before the removal, which splices the session out of the list this
+  // neighbour comes from. Visible roots only, so leaving never lands on a
+  // subagent or an archived session.
+  const neighbour = (session: Session) => {
+    const [store] = globalSync.child(session.directory)
     const sessions = (store.session ?? []).filter((s) => !s.parentID && !s.time?.archived)
     const index = sessions.findIndex((s) => s.id === session.id)
-    const nextSession = sessions[index + 1] ?? sessions[index - 1]
+    return sessions[index + 1] ?? sessions[index - 1]
+  }
 
-    const result = await globalSDK.client.session
-      .delete({ directory: session.directory, sessionID: session.id })
-      .then((x) => x.data)
-      .catch((err) => {
-        showToast({
-          title: language.t("session.delete.failed.title"),
-          description: errorMessage(err),
-        })
-        return false
-      })
+  const leave = (session: Session, next: Session | undefined) => {
+    if (session.id !== params.id) return
+    navigate(next ? `/${params.dir}/session/${next.id}` : `/${params.dir}/session`)
+  }
 
-    if (!result) return
+  async function archiveSession(session: Session) {
+    const next = neighbour(session)
+    if (await sessionActions.archive(session)) leave(session, next)
+  }
 
-    setStore(
-      produce((draft) => {
-        const removed = new Set<string>([session.id])
-
-        const byParent = new Map<string, string[]>()
-        for (const item of draft.session) {
-          const parentID = item.parentID
-          if (!parentID) continue
-          const existing = byParent.get(parentID)
-          if (existing) {
-            existing.push(item.id)
-            continue
-          }
-          byParent.set(parentID, [item.id])
-        }
-
-        const stack = [session.id]
-        while (stack.length) {
-          const parentID = stack.pop()
-          if (!parentID) continue
-
-          const children = byParent.get(parentID)
-          if (!children) continue
-
-          for (const child of children) {
-            if (removed.has(child)) continue
-            removed.add(child)
-            stack.push(child)
-          }
-        }
-
-        draft.session = draft.session.filter((s) => !removed.has(s.id))
-      }),
-    )
-
-    if (session.id === params.id) {
-      if (nextSession) {
-        navigate(`/${params.dir}/session/${nextSession.id}`)
-      } else {
-        navigate(`/${params.dir}/session`)
-      }
-    }
+  function confirmDelete(session: Session) {
+    let next: Session | undefined
+    dialog.show(() => (
+      <DialogDeleteSession
+        session={session}
+        before={() => (next = neighbour(session))}
+        onDeleted={() => leave(session, next)}
+      />
+    ))
   }
 
   command.register(() => {
@@ -1305,15 +1250,6 @@ export default function Layout(props: ParentProps) {
     globalSync.project.meta(project.worktree, { name })
   }
 
-  async function renameSession(session: Session, next: string) {
-    if (next === session.title) return
-    await globalSDK.client.session.update({
-      directory: session.directory,
-      sessionID: session.id,
-      title: next,
-    })
-  }
-
   async function finishClose(directory: string) {
     const index = layout.projects.list().findIndex((x) => x.worktree === directory)
     // index === -1 means a concurrent SSE update already dropped this project; a
@@ -1358,14 +1294,7 @@ export default function Layout(props: ParentProps) {
     }
   }
 
-  const errorMessage = (err: unknown) => {
-    if (err && typeof err === "object" && "data" in err) {
-      const data = (err as { data?: { message?: string } }).data
-      if (data?.message) return data.message
-    }
-    if (err instanceof Error) return err.message
-    return language.t("common.requestFailed")
-  }
+  const errorMessage = (err: unknown) => describeError(err, language.t("common.requestFailed"))
 
   const deleteWorkspace = async (root: string, directory: string) => {
     if (directory === root) return
@@ -1477,33 +1406,6 @@ export default function Layout(props: ParentProps) {
         },
       ],
     })
-  }
-
-  function DialogDeleteSession(props: { session: Session }) {
-    const handleDelete = async () => {
-      await deleteSession(props.session)
-      dialog.close()
-    }
-
-    return (
-      <Dialog title={language.t("session.delete.title")} fit>
-        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
-          <div class="flex flex-col gap-1">
-            <span class="text-14-regular text-text-strong">
-              {language.t("session.delete.confirm", { name: props.session.title })}
-            </span>
-          </div>
-          <div class="flex justify-end gap-2">
-            <Button variant="ghost" size="large" onClick={() => dialog.close()}>
-              {language.t("common.cancel")}
-            </Button>
-            <Button variant="primary" size="large" onClick={handleDelete}>
-              {language.t("session.delete.button")}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-    )
   }
 
   function DialogDeleteWorkspace(props: { root: string; directory: string }) {
@@ -1908,7 +1810,7 @@ export default function Layout(props: ParentProps) {
           <InlineEditor
             id={`session:${props.session.id}`}
             value={() => props.session.title}
-            onSave={(next) => renameSession(props.session, next)}
+            onSave={(next) => sessionActions.rename(props.session, next)}
             class="text-14-regular text-text-strong grow-1 min-w-0 overflow-hidden text-ellipsis truncate"
             displayClass="text-14-regular text-text-strong grow-1 min-w-0 overflow-hidden text-ellipsis truncate"
             stopPropagation
@@ -2014,7 +1916,7 @@ export default function Layout(props: ParentProps) {
                   <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
                 </DropdownMenu.Item>
                 <DropdownMenu.Separator />
-                <DropdownMenu.Item onSelect={() => dialog.show(() => <DialogDeleteSession session={props.session} />)}>
+                <DropdownMenu.Item onSelect={() => confirmDelete(props.session)}>
                   <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
                 </DropdownMenu.Item>
               </DropdownMenu.Content>

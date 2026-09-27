@@ -30,6 +30,120 @@ export type RecentSession = {
   pinged?: number
 }
 
+export type FileDiff = {
+  file: string
+  old?: string
+  before?: string
+  after?: string
+  additions: number
+  deletions: number
+  status?: "added" | "deleted" | "modified" | "renamed"
+}
+
+export type PermissionAction = "allow" | "deny" | "ask"
+
+export type PermissionRule = {
+  permission: string
+  pattern: string
+  action: PermissionAction
+}
+
+export type PermissionRuleset = Array<PermissionRule>
+
+export type Session = {
+  id: string
+  slug: string
+  projectID: string
+  directory: string
+  parentID?: string
+  spawn?: {
+    parent: string
+    directory: string
+    at: number
+  }
+  current?: {
+    agent?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    variant?: string
+  }
+  summary?: {
+    additions: number
+    deletions: number
+    files: number
+    diffs?: Array<FileDiff>
+  }
+  share?: {
+    url: string
+  }
+  title: string
+  titleGenerated?: string
+  titleOrdinal?: number
+  prompts?: number
+  version: string
+  branch?: string
+  time: {
+    created: number
+    updated: number
+    compacting?: number
+    archived?: number
+    injected?: number
+  }
+  permission?: PermissionRuleset
+  revert?: {
+    messageID: string
+    partID?: string
+    snapshot?: string
+    diff?: string
+  }
+  ping?: {
+    count: number
+    time: number
+    pending?: boolean
+  }
+  cache?: {
+    lastRequestAt: number
+  }
+  keepWarm?: boolean
+  unseen?: boolean
+  seen?: {
+    at: number
+  }
+  lastActivity?: number
+  tokens?: {
+    input: number
+    cacheRead: number
+    cacheWrite: number
+    output: number
+    reasoning: number
+    cacheWrite5m?: number
+    cacheWrite1h?: number
+  }
+  total?: {
+    input: number
+    output: number
+    cacheWrite: number
+  }
+  cost?: number
+  cacheMarkers?: Array<number>
+  systemBlockCount?: number
+  cacheProbeIndex?: number
+  cacheProbeMessageID?: string
+  allowedTools?: Array<
+    | string
+    | {
+        id: string
+        paths: Array<string>
+      }
+  >
+  mcpCatalogText?: string
+  contextDate?: string
+  contextBranch?: string
+  activeSkills?: Array<string>
+}
+
 export type OpenProject = {
   id: string
   worktree: string
@@ -134,16 +248,6 @@ export type EventFileEdited = {
   properties: {
     file: string
   }
-}
-
-export type FileDiff = {
-  file: string
-  old?: string
-  before?: string
-  after?: string
-  additions: number
-  deletions: number
-  status?: "added" | "deleted" | "modified" | "renamed"
 }
 
 export type UserMessage = {
@@ -568,6 +672,16 @@ export type EventRecentUpdated = {
   }
 }
 
+export type EventSessionWorking = {
+  type: "session.working"
+  properties: {
+    sessionID: string
+    busy: boolean
+    busySelf: boolean
+    busyDescendant: boolean
+  }
+}
+
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
@@ -832,16 +946,6 @@ export type EventJobUpdated = {
   }
 }
 
-export type EventSessionWorking = {
-  type: "session.working"
-  properties: {
-    sessionID: string
-    busy: boolean
-    busySelf: boolean
-    busyDescendant: boolean
-  }
-}
-
 export type BackgroundSubagent = {
   id: string
   parentSessionID: string
@@ -996,110 +1100,6 @@ export type EventSessionPromptInterrupted = {
   }
 }
 
-export type PermissionAction = "allow" | "deny" | "ask"
-
-export type PermissionRule = {
-  permission: string
-  pattern: string
-  action: PermissionAction
-}
-
-export type PermissionRuleset = Array<PermissionRule>
-
-export type Session = {
-  id: string
-  slug: string
-  projectID: string
-  directory: string
-  parentID?: string
-  spawn?: {
-    parent: string
-    directory: string
-    at: number
-  }
-  current?: {
-    agent?: string
-    model?: {
-      providerID: string
-      modelID: string
-    }
-    variant?: string
-  }
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: Array<FileDiff>
-  }
-  share?: {
-    url: string
-  }
-  title: string
-  titleGenerated?: string
-  titleOrdinal?: number
-  prompts?: number
-  version: string
-  branch?: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-    archived?: number
-    injected?: number
-  }
-  permission?: PermissionRuleset
-  revert?: {
-    messageID: string
-    partID?: string
-    snapshot?: string
-    diff?: string
-  }
-  ping?: {
-    count: number
-    time: number
-    pending?: boolean
-  }
-  cache?: {
-    lastRequestAt: number
-  }
-  keepWarm?: boolean
-  unseen?: boolean
-  seen?: {
-    at: number
-  }
-  lastActivity?: number
-  tokens?: {
-    input: number
-    cacheRead: number
-    cacheWrite: number
-    output: number
-    reasoning: number
-    cacheWrite5m?: number
-    cacheWrite1h?: number
-  }
-  total?: {
-    input: number
-    output: number
-    cacheWrite: number
-  }
-  cost?: number
-  cacheMarkers?: Array<number>
-  systemBlockCount?: number
-  cacheProbeIndex?: number
-  cacheProbeMessageID?: string
-  allowedTools?: Array<
-    | string
-    | {
-        id: string
-        paths: Array<string>
-      }
-  >
-  mcpCatalogText?: string
-  contextDate?: string
-  contextBranch?: string
-  activeSkills?: Array<string>
-}
-
 export type EventSessionCreated = {
   type: "session.created"
   properties: {
@@ -1111,6 +1111,8 @@ export type EventSessionUpdated = {
   type: "session.updated"
   properties: {
     info: Session
+    archived?: boolean
+    unarchived?: boolean
   }
 }
 
@@ -1358,6 +1360,7 @@ export type Event =
   | EventMessagePartUpdated
   | EventMessagePartRemoved
   | EventRecentUpdated
+  | EventSessionWorking
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
   | EventPermissionAsked
@@ -1376,7 +1379,6 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventJobUpdated
-  | EventSessionWorking
   | EventBackgroundSubagentCreated
   | EventBackgroundSubagentProgress
   | EventBackgroundSubagentCompleted
@@ -3018,6 +3020,22 @@ export type GlobalRecentResponses = {
 
 export type GlobalRecentResponse = GlobalRecentResponses[keyof GlobalRecentResponses]
 
+export type GlobalArchivedData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/archived"
+}
+
+export type GlobalArchivedResponses = {
+  /**
+   * Archived sessions
+   */
+  200: Array<Session>
+}
+
+export type GlobalArchivedResponse = GlobalArchivedResponses[keyof GlobalArchivedResponses]
+
 export type GlobalProjectsOpenData = {
   body?: never
   path?: never
@@ -3950,6 +3968,44 @@ export type SessionPingArmedResponses = {
 
 export type SessionPingArmedResponse = SessionPingArmedResponses[keyof SessionPingArmedResponses]
 
+export type SessionLiveData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/live"
+}
+
+export type SessionLiveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionLiveError = SessionLiveErrors[keyof SessionLiveErrors]
+
+export type SessionLiveResponses = {
+  /**
+   * Liveness facts
+   */
+  200: {
+    live: boolean
+    busy: boolean
+    pinging: boolean
+    job: boolean
+  }
+}
+
+export type SessionLiveResponse = SessionLiveResponses[keyof SessionLiveResponses]
+
 export type SessionDeleteData = {
   body?: never
   path: {
@@ -4020,7 +4076,10 @@ export type SessionUpdateData = {
   body?: {
     title?: string
     time?: {
-      archived?: number
+      /**
+       * Epoch ms to archive; null unarchives
+       */
+      archived?: number | null
     }
     cacheProbeIndex?: number
     cacheProbeMessageID?: string

@@ -16,6 +16,8 @@ import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
 import { SessionPing } from "../../session/ping"
 import { SessionRecent } from "../../session/recent"
+import { Session } from "../../session"
+import { Sessions } from "../../storage/sessions"
 import { SessionBusy } from "../../session/busy"
 import { Event as ServerEvent } from "../event"
 import { HEARTBEAT_MS } from "@opencode-ai/util/stream"
@@ -96,6 +98,28 @@ export const GlobalRoutes = lazy(() =>
       }),
       async (c) => {
         return c.json(await SessionRecent.list())
+      },
+    )
+    .get(
+      "/archived",
+      describeRoute({
+        summary: "Get archived sessions",
+        description:
+          "Archived root sessions across every project, most recently archived first. Not scoped by directory: each record carries its own.",
+        operationId: "global.archived",
+        responses: {
+          200: {
+            description: "Archived sessions",
+            content: {
+              "application/json": {
+                schema: resolver(Session.Info.array()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await Sessions.listArchived())
       },
     )
     .get(

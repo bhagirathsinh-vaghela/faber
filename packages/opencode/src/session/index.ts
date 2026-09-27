@@ -18,6 +18,7 @@ import { Db } from "../storage/db"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionRecent } from "./recent"
+import { SessionBusy } from "./busy"
 import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
 import { SessionPrompt } from "./prompt"
@@ -304,6 +305,11 @@ export namespace Session {
       "session.updated",
       z.object({
         info: Info,
+        // Set on the one update that set or cleared time.archived, so a client
+        // counts the session out of or back into its list exactly once; any
+        // other update to an archived session (seen, rename) carries neither.
+        archived: z.boolean().optional(),
+        unarchived: z.boolean().optional(),
       }),
     ),
     // The per-step token/cost refresh fires many times a turn (once per
@@ -573,9 +579,16 @@ export namespace Session {
     // otherwise re-broadcasts an identical session object to every client. Snapshot
     // before/after and skip the publish when the serialized session is unchanged.
     let changed = true
+    let unarchived = false
+    let archived = false
+    let updated = 0
     const result = await Sessions.update(id, (draft) => {
       const before = JSON.stringify(draft)
+      const was = !!draft.time.archived
+      updated = draft.time.updated
       editor(draft)
+      unarchived = was && !draft.time.archived
+      archived = !was && !!draft.time.archived
       if (options?.touch !== false) {
         draft.time.updated = Date.now()
       }
@@ -585,6 +598,28 @@ export namespace Session {
     // An archived session leaves the overview; eviction is idempotent, so
     // evicting on any archived update (not just the transition) is harmless.
     if (result.time.archived) void SessionRecent.remove(id)
+    // Archiving evicted the entry and only a real turn re-adds one, so an
+    // unarchive restores it at its last-activity slot rather than the front.
+    else if (unarchived && !result.parentID) {
+      // Busy and job flips made while it was archived had no entry to land on,
+      // so the restored entry reads them from their sources. The fallback slot
+      // is time.updated as read before the edit, which a touching update would
+      // bump. An armed ping re-publishes its deadline onto the new entry.
+      const { BackgroundJob } = await import("@/background/job")
+      const { SessionPing } = await import("./ping")
+      const archivedNow = await Sessions.archivedReader()
+      await SessionRecent.restore({
+        sessionID: result.id,
+        directory: result.directory,
+        title: result.title,
+        updated: result.lastActivity ?? updated,
+        unseen: result.unseen === true,
+        flags: () => SessionBusy.effective(result.id),
+        running: await BackgroundJob.running(result.id),
+        still: () => !archivedNow(result.id),
+      })
+      void SessionPing.refresh(result.id)
+    }
     // A rename (or auto-title) must reach the overview, which reads the recent
     // entry's title — session.updated only refreshes the open session's view.
     // setTitle no-ops when unchanged, so calling it on every update is cheap.
@@ -592,6 +627,8 @@ export namespace Session {
     if (changed)
       Bus.publish(Event.Updated, {
         info: result,
+        ...(unarchived ? { unarchived: true } : {}),
+        ...(archived ? { archived: true } : {}),
       })
     return result
   }
@@ -839,7 +876,9 @@ export namespace Session {
       },
       { touch: false },
     ).catch(() => undefined)
-    if (session && !session.parentID)
+    // An archived session stays out of the overview even when a late write lands
+    // on it (the final message of a turn cancelled by stop-and-archive, for one).
+    if (session && !session.parentID && !session.time.archived)
       void SessionRecent.touch({
         sessionID: session.id,
         directory: session.directory,

@@ -15,6 +15,8 @@ import { OpenProjects } from "../../project/open"
 import { SessionPin } from "../../session/pin"
 import { SessionStatus } from "@/session/status"
 import { SessionBusy } from "@/session/busy"
+import { BackgroundJob } from "@/background/job"
+import { Sessions } from "@/storage/sessions"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
 import { Agent } from "../../agent/agent"
@@ -145,6 +147,38 @@ export const SessionRoutes = lazy(() =>
       }),
       async (c) => {
         return c.json(SessionPing.list())
+      },
+    )
+    .get(
+      "/:sessionID/live",
+      describeRoute({
+        summary: "Get session liveness",
+        description:
+          "Whether the server is working on this session right now: its own turn or a descendant's, a ping scheduled inside the cache window, or a running background job. Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.",
+        operationId: "session.live",
+        responses: {
+          200: {
+            description: "Liveness facts",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({ live: z.boolean(), busy: z.boolean(), pinging: z.boolean(), job: z.boolean() }),
+                ),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string() })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        // An unknown id is a 404, never a "not live".
+        await Sessions.read(sessionID)
+        const busy = SessionBusy.effective(sessionID).busy
+        const pinging = await SessionPing.scheduled(sessionID)
+        const job = await BackgroundJob.running(sessionID)
+        return c.json({ live: busy || pinging || job, busy, pinging, job })
       },
     )
     .get(
@@ -350,7 +384,12 @@ export const SessionRoutes = lazy(() =>
           title: z.string().optional(),
           time: z
             .object({
-              archived: z.number().optional(),
+              archived: z
+                .number()
+                .positive()
+                .nullable()
+                .optional()
+                .meta({ description: "Epoch ms to archive; null unarchives" }),
             })
             .optional(),
           cacheProbeIndex: z.number().optional(),
@@ -367,7 +406,8 @@ export const SessionRoutes = lazy(() =>
             // The generator only writes over a title it still matches, so
             // leaving titleGenerated alone is what makes a rename stick.
             if (updates.title !== undefined) session.title = updates.title
-            if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
+            if (updates.time?.archived === null) delete session.time.archived
+            if (typeof updates.time?.archived === "number") session.time.archived = updates.time.archived
             if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
             if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID
           },

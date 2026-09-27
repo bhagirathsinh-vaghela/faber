@@ -56,6 +56,7 @@ import type {
   FindSymbolsResponses,
   FindTextResponses,
   FormatterStatusResponses,
+  GlobalArchivedResponses,
   GlobalConfigGetResponses,
   GlobalConfigUpdateErrors,
   GlobalConfigUpdateResponses,
@@ -191,6 +192,8 @@ import type {
   SessionInitErrors,
   SessionInitResponses,
   SessionListResponses,
+  SessionLiveErrors,
+  SessionLiveResponses,
   SessionMessageErrors,
   SessionMessageResponses,
   SessionMessagesErrors,
@@ -461,6 +464,18 @@ export class Global extends HeyApiClient {
   public recent<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalRecentResponses, GlobalRecentErrors, ThrowOnError>({
       url: "/global/recent",
+      ...options,
+    })
+  }
+
+  /**
+   * Get archived sessions
+   *
+   * Archived root sessions across every project, most recently archived first. Not scoped by directory: each record carries its own.
+   */
+  public archived<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalArchivedResponses, unknown, ThrowOnError>({
+      url: "/global/archived",
       ...options,
     })
   }
@@ -1329,6 +1344,36 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Get session liveness
+   *
+   * Whether the server is working on this session right now: its own turn or a descendant's, a ping scheduled inside the cache window, or a running background job. Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.
+   */
+  public live<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionLiveResponses, SessionLiveErrors, ThrowOnError>({
+      url: "/session/{sessionID}/live",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Delete session
    *
    * Delete a session and permanently remove all associated data, including messages and history.
@@ -1399,7 +1444,10 @@ export class Session extends HeyApiClient {
       directory?: string
       title?: string
       time?: {
-        archived?: number
+        /**
+         * Epoch ms to archive; null unarchives
+         */
+        archived?: number | null
       }
       cacheProbeIndex?: number
       cacheProbeMessageID?: string

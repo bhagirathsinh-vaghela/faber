@@ -76,6 +76,7 @@ import { createOpencodeClient, type Message, type Part } from "@opencode-ai/sdk/
 import { Binary } from "@opencode-ai/util/binary"
 import { showToast } from "@opencode-ai/ui/toast"
 import { base64Encode } from "@opencode-ai/util/encode"
+import { errorMessage as describeError } from "@/utils/error-message"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -1531,14 +1532,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
-    const errorMessage = (err: unknown) => {
-      if (err && typeof err === "object" && "data" in err) {
-        const data = (err as { data?: { message?: string } }).data
-        if (data?.message) return data.message
-      }
-      if (err instanceof Error) return err.message
-      return language.t("common.requestFailed")
-    }
+    const errorMessage = (err: unknown) => describeError(err, language.t("common.requestFailed"))
 
     // A prompt queues behind a running turn, but shell takes the session's
     // in-flight handle exclusively and the server rejects it outright. Say so

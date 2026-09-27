@@ -156,12 +156,13 @@ export namespace BackgroundJob {
   // a reconcile pass, and a kill), and one predicate answering to three copies
   // is a predicate that holds in two of them.
   export async function settled(sessionID: string) {
-    const running = await list().then((jobs) =>
-      jobs.some((job) => job.sessionID === sessionID && job.status === "running"),
-    )
-    if (running) return
+    if (await running(sessionID)) return
     const { SessionRecent } = await import("@/session/recent")
     void SessionRecent.setBusyJob(sessionID, false)
+  }
+
+  export async function running(sessionID: string) {
+    return list().then((jobs) => jobs.some((job) => job.sessionID === sessionID && job.status === "running"))
   }
 
   // v7 is time-ordered, so listing sorts oldest-first for free and the
