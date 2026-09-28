@@ -97,16 +97,18 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         const map = new Map<string, number>()
         let n = 0
         for (const message of props.data.message[sessionID]) {
-          // One number per message. Every text/tool part of an assistant
-          // message shares that message's number, so a text block and the
-          // tool it called in the same step read as one block, not two.
+          // One number per message. Every text/tool/thinking part of an assistant
+          // message shares that message's number, so the thinking that led into a
+          // step, its text, and the tool it called read as one block, not several.
+          // Thinking alone does not earn a number: a step with nothing else has
+          // no block to belong to.
           const parts = props.data.part[message.id] ?? []
           const numbered = message.role === "user" || parts.some((p) => p.type === "text" || p.type === "tool")
           if (!numbered) continue
           const num = ++n
           map.set(message.id, num)
           for (const part of parts) {
-            if (part.type === "text" || part.type === "tool") map.set(part.id, num)
+            if (part.type === "text" || part.type === "tool" || part.type === "reasoning") map.set(part.id, num)
           }
         }
         result[sessionID] = map
