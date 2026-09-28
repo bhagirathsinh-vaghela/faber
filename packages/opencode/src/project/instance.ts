@@ -42,6 +42,10 @@ export const Instance = {
       return input.fn()
     })
   },
+  // Whether an instance for the directory exists, without creating one.
+  cached(directory: string) {
+    return cache.has(directory)
+  },
   get directory() {
     return context.use().directory
   },

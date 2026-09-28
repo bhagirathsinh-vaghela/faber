@@ -74,7 +74,6 @@ import { useRevertHost } from "@/context/revert"
 import { DialogStash } from "@/components/dialog-stash"
 import { DialogSubagents } from "@/components/dialog-subagents"
 import { DialogOverview } from "@/components/dialog-overview"
-import { DialogPending } from "@/components/dialog-pending"
 import { useComments, type LineComment } from "@/context/comments"
 import { useQuestion } from "@/context/question"
 import { extractPromptFromParts } from "@/utils/prompt"
@@ -1430,15 +1429,6 @@ export default function Page() {
         if (parent) return dialog.show(() => <DialogSubagents sessionID={parent} current={params.id} switcher />)
         dialog.show(() => <DialogOverview switcher current={params.id} />)
       },
-    },
-    {
-      id: "subagent.pending",
-      title: language.t("command.subagent.pending"),
-      description: language.t("command.subagent.pending.description"),
-      category: language.t("command.category.session"),
-      keybind: "alt+d",
-      disabled: !params.id,
-      onSelect: () => dialog.show(() => <DialogPending />),
     },
     {
       id: "reader.toggle",

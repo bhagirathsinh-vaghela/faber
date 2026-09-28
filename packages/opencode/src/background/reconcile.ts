@@ -1,8 +1,10 @@
 import { watch, type FSWatcher } from "fs"
 import path from "path"
 import { Log } from "@/util/log"
+import { Owed } from "@/storage/owed"
 import { BackgroundJob } from "./job"
 import { BackgroundProcess } from "./process"
+import { BackgroundSpawn } from "./spawn"
 
 // The server-side brain. Every decision about a job is taken here, by reading
 // records off disk and looking at the process table — never from in-memory
@@ -56,14 +58,30 @@ export namespace BackgroundReconcile {
     if (job.status !== "running") return undefined
 
     const verdict = await BackgroundJob.assess(job, now)
+    // A live handle settles the job, this process's or the launcher's: a pass
+    // that settled it too would pay an inline result a second time, and a
+    // record still being launched has no identity yet and would read as
+    // orphaned. This process's own launches are in its held set; one naming
+    // this process but no longer held has already let its handle go. Asked
+    // only where a verdict acts, and a launcher the process table could not
+    // answer for counts as holding.
+    const held = async () => {
+      if (BackgroundSpawn.holding(job.id)) return true
+      const launcher = job.launcher
+      if (!launcher || (launcher.pid === process.pid && launcher.boot === BackgroundProcess.boot)) return false
+      return (await BackgroundProcess.alive(launcher)) !== false
+    }
 
     // A record naming no process describes a spawn that never happened: the
     // server died between writing it and the spawn returning. Nothing to kill,
     // nothing to collect.
     if (verdict.type === "orphaned") {
+      if (await held()) return { type: "kept", job }
       await BackgroundJob.remove(job.id)
+      await Owed.remove(job.id)
       return { type: "reaped", job, reason: "orphaned" }
     }
+    if (verdict.type === "finished" && (await held())) return { type: "kept", job }
 
     // The job finished while nobody was watching, which is the ordinary case
     // after a restart. Its output and exit code are already on disk. A job that
@@ -99,14 +117,17 @@ export namespace BackgroundReconcile {
     if ((await alive(job.sessionID, BackgroundJob.owner(job))) === false) {
       await BackgroundProcess.kill(verdict.identity)
       await BackgroundJob.remove(job.id)
+      await Owed.remove(job.id)
       return { type: "reaped", job, reason: "owner-gone" }
     }
 
     // Past its hard deadline and still alive. The job's own watchdog should
     // have ended it, so reaching here means the watchdog itself was killed;
-    // this is the backstop for that, not the primary mechanism.
+    // this is the backstop for that, not the primary mechanism. A held job's
+    // handle settles it once the kill lands.
     if (verdict.type === "expired") {
       await BackgroundProcess.kill(verdict.identity)
+      if (await held()) return { type: "kept", job }
       const completed = await settle(job, "killed", await BackgroundJob.exit(job.id), now)
       if (!completed) return { type: "kept", job }
       return { type: "expired", job: completed }

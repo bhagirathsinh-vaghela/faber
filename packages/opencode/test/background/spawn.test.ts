@@ -21,6 +21,13 @@ async function run(command: string, options: Partial<BackgroundSpawn.Input> = {}
   return spawn
 }
 
+// The exit watcher is process-global and every test file shares the process,
+// so a test installs its own and puts back whatever it replaced.
+async function watching<T>(handler: BackgroundSpawn.OnExit, fn: () => Promise<T>) {
+  const previous = BackgroundSpawn.watch(handler)
+  return fn().finally(() => BackgroundSpawn.watch(previous))
+}
+
 afterEach(async () => {
   for (const id of spawned.splice(0)) {
     const job = await BackgroundJob.get(id)
@@ -95,32 +102,36 @@ describe("BackgroundSpawn exit watcher", () => {
   // already held in this process, so its exit costs no poller and no worker.
   test("fires the moment a backgrounded job exits", async () => {
     const seen: string[] = []
-    BackgroundSpawn.watch((job) => void seen.push(job.id))
+    await watching(
+      (job) => void seen.push(job.id),
+      async () => {
+        // Must outlive the grace window, or it returns inline and the watcher is
+        // correctly never involved.
+        const spawn = await run("echo done-late; sleep 7")
+        expect(spawn.type).toBe("background")
 
-    // Must outlive the grace window, or it returns inline and the watcher is
-    // correctly never involved.
-    const spawn = await run("echo done-late; sleep 7")
-    expect(spawn.type).toBe("background")
+        const started = Date.now()
+        while (!seen.includes(spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
 
-    const started = Date.now()
-    while (!seen.includes(spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
-
-    expect(seen).toContain(spawn.job.id)
-    BackgroundSpawn.watch(() => {})
+        expect(seen).toContain(spawn.job.id)
+      },
+    )
   }, 35_000)
 
   test("hands the watcher a settled record carrying the exit code", async () => {
     const settled: Array<{ id: string; exit: number | undefined; status: string }> = []
-    BackgroundSpawn.watch((job) => void settled.push({ id: job.id, exit: job.exit, status: job.status }))
+    await watching(
+      (job) => void settled.push({ id: job.id, exit: job.exit, status: job.status }),
+      async () => {
+        const spawn = await run("sleep 7; exit 5")
+        const started = Date.now()
+        while (!settled.some((j) => j.id === spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
 
-    const spawn = await run("sleep 7; exit 5")
-    const started = Date.now()
-    while (!settled.some((j) => j.id === spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
-
-    const match = settled.find((j) => j.id === spawn.job.id)
-    expect(match?.status).toBe("exited")
-    expect(match?.exit).toBe(5)
-    BackgroundSpawn.watch(() => {})
+        const match = settled.find((j) => j.id === spawn.job.id)
+        expect(match?.status).toBe("exited")
+        expect(match?.exit).toBe(5)
+      },
+    )
   }, 35_000)
 
   // A job the watchdog kills on its own deadline settles `killed`, not `exited`.
@@ -129,33 +140,103 @@ describe("BackgroundSpawn exit watcher", () => {
   // record as `timeout`; classifying it `exited` here would render it "failed".
   test("hands the watcher a killed record when the job hits its deadline", async () => {
     const settled: Array<{ id: string; status: string }> = []
-    BackgroundSpawn.watch((job) => void settled.push({ id: job.id, status: job.status }))
+    await watching(
+      (job) => void settled.push({ id: job.id, status: job.status }),
+      async () => {
+        // Outlives the grace window so it backgrounds, and outlives its own 6s hard
+        // deadline so the watchdog fires. Both bounds are real: at 5s grace and an
+        // 8s sleep, the deadline lands after the window and before the command ends.
+        const spawn = await run("sleep 8", { hard: 6_000 })
+        expect(spawn.type).toBe("background")
 
-    // Outlives the grace window so it backgrounds, and outlives its own 6s hard
-    // deadline so the watchdog fires. Both bounds are real: at 5s grace and an
-    // 8s sleep, the deadline lands after the window and before the command ends.
-    const spawn = await run("sleep 8", { hard: 6_000 })
-    expect(spawn.type).toBe("background")
+        const started = Date.now()
+        while (!settled.some((j) => j.id === spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
 
-    const started = Date.now()
-    while (!settled.some((j) => j.id === spawn.job.id) && Date.now() - started < 15_000) await Bun.sleep(100)
-
-    expect(settled.find((j) => j.id === spawn.job.id)?.status).toBe("killed")
-    expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("killed")
-    BackgroundSpawn.watch(() => {})
+        expect(settled.find((j) => j.id === spawn.job.id)?.status).toBe("killed")
+        expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("killed")
+      },
+    )
   }, 35_000)
 
   test("does not fire for a job that returned inline", async () => {
     const seen: string[] = []
-    BackgroundSpawn.watch((job) => void seen.push(job.id))
+    await watching(
+      (job) => void seen.push(job.id),
+      async () => {
+        const spawn = await run("echo quick")
+        await Bun.sleep(500)
 
-    const spawn = await run("echo quick")
-    await Bun.sleep(500)
-
-    expect(seen).not.toContain(spawn.job.id)
-    expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("exited")
-    BackgroundSpawn.watch(() => {})
+        expect(seen).not.toContain(spawn.job.id)
+        expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("exited")
+      },
+    )
   })
+
+  test("returns the handler it replaced, so a caller can put it back", () => {
+    const first: BackgroundSpawn.OnExit = () => {}
+    const original = BackgroundSpawn.watch(first)
+    expect(BackgroundSpawn.watch(original)).toBe(first)
+  })
+})
+
+// A job this process is launching or holds a live handle for is settled by that
+// handle. A reconcile pass that reached it first would reap a record whose
+// identity is not written yet, or settle an inline job and pay it twice.
+describe("BackgroundSpawn: a reconcile pass leaves a held job to its handle", () => {
+  // The record is put into the state a pass would misjudge (no identity yet, as
+  // mid-launch; a dead identity, as between the exit and the handle's settle)
+  // and restored after, so the handle still settles and cleans it up.
+  async function misjudged(state: BackgroundJob.Info["process"]) {
+    const { BackgroundReconcile } = await import("../../src/background/reconcile")
+    const spawn = await run(`sleep ${BackgroundSpawn.GRACE_MS / 1000 + 2}`)
+    expect(spawn.type).toBe("background")
+    const real = (await BackgroundJob.get(spawn.job.id))!.process
+    await BackgroundJob.update(spawn.job.id, (draft) => void (draft.process = state))
+
+    try {
+      const pass = await BackgroundReconcile.run({ alive: () => true })
+      const record = await BackgroundJob.get(spawn.job.id)
+      return { action: pass.actions.find((entry) => entry.job.id === spawn.job.id)?.type, record }
+    } finally {
+      await BackgroundJob.update(spawn.job.id, (draft) => void (draft.process = real))
+    }
+  }
+
+  test("a held record with no identity yet is not reaped as orphaned", async () => {
+    const seen = await misjudged(undefined)
+    expect(seen.action).toBe("kept")
+    expect(seen.record?.status).toBe("running")
+  }, 25_000)
+
+  test("a held record whose process reads as gone is not settled by the pass", async () => {
+    const seen = await misjudged({ pid: 2 ** 22 + 12345, start: "gone", pgid: 2 ** 22 + 12345 })
+    expect(seen.action).toBe("kept")
+    expect(seen.record?.status).toBe("running")
+  }, 25_000)
+
+  test("an inline job is released once it returns", async () => {
+    const spawn = await run("echo quick")
+    expect(spawn.type).toBe("inline")
+    expect(BackgroundSpawn.holding(spawn.job.id)).toBe(false)
+  })
+
+  test("a background job stays held until its exit settles it", async () => {
+    const settled: string[] = []
+    await watching(
+      (job) => void settled.push(job.id),
+      async () => {
+        const spawn = await run(`sleep ${BackgroundSpawn.GRACE_MS / 1000 + 1}`)
+        expect(spawn.type).toBe("background")
+        expect(BackgroundSpawn.holding(spawn.job.id)).toBe(true)
+
+        const started = Date.now()
+        while (!settled.includes(spawn.job.id) && Date.now() - started < 10_000) await Bun.sleep(50)
+
+        expect(settled).toEqual([spawn.job.id])
+        expect(BackgroundSpawn.holding(spawn.job.id)).toBe(false)
+      },
+    )
+  }, 25_000)
 })
 
 describe("BackgroundSpawn durability", () => {
@@ -241,29 +322,29 @@ describe("BackgroundSpawn stdin", () => {
 describe("BackgroundSpawn: one job settles once", () => {
   test("the exit watcher stays silent for a job another pass already settled", async () => {
     const fired: string[] = []
-    BackgroundSpawn.watch(async (job) => {
-      fired.push(job.id)
-    })
+    await watching(
+      async (job) => void fired.push(job.id),
+      async () => {
+        const spawn = await run(`sleep ${BackgroundSpawn.GRACE_MS / 1000 + 1}`)
+        expect(spawn.type).toBe("background")
 
-    const spawn = await run(`sleep ${BackgroundSpawn.GRACE_MS / 1000 + 1}`)
-    expect(spawn.type).toBe("background")
+        // Exactly what a sweep does when it finds the process gone: take the record
+        // out of `running` before the exit handle wakes.
+        await BackgroundJob.update(spawn.job.id, (draft) => {
+          draft.status = "exited"
+          draft.exit = 0
+          draft.time.completed = Date.now()
+        })
 
-    // Exactly what a sweep does when it finds the process gone: take the record
-    // out of `running` before the exit handle wakes.
-    await BackgroundJob.update(spawn.job.id, (draft) => {
-      draft.status = "exited"
-      draft.exit = 0
-      draft.time.completed = Date.now()
-    })
+        const started = Date.now()
+        while (Date.now() - started < 4_000) {
+          if (fired.includes(spawn.job.id)) break
+          await Bun.sleep(50)
+        }
 
-    const started = Date.now()
-    while (Date.now() - started < 4_000) {
-      if (fired.includes(spawn.job.id)) break
-      await Bun.sleep(50)
-    }
-
-    expect(fired.filter((id) => id === spawn.job.id).length).toBe(0)
-    BackgroundSpawn.watch(() => {})
+        expect(fired.filter((id) => id === spawn.job.id).length).toBe(0)
+      },
+    )
   }, 25_000)
 })
 

@@ -1,10 +1,12 @@
-import { describe, expect, test, afterEach } from "bun:test"
+import { describe, expect, test, afterAll, afterEach } from "bun:test"
 import { Instance } from "../../src/project/instance"
 import { Session } from "../../src/session"
 import { BackgroundJob } from "../../src/background/job"
 import { BackgroundProcess } from "../../src/background/process"
 import { BackgroundOrchestrator } from "../../src/background/orchestrator"
 import { BackgroundReconcile } from "../../src/background/reconcile"
+import { Recovery } from "../../src/session/recovery"
+import { Owed } from "../../src/storage/owed"
 import { tmpdir } from "../fixture/fixture"
 
 const created: string[] = []
@@ -55,8 +57,11 @@ afterEach(async () => {
     const job = await BackgroundJob.get(id)
     if (job?.process) await BackgroundProcess.kill(job.process)
     await BackgroundJob.remove(id)
+    await Owed.remove(id)
   }
 })
+
+afterAll(() => Recovery.stop())
 
 // A boot sweep must not reap a job whose session cannot be resolved yet:
 // liveness is rebuilt after the sweep runs, so every session reads as absent
@@ -194,111 +199,108 @@ describe("BackgroundJob.owner", () => {
   })
 })
 
-// The record settles whether or not its result lands, and reconcile returns
-// early on a settled record, so a send that finds no session is the one path
-// that loses finished work for good. It cannot be retried (the same lookup
-// fails identically every pass), so the stamp is what keeps it from being lost
-// in silence.
+// A settled job's result is a debt Recovery pays. When the session it belongs to
+// is gone there is nowhere to pay it, so the record is stamped lost and the debt
+// dropped: the result is recorded as unread rather than retried forever.
 describe("BackgroundOrchestrator: a result with nowhere to go", () => {
-  // The signal the stamp depends on. `send` reports whether the result landed,
-  // and every caller reaches it through one guard, so a false here is what
-  // separates a lost result from a delivered one.
-  test("a delivery that finds no session reports false", async () => {
-    const project = await tmpdir({ git: true })
-    const { BackgroundDeliver } = await import("../../src/background/deliver")
-    expect(
-      await BackgroundDeliver.send(
-        {
-          id: BackgroundJob.id(),
-          sessionID: "ses_orchestrator_undeliverable",
-          directory: project.path,
-          project: project.path,
-          command: "echo done",
-          description: "undeliverable job",
-          status: "exited",
-          exit: 0,
-          time: { created: Date.now(), hard: Date.now() + 600_000, completed: Date.now() },
-        },
-        "completed",
-        false,
-      ),
-    ).toBe(false)
-  })
-
-  // Driven through a RUNNING job whose process is gone, which is what a pass
-  // assesses as finished and then delivers. A record already stored as exited
-  // is never reconciled at all, so it would pass this whether the guard exists
-  // or not.
-  //
-  // Depends on the settle window: a fresh test process is always inside it, so
-  // sweep() defers the ownership verdict and the record reaches delivery rather
-  // than being judged first. True by construction for any fresh process, and
-  // named here because a test that stops reaching the branch it covers still
-  // passes.
-  test("stamps a record whose result could not be delivered", async () => {
-    const project = await tmpdir({ git: true })
+  // A running record whose process has gone, owed to `sessionID`: what a sweep
+  // finds after a job ended while nothing held its handle.
+  async function ended(sessionID: string, project: string, record: Partial<BackgroundJob.Info> = {}) {
     const proc = spawnJob("true")
     await proc.exited
     const id = BackgroundJob.id()
     created.push(id)
     await BackgroundJob.write({
       id,
-      sessionID: "ses_orchestrator_undeliverable",
-      directory: project.path,
-      project: project.path,
+      sessionID,
+      directory: project,
+      project,
       command: "true",
       description: "undeliverable job",
       status: "running",
       time: { created: Date.now(), hard: Date.now() + 600_000 },
       process: { pid: proc.pid, start: "gone", pgid: proc.pid },
+      ...record,
     })
+    await Owed.add(id, sessionID)
+    return id
+  }
 
+  // Driven through sweep(), so the test fails if a sweep that settles a job
+  // stops waking recovery to pay it.
+  test("stamps the record lost and drops the debt", async () => {
+    const project = await tmpdir({ git: true })
+    const id = await ended("ses_orchestrator_undeliverable", project.path)
+
+    Recovery.start()
     await BackgroundOrchestrator.sweep()
 
-    const stamped = await BackgroundJob.get(id)
-    expect(stamped?.status).toBe("exited")
-    expect(stamped?.time.lost).toBeGreaterThan(0)
+    const job = await BackgroundJob.get(id)
+    expect(job?.status).toBe("exited")
+    expect(job?.time.lost).toBeGreaterThan(0)
+    expect(await Owed.pending("ses_orchestrator_undeliverable")).toBe(false)
   }, 20_000)
 
-  // A delivery has two ways to fail and only one is a return value: a session
-  // that will not resolve reports false, while anything past that point throws.
-  // An uncaught throw is one job costing every job behind it in the pass its
-  // delivery, plus the cleanup that runs after the loop.
-  test("a record that makes delivery throw does not stop the jobs behind it", async () => {
+  // A delivery that throws is kept for later passes and recorded lost only
+  // after repeated failures; the jobs behind it in the same pass are reached.
+  test("a job whose delivery throws does not stop the jobs behind it", async () => {
     const project = await tmpdir({ git: true })
-    const ids = await Promise.all(
-      // The middle record carries a sessionID that is not a valid identifier,
-      // so resolving it throws inside send rather than returning false.
-      ["ses_orchestrator_ok_first", "not-a-session-id", "ses_orchestrator_ok_last"].map(async (sessionID) => {
-        const proc = spawnJob("true")
-        await proc.exited
-        const id = BackgroundJob.id()
-        created.push(id)
-        await BackgroundJob.write({
-          id,
-          sessionID,
-          directory: project.path,
-          project: project.path,
-          command: "true",
-          description: "sibling job",
-          status: "running",
-          time: { created: Date.now(), hard: Date.now() + 600_000 },
-          process: { pid: proc.pid, start: "gone", pgid: proc.pid },
-        })
-        return id
-      }),
-    )
+    const first = await ended("ses_orchestrator_before_throw", project.path)
+    // No command: rendering the result throws inside the delivery.
+    const middle = await ended("ses_orchestrator_throws", project.path, { command: undefined })
+    const last = await ended("ses_orchestrator_after_throw", project.path)
 
+    Recovery.start()
     await BackgroundOrchestrator.sweep()
 
-    // Every record reached delivery and was stamped, including the two behind
-    // the throwing one.
-    for (const id of ids) {
-      const job = await BackgroundJob.get(id)
-      expect(job?.status).toBe("exited")
-      expect(job?.time.lost).toBeGreaterThan(0)
-    }
-  }, 30_000)
+    for (const id of [first, last]) expect((await BackgroundJob.get(id))?.time.lost).toBeGreaterThan(0)
+    expect(await Owed.pending("ses_orchestrator_before_throw")).toBe(false)
+    expect(await Owed.pending("ses_orchestrator_after_throw")).toBe(false)
+    expect((await BackgroundJob.get(middle))?.time.lost).toBeUndefined()
+    expect(await Owed.pending("ses_orchestrator_throws")).toBe(true)
+
+    await Recovery.poke()
+    await Recovery.poke()
+
+    expect((await BackgroundJob.get(middle))?.time.lost).toBeGreaterThan(0)
+    expect(await Owed.pending("ses_orchestrator_throws")).toBe(false)
+  }, 20_000)
+})
+
+// A reaped record takes its debt with it: a debt naming no record holds its
+// session open (a subagent's report waits on it) until recovery notices.
+describe("BackgroundReconcile: a reaped job's debt", () => {
+  test("goes with a record that names no process", async () => {
+    const id = BackgroundJob.id()
+    created.push(id)
+    await BackgroundJob.write({
+      id,
+      sessionID: "ses_orchestrator_orphan",
+      directory: "/tmp",
+      command: "sleep 30",
+      description: "orphaned job",
+      status: "running",
+      time: { created: Date.now(), hard: Date.now() + 600_000 },
+    })
+    await Owed.add(id, "ses_orchestrator_orphan")
+
+    const pass = await BackgroundReconcile.run({ alive: () => true })
+
+    expect(pass.actions.find((entry) => entry.job.id === id)?.type).toBe("reaped")
+    expect(await Owed.pending("ses_orchestrator_orphan")).toBe(false)
+  })
+
+  test("goes with a job whose owner is gone", async () => {
+    const owner = await owned()
+    const proc = spawnJob("sleep 30")
+    const job = await store(proc.pid, owner)
+    await Owed.add(job.id, owner.id)
+
+    const pass = await BackgroundReconcile.run({ alive: gone })
+
+    expect(pass.actions.find((entry) => entry.job.id === job.id)?.type).toBe("reaped")
+    expect(await Owed.pending(owner.id)).toBe(false)
+  }, 20_000)
 })
 
 describe("BackgroundOrchestrator settle window", () => {

@@ -98,8 +98,6 @@ export const dict = {
   "command.subagent.list.description": "Show running and completed subagents",
   "command.session.switcher": "Switch session or subagent",
   "command.session.switcher.reverse": "Switch session or subagent backwards",
-  "command.subagent.pending": "Pending results",
-  "command.subagent.pending.description": "Review and accept pending background subagent results",
   "command.reader.toggle": "Toggle reader mode",
   "command.reader.toggle.description": "Enter or exit reader mode, which hides the composer and all chrome",
   "command.reader.composer.summon": "Reveal the composer",
@@ -112,8 +110,6 @@ export const dict = {
   "command.question.list": "Show pending questions",
   "command.question.list.description": "Expand the collapsed question panel",
   "question.collapsed": "{{count}} question(s) pending",
-  "command.background.autoinject": "Toggle auto-inject",
-  "command.background.autoinject.description": "Toggle auto-inject of background subagent results for this session",
   "command.session.share": "Share session",
   "command.session.share.description": "Share this session and copy the URL to clipboard",
   "command.session.unshare": "Unshare session",
@@ -125,8 +121,6 @@ export const dict = {
   "palette.group.files": "Files",
 
   "actionbar.pending.tooltip": "Tasks currently running in background",
-  "actionbar.available.tooltip": "Accept pending results",
-  "actionbar.autoinject.tooltip": "Toggle auto-inject",
   "actionbar.questions.tooltip": "Show pending questions",
 
   "dock.hide": "Hide usage",
@@ -353,12 +347,6 @@ export const dict = {
   "dialog.subagents.section.completed": "Completed",
   "dialog.subagents.parent": "Parent session",
   "dialog.subagents.parentOnly": "This is a subagent session. It has no subagents of its own.",
-  "dialog.pending.title": "Pending Results",
-  "dialog.pending.empty": "No pending results",
-  "dialog.pending.none": "No results selected",
-  "dialog.pending.accepted": "Accepted {{count}} result(s)",
-  "dialog.pending.acceptSelected": "Accept selected",
-  "dialog.pending.acceptAll": "Accept all",
 
   "dialog.directory.search.placeholder": "Search folders",
   "dialog.directory.empty": "No folders found",
@@ -446,9 +434,6 @@ export const dict = {
   "toast.permissions.autoaccept.on.description": "Edit and write permissions will be automatically approved",
   "toast.permissions.autoaccept.off.title": "Stopped auto-accepting edits",
   "toast.permissions.autoaccept.off.description": "Edit and write permissions will require approval",
-
-  "toast.background.autoinject.on.title": "Auto-inject enabled",
-  "toast.background.autoinject.off.title": "Auto-inject disabled",
 
   "toast.model.none.title": "No model selected",
   "toast.model.none.description": "Connect a provider to summarize this session",
@@ -545,7 +530,7 @@ export const dict = {
   "home.attention.error": "Error",
   "home.attention.question": "Waiting on you",
   "home.attention.permission": "Permission required",
-  "home.attention.stopPing": "Stop pinging",
+  "home.attention.stop": "Stop",
 
   "session.tab.session": "Session",
   "session.tab.review": "Review",

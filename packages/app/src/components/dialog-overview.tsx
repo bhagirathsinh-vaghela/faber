@@ -28,6 +28,10 @@ import { formatKeybind, matchKeybind, parseKeybind } from "@/context/command"
 import { attention, busy, flat } from "@/utils/attention"
 import { busyDelay } from "@opencode-ai/ui/util/busy-tint"
 
+function stoppable(row: OverviewRow) {
+  return row.busy || row.busyJob || !!row.pingAt
+}
+
 function getFilename(dir: string) {
   const parts = dir.split("/").filter(Boolean)
   return parts[parts.length - 1] ?? dir
@@ -185,7 +189,6 @@ function useFrozen() {
 
 function Row(props: { row: Item }) {
   const language = useLanguage()
-  const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const recent = useRecent()
 
@@ -198,9 +201,10 @@ function Row(props: { row: Item }) {
     return attention(props.row, store.agent.find((a) => a.name === props.row.agent)?.color)
   }
 
-  const stopPing = (e: MouseEvent) => {
+  const halt = useStopSession()
+  const stop = (e: MouseEvent) => {
     e.stopPropagation()
-    void sdk.client.session.pingStop({ directory: props.row.directory, sessionID: props.row.sessionID })
+    halt(props.row.sessionID, props.row.directory)
   }
 
   return (
@@ -271,11 +275,11 @@ function Row(props: { row: Item }) {
           </Chip>
         </ChipGroup>
       </Show>
-      <Show when={props.row.pingAt}>
+      <Show when={stoppable(props.row)}>
         <IconButton
           icon="circle-ban-sign"
-          title={language.t("home.attention.stopPing")}
-          onClick={stopPing}
+          title={language.t("home.attention.stop")}
+          onClick={stop}
           class="[&_[data-slot=icon-svg]]:!text-icon-critical-base [&_[data-slot=icon-svg]]:[stroke-width:1.5]"
         />
       </Show>
@@ -307,7 +311,7 @@ export function Overview(props: {
   const actions = useSessionActions()
   const location = useLocation<{ stopped?: string }>()
   const navigate = useNavigate()
-  const runStop = useStopSession()
+  const halt = useStopSession()
   const language = useLanguage()
   const mru = useMru()
 
@@ -497,16 +501,16 @@ export function Overview(props: {
   // is mounted (home page or dialog), so the key is inert everywhere else.
   // Capture phase because the command system is suspended while a dialog is
   // open, so a registered command would never see the key here. Gated on the
-  // same pingAt that renders the row's stop button — a row without one is a
-  // no-op. If the stopped row is the session open behind the dialog, navigate
+  // same `stoppable` that renders the row's stop button — a row without one is
+  // a no-op. If the stopped row is the session open behind the dialog, navigate
   // home like the header does; stopping any other row leaves the view put.
   const stop = (event: KeyboardEvent) => {
     if (!isStopKey(event)) return
     event.preventDefault()
     event.stopPropagation()
     const row = highlight()
-    if (!row?.pingAt) return
-    if (runStop(row.sessionID, row.directory)) props.onOpen?.()
+    if (!row || !stoppable(row)) return
+    if (halt(row.sessionID, row.directory)) props.onOpen?.()
   }
   onMount(() => window.addEventListener("keydown", stop, true))
   onCleanup(() => window.removeEventListener("keydown", stop, true))

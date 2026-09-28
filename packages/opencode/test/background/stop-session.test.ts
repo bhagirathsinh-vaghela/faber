@@ -4,6 +4,8 @@ import { Session } from "../../src/session"
 import { BackgroundJob } from "../../src/background/job"
 import { BackgroundSpawn } from "../../src/background/spawn"
 import { BackgroundProcess } from "../../src/background/process"
+import { Owed } from "../../src/storage/owed"
+import { GlobalBus } from "../../src/bus/global"
 import { tmpdir } from "../fixture/fixture"
 
 // A background job outlives the turn that launched it, and a session accumulates
@@ -83,6 +85,155 @@ describe("Session.stop reaps the session's background jobs", () => {
 
         await BackgroundJob.stop(kept.job.id)
         await BackgroundJob.remove(kept.job.id)
+      },
+    })
+  }, 30_000)
+
+  test("a stop that lands while a job is launching abandons the launch", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "stopped mid-launch" })
+        // A stop stamped during the running turn but BEFORE this launch: the
+        // stopped turn keeps running until the stop's cancel lands.
+        const now = Date.now()
+        await Session.mark(session.id, (draft) => {
+          draft.turn = { at: now - 1000, pid: process.pid }
+          draft.time.stopped = now - 500
+        })
+
+        const launch = BackgroundSpawn.run({
+          command: "echo never",
+          description: "launched into a stop",
+          sessionID: session.id,
+          directory: tmp.path,
+          project: tmp.path,
+          shell: "/bin/sh",
+          env: {},
+        })
+
+        await expect(launch).rejects.toThrow(`session ${session.id} was stopped while launching job`)
+        expect((await BackgroundJob.list()).filter((job) => job.sessionID === session.id)).toEqual([])
+        expect(await Owed.pending(session.id)).toBe(false)
+      },
+    })
+  }, 30_000)
+
+  test("a cancelled turn whose marker is already cleared cannot launch", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "marker cleared by the unwind" })
+        await Session.mark(session.id, (draft) => void (draft.time.stopped = Date.now() - 500))
+        const abort = new AbortController()
+        abort.abort()
+
+        const launch = BackgroundSpawn.run({
+          command: "echo never",
+          description: "launched by a cancelled turn",
+          sessionID: session.id,
+          signal: abort.signal,
+          directory: tmp.path,
+          project: tmp.path,
+          shell: "/bin/sh",
+          env: {},
+        })
+
+        await expect(launch).rejects.toThrow(`session ${session.id} was stopped while launching job`)
+        expect((await BackgroundJob.list()).filter((job) => job.sessionID === session.id)).toEqual([])
+        expect(await Owed.pending(session.id)).toBe(false)
+      },
+    })
+  }, 30_000)
+
+  // Both interrupt a job that finishes inside the grace window, once the launch
+  // checks have passed: `act` runs on the running job's announcement, which
+  // comes after both. The result must stay owed and be announced to recovery.
+  async function interrupted(title: string, act: (session: Session.Info, abort: AbortController) => unknown) {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title })
+        await Session.mark(session.id, (draft) => void (draft.turn = { at: Date.now() - 1000, pid: process.pid }))
+        const abort = new AbortController()
+        const announced: string[] = []
+        const previous = BackgroundSpawn.watch((job) => void announced.push(job.id))
+        const onEvent = (event: { payload?: { type?: string; properties?: { job?: BackgroundJob.Info } } }) => {
+          if (event.payload?.type !== BackgroundJob.Event.Updated.type) return
+          if (event.payload.properties?.job?.sessionID !== session.id) return
+          if (event.payload.properties.job.status !== "running") return
+          void act(session, abort)
+        }
+        GlobalBus.on("event", onEvent)
+        const launched: string[] = []
+
+        try {
+          const spawn = await BackgroundSpawn.run({
+            command: "sleep 1; echo done",
+            description: "outlives the interrupt",
+            sessionID: session.id,
+            signal: abort.signal,
+            directory: tmp.path,
+            project: tmp.path,
+            shell: "/bin/sh",
+            env: {},
+          })
+          launched.push(spawn.job.id)
+
+          expect(spawn.type).toBe("inline")
+          expect(await Owed.pending(session.id)).toBe(true)
+          expect(announced).toEqual([spawn.job.id])
+        } finally {
+          GlobalBus.off("event", onEvent)
+          BackgroundSpawn.watch(previous)
+          await Owed.removeSession(session.id)
+          for (const id of launched) await BackgroundJob.remove(id)
+        }
+      },
+    })
+  }
+
+  test("a job that finishes inline after an Esc stays owed, so its result is delivered", async () => {
+    await interrupted("Esc during the grace window", (_session, abort) => abort.abort())
+  }, 30_000)
+
+  // An Esc stamps the stop before it cancels the turn. A job finishing in
+  // between sees no abort yet, only the stamp, and must still stay owed.
+  test("a job finishing between an Esc's stamp and its cancel stays owed", async () => {
+    await interrupted("Esc stamped, not yet cancelled", (session) =>
+      Session.mark(session.id, (draft) => void (draft.time.stopped = Date.now())),
+    )
+  }, 30_000)
+
+  test("a turn started after an interrupt launches its jobs", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "prompted after Esc" })
+        const now = Date.now()
+        await Session.mark(session.id, (draft) => {
+          draft.time.stopped = now - 1000
+          draft.turn = { at: now - 500, pid: process.pid }
+        })
+
+        const spawn = await BackgroundSpawn.run({
+          command: "echo launched",
+          description: "after an interrupt",
+          sessionID: session.id,
+          directory: tmp.path,
+          project: tmp.path,
+          shell: "/bin/sh",
+          env: {},
+        })
+
+        expect(spawn.type).toBe("inline")
+        expect(spawn.type === "inline" && spawn.output.trim()).toBe("launched")
+        expect(await Owed.pending(session.id)).toBe(false)
+        await BackgroundJob.remove(spawn.job.id)
       },
     })
   }, 30_000)

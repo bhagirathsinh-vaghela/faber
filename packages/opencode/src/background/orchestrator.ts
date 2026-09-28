@@ -93,8 +93,12 @@ export namespace BackgroundOrchestrator {
   export function init() {
     // 1. The job this server spawned itself. The handle is already held, so
     //    its exit needs no polling and lands the instant it happens.
+    //    Its session is paid here and now, in this process, which is the one
+    //    whose person is attached; the pass covers everything else.
     BackgroundSpawn.watch(async (job) => {
-      await deliver(job, job.status === "killed" ? "timeout" : "completed")
+      const { Recovery } = await import("@/session/recovery")
+      await Recovery.collect(job.sessionID)
+      await Recovery.poke()
     })
 
     // 2. A job this server ADOPTED, whose handle died with the previous one.
@@ -149,7 +153,12 @@ export namespace BackgroundOrchestrator {
       const ordinal = await BackgroundJob.nudge(job.id, now)
       if (ordinal === undefined) continue
       const claimed = await BackgroundJob.get(job.id)
-      if (claimed) await deliver(claimed, "checkin")
+      // A check-in is progress, not a result: nothing is owed for it, so it
+      // goes out directly and a lost one is simply the next nudge's to make.
+      if (claimed)
+        await BackgroundDeliver.send(claimed, "checkin").catch((error) =>
+          log.error("check-in failed", { job: claimed.id, error }),
+        )
     }
   }
 
@@ -170,11 +179,10 @@ export namespace BackgroundOrchestrator {
     const pass = await BackgroundReconcile.run({
       alive: defer ? () => true : aliveFor,
     })
-    for (const action of pass.actions) {
-      if (action.type === "completed") await deliver(action.job, "completed")
-      if (action.type === "expired") await deliver(action.job, "timeout")
-      if (action.type === "reaped") log.info("reaped", { job: action.job.id, reason: action.reason })
-    }
+    pass.actions
+      .filter((action): action is Extract<BackgroundReconcile.Action, { type: "reaped" }> => action.type === "reaped")
+      .forEach((action) => log.info("reaped", { job: action.job.id, reason: action.reason }))
+    if (pass.actions.some((action) => action.type !== "reaped")) await poke()
     await BackgroundJob.cleanup()
     // AFTER the pass, so a job this sweep just settled reads as finished rather
     // than as one more tick of a spinner nobody is waiting on. Read from disk
@@ -186,54 +194,10 @@ export namespace BackgroundOrchestrator {
     ).catch(() => undefined)
   }
 
-  async function deliver(job: BackgroundJob.Info, kind: "completed" | "timeout" | "checkin") {
-    // Only a session the user deliberately let go has its result held; an
-    // unresolved lookup does not. Delivering into a session that turns out to
-    // be gone costs a message nobody reads, while withholding on a failed
-    // lookup loses the result of work that already ran.
-    //
-    // Latent for the same reason as the reconcile reap: `aliveFor` cannot emit a
-    // definite `false`, so this hold does not fire in practice. A job whose
-    // session was stopped is killed at stop time, so its result is never
-    // produced to be held here. Kept as the shape a definite owner-gone signal
-    // would use.
-    if ((await aliveFor(job.sessionID, BackgroundJob.owner(job))) === false) {
-      log.info("holding a result for a session the user stopped", { job: job.id, kind })
-      return
-    }
-    // A result that does not land is the one path that loses finished work for
-    // good: the record settles either way, and reconcile returns early on a
-    // settled record, so nothing sends it again. Nothing retries it here (the
-    // lookup that just failed would fail identically on every later pass), but
-    // it is recorded rather than dropped in silence.
-    //
-    // Two ways to fail, and only one of them is a return value. A session that
-    // cannot be resolved reports false; anything past that point (building the
-    // message, writing the part, cleaning a revert) THROWS. Both end with a
-    // result nobody will read, so both are caught here.
-    //
-    // Caught HERE rather than around the caller's loop, because the throw is
-    // one job's problem and the loop is every other job's delivery: an
-    // uncaught one abandons the rest of the pass and skips the cleanup that
-    // follows it. The exit watcher is worse off still, since it is invoked
-    // from a floating promise where a throw is an unhandled rejection.
-    const failure = await BackgroundDeliver.send(job, kind).then(
-      (delivered) => (delivered ? undefined : "no session to deliver it to"),
-      (error) => error,
-    )
-    if (!failure) return
-
-    log.error("lost a result", {
-      job: job.id,
-      kind,
-      sessionID: job.sessionID,
-      project: BackgroundJob.owner(job),
-      failure,
-    })
-    // The stamp is the durable half of the record above, so a failure to write
-    // it must not itself throw and take the pass down.
-    await BackgroundJob.update(job.id, (draft) => {
-      draft.time.lost = Date.now()
-    }).catch((error) => log.error("could not stamp a lost result", { job: job.id, error }))
+  // Settled jobs are paid by recovery, inside the transaction that writes the
+  // result, so a crash between settling and delivering loses nothing.
+  async function poke() {
+    const { Recovery } = await import("@/session/recovery")
+    await Recovery.poke()
   }
 }

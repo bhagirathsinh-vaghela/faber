@@ -244,6 +244,7 @@ export const BashTool = Tool.define("bash", async () => {
         command: params.command,
         description: params.description,
         sessionID: ctx.sessionID,
+        signal: ctx.abort,
         directory: cwd,
         // Not `cwd`: a workdir argument can name anywhere, and the session is
         // only findable under the project the tool call is running in.

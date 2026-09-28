@@ -3439,62 +3439,6 @@
         ]
       }
     },
-    "/session/{sessionID}/restore": {
-      "post": {
-        "operationId": "session.restore",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "The parent session to resume"
-          }
-        ],
-        "summary": "Resume a session after a restart",
-        "description": "Resume a root session whose turn a restart cut off, together with the subagents it had in flight. The subagents come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subagent graph.",
-        "responses": {
-          "204": {
-            "description": "Resume accepted"
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.restore({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/session/{sessionID}/command": {
       "post": {
         "operationId": "session.command",
@@ -3997,7 +3941,7 @@
           }
         ],
         "summary": "Arm cache ping",
-        "description": "Set the session's keep-warm intent and arm the cache ping daemon. This is the explicit-open verb: an intentional open (sidebar/overview click, new session) or the arm button calls it. A plain fetch (reload, reconnect) does not, so it cannot resurrect a stopped session.",
+        "description": "Arm the cache ping daemon for a session a person just opened (sidebar or overview click), but only while its conversation cache is still warm: an expired cache has nothing left to keep warm. A plain fetch (reload, reconnect) does not call this.",
         "responses": {
           "200": {
             "description": "Ping daemon armed",
@@ -4042,76 +3986,6 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.arm({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/session/{sessionID}/ping/stop": {
-      "post": {
-        "operationId": "session.pingStop",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Stop cache ping",
-        "description": "Clear the session's keep-warm intent, stop the cache ping daemon, and drop the pinned prompt state. The session stays cold until an organic turn or the arm route re-declares intent — a plain reopen no longer re-arms it.",
-        "responses": {
-          "200": {
-            "description": "Ping daemon stopped",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.pingStop({\n  ...\n})"
           }
         ]
       }
@@ -6922,20 +6796,21 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by parent session ID"
+            "required": true,
+            "description": "The parent session"
           }
         ],
-        "summary": "List background subagents",
-        "description": "Get a list of all background subagents, optionally filtered by session.",
+        "summary": "List subagents",
+        "description": "A session's subagents as the database records them, newest first. Stopping one is POST /session/:id/abort on the subagent's session.",
         "responses": {
           "200": {
-            "description": "List of background subagents",
+            "description": "Subagents of the session",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/BackgroundSubagent"
+                    "$ref": "#/components/schemas/Subagent"
                   }
                 }
               }
@@ -6946,646 +6821,6 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.list({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/{id}": {
-      "get": {
-        "operationId": "background.get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Subagent ID"
-          }
-        ],
-        "summary": "Get background subagent",
-        "description": "Get a specific background subagent by ID.",
-        "responses": {
-          "200": {
-            "description": "Background subagent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BackgroundSubagent"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Subagent not found"
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.get({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/{id}/cancel": {
-      "post": {
-        "operationId": "background.cancel",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Subagent ID"
-          }
-        ],
-        "summary": "Cancel background subagent",
-        "description": "Cancel a running background subagent.",
-        "responses": {
-          "200": {
-            "description": "Subagent cancelled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "success"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.cancel({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/session/{sessionID}/auto-inject": {
-      "get": {
-        "operationId": "background.getAutoInject",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Get auto-inject setting",
-        "description": "Get the auto-inject setting for a session.",
-        "responses": {
-          "200": {
-            "description": "Auto-inject setting",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "autoInject": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "autoInject"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.getAutoInject({\n  ...\n})"
-          }
-        ]
-      },
-      "post": {
-        "operationId": "background.setAutoInject",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Set auto-inject setting",
-        "description": "Set the auto-inject setting for a session.",
-        "responses": {
-          "200": {
-            "description": "Auto-inject setting updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "autoInject": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "autoInject"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "autoInject": {
-                    "description": "Enable or disable auto-inject",
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "autoInject"
-                ]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.setAutoInject({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/session/{sessionID}/auto-inject/toggle": {
-      "post": {
-        "operationId": "background.toggleAutoInject",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Toggle auto-inject setting",
-        "description": "Toggle the auto-inject setting for a session.",
-        "responses": {
-          "200": {
-            "description": "Auto-inject setting toggled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "autoInject": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "autoInject"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.toggleAutoInject({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/session/{sessionID}/pending": {
-      "get": {
-        "operationId": "background.getPending",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Get pending results",
-        "description": "Get all pending background subagent results for a session.",
-        "responses": {
-          "200": {
-            "description": "Pending results",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "subagentId": {
-                        "type": "string"
-                      },
-                      "parentSessionID": {
-                        "type": "string"
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "agent": {
-                        "type": "string"
-                      },
-                      "output": {
-                        "type": "string"
-                      },
-                      "error": {
-                        "type": "string"
-                      },
-                      "completedAt": {
-                        "type": "number"
-                      },
-                      "duration": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "subagentId",
-                      "parentSessionID",
-                      "description",
-                      "output",
-                      "completedAt",
-                      "duration"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.getPending({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/session/{sessionID}/pending/{subagentId}/accept": {
-      "post": {
-        "operationId": "background.acceptPending",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          },
-          {
-            "in": "path",
-            "name": "subagentId",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Subagent ID"
-          }
-        ],
-        "summary": "Accept pending result",
-        "description": "Accept and inject a pending background subagent result into the session.",
-        "responses": {
-          "200": {
-            "description": "Result accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "success"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "triggerLLM": {
-                    "description": "Trigger LLM to process the result after injection",
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.acceptPending({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/session/{sessionID}/pending/accept-all": {
-      "post": {
-        "operationId": "background.acceptAllPending",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Accept all pending results",
-        "description": "Accept and inject all pending background subagent results into the session.",
-        "responses": {
-          "200": {
-            "description": "All results accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "count": {
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "count"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "triggerLLM": {
-                    "description": "Trigger LLM to process the results after injection",
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.acceptAllPending({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/session/{sessionID}/pending/dismiss": {
-      "post": {
-        "operationId": "background.dismissPending",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "description": "Session ID"
-          }
-        ],
-        "summary": "Dismiss pending results",
-        "description": "Dismiss (discard) pending background subagent results without injecting them.",
-        "responses": {
-          "200": {
-            "description": "Results dismissed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "count": {
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "count"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "subagentIds": {
-                    "description": "Subagent IDs to dismiss (all if not specified)",
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.dismissPending({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/auto-inject/default": {
-      "get": {
-        "operationId": "background.getAutoInjectDefault",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Get auto-inject default",
-        "description": "Get the global default auto-inject setting for new sessions.",
-        "responses": {
-          "200": {
-            "description": "Auto-inject default",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "autoInject": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "autoInject"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.getAutoInjectDefault({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/background/auto-inject/default/toggle": {
-      "post": {
-        "operationId": "background.toggleAutoInjectDefault",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Toggle auto-inject default",
-        "description": "Toggle the global default auto-inject setting for new sessions.",
-        "responses": {
-          "200": {
-            "description": "Auto-inject default toggled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "autoInject": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "autoInject"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.background.toggleAutoInjectDefault({\n  ...\n})"
           }
         ]
       }
@@ -11498,367 +10733,6 @@
           "properties"
         ]
       },
-      "BackgroundSubagent": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "parentSessionID": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "running",
-              "completed",
-              "failed",
-              "cancelled"
-            ]
-          },
-          "description": {
-            "type": "string"
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "created": {
-                "type": "number"
-              },
-              "completed": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "created"
-            ]
-          },
-          "progress": {
-            "type": "object",
-            "properties": {
-              "toolCount": {
-                "type": "number"
-              },
-              "tokens": {
-                "type": "object",
-                "properties": {
-                  "input": {
-                    "type": "number"
-                  },
-                  "output": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "input",
-                  "output"
-                ]
-              },
-              "currentActivity": {
-                "type": "string"
-              },
-              "lastUpdate": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "toolCount",
-              "tokens",
-              "lastUpdate"
-            ]
-          },
-          "subagent": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "agent": {
-                "type": "string"
-              },
-              "prompt": {
-                "type": "string"
-              },
-              "model": {
-                "type": "object",
-                "properties": {
-                  "providerID": {
-                    "type": "string"
-                  },
-                  "modelID": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "providerID",
-                  "modelID"
-                ]
-              }
-            },
-            "required": [
-              "sessionID",
-              "agent",
-              "prompt",
-              "model"
-            ]
-          },
-          "result": {
-            "type": "object",
-            "properties": {
-              "output": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              },
-              "exitCode": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "output"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "parentSessionID",
-          "status",
-          "description",
-          "time"
-        ]
-      },
-      "Event.background.subagent.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "background.subagent.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "subagent": {
-                "$ref": "#/components/schemas/BackgroundSubagent"
-              }
-            },
-            "required": [
-              "subagent"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.background.subagent.progress": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "background.subagent.progress"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "subagentId": {
-                "type": "string"
-              },
-              "parentSessionID": {
-                "type": "string"
-              },
-              "progress": {
-                "type": "object",
-                "properties": {
-                  "toolCount": {
-                    "type": "number"
-                  },
-                  "tokens": {
-                    "type": "object",
-                    "properties": {
-                      "input": {
-                        "type": "number"
-                      },
-                      "output": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "input",
-                      "output"
-                    ]
-                  },
-                  "currentActivity": {
-                    "type": "string"
-                  },
-                  "lastUpdate": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "toolCount",
-                  "tokens",
-                  "lastUpdate"
-                ]
-              }
-            },
-            "required": [
-              "subagentId",
-              "parentSessionID",
-              "progress"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.background.subagent.completed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "background.subagent.completed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "subagentId": {
-                "type": "string"
-              },
-              "parentSessionID": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "completed",
-                  "failed",
-                  "cancelled"
-                ]
-              },
-              "result": {
-                "type": "object",
-                "properties": {
-                  "output": {
-                    "type": "string"
-                  },
-                  "error": {
-                    "type": "string"
-                  },
-                  "exitCode": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "output"
-                ]
-              }
-            },
-            "required": [
-              "subagentId",
-              "parentSessionID",
-              "status"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.background.subagent.result_pending": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "background.subagent.result_pending"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "pending": {
-                "type": "object",
-                "properties": {
-                  "subagentId": {
-                    "type": "string"
-                  },
-                  "parentSessionID": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "agent": {
-                    "type": "string"
-                  },
-                  "output": {
-                    "type": "string"
-                  },
-                  "error": {
-                    "type": "string"
-                  },
-                  "completedAt": {
-                    "type": "number"
-                  },
-                  "duration": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "subagentId",
-                  "parentSessionID",
-                  "description",
-                  "output",
-                  "completedAt",
-                  "duration"
-                ]
-              }
-            },
-            "required": [
-              "sessionID",
-              "pending"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.background.subagent.auto_inject_changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "background.subagent.auto_inject_changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "autoInject": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "sessionID",
-              "autoInject"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
       "Todo": {
         "type": "object",
         "properties": {
@@ -12202,6 +11076,16 @@
               },
               "injected": {
                 "type": "number"
+              },
+              "stopped": {
+                "type": "number"
+              },
+              "reported": {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "failed"
+                ]
               }
             },
             "required": [
@@ -12416,6 +11300,56 @@
           },
           "bare": {
             "type": "boolean"
+          },
+          "turn": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "type": "number"
+              },
+              "pid": {
+                "type": "number"
+              },
+              "boot": {
+                "type": "number"
+              },
+              "resumes": {
+                "type": "number"
+              },
+              "transient": {
+                "type": "boolean"
+              },
+              "nonce": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "at",
+              "pid"
+            ]
+          },
+          "left": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "pid": {
+                    "type": "number"
+                  },
+                  "boot": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "pid",
+                  "boot"
+                ]
+              },
+              {
+                "type": "boolean",
+                "const": true
+              }
+            ]
           }
         },
         "required": [
@@ -13383,21 +12317,6 @@
             "$ref": "#/components/schemas/Event.job.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.background.subagent.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.background.subagent.progress"
-          },
-          {
-            "$ref": "#/components/schemas/Event.background.subagent.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.background.subagent.result_pending"
-          },
-          {
-            "$ref": "#/components/schemas/Event.background.subagent.auto_inject_changed"
-          },
-          {
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
@@ -13473,9 +12392,6 @@
             "$ref": "#/components/schemas/Event.stash.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.session.prompt.interrupted"
-          },
-          {
             "$ref": "#/components/schemas/Event.voice.preference.updated"
           }
         ]
@@ -13497,573 +12413,6 @@
           "directory",
           "payload"
         ]
-      },
-      "KeybindsConfig": {
-        "description": "Custom keybind configurations",
-        "type": "object",
-        "properties": {
-          "leader": {
-            "description": "Leader key for keybind combinations",
-            "default": "ctrl+x",
-            "type": "string"
-          },
-          "app_exit": {
-            "description": "Exit the application",
-            "default": "ctrl+c,ctrl+d,<leader>q",
-            "type": "string"
-          },
-          "editor_open": {
-            "description": "Open external editor",
-            "default": "<leader>e",
-            "type": "string"
-          },
-          "theme_list": {
-            "description": "List available themes",
-            "default": "<leader>t",
-            "type": "string"
-          },
-          "sidebar_toggle": {
-            "description": "Toggle sidebar",
-            "default": "<leader>b",
-            "type": "string"
-          },
-          "scrollbar_toggle": {
-            "description": "Toggle session scrollbar",
-            "default": "none",
-            "type": "string"
-          },
-          "username_toggle": {
-            "description": "Toggle username visibility",
-            "default": "none",
-            "type": "string"
-          },
-          "status_view": {
-            "description": "View status",
-            "default": "<leader>k",
-            "type": "string"
-          },
-          "session_export": {
-            "description": "Export session to editor",
-            "default": "<leader>x",
-            "type": "string"
-          },
-          "session_new": {
-            "description": "Create a new session",
-            "default": "<leader>n",
-            "type": "string"
-          },
-          "session_list": {
-            "description": "List all sessions",
-            "default": "<leader>l",
-            "type": "string"
-          },
-          "session_timeline": {
-            "description": "Show session timeline",
-            "default": "<leader>g",
-            "type": "string"
-          },
-          "session_fork": {
-            "description": "Fork session from message",
-            "default": "none",
-            "type": "string"
-          },
-          "session_rename": {
-            "description": "Rename session",
-            "default": "ctrl+r",
-            "type": "string"
-          },
-          "session_delete": {
-            "description": "Delete session",
-            "default": "ctrl+d",
-            "type": "string"
-          },
-          "stash_delete": {
-            "description": "Delete stash entry",
-            "default": "ctrl+d",
-            "type": "string"
-          },
-          "model_provider_list": {
-            "description": "Open provider list from model dialog",
-            "default": "ctrl+a",
-            "type": "string"
-          },
-          "model_favorite_toggle": {
-            "description": "Toggle model favorite status",
-            "default": "ctrl+f",
-            "type": "string"
-          },
-          "skill_favorite_toggle": {
-            "description": "Toggle skill favorite status",
-            "default": "ctrl+f",
-            "type": "string"
-          },
-          "session_share": {
-            "description": "Share current session",
-            "default": "none",
-            "type": "string"
-          },
-          "session_unshare": {
-            "description": "Unshare current session",
-            "default": "none",
-            "type": "string"
-          },
-          "session_interrupt": {
-            "description": "Interrupt current session",
-            "default": "escape",
-            "type": "string"
-          },
-          "session_compact": {
-            "description": "Compact the session",
-            "default": "<leader>c",
-            "type": "string"
-          },
-          "messages_page_up": {
-            "description": "Scroll messages up by one page",
-            "default": "pageup,ctrl+alt+b",
-            "type": "string"
-          },
-          "messages_page_down": {
-            "description": "Scroll messages down by one page",
-            "default": "pagedown,ctrl+alt+f",
-            "type": "string"
-          },
-          "messages_line_up": {
-            "description": "Scroll messages up by one line",
-            "default": "ctrl+alt+y",
-            "type": "string"
-          },
-          "messages_line_down": {
-            "description": "Scroll messages down by one line",
-            "default": "ctrl+alt+e",
-            "type": "string"
-          },
-          "messages_half_page_up": {
-            "description": "Scroll messages up by half page",
-            "default": "ctrl+alt+u",
-            "type": "string"
-          },
-          "messages_half_page_down": {
-            "description": "Scroll messages down by half page",
-            "default": "ctrl+alt+d",
-            "type": "string"
-          },
-          "messages_first": {
-            "description": "Navigate to first message",
-            "default": "ctrl+g,home",
-            "type": "string"
-          },
-          "messages_last": {
-            "description": "Navigate to last message",
-            "default": "ctrl+alt+g,end",
-            "type": "string"
-          },
-          "scroll_to_bottom": {
-            "description": "Force scroll to bottom of conversation",
-            "default": "<leader>.",
-            "type": "string"
-          },
-          "messages_next": {
-            "description": "Navigate to next message",
-            "default": "none",
-            "type": "string"
-          },
-          "messages_previous": {
-            "description": "Navigate to previous message",
-            "default": "none",
-            "type": "string"
-          },
-          "messages_next_user": {
-            "description": "Navigate to next user message (when jump mode enabled)",
-            "default": "]",
-            "type": "string"
-          },
-          "messages_previous_user": {
-            "description": "Navigate to previous user message (when jump mode enabled)",
-            "default": "[",
-            "type": "string"
-          },
-          "messages_jump_mode_toggle": {
-            "description": "Toggle user message jump mode ([ and ] jump between user messages)",
-            "default": "<leader>[,<leader>]",
-            "type": "string"
-          },
-          "messages_last_user": {
-            "description": "Navigate to last user message",
-            "default": "none",
-            "type": "string"
-          },
-          "messages_copy": {
-            "description": "Copy message",
-            "default": "<leader>y",
-            "type": "string"
-          },
-          "messages_undo": {
-            "description": "Undo message",
-            "default": "<leader>u",
-            "type": "string"
-          },
-          "messages_redo": {
-            "description": "Redo message",
-            "default": "<leader>r",
-            "type": "string"
-          },
-          "messages_toggle_conceal": {
-            "description": "Toggle code block concealment in messages",
-            "default": "<leader>h",
-            "type": "string"
-          },
-          "tool_details": {
-            "description": "Toggle tool details visibility",
-            "default": "none",
-            "type": "string"
-          },
-          "model_list": {
-            "description": "List available models",
-            "default": "<leader>m",
-            "type": "string"
-          },
-          "model_cycle_recent": {
-            "description": "Next recently used model",
-            "default": "f2",
-            "type": "string"
-          },
-          "model_cycle_recent_reverse": {
-            "description": "Previous recently used model",
-            "default": "shift+f2",
-            "type": "string"
-          },
-          "model_cycle_favorite": {
-            "description": "Next favorite model",
-            "default": "none",
-            "type": "string"
-          },
-          "model_cycle_favorite_reverse": {
-            "description": "Previous favorite model",
-            "default": "none",
-            "type": "string"
-          },
-          "command_list": {
-            "description": "List available commands",
-            "default": "ctrl+p",
-            "type": "string"
-          },
-          "agent_list": {
-            "description": "List agents",
-            "default": "<leader>a",
-            "type": "string"
-          },
-          "agent_cycle": {
-            "description": "Next agent",
-            "default": "tab",
-            "type": "string"
-          },
-          "agent_cycle_reverse": {
-            "description": "Previous agent",
-            "default": "shift+tab",
-            "type": "string"
-          },
-          "skill_list": {
-            "description": "List skills and insert at cursor",
-            "default": "<leader>s",
-            "type": "string"
-          },
-          "cache_probe": {
-            "description": "Set cache probe block index for testing",
-            "default": "none",
-            "type": "string"
-          },
-          "variant_cycle": {
-            "description": "Cycle model variants",
-            "default": "ctrl+t",
-            "type": "string"
-          },
-          "input_clear": {
-            "description": "Clear input field",
-            "default": "ctrl+c",
-            "type": "string"
-          },
-          "input_paste": {
-            "description": "Paste from clipboard",
-            "default": "ctrl+v",
-            "type": "string"
-          },
-          "input_submit": {
-            "description": "Submit input",
-            "default": "return",
-            "type": "string"
-          },
-          "input_newline": {
-            "description": "Insert newline in input",
-            "default": "shift+return,ctrl+return,alt+return,ctrl+j",
-            "type": "string"
-          },
-          "input_move_left": {
-            "description": "Move cursor left in input",
-            "default": "left,ctrl+b",
-            "type": "string"
-          },
-          "input_move_right": {
-            "description": "Move cursor right in input",
-            "default": "right,ctrl+f",
-            "type": "string"
-          },
-          "input_move_up": {
-            "description": "Move cursor up in input",
-            "default": "up",
-            "type": "string"
-          },
-          "input_move_down": {
-            "description": "Move cursor down in input",
-            "default": "down",
-            "type": "string"
-          },
-          "input_select_left": {
-            "description": "Select left in input",
-            "default": "shift+left",
-            "type": "string"
-          },
-          "input_select_right": {
-            "description": "Select right in input",
-            "default": "shift+right",
-            "type": "string"
-          },
-          "input_select_up": {
-            "description": "Select up in input",
-            "default": "shift+up",
-            "type": "string"
-          },
-          "input_select_down": {
-            "description": "Select down in input",
-            "default": "shift+down",
-            "type": "string"
-          },
-          "input_line_home": {
-            "description": "Move to start of line in input",
-            "default": "ctrl+a",
-            "type": "string"
-          },
-          "input_line_end": {
-            "description": "Move to end of line in input",
-            "default": "ctrl+e",
-            "type": "string"
-          },
-          "input_select_line_home": {
-            "description": "Select to start of line in input",
-            "default": "ctrl+shift+a",
-            "type": "string"
-          },
-          "input_select_line_end": {
-            "description": "Select to end of line in input",
-            "default": "ctrl+shift+e",
-            "type": "string"
-          },
-          "input_visual_line_home": {
-            "description": "Move to start of visual line in input",
-            "default": "none",
-            "type": "string"
-          },
-          "input_visual_line_end": {
-            "description": "Move to end of visual line in input",
-            "default": "alt+e",
-            "type": "string"
-          },
-          "input_select_visual_line_home": {
-            "description": "Select to start of visual line in input",
-            "default": "alt+shift+a",
-            "type": "string"
-          },
-          "input_select_visual_line_end": {
-            "description": "Select to end of visual line in input",
-            "default": "alt+shift+e",
-            "type": "string"
-          },
-          "input_buffer_home": {
-            "description": "Move to start of buffer in input",
-            "default": "home",
-            "type": "string"
-          },
-          "input_buffer_end": {
-            "description": "Move to end of buffer in input",
-            "default": "end",
-            "type": "string"
-          },
-          "input_select_buffer_home": {
-            "description": "Select to start of buffer in input",
-            "default": "shift+home",
-            "type": "string"
-          },
-          "input_select_buffer_end": {
-            "description": "Select to end of buffer in input",
-            "default": "shift+end",
-            "type": "string"
-          },
-          "input_delete_line": {
-            "description": "Delete line in input",
-            "default": "ctrl+shift+d",
-            "type": "string"
-          },
-          "prompt_stash": {
-            "description": "Stash or pop the current prompt",
-            "default": "ctrl+s",
-            "type": "string"
-          },
-          "input_delete_to_line_end": {
-            "description": "Delete to end of line in input",
-            "default": "ctrl+k",
-            "type": "string"
-          },
-          "input_delete_to_line_start": {
-            "description": "Delete to start of line in input",
-            "default": "ctrl+u",
-            "type": "string"
-          },
-          "input_backspace": {
-            "description": "Backspace in input",
-            "default": "backspace,shift+backspace",
-            "type": "string"
-          },
-          "input_delete": {
-            "description": "Delete character in input",
-            "default": "ctrl+d,delete,shift+delete",
-            "type": "string"
-          },
-          "input_undo": {
-            "description": "Undo in input",
-            "default": "ctrl+-,super+z",
-            "type": "string"
-          },
-          "input_redo": {
-            "description": "Redo in input",
-            "default": "ctrl+.,super+shift+z",
-            "type": "string"
-          },
-          "input_word_forward": {
-            "description": "Move word forward in input",
-            "default": "alt+f,alt+right,ctrl+right",
-            "type": "string"
-          },
-          "input_word_backward": {
-            "description": "Move word backward in input",
-            "default": "alt+b,alt+left,ctrl+left",
-            "type": "string"
-          },
-          "input_select_word_forward": {
-            "description": "Select word forward in input",
-            "default": "alt+shift+f,alt+shift+right",
-            "type": "string"
-          },
-          "input_select_word_backward": {
-            "description": "Select word backward in input",
-            "default": "alt+shift+b,alt+shift+left",
-            "type": "string"
-          },
-          "input_delete_word_forward": {
-            "description": "Delete word forward in input",
-            "default": "alt+d,alt+delete,ctrl+delete",
-            "type": "string"
-          },
-          "input_delete_word_backward": {
-            "description": "Delete word backward in input",
-            "default": "ctrl+w,ctrl+backspace,alt+backspace",
-            "type": "string"
-          },
-          "history_previous": {
-            "description": "Previous history item",
-            "default": "up",
-            "type": "string"
-          },
-          "history_next": {
-            "description": "Next history item",
-            "default": "down",
-            "type": "string"
-          },
-          "session_child_cycle": {
-            "description": "Next child session",
-            "default": "<leader>right",
-            "type": "string"
-          },
-          "session_child_cycle_reverse": {
-            "description": "Previous child session",
-            "default": "<leader>left",
-            "type": "string"
-          },
-          "session_parent": {
-            "description": "Go to parent session",
-            "default": "<leader>up",
-            "type": "string"
-          },
-          "session_child_cancel": {
-            "description": "Cancel running subagent",
-            "default": "<leader>x",
-            "type": "string"
-          },
-          "subagent_list": {
-            "description": "Show subagent list",
-            "default": "alt+a",
-            "type": "string"
-          },
-          "question_list": {
-            "description": "Show pending questions",
-            "default": "<leader>?",
-            "type": "string"
-          },
-          "question_dismiss": {
-            "description": "Dismiss pending question permanently",
-            "default": "none",
-            "type": "string"
-          },
-          "terminal_suspend": {
-            "description": "Suspend terminal",
-            "default": "ctrl+z",
-            "type": "string"
-          },
-          "terminal_title_toggle": {
-            "description": "Toggle terminal title",
-            "default": "none",
-            "type": "string"
-          },
-          "console_toggle": {
-            "description": "Toggle console",
-            "default": "none",
-            "type": "string"
-          },
-          "cache_markers_toggle": {
-            "description": "Toggle cache markers in statusline",
-            "default": "none",
-            "type": "string"
-          },
-          "tips_toggle": {
-            "description": "Toggle tips on home screen",
-            "default": "<leader>h",
-            "type": "string"
-          },
-          "accept_pending_results": {
-            "description": "Accept pending background subagent results",
-            "default": "<leader>z",
-            "type": "string"
-          },
-          "background_auto_inject_toggle": {
-            "description": "Toggle auto-inject for background subagent results",
-            "default": "alt+i",
-            "type": "string"
-          },
-          "paste_mode_toggle": {
-            "description": "Toggle paste mode between summary and inline",
-            "default": "alt+p",
-            "type": "string"
-          },
-          "auto_scroll_lock_toggle": {
-            "description": "Toggle auto-scroll lock to prevent scroll resuming",
-            "default": "none",
-            "type": "string"
-          },
-          "header_toggle": {
-            "description": "Toggle session header bar",
-            "default": "none",
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
       },
       "LogLevel": {
         "description": "Log level",
@@ -14744,63 +13093,8 @@
             "description": "Theme name to use for the interface",
             "type": "string"
           },
-          "keybinds": {
-            "$ref": "#/components/schemas/KeybindsConfig"
-          },
           "logLevel": {
             "$ref": "#/components/schemas/LogLevel"
-          },
-          "tui": {
-            "description": "TUI specific settings",
-            "type": "object",
-            "properties": {
-              "scroll_speed": {
-                "description": "TUI scroll speed",
-                "type": "number",
-                "minimum": 0.001
-              },
-              "scroll_acceleration": {
-                "description": "Scroll acceleration settings",
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "description": "Enable scroll acceleration",
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "enabled"
-                ]
-              },
-              "diff_style": {
-                "description": "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
-                "type": "string",
-                "enum": [
-                  "auto",
-                  "stacked"
-                ]
-              },
-              "message_limit": {
-                "description": "Maximum number of messages to load when opening a session (default: 100)",
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "paste_mode": {
-                "description": "Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text",
-                "default": "inline",
-                "type": "string",
-                "enum": [
-                  "summary",
-                  "inline"
-                ]
-              },
-              "header": {
-                "description": "Show the session header bar at the top of the TUI",
-                "default": false,
-                "type": "boolean"
-              }
-            }
           },
           "server": {
             "$ref": "#/components/schemas/ServerConfig"
@@ -15225,10 +13519,6 @@
           "background": {
             "type": "object",
             "properties": {
-              "auto_inject": {
-                "description": "Auto-inject background subagent results when they complete (default: false)",
-                "type": "boolean"
-              },
               "job": {
                 "description": "Settings for background shell jobs (the bash tool), distinct from background subagents",
                 "type": "object",
@@ -16683,6 +14973,21 @@
           },
           "exit": {
             "type": "number"
+          },
+          "launcher": {
+            "type": "object",
+            "properties": {
+              "pid": {
+                "type": "number"
+              },
+              "boot": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "pid",
+              "boot"
+            ]
           }
         },
         "required": [
@@ -16936,35 +15241,6 @@
           "properties"
         ]
       },
-      "Event.session.prompt.interrupted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.prompt.interrupted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "interrupted": {
-                "type": "boolean",
-                "const": true
-              }
-            },
-            "required": [
-              "sessionID",
-              "interrupted"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
       "VoicePreference": {
         "type": "object",
         "properties": {
@@ -16997,6 +15273,68 @@
         "required": [
           "type",
           "properties"
+        ]
+      },
+      "Subagent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentSessionID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "stopped"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "created"
+            ]
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "toolCount": {
+                "type": "number"
+              },
+              "currentActivity": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "toolCount"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "parentSessionID",
+          "status",
+          "description",
+          "agent",
+          "time"
         ]
       }
     }

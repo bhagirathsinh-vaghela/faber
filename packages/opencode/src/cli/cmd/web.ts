@@ -3,6 +3,8 @@ import { UI } from "../ui"
 import { cmd } from "./cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "../../flag/flag"
+import { BackgroundOrchestrator } from "../../background/orchestrator"
+import { Recovery } from "../../session/recovery"
 import open from "open"
 import { networkInterfaces } from "os"
 
@@ -38,6 +40,12 @@ export const WebCommand = cmd({
     }
     const opts = await resolveNetworkOptions(args)
     const server = Server.listen(opts)
+    // A web server runs turns and subagents like `serve`, so it adopts jobs and
+    // recovers the same way, under the same lease and boot grace, but yields
+    // the lease to a running `serve`.
+    BackgroundOrchestrator.init()
+    void BackgroundOrchestrator.sweep({ adopting: true })
+    Recovery.init()
     UI.empty()
     UI.println(UI.logo("  "))
     UI.empty()

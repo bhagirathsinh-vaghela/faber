@@ -74,26 +74,15 @@ export namespace GlobalInterest {
     "session.error",
     "session.compacted",
     "todo.updated",
-    // Background-subagent traffic is only meaningful to a client viewing the
-    // parent session (the subagent/pending dialogs open from inside it), so gate
-    // it on the parent session's interest exactly like message.updated. sessionOf
-    // reads parentSessionID / subagent.parentSessionID / pending.sessionID below.
-    "background.subagent.created",
-    "background.subagent.progress",
-    "background.subagent.completed",
-    "background.subagent.result_pending",
-    "background.subagent.auto_inject_changed",
   ])
 
   // Pull the sessionID out of a payload regardless of where the event nests it
-  // (top-level, .part, .info, or a background subagent's parentSessionID).
+  // (top-level, .part, or .info).
   // Returns undefined when none is found, which makes the event fail-open
   // (passes) — misclassification can only over-send, never drop.
   function sessionOf(payload: any): string | undefined {
     const p = payload?.properties
-    return (
-      p?.sessionID ?? p?.part?.sessionID ?? p?.info?.sessionID ?? p?.parentSessionID ?? p?.subagent?.parentSessionID
-    )
+    return p?.sessionID ?? p?.part?.sessionID ?? p?.info?.sessionID
   }
 
   // Should this connection receive this event? Fail-open at every uncertain

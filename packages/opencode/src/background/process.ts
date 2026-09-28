@@ -69,6 +69,43 @@ export namespace BackgroundProcess {
     return { pid, start: match[1], pgid: Number(match[2]), command: match[3] }
   }
 
+  // When this process started, to the second, as the OS reports it. A pid alone
+  // cannot name a process across a reboot or a copied database: the number is
+  // reused. Pid plus start time can.
+  export const boot = Math.floor((Date.now() - performance.now()) / 1000)
+
+  // How far apart a recorded start time and the OS's may be and still name the
+  // same process. The OS dates a process from its fork; a process dates itself
+  // from when its runtime came up, which a launcher can delay.
+  const SKEW = 5
+
+  // Whether the process a record names (its pid and start time) is still
+  // running. A record from before start times were kept compares by pid alone.
+  // Undefined when the process table could not be read: a caller about to
+  // destroy or take over what the record names treats that as alive.
+  export async function alive(owner: { pid: number; boot?: number }): Promise<boolean | undefined> {
+    if (owner.pid === process.pid) return owner.boot === undefined || Math.abs(owner.boot - boot) <= SKEW
+    const read = await Promise.resolve()
+      .then(async () => {
+        const proc = Bun.spawn(["ps", "-o", "lstart=", "-p", String(owner.pid)], {
+          stdout: "pipe",
+          stderr: "ignore",
+          env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+        })
+        const text = await new Response(proc.stdout).text()
+        return { code: await proc.exited, text: text.trim() }
+      })
+      .catch((error) => {
+        log.error("could not read the process table", { pid: owner.pid, error })
+        return undefined
+      })
+    // `ps -p` exits 1 with nothing printed for a pid that does not exist.
+    if (!read || (read.code !== 0 && read.code !== 1)) return undefined
+    if (!read.text) return false
+    if (owner.boot === undefined) return true
+    return Math.abs(Math.floor(new Date(read.text + " UTC").getTime() / 1000) - owner.boot) <= SKEW
+  }
+
   export type Match = "alive" | "gone" | "mismatch"
 
   // Whether the pid still names the process the record describes.

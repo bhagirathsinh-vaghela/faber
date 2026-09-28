@@ -12,8 +12,8 @@ import { cmd } from "./cmd"
 //
 // Endpoints (also buttons on the inline HTML page at /):
 //   POST /restart -> stage a fresh server on the alt port, health-check it,
-//                    kill the owned server, relaunch on the main port, then
-//                    resume interrupted turns and re-arm ping daemons.
+//                    kill the owned server, relaunch on the main port. The new
+//                    server resumes cut turns and re-arms pings on its own.
 //   POST /stop    -> kill the owned server (and reap any orphan); supervisor
 //                    stays up. The page's Start button is /restart from cold.
 //   GET  /status  -> owned pid + /global/health of the live server.
@@ -155,79 +155,11 @@ export const SuperviseCommand = cmd({
       return spawn(serveArgs(port, restore), { stdout: "inherit", stderr: "inherit" })
     }
 
-    type SessionRef = { sessionID: string; directory: string }
-
-    // Liveness snapshot from the server we are about to kill. Two tiers:
-    //   busy  — mid-turn (loop executing): the restart interrupts real work, so
-    //           these get a "continue" prompt on the new server.
-    //   armed — cache-ping daemon running but NOT mid-turn: the turn is
-    //           finished, so no prompt (nothing to continue) — a bare session
-    //           GET on the new server re-arms the daemon, which the new server
-    //           honors because these sessions carry keepWarm=true (see rearm).
-    // Only a planned /restart ever reads this, so a crash-looping server can
-    // never auto-resume anything — the arm dies with the restart request.
-    async function liveness(): Promise<{ busy: SessionRef[]; armed: SessionRef[] }> {
-      const get = (path: string) =>
-        fetch(`http://127.0.0.1:${PORT}${path}`, { signal: AbortSignal.timeout(2000) })
-          .then((r) => (r.ok ? r.json() : []))
-          .catch(() => [])
-      const [recent, pings] = await Promise.all([get("/global/recent"), get("/global/ping/armed")])
-      const busy = (recent as (SessionRef & { busy: boolean })[])
-        .filter((r) => r.busy)
-        .map((r) => ({ sessionID: r.sessionID, directory: r.directory }))
-      // A busy session is resumed, so it must not ALSO be re-armed: a continue
-      // prompt already arms the daemon (every prompt on a root session does).
-      const skip = new Set(busy.map((r) => r.sessionID))
-      const armed = (pings as SessionRef[])
-        .filter((r) => !skip.has(r.sessionID))
-        .map((r) => ({ sessionID: r.sessionID, directory: r.directory }))
-      return { busy, armed }
-    }
-
-    async function resume(sessions: SessionRef[]) {
-      const results = []
-      for (const s of sessions) {
-        // The restore route resumes the session AND its restart-cut subagents as a
-        // unit, then prompts the parent with the continue text that tells it the
-        // subagents are alive. The supervisor does not build the prompt or know the
-        // subagent graph; that is server-side, where the disk state lives.
-        const res = await fetch(
-          `http://127.0.0.1:${PORT}/session/${s.sessionID}/restore?directory=${encodeURIComponent(s.directory)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: AbortSignal.timeout(10000),
-          },
-        ).catch(() => null)
-        results.push({ ...s, resumed: res?.status === 204 })
-      }
-      return results
-    }
-
-    // Re-arm via a bare session GET on the new server. This is correct ONLY
-    // because two things key off the same persisted keepWarm intent: the snapshot
-    // fed in here comes from the live armed registry (/global/ping/armed), which
-    // now holds only keepWarm sessions, and session.get re-arms iff keepWarm is
-    // true. A stopped session (keepWarm=false) is in neither, so a restart can't
-    // resurrect it. If the snapshot source ever changes to raw cache anchors, or
-    // session.get's keepWarm gate is dropped, this stops protecting stopped
-    // sessions — keep both keyed off keepWarm.
-    async function rearm(sessions: SessionRef[]) {
-      const results = []
-      for (const s of sessions) {
-        const res = await fetch(
-          `http://127.0.0.1:${PORT}/session/${s.sessionID}?directory=${encodeURIComponent(s.directory)}`,
-          { signal: AbortSignal.timeout(10000) },
-        ).catch(() => null)
-        results.push({ ...s, rearmed: res?.ok === true })
-      }
-      return results
-    }
-
-    // restore=true ONLY from the cold start below, where no predecessor was
-    // observed and disk is the sole record of what was live. Every other call
-    // replays the snapshot taken above instead, so resuming from disk as well
-    // would prompt the same interrupted turn twice.
+    // The supervisor owns processes only. Which sessions to resume, deliver
+    // into, or re-arm is decided by the server that holds the recovery lease,
+    // from its own database. `restore` is still passed on a cold start so a
+    // server from before that change boots the way it expects; a newer one
+    // ignores it.
     async function restart(restore = false) {
       // Stage on the alt port and prove it healthy before touching the live
       // server.
@@ -239,10 +171,6 @@ export const SuperviseCommand = cmd({
         await stop(stage)
         return { ok: false, step: "stage", detail: `staged build never became healthy on ${ALT_PORT}` }
       }
-      // Snapshot liveness at the last possible moment — after the stage is
-      // proven (the slow part) and immediately before the kill — so the
-      // busy/armed lists can't go stale while the stage boots.
-      const snapshot = await liveness()
       // Build is good. Drop the stage, kill the server we own on PORT (by
       // handle), then relaunch the validated build on PORT and take ownership.
       await stop(stage)
@@ -260,15 +188,7 @@ export const SuperviseCommand = cmd({
         current = null
         return { ok: false, step: "cutover", detail: `relaunch on ${PORT} never became healthy` }
       }
-      // Re-arm BEFORE resuming. Both restore the liveness a reconnecting client
-      // checks before deciding whether the session it is sitting on is still
-      // alive, and rearm is a cheap GET per session while resume posts a prompt
-      // and can block for seconds — so doing rearm first shortens the window
-      // where a warm session reads as dead. The client also falls back to the
-      // persisted keepWarm intent, which closes the window that remains here.
-      const rearmed = await rearm(snapshot.armed)
-      const resumed = await resume(snapshot.busy)
-      return { ok: true, health: live, resumed, rearmed }
+      return { ok: true, health: live }
     }
 
     const page = `<!doctype html><html><head><meta charset="utf-8"><title>OpenCode Supervisor</title>
@@ -322,7 +242,7 @@ export const SuperviseCommand = cmd({
     refresh()
   }
 
-  const RESTART_CONFIRM = "Restart the server?\\n\\nBusy sessions will be auto-resumed, warm idle sessions re-armed, and every session re-pins against current config. Stop any session you do NOT want kept alive before restarting."
+  const RESTART_CONFIRM = "Restart the server?\\n\\nCut turns resume and warm sessions re-arm about a minute after the new server starts, and every session re-pins against current config. Stop any session you do NOT want resumed before restarting."
   const STOP_CONFIRM = "Stop the server?\\n\\nEvery open session's UI will disconnect until the next start."
 
   function render(s) {

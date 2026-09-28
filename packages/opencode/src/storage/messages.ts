@@ -11,6 +11,25 @@ import type { MessageV2 } from "../session/message-v2"
 // (value + byte length for the message cache budget), and a per-session ordered
 // list — so the caller's reconcile/preserveTerminal/broadcast logic is unchanged.
 export namespace Messages {
+  // When the session named by `column` was last prompted, as a scalar SQL
+  // subquery: its newest user message that is not synthetic, not a compaction
+  // request, and written since the session was created. The one definition,
+  // shared by `reader().prompted` and Sessions' owed query, so the two can
+  // never disagree. The creation bound leaves out context the agent tool
+  // copies from the parent, which keeps the parent's older timestamps: until
+  // the child's own prompt lands, it has not been prompted.
+  export function prompts(column: string) {
+    // Each json_extract sits behind a json_valid of its own row inside a CASE,
+    // which SQLite evaluates in order: json_extract throws on a malformed
+    // blob, and one torn row must not fail every session's query.
+    return `(SELECT max(m.time_created) FROM message m
+         WHERE m.session_id = ${column}
+           AND m.time_created >= (SELECT time_created FROM session WHERE id = ${column})
+           AND CASE WHEN json_valid(m.json) THEN json_extract(m.json, '$.role') = 'user' AND json_extract(m.json, '$.synthetic') IS NOT 1 END
+           AND NOT EXISTS (SELECT 1 FROM part p WHERE p.message_id = m.id
+             AND CASE WHEN json_valid(p.json) THEN json_extract(p.json, '$.type') = 'compaction' END))`
+  }
+
   const open = lazy(async () => {
     const db = await Db.open()
     db.run(`
@@ -37,6 +56,9 @@ export namespace Messages {
       ),
       listSession: db.query<{ id: string }, [string]>(
         `SELECT id FROM message WHERE session_id = ? ORDER BY time_created ASC, id ASC`,
+      ),
+      newest: db.query<{ json: string }, [string]>(
+        `SELECT json FROM message WHERE session_id = ? ORDER BY id DESC LIMIT 1`,
       ),
       remove: db.query<void, [string]>(`DELETE FROM message WHERE id = ?`),
       removeSession: db.query<void, [string]>(`DELETE FROM message WHERE session_id = ?`),
@@ -91,6 +113,31 @@ export namespace Messages {
     return rows.map((r) => r.id)
   }
 
+  // Synchronous reads for a caller's Db.transaction, which re-checks a decision
+  // taken outside it. `newest` is by id, the order MessageV2.stream reads in;
+  // `prompted` is when a person (or a parent, through the agent tool) last
+  // prompted the session, as opposed to a message the loop minted.
+  // Excludes compaction requests: the loop writes those as user messages, and
+  // they are not a person or a parent asking for work.
+  const latest = lazy(async () => {
+    const [{ Parts }, q] = await Promise.all([import("./parts"), open()])
+    await Parts.removeSessionQuery()
+    // Numbered, since the fragment names the session twice.
+    return q.db.query<{ at: number | null }, [string]>(`SELECT ${prompts("?1")} AS at`)
+  })
+
+  export async function reader() {
+    const q = await open()
+    const prompted = await latest()
+    return {
+      newest: (sessionID: string) => {
+        const row = q.newest.get(sessionID)
+        return row ? (JSON.parse(row.json) as MessageV2.Info) : undefined
+      },
+      prompted: (sessionID: string) => prompted.get(sessionID)?.at ?? 0,
+    }
+  }
+
   export async function remove(messageID: string) {
     const q = await open()
     await Db.retry(() => q.remove.run(messageID))
@@ -103,6 +150,16 @@ export namespace Messages {
 
   export async function removeSessionQuery() {
     return open().then((q) => q.removeSession)
+  }
+
+  // A synchronous writer for use inside a caller's Db.transaction, whose body
+  // cannot await.
+  export async function writer() {
+    const q = await open()
+    return (message: MessageV2.Info) => {
+      const json = JSON.stringify(message)
+      q.put.run(message.id, message.sessionID, created(message), json, Buffer.byteLength(json))
+    }
   }
 
   // Import the legacy `message/<sessionID>/<messageID>.json` tree into the table.

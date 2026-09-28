@@ -1,5 +1,5 @@
-import { Component, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
-import { createStore, produce, reconcile } from "solid-js/store"
+import { Component, createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
@@ -8,22 +8,26 @@ import { Button } from "@opencode-ai/ui/button"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
 import { useLanguage } from "@/context/language"
-import type { BackgroundSubagent } from "@opencode-ai/sdk/v2/client"
+import type { Subagent } from "@opencode-ai/sdk/v2/client"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { useMru } from "@/context/mru"
+import { useStopSession } from "@/hooks/use-stop-session"
 
-function duration(task: BackgroundSubagent): string {
-  const end = task.time.completed ?? Date.now()
-  return `${Math.round((end - task.time.created) / 1000)}s`
+function duration(task: Subagent, now: number): string {
+  const end = task.time.completed ?? now
+  return `${Math.max(0, Math.round((end - task.time.created) / 1000))}s`
 }
 
-function StatusIcon(props: { status: BackgroundSubagent["status"] }) {
+function StatusIcon(props: { status: Subagent["status"] }) {
   return (
     <Show when={props.status !== "running"} fallback={<Spinner />}>
       <Icon
         name={props.status === "completed" ? "circle-check" : "circle-x"}
-        class={props.status === "completed" ? "text-success" : "text-error"}
+        class={
+          props.status === "completed" ? "text-success" : props.status === "stopped" ? "text-text-weak" : "text-error"
+        }
       />
     </Show>
   )
@@ -41,6 +45,7 @@ export const DialogSubagents: Component<{
   current?: string
 }> = (props) => {
   const sdk = useSDK()
+  const sync = useSync()
   const params = useParams()
   const navigate = useNavigate()
   const dialog = useDialog()
@@ -56,23 +61,14 @@ export const DialogSubagents: Component<{
   // of empty sections. The switcher still lists the parent's other children.
   const parentOnly = () => !!parentID() && !props.switcher
 
-  // Same pattern as PromptActionBar: one seed fetch on mount, then keep the list
-  // live off the background.subagent.* events. NOT createResource — a resource is
-  // Suspense-coupled, so its pending state (on open and on every refetch) trips
-  // the <Suspense> around <Session> and flickers the whole transcript. A plain
-  // store fed by events never suspends, exactly like the overview's recent_hub.
-  const [tasks, setTasks] = createStore<BackgroundSubagent[]>([])
-
-  // The server list is the source of truth: it merges the durable child sessions
-  // with the in-memory tasks, deduped by child session, so it survives a restart
-  // and never double-counts a resumed child. The task events carry a task id
-  // that a disk-derived entry (keyed by child session) cannot match, so rather
-  // than reconcile them locally, any task transition just refetches the correct
-  // list. Keyed by id via reconcile so unchanged rows keep their identity.
-  //
-  // A monotonic sequence guards against out-of-order responses: two events can
-  // each fire a refetch, and the second's response may land first, so only the
-  // newest request is allowed to write.
+  // The server list is the source of truth, read from the database, so it is
+  // the same before and after a restart. Refetched when a descendant's turn
+  // starts or ends (the busy edge) and on a slow tick for tool progress. A plain
+  // store, not createResource: a resource is Suspense-coupled and would flicker
+  // the transcript on every refetch. The sequence keeps a late response from
+  // overwriting a newer one.
+  const [tasks, setTasks] = createStore<Subagent[]>([])
+  const [view, setView] = createStore({ now: Date.now(), switched: undefined as Subagent[] | undefined })
   let seq = 0
   const refetch = async () => {
     const sessionID = source()
@@ -82,42 +78,38 @@ export const DialogSubagents: Component<{
     if (mine !== seq) return
     setTasks(reconcile(res.data ?? [], { key: "id" }))
   }
+  const descendant = () => sync.data.session_busy[source() ?? ""]?.busyDescendant ?? false
+  createEffect(on(descendant, () => void refetch(), { defer: true }))
+  // The clock and the poll run only while a listed subagent is running: a
+  // finished row's duration is fixed, and each poll makes the server read every
+  // running child's transcript.
+  const active = createMemo(() => tasks.some((task) => task.status === "running"))
+  createEffect(() => {
+    if (!active()) return
+    setView("now", Date.now())
+    const clock = setInterval(() => setView("now", Date.now()), 1000)
+    const poll = setInterval(() => void refetch(), 2000)
+    onCleanup(() => {
+      clearInterval(clock)
+      clearInterval(poll)
+    })
+  })
 
   // The Ctrl+Tab switcher is OS Alt+Tab over siblings within each section:
   // running first, then finished, each in view order, with siblings never viewed
   // last, newest launch first. Snapshotted from the first fetch, so a sibling
   // finishing mid-cycle cannot move a row out from under the highlight.
-  const [switched, setSwitched] = createSignal<BackgroundSubagent[]>()
   const snapshot = () => {
     const rank = new Map(mru.order().map((id, i) => [id, i]))
-    const at = (task: BackgroundSubagent) => rank.get(task.subagent?.sessionID ?? "") ?? rank.size
-    const section = (task: BackgroundSubagent) => (task.status === "running" ? 0 : 1)
-    setSwitched(tasks.toSorted((a, b) => section(a) - section(b) || at(a) - at(b) || b.time.created - a.time.created))
+    const at = (task: Subagent) => rank.get(task.id) ?? rank.size
+    const section = (task: Subagent) => (task.status === "running" ? 0 : 1)
+    setView(
+      "switched",
+      tasks.toSorted((a, b) => section(a) - section(b) || at(a) - at(b) || b.time.created - a.time.created),
+    )
   }
 
   onMount(() => refetch().then(() => props.switcher && snapshot()))
-
-  const unsubs = [
-    sdk.event.on("background.subagent.created", (evt) => {
-      if (evt.properties.subagent.parentSessionID === source()) void refetch()
-    }),
-    sdk.event.on("background.subagent.progress", (evt) => {
-      if (evt.properties.parentSessionID !== source()) return
-      // Progress carries the in-memory subagent id, which a disk-derived row
-      // cannot match; write it where the row IS the live subagent, and let the
-      // periodic refetch carry it otherwise.
-      setTasks(
-        produce((list) => {
-          const t = list.find((x) => x.id === evt.properties.subagentId)
-          if (t) t.progress = evt.properties.progress
-        }),
-      )
-    }),
-    sdk.event.on("background.subagent.completed", (evt) => {
-      if (evt.properties.parentSessionID === source()) void refetch()
-    }),
-  ]
-  onCleanup(() => unsubs.forEach((u) => u()))
 
   const running = language.t("dialog.subagents.section.running")
   const completed = language.t("dialog.subagents.section.completed")
@@ -130,17 +122,16 @@ export const DialogSubagents: Component<{
       return b.time.created - a.time.created
     }),
   )
-  const items = () => switched() ?? sections()
+  const items = () => view.switched ?? sections()
   // Ctrl+Tab opens on the first row that is not the sibling on screen, and
   // Ctrl+Shift+Tab rests on the sibling on screen.
   const initial = () =>
-    (props.switcher && items().find((task) => (task.subagent?.sessionID === props.current) !== !!props.advance)) ||
-    items()[0]
+    (props.switcher && items().find((task) => (task.id === props.current) !== !!props.advance)) || items()[0]
 
-  const select = (task: BackgroundSubagent | undefined) => {
-    if (!task?.subagent?.sessionID) return
+  const select = (task: Subagent | undefined) => {
+    if (!task) return
     dialog.close()
-    navigate(`/${base64Encode(sdk.directory)}/session/${task.subagent.sessionID}`)
+    navigate(`/${base64Encode(sdk.directory)}/session/${task.id}`)
   }
 
   const goToParent = () => {
@@ -150,9 +141,12 @@ export const DialogSubagents: Component<{
     navigate(`/${base64Encode(sdk.directory)}/session/${id}`)
   }
 
-  // Cancelling emits background.subagent.completed (status "cancelled"), which
-  // the listener above folds into the store — no manual refetch.
-  const cancel = (task: BackgroundSubagent) => sdk.client.background.cancel({ id: task.id })
+  // Cancel is the one Stop, on the subagent's own session.
+  const halt = useStopSession()
+  const cancel = (task: Subagent) => {
+    if (halt(task.id, sdk.directory)) return dialog.close()
+    void refetch()
+  }
 
   // Ctrl+Tab hold-cycle, mirroring DialogOverview: when opened by the Ctrl-hold
   // keybind (switcher), each further Ctrl+Tab advances the highlight and
@@ -160,7 +154,7 @@ export const DialogSubagents: Component<{
   // session as between root sessions. `armed` from mount so a single tap+release
   // commits; a bare Control keyup on a non-switcher open never navigates.
   let listRef: ListRef | undefined
-  const [highlight, setHighlight] = createSignal<BackgroundSubagent | undefined>()
+  const [highlight, setHighlight] = createSignal<Subagent | undefined>()
 
   // The list has no search box and no focused row on open, so nothing inside it
   // would receive arrow/Enter keys. Forward them from the window into the list's
@@ -228,7 +222,7 @@ export const DialogSubagents: Component<{
       >
         {/* The List reads `initial` once at creation, so the switcher holds it
             back until its snapshot exists. */}
-        <Show when={!props.switcher || switched()}>
+        <Show when={!props.switcher || view.switched}>
           <List
             ref={(r) => (listRef = r)}
             class="flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
@@ -253,7 +247,7 @@ export const DialogSubagents: Component<{
                 <div class="flex-1 min-w-0 flex flex-col text-left">
                   <span class="truncate font-normal">{task.description}</span>
                   <span class="truncate text-text-weak font-normal">
-                    {(task.subagent?.agent ?? "subagent") + " · " + duration(task)}
+                    {task.agent + " · " + duration(task, view.now)}
                   </span>
                 </div>
               </div>

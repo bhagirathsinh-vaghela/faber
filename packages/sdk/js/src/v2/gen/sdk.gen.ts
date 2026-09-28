@@ -20,19 +20,7 @@ import type {
   AuthRemoveResponses,
   AuthSetErrors,
   AuthSetResponses,
-  BackgroundAcceptAllPendingResponses,
-  BackgroundAcceptPendingResponses,
-  BackgroundCancelResponses,
-  BackgroundDismissPendingResponses,
-  BackgroundGetAutoInjectDefaultResponses,
-  BackgroundGetAutoInjectResponses,
-  BackgroundGetErrors,
-  BackgroundGetPendingResponses,
-  BackgroundGetResponses,
   BackgroundListResponses,
-  BackgroundSetAutoInjectResponses,
-  BackgroundToggleAutoInjectDefaultResponses,
-  BackgroundToggleAutoInjectResponses,
   BoxPreference,
   CommandListResponses,
   Config as Config3,
@@ -202,14 +190,10 @@ import type {
   SessionPingArmedResponses,
   SessionPingErrors,
   SessionPingResponses,
-  SessionPingStopErrors,
-  SessionPingStopResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
-  SessionRestoreErrors,
-  SessionRestoreResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionSeenErrors,
@@ -1980,36 +1964,6 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Resume a session after a restart
-   *
-   * Resume a root session whose turn a restart cut off, together with the subagents it had in flight. The subagents come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subagent graph.
-   */
-  public restore<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<SessionRestoreResponses, SessionRestoreErrors, ThrowOnError>({
-      url: "/session/{sessionID}/restore",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
    * Send command
    *
    * Send a new command to a session for execution by the AI assistant.
@@ -2220,7 +2174,7 @@ export class Session extends HeyApiClient {
   /**
    * Arm cache ping
    *
-   * Set the session's keep-warm intent and arm the cache ping daemon. This is the explicit-open verb: an intentional open (sidebar/overview click, new session) or the arm button calls it. A plain fetch (reload, reconnect) does not, so it cannot resurrect a stopped session.
+   * Arm the cache ping daemon for a session a person just opened (sidebar or overview click), but only while its conversation cache is still warm: an expired cache has nothing left to keep warm. A plain fetch (reload, reconnect) does not call this.
    */
   public arm<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2242,36 +2196,6 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionArmResponses, SessionArmErrors, ThrowOnError>({
       url: "/session/{sessionID}/arm",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Stop cache ping
-   *
-   * Clear the session's keep-warm intent, stop the cache ping daemon, and drop the pinned prompt state. The session stays cold until an organic turn or the arm route re-declares intent — a plain reopen no longer re-arms it.
-   */
-  public pingStop<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<SessionPingStopResponses, SessionPingStopErrors, ThrowOnError>({
-      url: "/session/{sessionID}/ping/stop",
       ...options,
       ...params,
     })
@@ -3839,14 +3763,14 @@ export class Mcp extends HeyApiClient {
 
 export class Background extends HeyApiClient {
   /**
-   * List background subagents
+   * List subagents
    *
-   * Get a list of all background subagents, optionally filtered by session.
+   * A session's subagents as the database records them, newest first. Stopping one is POST /session/:id/abort on the subagent's session.
    */
   public list<ThrowOnError extends boolean = false>(
-    parameters?: {
+    parameters: {
       directory?: string
-      sessionID?: string
+      sessionID: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3863,344 +3787,6 @@ export class Background extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<BackgroundListResponses, unknown, ThrowOnError>({
       url: "/background",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get background subagent
-   *
-   * Get a specific background subagent by ID.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<BackgroundGetResponses, BackgroundGetErrors, ThrowOnError>({
-      url: "/background/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Cancel background subagent
-   *
-   * Cancel a running background subagent.
-   */
-  public cancel<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BackgroundCancelResponses, unknown, ThrowOnError>({
-      url: "/background/{id}/cancel",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get auto-inject setting
-   *
-   * Get the auto-inject setting for a session.
-   */
-  public getAutoInject<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<BackgroundGetAutoInjectResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/auto-inject",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Set auto-inject setting
-   *
-   * Set the auto-inject setting for a session.
-   */
-  public setAutoInject<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      autoInject?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "autoInject" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BackgroundSetAutoInjectResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/auto-inject",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Toggle auto-inject setting
-   *
-   * Toggle the auto-inject setting for a session.
-   */
-  public toggleAutoInject<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BackgroundToggleAutoInjectResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/auto-inject/toggle",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get pending results
-   *
-   * Get all pending background subagent results for a session.
-   */
-  public getPending<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<BackgroundGetPendingResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/pending",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Accept pending result
-   *
-   * Accept and inject a pending background subagent result into the session.
-   */
-  public acceptPending<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      subagentId: string
-      directory?: string
-      triggerLLM?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "path", key: "subagentId" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "triggerLLM" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BackgroundAcceptPendingResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/pending/{subagentId}/accept",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Accept all pending results
-   *
-   * Accept and inject all pending background subagent results into the session.
-   */
-  public acceptAllPending<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      triggerLLM?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "triggerLLM" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BackgroundAcceptAllPendingResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/pending/accept-all",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Dismiss pending results
-   *
-   * Dismiss (discard) pending background subagent results without injecting them.
-   */
-  public dismissPending<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      subagentIds?: Array<string>
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "body", key: "subagentIds" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BackgroundDismissPendingResponses, unknown, ThrowOnError>({
-      url: "/background/session/{sessionID}/pending/dismiss",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get auto-inject default
-   *
-   * Get the global default auto-inject setting for new sessions.
-   */
-  public getAutoInjectDefault<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<BackgroundGetAutoInjectDefaultResponses, unknown, ThrowOnError>({
-      url: "/background/auto-inject/default",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Toggle auto-inject default
-   *
-   * Toggle the global default auto-inject setting for new sessions.
-   */
-  public toggleAutoInjectDefault<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<BackgroundToggleAutoInjectDefaultResponses, unknown, ThrowOnError>({
-      url: "/background/auto-inject/default/toggle",
       ...options,
       ...params,
     })

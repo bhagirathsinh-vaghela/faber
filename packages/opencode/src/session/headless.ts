@@ -7,7 +7,7 @@ import { Log } from "@/util/log"
 import { Session } from "."
 import { SessionPrompt } from "./prompt"
 import { MessageV2 } from "./message-v2"
-import { SubagentWatch } from "@/tool/subagent-watch"
+import { Recovery } from "./recovery"
 import { Sessions } from "@/storage/sessions"
 
 // An agent run with no parent and no human: the loop a subagent runs, started
@@ -17,6 +17,7 @@ export namespace HeadlessAgent {
   const log = Log.create({ service: "headless-agent" })
 
   const DEFAULT_TIMEOUT = 600_000
+  const TICK = 1000
 
   export const Input = z.object({
     agent: z.string().min(1).describe("Agent name, e.g. build or plan"),
@@ -68,8 +69,8 @@ export namespace HeadlessAgent {
   }
 
   // A headless run cannot ask the user anything or switch modes on their behalf.
-  // It does not delegate either: the watcher below waits on this session's own
-  // turns and jobs, and a child subagent is neither.
+  // It does not delegate either: the run waits on this session's own turns and
+  // jobs, and a child subagent is neither.
   const RULES: PermissionNext.Ruleset = [
     { permission: "question", pattern: "*", action: "deny" },
     { permission: "plan_enter", pattern: "*", action: "deny" },
@@ -96,16 +97,24 @@ export namespace HeadlessAgent {
     const denials = await PermissionNext.headless(session.id)
 
     // The turn can end while a bash job it started is still running; the job's
-    // result wakes the session for another turn. The run is over only when the
-    // subagent watcher sees the turn idle and no job running for its whole
-    // debounce window, which is the same rule a subagent's result waits on.
-    const quiet = Promise.withResolvers<void>()
-    SubagentWatch.start({ child: session, inject: async () => quiet.resolve() })
-    const deadline = setTimeout(() => {
-      SubagentWatch.stop(session.id)
-      quiet.reject(new Error(`timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`))
-      SessionPrompt.cancel(session.id, "interrupted")
-    }, input.timeoutMs ?? DEFAULT_TIMEOUT)
+    // result wakes the session for another turn. The run is over when the
+    // session is done by the same rule a subagent's result waits on.
+    const deadline = AbortSignal.timeout(input.timeoutMs ?? DEFAULT_TIMEOUT)
+    const settled = async () => {
+      while (!deadline.aborted) {
+        await Bun.sleep(TICK)
+        if (await Recovery.done(await Session.get(session.id))) return
+      }
+      await Session.stop({ sessionID: session.id })
+      throw new Error(`timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`)
+    }
+    // A timer callback has no instance context, so it re-enters the run's own.
+    const directory = Instance.directory
+    const expiry = () =>
+      void Instance.provide({ directory, fn: () => Session.stop({ sessionID: session.id }) }).catch((error) =>
+        log.error("headless timeout stop failed", { sessionID: session.id, error }),
+      )
+    deadline.addEventListener("abort", expiry)
 
     const outcome = await SessionPrompt.prompt({
       sessionID: session.id,
@@ -116,13 +125,10 @@ export namespace HeadlessAgent {
         { type: "text" as const, text: input.prompt },
       ],
     })
-      .then(() => quiet.promise)
+      .then(settled)
       .then(() => summarize(session.id))
       .catch((error) => failure([`headless: ${agent.name} in ${Instance.directory}: ${describe(error)}`]))
-      .finally(() => {
-        clearTimeout(deadline)
-        SubagentWatch.stop(session.id)
-      })
+      .finally(() => deadline.removeEventListener("abort", expiry))
 
     const permission_denials = denials()
     if (!input.keep) {

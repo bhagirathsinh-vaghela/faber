@@ -2,428 +2,19 @@ import { Tool } from "./tool"
 import DESCRIPTION from "./agent.txt"
 import z from "zod"
 import { Session } from "../session"
-import { Bus } from "../bus"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
-import { SessionDeliver } from "../session/deliver"
-import { SubagentWatch } from "./subagent-watch"
+import { Recovery } from "../session/recovery"
+import { Sessions } from "../storage/sessions"
+import { Messages } from "../storage/messages"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
-import { BackgroundSubagent } from "@/background"
 import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "subagent-tool" })
-
-interface BackgroundSubagentInput {
-  task: BackgroundSubagent.Info
-  abort: AbortController
-  session: Session.Info
-  agent: Agent.Info
-  model: { modelID: string; providerID: string }
-  promptParts: Awaited<ReturnType<typeof SessionPrompt.resolvePromptParts>>
-  // A resumed subagent MUST inject its result even when the parent's auto-inject
-  // resolves off: the restart wiped the per-session setting, and the parent was
-  // told to WAIT for this injection rather than re-launch, so queueing it as a
-  // pending result would strand it behind a parent that never asks.
-  forceInject?: boolean
-}
-
-async function runSubagentInBackground(input: BackgroundSubagentInput) {
-  const { task, abort, session, agent, model, promptParts } = input
-
-  let toolCount = 0
-  const messageID = Identifier.ascending("message")
-
-  const progressUnsub = Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
-    if (evt.properties.part.sessionID !== session.id) return
-    if (evt.properties.part.type !== "tool") return
-
-    const part = evt.properties.part
-    if (part.state.status === "completed") toolCount++
-
-    BackgroundSubagent.updateProgress(task.id, {
-      toolCount,
-      tokens: { input: 0, output: 0 },
-      currentActivity: part.state.status === "running" ? `Running ${part.tool}...` : `Completed ${part.tool}`,
-      lastUpdate: Date.now(),
-    })
-  })
-
-  function handleCancel() {
-    SessionPrompt.cancel(session.id)
-  }
-  abort.signal.addEventListener("abort", handleCancel)
-
-  // The watcher is the injection authority for a clean run: it fires once the
-  // child's turn AND every job it launched have been quiet for the debounce
-  // window, so a job-result turn that re-wakes the child is captured instead of
-  // stranded. Started BEFORE the prompt so it sees the very first busy-enter.
-  // The cancelled/failed paths below inject directly and stop the watcher, so it
-  // never doubles a result the error path already delivered.
-  SubagentWatch.start({
-    child: session,
-    parentID: task.parentSessionID,
-    inject: (output) => {
-      // Stamped HERE, not when prompt() returns: `time.completed` is what the
-      // parent's notification reports as duration, and the watcher can fire long
-      // after the first turn ends (a job the turn left running, its result turn,
-      // the debounce). Stamping at prompt-return under-reports every one of those.
-      BackgroundSubagent.complete(task.id, "completed", { output })
-      return injectCompletionResult(task, output, undefined, input.forceInject)
-    },
-  })
-
-  try {
-    await SessionPrompt.prompt({
-      messageID,
-      sessionID: session.id,
-      model,
-      agent: agent.name,
-      tools: {},
-      parts: promptParts,
-    })
-
-    progressUnsub()
-    abort.signal.removeEventListener("abort", handleCancel)
-
-    // If cancelled by user while prompt was completing, inject cancellation
-    // instead — the watcher must not also fire, so stop it first.
-    const currentAfterComplete = BackgroundSubagent.get(task.id)
-    if (currentAfterComplete?.status === "cancelled") {
-      log.info("background subagent cancelled by user (completed race)", { subagentId: task.id })
-      SubagentWatch.stop(session.id)
-      const duration = (task.time.completed ?? Date.now()) - task.time.created
-      await doInject(task, "", undefined, duration, true, "cancelled")
-      return
-    }
-
-    // Clean completion: nothing to do here. The watcher records the result and
-    // injects once the child (and every job it left running) has gone quiet.
-  } catch (error) {
-    progressUnsub()
-    abort.signal.removeEventListener("abort", handleCancel)
-
-    // If already cancelled (by user via TUI), inject directly bypassing the
-    // watcher and the auto-inject check.
-    const current = BackgroundSubagent.get(task.id)
-    if (current?.status === "cancelled") {
-      log.info("background subagent cancelled by user", { subagentId: task.id })
-      SubagentWatch.stop(session.id)
-      const duration = (task.time.completed ?? Date.now()) - task.time.created
-      await doInject(task, "", undefined, duration, true, "cancelled")
-      return
-    }
-
-    const errorMsg = error instanceof Error ? error.message : String(error)
-    log.error("background subagent failed", { subagentId: task.id, error: errorMsg })
-
-    SubagentWatch.stop(session.id)
-    BackgroundSubagent.complete(task.id, "failed", { output: "", error: errorMsg })
-
-    await injectCompletionResult(task, "", errorMsg, input.forceInject)
-  }
-}
-
-async function injectCompletionResult(task: BackgroundSubagent.Info, output: string, error?: string, force?: boolean) {
-  const duration = (task.time.completed ?? Date.now()) - task.time.created
-  const autoInject = force || (await BackgroundSubagent.getAutoInject(task.parentSessionID))
-
-  // If autoInject is disabled, queue the result instead
-  if (!autoInject) {
-    BackgroundSubagent.addPending(task.parentSessionID, {
-      subagentId: task.id,
-      parentSessionID: task.parentSessionID,
-      description: task.description,
-      agent: task.subagent?.agent,
-      output,
-      error,
-      completedAt: Date.now(),
-      duration,
-    })
-    log.info("queued background subagent result (autoInject disabled)", {
-      subagentId: task.id,
-      parentSessionID: task.parentSessionID,
-    })
-    return
-  }
-
-  // Auto-inject is enabled, inject directly
-  await doInject(task, output, error, duration)
-}
-
-async function doInject(
-  task: BackgroundSubagent.Info,
-  output: string,
-  error: string | undefined,
-  duration: number,
-  autoTriggerLLM = true,
-  statusOverride?: "cancelled",
-) {
-  const status: "completed" | "failed" | "cancelled" = statusOverride ?? (error ? "failed" : "completed")
-  const notification = buildNotification(task, output, error, duration, status)
-
-  await SessionDeliver.deliver({
-    sessionID: task.parentSessionID,
-    parts: [
-      {
-        text: notification,
-        synthetic: true,
-        backgroundSubagentResult: {
-          subagentId: task.id,
-          description: task.description,
-          status,
-          agent: task.subagent?.agent,
-          sessionID: task.subagent?.sessionID,
-          duration,
-        },
-      },
-    ],
-    wake: autoTriggerLLM,
-  })
-
-  log.info("injected background subagent result", { subagentId: task.id, parentSessionID: task.parentSessionID })
-}
-
-// Export for accepting pending results from TUI
-export async function acceptPendingResult(sessionID: string, subagentId: string, triggerLLM = false): Promise<boolean> {
-  log.info("acceptPendingResult called", { sessionID, subagentId, triggerLLM })
-  const pending = BackgroundSubagent.popPending(sessionID, subagentId)
-  if (!pending) {
-    log.warn("acceptPendingResult: no pending result found", { sessionID, subagentId })
-    return false
-  }
-
-  log.info("acceptPendingResult: found pending", { subagentId, description: pending.description })
-
-  const task = BackgroundSubagent.get(subagentId) ?? buildMinimalTask(pending)
-  await doInject(task, pending.output, pending.error, pending.duration, triggerLLM)
-  log.info("acceptPendingResult: injection complete", { subagentId })
-  return true
-}
-
-export async function acceptAllPending(sessionID: string, triggerLLM = false): Promise<number> {
-  const pending = BackgroundSubagent.clearPending(sessionID)
-  if (pending.length === 0) return 0
-
-  if (pending.length === 1) {
-    const p = pending[0]
-    const task = BackgroundSubagent.get(p.subagentId) ?? buildMinimalTask(p)
-    await doInject(task, p.output, p.error, p.duration, triggerLLM)
-    return 1
-  }
-
-  // One synthetic message carries all N results as separate parts.
-  const parts = pending.map((p) => {
-    const task = BackgroundSubagent.get(p.subagentId) ?? buildMinimalTask(p)
-    const status: "completed" | "failed" = p.error ? "failed" : "completed"
-    return {
-      text: buildNotification(task, p.output, p.error, p.duration),
-      synthetic: true,
-      backgroundSubagentResult: {
-        subagentId: task.id,
-        description: task.description,
-        status,
-        agent: task.subagent?.agent,
-        sessionID: task.subagent?.sessionID,
-        duration: p.duration,
-      },
-    }
-  })
-
-  await SessionDeliver.deliver({ sessionID, parts, wake: triggerLLM })
-  log.info("injected merged background subagent results", { count: pending.length, sessionID })
-
-  return pending.length
-}
-
-// Resume the subagents a restart cut off under a parent that is itself being
-// resumed. The parent and its in-flight subagent come back as a UNIT, so the
-// parent's continue prompt can promise the subagent is alive and the parent then
-// waits for the injection rather than re-launching the work.
-//
-// The BackgroundSubagent record that linked a subagent to its parent lived in memory
-// and died with the restart, so this rebuilds it from the child session's
-// persisted state: the parent is the caller, the description is the child's
-// title, and the agent/model come off the child's own last real user message
-// (the same inheritance a fresh subagent resolves). The child is then re-driven
-// through the ordinary subagent wrapper with a continue prompt, so completing
-// injects into the parent exactly as an uninterrupted subagent would have.
-//
-// Returns how many subagents were resumed, so the caller can tell the parent.
-export async function resumeSubagents(parentSessionID: string): Promise<number> {
-  // Dynamic import: ping.ts dynamically imports this module, so a static import
-  // back would close the cycle.
-  const { SessionPing } = await import("../session/ping")
-  const { BackgroundJob } = await import("../background/job")
-  const children = await Session.children(parentSessionID)
-
-  // Additive to the re-drive below: every child still owing an injection gets a
-  // watcher, rebuilt from disk. A child whose turn finished before the restart
-  // but whose job is still running would otherwise have nobody to inject its
-  // result. The seed carries the two things a watcher cannot learn from events
-  // that already fired: jobs still running, and whether the turn was cut.
-  // Started before the re-drive so its seed wins the one-watcher-per-child guard.
-  //
-  // `=== 0`, not falsiness: an ABSENT stamp is a child from before the field
-  // existed, and hundreds of those sit on disk. Watching one arms an empty set,
-  // fires after the debounce, and injects a years-old result into the parent.
-  const jobs = await BackgroundJob.list()
-  for (const child of children) {
-    if (child.time.injected !== 0) continue
-    const seed = new Set<string>()
-    for (const job of jobs) if (job.sessionID === child.id && job.status === "running") seed.add(`job:${job.id}`)
-    if (await SessionPing.interrupted(child.id)) seed.add("interrupted")
-    const task: BackgroundSubagent.Info = {
-      id: Identifier.ascending("part"),
-      parentSessionID,
-      status: "running",
-      description: child.title,
-      time: { created: child.time.created },
-      subagent: {
-        sessionID: child.id,
-        agent: child.current?.agent ?? MessageV2.UNKNOWN_AGENT,
-        prompt: "",
-        model: child.current?.model ?? MessageV2.UNKNOWN_MODEL,
-      },
-    }
-    SubagentWatch.start({
-      child,
-      parentID: task.parentSessionID,
-      seed,
-      inject: (output) => injectCompletionResult(task, output, undefined, true),
-    })
-  }
-
-  let resumed = 0
-  for (const child of children) {
-    if (!(await SessionPing.interrupted(child.id))) continue
-
-    // No resolvable model means the re-drive would throw and deliver a failed
-    // result: skip it rather than resume into a guaranteed failure. An agent-tool
-    // subagent always carries a model on its prompt, so this only guards a
-    // malformed child.
-    if (!child.current?.model) {
-      log.error("cannot resume subagent, no model on record", { child: child.id })
-      continue
-    }
-    const model = child.current.model
-    // defaultAgent throws on a misconfigured default; a resume must not abort the
-    // whole loop for a config fault, so degrade to the built-in "build".
-    const agentName = child.current.agent ?? (await Agent.defaultAgent().catch(() => "build"))
-    const agent = await Agent.get(agentName).catch(() => undefined)
-    if (!agent) {
-      log.error("cannot resume subagent, agent gone", { child: child.id, agent: agentName })
-      continue
-    }
-
-    const { subagent: task, abort } = BackgroundSubagent.create({
-      parentSessionID,
-      description: child.title,
-      subagent: { sessionID: child.id, agent: agentName, prompt: "", model },
-    })
-
-    // A continue prompt, not the original: the child resumes its cut-off turn
-    // rather than re-running its instructions from the top. The same wrapper
-    // carries the completion into an injection for the parent.
-    const promptParts = await SessionPrompt.resolvePromptParts(SUBAGENT_RESUME_TEXT)
-    void runSubagentInBackground({ task, abort, session: child, agent, model, promptParts, forceInject: true })
-    resumed++
-    log.info("resumed interrupted subagent", { child: child.id, parent: parentSessionID })
-  }
-  return resumed
-}
-
-export const SUBAGENT_RESUME_TEXT =
-  "Pardon the interruption — the server restarted and your turn was cut off. Continue what you were doing and finish the task you were given; your result is still awaited by the session that launched you."
-
-// The subagents of a session, durable across a restart. The in-memory
-// BackgroundSubagent store is lost on restart, so a dialog reading it alone shows
-// nothing that ran before the restart and can double-count a child whose task
-// was recreated by a resume. The child SESSIONS are durable (on disk, linked by
-// parentID), so this is the source of truth: every subagent child is a subagent,
-// keyed by its session id, and an in-memory task for that child (which carries
-// live progress and the result) overrides the disk-derived shell when present.
-//
-// Status comes off the child's last assistant turn: no message yet is pending,
-// a turn still open is running, a finished turn is completed. This is a
-// projection, so it is rebuilt from disk every call rather than mutated.
-export async function subagentsForSession(parentSessionID: string): Promise<BackgroundSubagent.Info[]> {
-  const live = new Map(
-    BackgroundSubagent.list(parentSessionID)
-      .filter((t) => t.subagent?.sessionID)
-      .map((t) => [t.subagent!.sessionID, t] as const),
-  )
-  const children = await Session.children(parentSessionID)
-  const result: BackgroundSubagent.Info[] = []
-  for (const child of children) {
-    const held = live.get(child.id)
-    if (held) {
-      result.push(held)
-      continue
-    }
-    const messages = await Session.messages({ sessionID: child.id })
-    const assistants = messages.filter((m) => m.info.role === "assistant")
-    const last = assistants.at(-1)?.info as MessageV2.Assistant | undefined
-    const status: BackgroundSubagent.Status =
-      last === undefined ? "running" : last.time.completed ? "completed" : "running"
-    result.push({
-      id: child.id,
-      parentSessionID,
-      status,
-      description: child.title,
-      time: { created: child.time.created, ...(last?.time.completed ? { completed: last.time.completed } : {}) },
-      subagent: {
-        sessionID: child.id,
-        agent: child.current?.agent ?? MessageV2.UNKNOWN_AGENT,
-        prompt: "",
-        model: child.current?.model ?? MessageV2.UNKNOWN_MODEL,
-      },
-    })
-  }
-  // Newest first, so the most recent subagents head the dialog.
-  return result.sort((a, b) => b.time.created - a.time.created)
-}
-
-function buildMinimalTask(p: BackgroundSubagent.PendingResult): BackgroundSubagent.Info {
-  return {
-    id: p.subagentId,
-    parentSessionID: p.parentSessionID,
-    status: p.error ? "failed" : "completed",
-    description: p.description,
-    time: { created: p.completedAt - p.duration, completed: p.completedAt },
-    subagent: p.agent ? { sessionID: "", agent: p.agent, prompt: "", model: MessageV2.UNKNOWN_MODEL } : undefined,
-  }
-}
-
-function buildNotification(
-  task: BackgroundSubagent.Info,
-  output: string,
-  error: string | undefined,
-  duration: number,
-  statusOverride?: string,
-) {
-  const status = statusOverride ?? (error ? "failed" : "completed")
-  const body =
-    status === "cancelled"
-      ? "This task was cancelled by the user. Do not retry or continue this task."
-      : error
-        ? `ERROR: ${error}`
-        : output
-  return [
-    `<background-subagent-result>`,
-    `subagent_id: ${task.id}`,
-    `status: ${status}`,
-    `duration: ${Math.round(duration / 1000)}s`,
-    `agent: ${task.subagent?.agent}`,
-    `session_id: ${task.subagent?.sessionID ?? ""}`,
-    ``,
-    body,
-    `</background-subagent-result>`,
-  ].join("\n")
-}
 
 const parameters = z
   .object({
@@ -522,85 +113,100 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
       const agent = snapshot?.agents[ctx.agent] ?? (await Agent.get(ctx.agent))
       if (!agent) throw new Error(`Unknown agent type: ${ctx.agent} is not a valid agent type`)
 
-      const session = await iife(async () => {
-        if (params.session_id) {
-          const found = await Session.get(params.session_id).catch(() => {})
-          if (found) return found
-        }
-
-        const created = await Session.create({
-          parentID: ctx.sessionID,
-          title: params.description + ` (@${params.subagent_type} subagent)`,
-        })
-        await Session.update(created.id, (draft) => {
-          draft.allowedTools = allowed
-          draft.time.injected = 0
-        })
-        return created
-      })
-      // Copy parent conversation into child session for shared context + cache reuse
-      if (params.include_context && !params.session_id) {
-        const parentMessages = await Session.messages({ sessionID: ctx.sessionID })
-        const idMap = new Map<string, string>()
-        for (const parentMsg of parentMessages) {
-          const newID = Identifier.ascending("message")
-          idMap.set(parentMsg.info.id, newID)
-          const parentID =
-            parentMsg.info.role === "assistant" && parentMsg.info.parentID
-              ? idMap.get(parentMsg.info.parentID)
-              : undefined
-          await Session.updateMessage({
-            ...parentMsg.info,
-            sessionID: session.id,
-            id: newID,
-            ...(parentID && { parentID }),
-          })
-          for (const part of parentMsg.parts) {
-            await Session.updatePart({
-              ...part,
-              id: Identifier.ascending("part"),
-              messageID: newID,
-              sessionID: session.id,
-            })
-          }
+      // Only this caller's own subagent can be continued: its result is
+      // delivered to its parent, which must be the session asking.
+      const found = params.session_id ? await Session.get(params.session_id).catch(() => undefined) : undefined
+      if (params.session_id && found?.parentID !== ctx.sessionID) {
+        return {
+          title: params.description,
+          metadata: {} as Record<string, unknown>,
+          output: found
+            ? `Session ${params.session_id} is not a subagent of this session, so it cannot be continued here. Omit session_id to start a new subagent.`
+            : `Session ${params.session_id} does not exist. Omit session_id to start a new subagent.`,
         }
       }
 
-      const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
-      if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+      // The launch belongs to this turn: one a stop has cancelled, or is about
+      // to (a stop stamps first and cancels last), launches nothing.
+      const launched = Date.now()
+      const halted = () => ctx.abort.aborted || Sessions.halted(ctx.sessionID, launched)
+      if (await halted()) throw new Error(`session ${ctx.sessionID} was stopped before its subagent launched`)
 
-      const model = { modelID: msg.info.modelID, providerID: msg.info.providerID }
+      const session =
+        found ??
+        (await iife(async () => {
+          const created = await Session.create({
+            parentID: ctx.sessionID,
+            title: params.description + ` (@${params.subagent_type} subagent)`,
+          })
+          return Session.update(created.id, (draft) => {
+            draft.allowedTools = allowed
+            draft.time.injected = 0
+          })
+        }))
+      // A launch that fails from here on leaves a child that will not run for
+      // it: a new child, or one whose prompt for this launch landed, is
+      // stopped over that prompt rather than left owed with no turn. A
+      // continued child the launch never reached is left as it was.
+      const abandon = async (error: unknown) => {
+        const prompted = (await Messages.reader()).prompted(session.id)
+        if (!found || prompted >= launched)
+          await Session.mark(session.id, (draft) => void (draft.time.stopped = Math.max(Date.now(), prompted)))
+        throw error
+      }
+      const stopped = () => new Error(`session ${ctx.sessionID} was stopped before its subagent launched`)
+      const parts = await prepare(session.id).catch(abandon)
 
-      const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
+      // Checked again after the awaits above: a stop that landed meanwhile has
+      // already stamped this child, and a prompt written now would outrun it.
+      if (await halted()) await abandon(stopped())
 
-      const { subagent: task, abort } = BackgroundSubagent.create({
-        parentSessionID: ctx.sessionID,
-        description: params.description,
-        subagent: {
-          sessionID: session.id,
-          agent: agent.name,
-          prompt: params.prompt,
-          model,
-        },
-      })
+      // The prompt is the fact that makes the parent owed this child's result,
+      // so it is written before the tool returns.
+      const written = await SessionPrompt.prompt({
+        sessionID: session.id,
+        model: parts.model,
+        agent: agent.name,
+        tools: {},
+        parts: parts.prompt,
+        noReply: true,
+      }).catch(abandon)
 
-      // Fire and forget - run in background
-      runSubagentInBackground({
-        task,
-        abort,
-        session,
-        agent,
-        model,
-        promptParts,
+      // A continued child reports from this prompt on: whatever it answered
+      // before was already its parent's, or never will be. After the prompt,
+      // so a launch that fails to write it leaves the earlier result owed;
+      // `max` keeps a delivery that just landed.
+      if (found)
+        await Session.update(found.id, (draft) => {
+          draft.time.injected = Math.max(draft.time.injected ?? 0, launched - 1)
+        }).catch(abandon)
+
+      // A stop stamps parent before child and every stamp before any cancel
+      // (Session.stop). So the parent is read first and the child last, with
+      // nothing awaited between that read and the turn's start: a child read
+      // unstamped means its cancel comes after the turn below is registered,
+      // and its stamp after the prompt, so the child is owed nothing.
+      if (await halted()) await abandon(stopped())
+      const child = await Sessions.read(session.id).catch(abandon)
+      if ((child.time.stopped ?? 0) >= launched) await abandon(stopped())
+
+      // Fire and forget. Recovery delivers the result once the child is done,
+      // however many restarts that takes.
+      void SessionPrompt.loop(session.id).catch(async (error) => {
+        log.error("subagent turn failed", { sessionID: session.id, error })
+        const message = error instanceof Error ? error.message : String(error)
+        await Recovery.fail(session.id, message, launched, written.info.time.created).catch(
+          (failure) => log.error("could not report the failed subagent", { sessionID: session.id, error: failure }),
+        )
       })
 
       return {
         title: params.description,
         metadata: {
           status: "async_launched",
-          subagentId: task.id,
+          subagentId: session.id,
           sessionId: session.id,
-          model,
+          model: parts.model,
           toolset: params.toolset,
           tools: allowed,
           summary: params.summary,
@@ -610,7 +216,7 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
           `agent: ${agent.name}`,
           `toolset: ${params.toolset} (${allowed.join(", ")})`,
           ...(params.summary ? [`summary: ${params.summary}`] : []),
-          `subagent_id: ${task.id}`,
+          `subagent_id: ${session.id}`,
           `session_id: ${session.id}`,
           ``,
           `<system-reminder>`,
@@ -632,6 +238,47 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
           `that conflicts with the real results.`,
           `</system-reminder>`,
         ].join("\n"),
+      }
+
+      // Everything the prompt needs, read before it is written: the parent's
+      // conversation copied into a new child (shared context, cache reuse),
+      // the caller's model, and the resolved parts.
+      async function prepare(childID: string) {
+        const copied = params.include_context && !found ? await Session.messages({ sessionID: ctx.sessionID }) : []
+        const ids = new Map<string, string>()
+        for (const parentMsg of copied) {
+          const newID = Identifier.ascending("message")
+          ids.set(parentMsg.info.id, newID)
+          const parentID =
+            parentMsg.info.role === "assistant" && parentMsg.info.parentID
+              ? ids.get(parentMsg.info.parentID)
+              : undefined
+          // Dated before the child existed, however late the parent wrote it:
+          // recovery counts only messages from the child's creation on as its
+          // own prompts, and a copied one must never pass for the real prompt.
+          await Session.updateMessage({
+            ...parentMsg.info,
+            sessionID: childID,
+            id: newID,
+            time: { ...parentMsg.info.time, created: Math.min(parentMsg.info.time.created, session.time.created - 1) },
+            ...(parentID && { parentID }),
+          })
+          for (const part of parentMsg.parts) {
+            await Session.updatePart({
+              ...part,
+              id: Identifier.ascending("part"),
+              messageID: newID,
+              sessionID: childID,
+            })
+          }
+        }
+        const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
+        if (msg.info.role !== "assistant")
+          throw new Error(`message ${ctx.messageID} calling the agent tool is not an assistant message`)
+        return {
+          model: { modelID: msg.info.modelID, providerID: msg.info.providerID },
+          prompt: await SessionPrompt.resolvePromptParts(params.prompt),
+        }
       }
     },
   }

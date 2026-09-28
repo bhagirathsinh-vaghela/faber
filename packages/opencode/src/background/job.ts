@@ -7,6 +7,7 @@ import { Log } from "@/util/log"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
 import { BackgroundProcess } from "./process"
+import { Owed } from "@/storage/owed"
 
 // The durable record of a spawned shell job, and the files it writes.
 //
@@ -57,6 +58,10 @@ export namespace BackgroundJob {
           pgid: z.number(),
         })
         .optional(),
+      // The server process that launched the job and holds its exit handle,
+      // by pid and start time. While it is alive it settles the job itself, so
+      // another server's pass leaves the record alone.
+      launcher: z.object({ pid: z.number(), boot: z.number() }).optional(),
       time: z.object({
         created: z.number(),
         // Deadlines, NOT timers. A setTimeout dies with the process that set
@@ -348,6 +353,8 @@ export namespace BackgroundJob {
     // handle or a sweep got there first). It is already gone, so there is
     // nothing to kill and its own recorded status stands.
     if (!claimed) return { type: "settled", job: current }
+    // A kill someone asked for owes nobody its result.
+    await Owed.remove(id)
     await BackgroundProcess.kill(job.process)
     await settled(current.sessionID)
     publish(current)

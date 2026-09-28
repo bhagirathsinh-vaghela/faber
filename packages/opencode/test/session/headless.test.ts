@@ -7,6 +7,7 @@ import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { BackgroundSpawn } from "../../src/background/spawn"
 import { Log } from "../../src/util/log"
+import { Recovery } from "../../src/session/recovery"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
@@ -40,9 +41,12 @@ beforeAll(() => {
 beforeEach(() => {
   state.queue.length = 0
   state.captured.length = 0
+  // serve opens this gate after its boot grace; a test opens it directly.
+  Recovery.start()
 })
 
 afterAll(() => {
+  Recovery.stop()
   state.server?.stop()
 })
 
@@ -179,8 +183,8 @@ describe("HeadlessAgent.run", () => {
   test("waits for a bash job that outlives the turn, and returns the answer written after it lands", async () => {
     await withProject(
       async () => {
-        // serve starts this in production; it is what delivers a finished job's
-        // result into its session and wakes the turn.
+        // serve starts this in production; a settled job pokes recovery, which
+        // delivers the result into its session and wakes the turn.
         const { BackgroundOrchestrator } = await import("../../src/background/orchestrator")
         BackgroundOrchestrator.init()
         const command = `sleep ${BackgroundSpawn.GRACE_MS / 1000 + 3}; echo JOB-DONE-9913`
@@ -216,6 +220,46 @@ describe("HeadlessAgent.run", () => {
       expect(await Sessions.listEphemeral(cutoff)).toEqual([])
       await expect(Sessions.read(kept.session_id!)).rejects.toThrow()
       expect((await Sessions.read(ordinary.id)).id).toBe(ordinary.id)
+    })
+  }, 60_000)
+
+  test("a run past its timeout is stopped and reports the timeout", async () => {
+    await withProject(async (dir) => {
+      // A reply that starts streaming and never ends.
+      const streams: ReadableStreamDefaultController<Uint8Array>[] = []
+      const started = respond(
+        () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                streams.push(controller)
+                const chunk = {
+                  type: "message_start",
+                  message: { id: "msg-1", model: MODEL, usage: { input_tokens: 1 } },
+                }
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`))
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "text/event-stream" } },
+          ),
+      )
+      const before = Date.now()
+
+      try {
+        const outcome = await HeadlessAgent.run({ agent: "build", prompt: "hang", timeoutMs: 1500, keep: true })
+        await started
+
+        expect(outcome.is_error).toBe(true)
+        expect(outcome.errors).toEqual([`headless: build in ${dir}: timed out after 1500ms`])
+        const stopped = (await Session.get(outcome.session_id!)).time.stopped!
+        expect(stopped >= before + 1500 && stopped <= Date.now()).toBe(true)
+      } finally {
+        // A stream the aborted request already cancelled refuses a close.
+        for (const stream of streams)
+          void Promise.resolve()
+            .then(() => stream.close())
+            .catch(() => {})
+      }
     })
   }, 60_000)
 

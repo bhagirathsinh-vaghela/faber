@@ -6,6 +6,8 @@ import { ACP } from "@/acp/agent"
 import { Server } from "@/server/server"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
+import { BackgroundOrchestrator } from "@/background/orchestrator"
+import { Recovery } from "@/session/recovery"
 
 const log = Log.create({ service: "acp-command" })
 
@@ -24,6 +26,12 @@ export const AcpCommand = cmd({
     await bootstrap(process.cwd(), async () => {
       const opts = await resolveNetworkOptions(args)
       const server = Server.listen(opts)
+      // An ACP server runs turns and subagents like `serve`, so it adopts jobs
+      // and recovers the same way, under the same lease and boot grace, but
+      // yields the lease to a running `serve`.
+      BackgroundOrchestrator.init()
+      void BackgroundOrchestrator.sweep({ adopting: true })
+      Recovery.init()
 
       const sdk = createOpencodeClient({
         baseUrl: `http://${server.hostname}:${server.port}`,
@@ -65,6 +73,10 @@ export const AcpCommand = cmd({
         process.stdin.on("end", resolve)
         process.stdin.on("error", reject)
       })
+      // Closed before the instance is disposed on the way out: the dispose
+      // leaves this process's turns marked cut, and they are the next
+      // server's to resume, not this exiting one's.
+      Recovery.close()
     })
   },
 })

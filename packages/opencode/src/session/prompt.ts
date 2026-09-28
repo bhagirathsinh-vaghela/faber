@@ -61,6 +61,7 @@ import { SessionStatus } from "./status"
 import { SessionBusy } from "./busy"
 import { LLM } from "./llm"
 import { SessionPing } from "./ping"
+import { Recovery } from "./recovery"
 import { SessionPin } from "./pin"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
@@ -74,20 +75,7 @@ export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
 
-  export const Event = {
-    // A turn was cancelled from OUTSIDE its own loop (a user Stop, a session
-    // stop, a restart) rather than by the loop's own end-of-turn defer. The
-    // subagent watcher reads this to keep a child that was interrupted from
-    // injecting a half-finished result: the ordinary defer carries no reason, so
-    // only a genuine external interruption fires it.
-    Interrupted: BusEvent.define(
-      "session.prompt.interrupted",
-      z.object({
-        sessionID: z.string(),
-        interrupted: z.literal(true),
-      }),
-    ),
-  }
+  const DISPOSED = "instance disposed"
 
   const state = Instance.state(
     () => {
@@ -105,7 +93,9 @@ export namespace SessionPrompt {
     },
     async (current) => {
       for (const item of Object.values(current)) {
-        item.abort.abort()
+        // Named, so the turn's marker is left dead rather than cleared: the
+        // instance going away cut the turn, and recovery resumes it.
+        item.abort.abort(DISPOSED)
         for (const callback of item.callbacks) {
           callback.reject(new DOMException("Aborted", "AbortError"))
         }
@@ -399,13 +389,8 @@ export namespace SessionPrompt {
     return controller.signal
   }
 
-  export function cancel(sessionID: string, reason?: "interrupted") {
-    log.info("cancel", { sessionID, reason })
-    // An external stop (a user Stop, Session.stop, the abort route) passes
-    // `reason`; the loop's own end-of-turn defer does not. The watcher keys the
-    // "interrupted" entry on this so a cut subagent never injects a partial
-    // result, while a clean end-of-turn cancel leaves the watcher free to fire.
-    if (reason === "interrupted") Bus.publish(Event.Interrupted, { sessionID, interrupted: true })
+  export function cancel(sessionID: string) {
+    log.info("cancel", { sessionID })
     const s = state()
     const match = s[sessionID]
     // The turn is over, so its parameter claim must go too — otherwise the next
@@ -441,8 +426,6 @@ export namespace SessionPrompt {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
-    const pending = SessionPing.awaitRestore(sessionID)
-    if (pending) await pending
     const abort = start(sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {
@@ -451,6 +434,14 @@ export namespace SessionPrompt {
       })
     }
 
+    // Declared before the cancel below, so it runs after it: once the turn is
+    // over here, whatever the session is owed is paid by this process, even
+    // one that never holds the lease. A turn its instance's dispose cut is the
+    // next server's, and nothing is opened for a directory going away.
+    using _collect = defer(() => {
+      if (abort.reason === DISPOSED) return
+      void Recovery.collect(sessionID).catch((error) => log.error("could not collect", { sessionID, error }))
+    })
     using _ = defer(() => cancel(sessionID))
 
     let step = 0
@@ -462,6 +453,34 @@ export namespace SessionPrompt {
     // seeding the child->parent edge). Paired with the defer(cancel) above,
     // which calls SessionBusy.exit on every loop exit.
     SessionBusy.enter(sessionID, session.parentID)
+    // Disposed before the cancel above (reverse declaration order), so the
+    // marker is gone by the time the busy-exit edge wakes recovery. A marker
+    // left behind means this process died holding the turn.
+    const marker = {
+      at: Date.now(),
+      pid: process.pid,
+      boot: Recovery.boot,
+      nonce: ulid(),
+      ...(Recovery.active ? {} : { transient: true }),
+    }
+    await Session.mark(sessionID, (draft) => {
+      draft.turn = { ...marker, resumes: draft.turn?.resumes }
+      draft.left = Recovery.active ? undefined : { pid: process.pid, boot: Recovery.boot }
+    })
+    // Cleared only while it is still this turn's: a prompt sent right after an
+    // interrupt starts the next turn before this one finishes unwinding. A turn
+    // its instance cut is marked dead instead, which recovery resumes.
+    await using _turn = {
+      [Symbol.asyncDispose]: () =>
+        Session.mark(sessionID, (draft) => {
+          if (draft.turn?.nonce !== marker.nonce || draft.turn.pid !== marker.pid) return
+          if (abort.reason === DISPOSED) draft.turn.boot = 0
+          else draft.turn = undefined
+        }).then(
+          () => {},
+          (error) => log.error("could not clear the turn marker", { sessionID, error }),
+        ),
+    }
     const snapshot = await SessionPin.get(sessionID)
     while (true) {
       log.info("loop", { step, sessionID })
@@ -876,6 +895,8 @@ export namespace SessionPrompt {
         cacheProbeIndex,
         cacheProbeMessageID,
       })
+      if (processor.message.finish && (await Session.get(sessionID)).turn?.resumes)
+        await Session.mark(sessionID, (draft) => void (draft.turn && (draft.turn.resumes = 0)))
       if (result === "stop") break
       if (result === "compact") {
         await SessionCompaction.create({
@@ -1234,7 +1255,8 @@ export namespace SessionPrompt {
 
   async function createUserMessage(input: PromptInput, joined?: Promise<ReturnType<typeof MessageV2.inherit>>) {
     const snapshot = await SessionPin.get(input.sessionID)
-    const current = (await Session.get(input.sessionID)).current
+    const owner = await Session.get(input.sessionID)
+    const current = owner.current
     // Resolve the agent the same way as model/variant below: the request's pick,
     // else the session's established agent, else the default. Without the
     // current fallback a send that names no agent (a restart-resume prompt, any
@@ -1267,8 +1289,11 @@ export namespace SessionPrompt {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
       sessionID: input.sessionID,
+      // Never before the session's own creation: recovery reads a prompt only
+      // from then on (Messages.prompts), so a clock stepped back between the
+      // two would otherwise hide the prompt that launched a subagent.
       time: {
-        created: Date.now(),
+        created: Math.max(Date.now(), owner.time.created),
       },
       tools: input.tools,
       system: input.system,

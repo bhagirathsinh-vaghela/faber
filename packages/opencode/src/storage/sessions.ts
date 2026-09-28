@@ -4,6 +4,7 @@ import { Lock } from "../util/lock"
 import { Storage } from "./storage"
 import { Db } from "./db"
 import type { Session } from "../session"
+import { Log } from "../util/log"
 
 // Sessions, stored as a JSON blob keyed by id, with project_id + time columns
 // lifted out (sessions are listed per-project and ordered by recency). A facade
@@ -11,6 +12,8 @@ import type { Session } from "../session"
 // write (create/import), update (read-modify-write, throws if absent, like
 // Storage.update reading the file first), read, per-project list, remove.
 export namespace Sessions {
+  const log = Log.create({ service: "sessions" })
+
   const open = lazy(async () => {
     const db = await Db.open()
     db.run(`
@@ -42,8 +45,16 @@ export namespace Sessions {
          WHERE json_extract(json, '$.time.archived') > 0 AND json_extract(json, '$.parentID') IS NULL
          ORDER BY json_extract(json, '$.time.archived') DESC`,
       ),
-      listEphemeral: db.query<{ json: string }, [number]>(
-        `SELECT json FROM session WHERE json_extract(json, '$.ephemeral') = 1 AND time_created < ?`,
+      listTurning: db.query<{ id: string; json: string }, []>(
+        `SELECT id, json FROM session WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.turn') IS NOT NULL END`,
+      ),
+      listWarm: db.query<{ id: string; json: string }, [number]>(
+        `SELECT id, json FROM session
+         WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.parentID') IS NULL AND json_extract(json, '$.keepWarm') = 1
+           AND json_extract(json, '$.cache.lastRequestAt') > ? END`,
+      ),
+      listEphemeral: db.query<{ id: string; json: string }, [number]>(
+        `SELECT id, json FROM session WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.ephemeral') = 1 AND time_created < ? END`,
       ),
       remove: db.query<void, [string]>(`DELETE FROM session WHERE id = ?`),
       db,
@@ -79,6 +90,21 @@ export namespace Sessions {
   async function normalize(json: string): Promise<Session.Info> {
     await ready()
     return parse(json)
+  }
+
+  // A cross-project scan's rows, skipping any that no longer fit the schema:
+  // one unreadable session must not fail the scan for every other one. Its
+  // queries read a row's JSON only inside `CASE WHEN json_valid(...)`, which
+  // SQLite evaluates in order (json_extract throws on a malformed blob), so a
+  // torn row is never selected and every row here parses.
+  async function scan(rows: { id: string; json: string }[]) {
+    await ready()
+    return rows.flatMap((r) => {
+      const parsed = schema!.safeParse(JSON.parse(r.json))
+      if (parsed.success) return [parsed.data]
+      log.error("skipping an unreadable session", { sessionID: r.id, error: parsed.error.message })
+      return []
+    })
   }
 
   // Read-modify-write, throwing NotFoundError when the session is absent, like
@@ -137,10 +163,112 @@ export namespace Sessions {
     return Promise.all(rows.map((r) => normalize(r.json)))
   }
 
+  // Subagents whose parent is owed a result, across every project: the rule in
+  // Recovery.owed, evaluated in SQL so a pass reads only the few that qualify.
+  // Prepared on first use, after the message table it joins is known to exist.
+  const owing = lazy(async () => {
+    const [{ Messages }, q] = await Promise.all([import("./messages"), open()])
+    await Messages.reader()
+    return {
+      owed: q.db.query<{ id: string; json: string }, []>(
+        `SELECT s.id, s.json FROM session s
+         WHERE CASE WHEN json_valid(s.json) THEN json_extract(s.json, '$.parentID') IS NOT NULL
+           AND json_extract(s.json, '$.time.injected') IS NOT NULL
+           AND ${Messages.prompts("s.id")}
+               > max(json_extract(s.json, '$.time.injected'), coalesce(json_extract(s.json, '$.time.stopped'), 0)) END`,
+      ),
+      unprompted: q.db.query<{ id: string; json: string }, []>(
+        `SELECT s.id, s.json FROM session s
+         WHERE CASE WHEN json_valid(s.json) THEN json_extract(s.json, '$.parentID') IS NOT NULL
+           AND json_extract(s.json, '$.time.injected') = 0
+           AND json_extract(s.json, '$.time.stopped') IS NULL
+           AND NOT EXISTS (SELECT 1 FROM message WHERE session_id = s.id AND time_created >= s.time_created) END`,
+      ),
+      unanswered: q.db.query<{ id: string; json: string }, [number]>(
+        `SELECT s.id, s.json FROM session s
+         WHERE CASE WHEN json_valid(s.json) THEN json_extract(s.json, '$.turn') IS NULL
+           AND EXISTS (SELECT 1 FROM message m
+             WHERE m.id = (SELECT id FROM message WHERE session_id = s.id ORDER BY id DESC LIMIT 1)
+               AND CASE WHEN json_valid(m.json) THEN json_extract(m.json, '$.role') = 'user'
+                 AND m.time_created < ?
+                 AND m.time_created > coalesce(json_extract(s.json, '$.time.stopped'), 0)
+                 AND (json_extract(m.json, '$.synthetic') = 1
+                   OR (json_extract(s.json, '$.parentID') IS NOT NULL AND json_extract(s.json, '$.time.injected') IS NOT NULL)) END) END`,
+      ),
+    }
+  })
+
+  // Sessions whose newest message (by id, the order the loop reads in) is a
+  // request no turn has taken up, written before `before` and after the last
+  // stop, with no turn marked: a delivered result whose wake was lost, or a
+  // subagent's prompt whose process died before its turn began. A person's own
+  // message sent with noReply is left alone: it is neither synthetic nor a
+  // subagent's.
+  export async function listUnanswered(before: number) {
+    return scan(await owing().then((q) => q.unanswered.all(before)))
+  }
+
+  export async function listOwed() {
+    return scan(await owing().then((q) => q.owed.all()))
+  }
+
+  // Subagents launched but never prompted and never reported: a launch whose
+  // prompt was not written before its process went away. Judged by the child
+  // having no message written since it was created (its first is its prompt;
+  // context copied from the parent keeps the parent's older times), which
+  // reads no JSON, so a torn prompt row cannot make a running child look
+  // never-prompted.
+  export async function listUnprompted() {
+    return scan(await owing().then((q) => q.unprompted.all()))
+  }
+
+  // Sessions carrying a turn marker, across every project.
+  export async function listTurning() {
+    return scan(await open().then((q) => q.listTurning.all()))
+  }
+
+  // Root sessions that asked to stay warm and whose cache anchor is after `since`.
+  export async function listWarm(since: number) {
+    return scan(await open().then((q) => q.listWarm.all(since)))
+  }
+
+  // A synchronous read for use inside a caller's Db.transaction.
+  export async function reader() {
+    const q = await open()
+    await ready()
+    return (sessionID: string) => {
+      const current = q.get.get(sessionID)
+      return current ? parse(current.json) : undefined
+    }
+  }
+
+  // Whether a stop landed on the session's running turn: a stop at or after
+  // the turn's start, or after `since` when no turn is marked. What a launch
+  // from inside a turn (a job, a subagent) checks, since a stop stamps first
+  // and cancels the turn last.
+  export async function halted(sessionID: string, since: number) {
+    const session = await read(sessionID).catch(() => undefined)
+    return (session?.time.stopped ?? 0) >= (session?.turn?.at ?? since)
+  }
+
+  // A synchronous read-modify-write for use inside a caller's Db.transaction.
+  // `fn` returns false to abort the write (the claim was lost).
+  export async function mutator() {
+    const q = await open()
+    await ready()
+    return (sessionID: string, fn: (draft: Session.Info) => boolean) => {
+      const current = q.get.get(sessionID)
+      if (!current) return undefined
+      const draft = parse(current.json)
+      if (!fn(draft)) return undefined
+      q.put.run(...row(draft))
+      return draft
+    }
+  }
+
   // Headless-run sessions created before `before`, across every project.
   export async function listEphemeral(before: number) {
-    const rows = await open().then((q) => q.listEphemeral.all(before))
-    return Promise.all(rows.map((r) => normalize(r.json)))
+    return scan(await open().then((q) => q.listEphemeral.all(before)))
   }
 
   export async function remove(sessionID: string) {

@@ -9,7 +9,6 @@ import { SessionPrompt } from "../../session/prompt"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
 import { SessionPing } from "../../session/ping"
-import { BackgroundOrchestrator } from "../../background/orchestrator"
 import { Instance } from "../../project/instance"
 import { OpenProjects } from "../../project/open"
 import { SessionPin } from "../../session/pin"
@@ -400,6 +399,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
+        if (typeof updates.time?.archived === "number") await Session.stop({ sessionID })
 
         const updatedSession = await Session.update(
           sessionID,
@@ -512,12 +512,6 @@ export const SessionRoutes = lazy(() =>
         // the ordering (disarm, then cancel) that the alternative — cancelling
         // first — gets wrong.
         await Session.stop({ sessionID })
-        // The stop just made this session read as not alive, which is the
-        // signal the sweep reaps a background job on. Running it now rather
-        // than waiting for the timer is only about latency: the verdict is the
-        // same either way, since it is derived from the record and the session,
-        // never from the fact that a stop happened.
-        void BackgroundOrchestrator.sweep()
         return c.json(true)
       },
     )
@@ -548,11 +542,7 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
-        // Turn-only Stop: cancel() aborts the in-flight turn but never touches
-        // the daemon (unlike /abort, which stops the daemon first). The session
-        // stays armed and warm. Marked "interrupted" so a subagent's watcher
-        // holds its injection rather than reporting a cut turn as a result.
-        SessionPrompt.cancel(sessionID, "interrupted")
+        await Session.interrupt(sessionID)
         return c.json(true)
       },
     )
@@ -965,64 +955,6 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
-      "/:sessionID/restore",
-      describeRoute({
-        summary: "Resume a session after a restart",
-        description:
-          "Resume a root session whose turn a restart cut off, together with the subagents it had in flight. The subagents come back as a unit with the parent, and the continue prompt tells the parent they are alive so it waits for their injection rather than re-launching the work. Server-side so the supervisor need not know the subagent graph.",
-        operationId: "session.restore",
-        responses: {
-          204: {
-            description: "Resume accepted",
-          },
-          ...errors(400, 404),
-        },
-      }),
-      validator(
-        "param",
-        z.object({
-          sessionID: z.string().meta({ description: "The parent session to resume" }),
-        }),
-      ),
-      async (c) => {
-        c.status(204)
-        c.header("Content-Type", "application/json")
-        return stream(c, async () => {
-          const sessionID = c.req.valid("param").sessionID
-          const cut = await SessionPing.interrupted(sessionID)
-          if (!cut) {
-            const { resumeSubagents } = await import("../../tool/agent")
-            await resumeSubagents(sessionID)
-            return
-          }
-          // Gate: any SessionPrompt.loop() call on this session waits until
-          // the continue prompt is on disk. This blocks job deliveries and
-          // subagent injections from starting a turn before the message
-          // that makes the conversation valid for the API.
-          const release = SessionPing.restoreGate(sessionID)
-          try {
-            await SessionPrompt.prompt({
-              sessionID,
-              parts: [{ type: "text", text: SessionPing.continueText(0), synthetic: true }],
-              noReply: true,
-            })
-          } finally {
-            release()
-          }
-          const { resumeSubagents } = await import("../../tool/agent")
-          const subagents = await resumeSubagents(sessionID)
-          if (subagents > 0) {
-            await SessionPrompt.prompt({
-              sessionID,
-              parts: [{ type: "text", text: SessionPing.continueText(subagents), synthetic: true }],
-              noReply: true,
-            })
-          }
-          await SessionPrompt.loop(sessionID).catch(() => {})
-        })
-      },
-    )
-    .post(
       "/:sessionID/command",
       describeRoute({
         summary: "Send command",
@@ -1202,7 +1134,7 @@ export const SessionRoutes = lazy(() =>
       describeRoute({
         summary: "Arm cache ping",
         description:
-          "Set the session's keep-warm intent and arm the cache ping daemon. This is the explicit-open verb: an intentional open (sidebar/overview click, new session) or the arm button calls it. A plain fetch (reload, reconnect) does not, so it cannot resurrect a stopped session.",
+          "Arm the cache ping daemon for a session a person just opened (sidebar or overview click), but only while its conversation cache is still warm: an expired cache has nothing left to keep warm. A plain fetch (reload, reconnect) does not call this.",
         operationId: "session.arm",
         responses: {
           200: {
@@ -1225,43 +1157,8 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const session = await Session.get(sessionID)
-        if (session.parentID) return c.json({ ok: true })
-        // The intended arm action. start() arms the daemon and sets keepWarm as
-        // its shadow — no direct field write here.
+        if (session.parentID || !SessionPing.warm(session)) return c.json({ ok: true })
         SessionPing.start(sessionID)
-        return c.json({ ok: true })
-      },
-    )
-    .post(
-      "/:sessionID/ping/stop",
-      describeRoute({
-        summary: "Stop cache ping",
-        description:
-          "Clear the session's keep-warm intent, stop the cache ping daemon, and drop the pinned prompt state. The session stays cold until an organic turn or the arm route re-declares intent — a plain reopen no longer re-arms it.",
-        operationId: "session.pingStop",
-        responses: {
-          200: {
-            description: "Ping daemon stopped",
-            content: {
-              "application/json": {
-                schema: resolver(z.object({ ok: z.boolean() })),
-              },
-            },
-          },
-          ...errors(400, 404),
-        },
-      }),
-      validator(
-        "param",
-        z.object({
-          sessionID: z.string(),
-        }),
-      ),
-      async (c) => {
-        const sessionID = c.req.valid("param").sessionID
-        // Stopping the daemon without touching the turn: this route means "let
-        // this session go cold", not "abandon what it is doing".
-        await Session.stop({ sessionID, turn: false })
         return c.json({ ok: true })
       },
     )

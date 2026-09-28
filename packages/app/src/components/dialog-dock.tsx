@@ -39,8 +39,6 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
     title: "Subagents",
     fields: [
       { id: "pending", label: "Pending (subagents running)" },
-      { id: "available", label: "Available (results to accept)" },
-      { id: "auto-inject", label: "Auto-inject" },
       { id: "mcp", label: "MCP tools" },
     ],
   },

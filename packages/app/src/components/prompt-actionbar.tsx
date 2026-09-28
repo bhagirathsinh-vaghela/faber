@@ -1,23 +1,22 @@
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useQuestion } from "@/context/question"
 import { useLocal } from "@/context/local"
-import { showToast } from "@opencode-ai/ui/toast"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogMcpCorpus } from "@/components/dialog-mcp-corpus"
 
-// The prompt action bar, ported from the TUI prompt footer
-// (packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx): pending
-// (subagents running), available (results awaiting accept), auto-inject (whether
-// completed results inject automatically), and questions (pending count).
-// Counts stay live via the background.subagent.* events the
-// TUI also listens to; auto-inject toggles through background.toggleAutoInject.
+// The prompt action bar: subagents still running, pending questions, and the
+// MCP view. The running count is read from the server's subagent list, and
+// re-read whenever the session's descendant-busy edge flips, which is when a
+// subagent's turn starts or ends.
 export function PromptActionBar() {
   const sdk = useSDK()
+  const sync = useSync()
   const command = useCommand()
   const language = useLanguage()
   const question = useQuestion()
@@ -31,74 +30,27 @@ export function PromptActionBar() {
   const viewMcp = () => dialog.show(() => <DialogMcpCorpus />)
 
   const [running, setRunning] = createSignal(0)
-  const [available, setAvailable] = createSignal(0)
-  const [autoInject, setAutoInject] = createSignal(true)
-
   const questions = createMemo(() => question.total())
+  const busy = () => sync.data.session_busy[params.id ?? ""]
 
-  async function refresh() {
-    const sessionID = params.id
-    if (!sessionID) return
-    const [tasks, pending, inject] = await Promise.all([
-      sdk.client.background.list({ sessionID }),
-      sdk.client.background.getPending({ sessionID }),
-      sdk.client.background.getAutoInject({ sessionID }),
-    ])
-    setRunning((tasks.data ?? []).filter((t) => t.status === "running").length)
-    setAvailable((pending.data ?? []).length)
-    setAutoInject(inject.data?.autoInject ?? true)
+  // Only the newest request may write, so overlapping refetches cannot land
+  // out of order.
+  let seq = 0
+  const refresh = async (sessionID: string | undefined) => {
+    if (!sessionID) return setRunning(0)
+    const mine = ++seq
+    const list = await sdk.client.background.list({ sessionID }).catch(() => undefined)
+    if (mine !== seq || params.id !== sessionID) return
+    setRunning((list?.data ?? []).filter((s) => s.status === "running").length)
   }
 
-  onMount(() => {
-    refresh()
+  // A subagent stops counting when its result is delivered, which lands just
+  // after its turn ends and wakes this session. Both edges refetch, and a slow
+  // tick while any are running covers a result held back by a job.
+  createEffect(on([() => params.id, () => busy()?.busyDescendant, () => busy()?.busySelf], ([id]) => refresh(id)))
+  const tick = setInterval(() => running() > 0 && void refresh(params.id), 10_000)
+  onCleanup(() => clearInterval(tick))
 
-    const unsubs = [
-      sdk.event.on("background.subagent.created", (evt) => {
-        if (evt.properties.subagent.parentSessionID === params.id) setRunning((n) => n + 1)
-      }),
-      sdk.event.on("background.subagent.completed", (evt) => {
-        if (evt.properties.parentSessionID === params.id) setRunning((n) => Math.max(0, n - 1))
-      }),
-      sdk.event.on("background.subagent.result_pending", (evt) => {
-        if (evt.properties.sessionID === params.id) setAvailable((n) => n + 1)
-      }),
-      sdk.event.on("background.subagent.auto_inject_changed", (evt) => {
-        if (evt.properties.sessionID === params.id) setAutoInject(evt.properties.autoInject)
-      }),
-    ]
-    onCleanup(() => unsubs.forEach((u) => u()))
-  })
-
-  command.register(() => [
-    {
-      id: "background.autoinject.toggle",
-      title: language.t("command.background.autoinject"),
-      description: language.t("command.background.autoinject.description"),
-      category: language.t("command.category.session"),
-      keybind: "alt+i",
-      disabled: !params.id,
-      onSelect: async () => {
-        const sessionID = params.id
-        if (!sessionID) return
-        const result = await sdk.client.background.toggleAutoInject({ sessionID })
-        const enabled = result.data?.autoInject ?? true
-        setAutoInject(enabled)
-        showToast({
-          title: enabled
-            ? language.t("toast.background.autoinject.on.title")
-            : language.t("toast.background.autoinject.off.title"),
-          variant: enabled ? "success" : "default",
-        })
-      },
-    },
-  ])
-
-  const autoinjectTip = createMemo(
-    () => `${language.t("actionbar.autoinject.tooltip")} (${command.keybind("background.autoinject.toggle")})`,
-  )
-  const availableTip = createMemo(
-    () => `${language.t("actionbar.available.tooltip")} (${command.keybind("subagent.pending")})`,
-  )
   const questionsTip = createMemo(
     () => `${language.t("actionbar.questions.tooltip")} (${command.keybind("question.list")})`,
   )
@@ -117,26 +69,6 @@ export function PromptActionBar() {
             tooltip={language.t("actionbar.pending.tooltip")}
           >
             <span class="text-text-base">pending</span> {running()}
-          </Chip>
-        </Show>
-
-        <Show when={local.dock.isVisible("available")}>
-          <Chip
-            accent={available() > 0 ? "usage-cache-write" : "usage-context-start"}
-            onClick={() => command.trigger("subagent.pending", "keybind")}
-            tooltip={availableTip()}
-          >
-            <span class="text-text-base">available</span> {available()}
-          </Chip>
-        </Show>
-
-        <Show when={local.dock.isVisible("auto-inject")}>
-          <Chip
-            accent={autoInject() ? "usage-context-start" : "usage-cache-write"}
-            onClick={() => command.trigger("background.autoinject.toggle", "keybind")}
-            tooltip={autoinjectTip()}
-          >
-            <span class="text-text-base">auto-inject</span> {autoInject() ? "on" : "off"}
           </Chip>
         </Show>
 

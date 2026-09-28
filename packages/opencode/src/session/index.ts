@@ -14,6 +14,7 @@ import { Storage } from "../storage/storage"
 import { Parts } from "../storage/parts"
 import { Messages } from "../storage/messages"
 import { Sessions } from "../storage/sessions"
+import { Owed } from "../storage/owed"
 import { Db } from "../storage/db"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
@@ -173,16 +174,23 @@ export namespace Session {
         updated: z.number(),
         compacting: z.number().optional(),
         archived: z.number().optional(),
-        // Three states, and the first two look alike to an `if (!x)` check:
-        //   absent  -> a child created before this field existed, or a root
-        //              session. Nothing owes an injection; never watch it.
-        //   0       -> a subagent child still waiting to report back. Set at
-        //              creation, so a restart knows which children to watch.
-        //   >0      -> the instant the watcher injected the result to the parent.
-        // Keying the restart scan on `=== 0` rather than falsiness is what keeps
-        // every pre-existing child on disk from being re-watched (and re-injected)
-        // the first time a parent is restored.
+        // When this subagent's result last reached its parent. Absent means the
+        // session reports to nobody: a root, or a child from before the field
+        // existed (many sit on disk, and none may ever be delivered). The
+        // agent tool writes 0 at launch. The parent is owed a result while a
+        // prompt into the child is newer than both this and `stopped`; see
+        // Recovery.owed.
         injected: z.number().optional(),
+        // What the last delivery told the parent this subagent's outcome was,
+        // written in the same transaction as `injected`. The subagents list
+        // shows it rather than re-deriving an outcome from the transcript.
+        reported: z.enum(["completed", "failed"]).optional(),
+        // When this session's work was last stopped: Session.stop (Stop,
+        // archive, delete, or a stop of an ancestor), Session.interrupt (Esc,
+        // this turn only), recovery's first-boot baseline, and recovery when a
+        // child's parent is gone. Recovery reads it to leave a turn unresumed
+        // and a result undelivered; keep-warm reads `keepWarm`, not this.
+        stopped: z.number().optional(),
       }),
       permission: PermissionNext.Ruleset.optional(),
       revert: z
@@ -205,6 +213,32 @@ export namespace Session {
           lastRequestAt: z.number(),
         })
         .optional(),
+      // Present while a turn is running, written by the process running it and
+      // cleared when the turn ends by any path that process sees. A marker whose
+      // process is gone is a turn a crash or restart cut, which recovery
+      // resumes. `resumes` counts continue prompts sent since a step last
+      // finished; recovery gives up at its cap.
+      turn: z
+        .object({
+          at: z.number(),
+          pid: z.number(),
+          boot: z.number().optional(),
+          resumes: z.number().optional(),
+          // Run by a process that does not recover its own work (`opencode
+          // run`): its turn ends with that process instead of being resumed.
+          transient: z.boolean().optional(),
+          // Unique per turn, so a turn unwinding clears only its own marker
+          // even when the next one started in the same millisecond.
+          nonce: z.string().optional(),
+        })
+        .optional(),
+      // The last turn ran in a process that does not recover its own work
+      // (`opencode run`), named by pid and start time. Once that process is
+      // gone, whoever read the session left with it, so a result arriving later
+      // is recorded without starting a turn nobody reads.
+      // A bare `true` is the one shape an earlier build stored, naming no
+      // process; recovery reads it as absent.
+      left: z.union([z.object({ pid: z.number(), boot: z.number() }), z.literal(true)]).optional(),
       // Persisted "keep the cache warm" intent. The daemon arms only when this
       // is true; attach/reconnect reconciles the daemon to it but never sets it.
       // Only an explicit act flips it: an organic turn or the arm route set it
@@ -670,6 +704,18 @@ export namespace Session {
     return session
   }
 
+  // Re-read a record written outside this module (inside a caller's own
+  // transaction), so the per-instance index does not serve the stale copy.
+  export async function reload(id: string) {
+    return indexed(await Sessions.read(id))
+  }
+
+  // A write no client renders (the turn marker), so it persists and re-indexes
+  // without broadcasting the record.
+  export async function mark(id: string, editor: (session: Info) => void) {
+    return indexed(await Sessions.update(id, editor))
+  }
+
   // Lean cache-anchor refresh, the CacheUpdated counterpart to updateTotals.
   // This write intentionally does NOT bump time.updated.
   export async function updateCache(id: string, editor: (session: Info) => void) {
@@ -768,50 +814,69 @@ export namespace Session {
     return [...entries.values()].filter((session) => session.parentID === parentID)
   })
 
-  // Stopping a session: the one implementation, used by the Stop button, by the
-  // ping-stop route, and ahead of a delete.
+  // Stopping a session: the one implementation, behind the Stop button, the
+  // overview's stop, archive, and delete. A stop is a person's decision, so it
+  // is recorded (`time.stopped`) on the session and every descendant: recovery
+  // reads it to leave the turn unresumed and the result undelivered.
   //
-  // It is three things that only make sense together — disarm the keep-warm
-  // daemon (which clears the persisted intent), drop the prompt pin, and cancel
-  // whatever turn is in flight — and assembling them per caller is how one site
-  // ends up doing two of the three. A caller that wants the turn to survive
-  // (the dock's turn-only stop) passes `turn: false`; nothing else varies.
+  // The rest only makes sense together: disarm the keep-warm daemon, drop the
+  // prompt pin, kill the session's jobs, cancel its turn. Descendants first, so
+  // nothing below outlives the session that owns it.
   //
-  // Children first, because a subagent outliving the session that owns it keeps
-  // pinging a record nobody reads.
+  // Every stamp lands before any cancel, top-down, each dated when it is
+  // written. A launch from inside a turn (the agent tool) checks its parent's
+  // stamp last, straight before its child's turn starts: it either sees the
+  // stop, or its child exists before the walk below lists it and its turn is
+  // registered before the cancels run.
   export const stop = fn(
     z.object({
       sessionID: Identifier.schema("session"),
-      turn: z.boolean().optional(),
     }),
     async (input) => {
       const { SessionPing } = await import("./ping")
       const { SessionPin } = await import("./pin")
       const { BackgroundJob } = await import("@/background/job")
-      for (const child of await children(input.sessionID)) {
-        await SessionPing.stop(child.id)
-        SessionPin.drop(child.id)
-        // A subagent owns background jobs of its own, and it outlives nothing
-        // once its parent is stopped.
-        await BackgroundJob.stopSession(child.id)
-        // Cancel the child's own in-flight turn as well. Marked "interrupted" so
-        // the child's watcher holds its injection rather than reporting the cut
-        // turn as a completed result.
-        SessionPrompt.cancel(child.id, "interrupted")
+      // Its debts go with the stamp: a job that settles on its own is past
+      // stopSession's reach, and paying it would wake the stopped session.
+      // Every step runs whatever an earlier one threw, so a session whose
+      // stamp failed (deleted meanwhile, a busy database) still has its
+      // subtree walked and its turn cancelled; the first failure is reported
+      // once everything else is stopped.
+      const failures: unknown[] = []
+      const attempt = <T,>(step: () => Promise<T> | T, fallback: T) =>
+        Promise.resolve()
+          .then(step)
+          .catch((error: unknown) => {
+            failures.push(error)
+            return fallback
+          })
+      const stamp = async (sessionID: string): Promise<string[]> => {
+        await attempt(() => update(sessionID, (draft) => void (draft.time.stopped = Date.now()), { touch: false }), undefined)
+        await attempt(() => Owed.removeSession(sessionID), undefined)
+        const below = await Promise.all((await attempt(() => children(sessionID), [])).map((child) => stamp(child.id)))
+        return [...below.flat(), sessionID]
       }
-      await SessionPing.stop(input.sessionID)
-      SessionPin.drop(input.sessionID)
-      // The session's own in-flight jobs. A job outlives the turn that launched
-      // it, so stopping the session is what ends the work it started; nothing
-      // else reaps a stopped session's jobs before their hard deadline.
-      await BackgroundJob.stopSession(input.sessionID)
-      // After the disarm, never before: cancel() runs on every normal loop exit
-      // too, so it must not be what disarms, or an ordinary turn ending would
-      // silently stop the session. Marked "interrupted": this is an external
-      // stop, so a subagent's watcher must hold rather than report a cut result.
-      if (input.turn !== false) SessionPrompt.cancel(input.sessionID, "interrupted")
+      for (const sessionID of await stamp(input.sessionID)) {
+        await attempt(() => SessionPing.stop(sessionID), undefined)
+        SessionPin.drop(sessionID)
+        // A job outlives the turn that launched it, so the stop is what ends
+        // the work the session started.
+        await attempt(() => BackgroundJob.stopSession(sessionID), undefined)
+        // After the disarm, never before: cancel() runs on every loop exit, so
+        // it must not be what disarms.
+        SessionPrompt.cancel(sessionID)
+      }
+      if (failures.length > 0) throw failures[0]
     },
   )
+
+  // The dock's Esc: the same stop fact for this session's turn, so recovery
+  // neither resumes it nor delivers it, but the keep-warm daemon, the pin, the
+  // jobs, and the subagents are left running.
+  export const interrupt = fn(Identifier.schema("session"), async (sessionID) => {
+    await update(sessionID, (draft) => void (draft.time.stopped = Date.now()), { touch: false })
+    SessionPrompt.cancel(sessionID)
+  })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
     const project = Instance.project
@@ -835,6 +900,7 @@ export namespace Session {
         session_.run(sessionID)
       })
       index().entries.delete(sessionID)
+      await Owed.removeSession(sessionID)
       void SessionRecent.remove(sessionID)
       Bus.publish(Event.Deleted, {
         info: session,

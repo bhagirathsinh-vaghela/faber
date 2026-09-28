@@ -171,8 +171,16 @@ export namespace SessionBusy {
   // re-seeding.
   export function exit(sessionID: string) {
     const directory = Instance.directory
-    self.get(directory)?.delete(sessionID)
+    const was = self.get(directory)?.delete(sessionID) ?? false
     for (const id of chain(directory, sessionID)) stamp(directory, id)
+    if (was) for (const listener of idle) listener(sessionID)
+  }
+
+  // Called once per turn that ends in this process, whatever ended it.
+  const idle = new Set<(sessionID: string) => void>()
+  export function onIdle(listener: (sessionID: string) => void) {
+    idle.add(listener)
+    return () => idle.delete(listener)
   }
 
   // Truth-source read for "is this session's own turn in flight". Mirrors the

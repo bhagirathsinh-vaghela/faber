@@ -109,6 +109,15 @@ export namespace Parts {
     return open().then((q) => q.removeSession)
   }
 
+  // A synchronous writer for use inside a caller's Db.transaction.
+  export async function writer() {
+    const q = await open()
+    return (part: MessageV2.Part) => {
+      const json = JSON.stringify(part)
+      q.put.run(part.id, part.messageID, part.sessionID, json, Buffer.byteLength(json))
+    }
+  }
+
   // Import the legacy `part/<messageID>/<partID>.json` tree into the table. Run
   // with the server DOWN so no concurrent write races the glob — quiescence is
   // the correctness guarantee, not a lock. Idempotent via INSERT OR IGNORE on the

@@ -146,9 +146,9 @@ export namespace Db {
   //
   // Retrying wraps the WHOLE transaction because that is the only granularity
   // at which a stale snapshot can be discarded and re-read.
-  export async function transaction(fn: () => void) {
+  export async function transaction<T>(fn: () => T): Promise<T> {
     const db = await open()
-    await retry(() => db.transaction(fn).immediate())
+    return retry(() => db.transaction(fn).immediate())
   }
 
   // Reap rows whose owner is gone: parts whose message is deleted, messages whose

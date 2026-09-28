@@ -55,6 +55,32 @@ test("loads JSON config file", async () => {
   })
 })
 
+// Older config files may still carry settings for features that were removed;
+// the strict schema must not reject the rest of the file over them.
+test("loads a config that still carries retired tui, keybinds, and auto_inject settings", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        model: "test/model",
+        tui: { paste_mode: "inline", header: false },
+        keybinds: { accept_pending_results: "<leader>z", subagent_list: "alt+a" },
+        background: { auto_inject: true, job: { hard_timeout: "45m" } },
+      })
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.model).toBe("test/model")
+      expect(config.background).toEqual({ job: { hard_timeout: "45m" } })
+      expect("tui" in config).toBe(false)
+      expect("keybinds" in config).toBe(false)
+    },
+  })
+})
+
 test("loads JSONC config file", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -1757,8 +1783,7 @@ describe("OPENCODE_DISABLE_PROJECT_CONFIG", () => {
 // keeping the old name as an alias; these prove the old keys still work,
 // because both stale keys fail SILENTLY and
 // destructively otherwise: a permission key lands in a namespace nothing
-// evaluates (so a denial stops denying), and a keybind key is rejected by a
-// strict schema that takes the WHOLE config file down with it.
+// evaluates (so a denial stops denying).
 describe("legacy delegation vocabulary", () => {
   test("a stale permission.task denies the agent tool, as permission.agent", () => {
     expect(Config.Permission.parse({ task: "deny", bash: "allow" })).toEqual({ agent: "deny", bash: "allow" })
@@ -1766,17 +1791,5 @@ describe("legacy delegation vocabulary", () => {
 
   test("an explicit permission.agent wins, leaving a stale task key untranslated", () => {
     expect(Config.Permission.parse({ task: "deny", agent: "allow" })).toEqual({ task: "deny", agent: "allow" })
-  })
-
-  test("a stale task_list keybind binds subagent_list instead of rejecting the config", () => {
-    expect(Config.Keybinds.parse({ task_list: "alt+a" }).subagent_list).toBe("alt+a")
-  })
-
-  test("an explicit subagent_list wins over a stale task_list", () => {
-    expect(Config.Keybinds.parse({ task_list: "alt+q", subagent_list: "alt+a" }).subagent_list).toBe("alt+a")
-  })
-
-  test("an unknown keybind is still rejected, so the alias did not loosen the schema", () => {
-    expect(() => Config.Keybinds.parse({ not_a_keybind: "alt+a" })).toThrow()
   })
 })

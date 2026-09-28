@@ -90,6 +90,8 @@ export type Session = {
     compacting?: number
     archived?: number
     injected?: number
+    reported?: "completed" | "failed"
+    stopped?: number
   }
   permission?: PermissionRuleset
   revert?: {
@@ -106,6 +108,20 @@ export type Session = {
   cache?: {
     lastRequestAt: number
   }
+  turn?: {
+    at: number
+    pid: number
+    boot?: number
+    resumes?: number
+    transient?: boolean
+    nonce?: string
+  }
+  left?:
+    | {
+        pid: number
+        boot: number
+      }
+    | true
   keepWarm?: boolean
   unseen?: boolean
   seen?: {
@@ -875,6 +891,10 @@ export type BackgroundJob = {
     start: string
     pgid: number
   }
+  launcher?: {
+    pid: number
+    boot: number
+  }
   time: {
     created: number
     soft?: number
@@ -891,103 +911,6 @@ export type EventJobUpdated = {
   type: "job.updated"
   properties: {
     job: BackgroundJob
-  }
-}
-
-export type BackgroundSubagent = {
-  id: string
-  parentSessionID: string
-  status: "running" | "completed" | "failed" | "cancelled"
-  description: string
-  time: {
-    created: number
-    completed?: number
-  }
-  progress?: {
-    toolCount: number
-    tokens: {
-      input: number
-      output: number
-    }
-    currentActivity?: string
-    lastUpdate: number
-  }
-  subagent?: {
-    sessionID: string
-    agent: string
-    prompt: string
-    model: {
-      providerID: string
-      modelID: string
-    }
-  }
-  result?: {
-    output: string
-    error?: string
-    exitCode?: number
-  }
-}
-
-export type EventBackgroundSubagentCreated = {
-  type: "background.subagent.created"
-  properties: {
-    subagent: BackgroundSubagent
-  }
-}
-
-export type EventBackgroundSubagentProgress = {
-  type: "background.subagent.progress"
-  properties: {
-    subagentId: string
-    parentSessionID: string
-    progress: {
-      toolCount: number
-      tokens: {
-        input: number
-        output: number
-      }
-      currentActivity?: string
-      lastUpdate: number
-    }
-  }
-}
-
-export type EventBackgroundSubagentCompleted = {
-  type: "background.subagent.completed"
-  properties: {
-    subagentId: string
-    parentSessionID: string
-    status: "completed" | "failed" | "cancelled"
-    result?: {
-      output: string
-      error?: string
-      exitCode?: number
-    }
-  }
-}
-
-export type EventBackgroundSubagentResultPending = {
-  type: "background.subagent.result_pending"
-  properties: {
-    sessionID: string
-    pending: {
-      subagentId: string
-      parentSessionID: string
-      description: string
-      agent?: string
-      output: string
-      error?: string
-      completedAt: number
-      duration: number
-    }
-  }
-}
-
-export type EventBackgroundSubagentAutoInjectChanged = {
-  type: "background.subagent.auto_inject_changed"
-  properties: {
-    sessionID: string
-    autoInject: boolean
   }
 }
 
@@ -1037,14 +960,6 @@ export type EventOpenProjectsUpdated = {
   type: "open-projects.updated"
   properties: {
     entries: Array<OpenProject>
-  }
-}
-
-export type EventSessionPromptInterrupted = {
-  type: "session.prompt.interrupted"
-  properties: {
-    sessionID: string
-    interrupted: true
   }
 }
 
@@ -1323,16 +1238,10 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventJobUpdated
-  | EventBackgroundSubagentCreated
-  | EventBackgroundSubagentProgress
-  | EventBackgroundSubagentCompleted
-  | EventBackgroundSubagentResultPending
-  | EventBackgroundSubagentAutoInjectChanged
   | EventTodoUpdated
   | EventSessionPingArmed
   | EventSessionCompacted
   | EventOpenProjectsUpdated
-  | EventSessionPromptInterrupted
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionTotalsUpdated
@@ -1359,460 +1268,6 @@ export type GlobalEvent = {
   directory: string
   id?: number
   payload: Event
-}
-
-/**
- * Custom keybind configurations
- */
-export type KeybindsConfig = {
-  /**
-   * Leader key for keybind combinations
-   */
-  leader?: string
-  /**
-   * Exit the application
-   */
-  app_exit?: string
-  /**
-   * Open external editor
-   */
-  editor_open?: string
-  /**
-   * List available themes
-   */
-  theme_list?: string
-  /**
-   * Toggle sidebar
-   */
-  sidebar_toggle?: string
-  /**
-   * Toggle session scrollbar
-   */
-  scrollbar_toggle?: string
-  /**
-   * Toggle username visibility
-   */
-  username_toggle?: string
-  /**
-   * View status
-   */
-  status_view?: string
-  /**
-   * Export session to editor
-   */
-  session_export?: string
-  /**
-   * Create a new session
-   */
-  session_new?: string
-  /**
-   * List all sessions
-   */
-  session_list?: string
-  /**
-   * Show session timeline
-   */
-  session_timeline?: string
-  /**
-   * Fork session from message
-   */
-  session_fork?: string
-  /**
-   * Rename session
-   */
-  session_rename?: string
-  /**
-   * Delete session
-   */
-  session_delete?: string
-  /**
-   * Delete stash entry
-   */
-  stash_delete?: string
-  /**
-   * Open provider list from model dialog
-   */
-  model_provider_list?: string
-  /**
-   * Toggle model favorite status
-   */
-  model_favorite_toggle?: string
-  /**
-   * Toggle skill favorite status
-   */
-  skill_favorite_toggle?: string
-  /**
-   * Share current session
-   */
-  session_share?: string
-  /**
-   * Unshare current session
-   */
-  session_unshare?: string
-  /**
-   * Interrupt current session
-   */
-  session_interrupt?: string
-  /**
-   * Compact the session
-   */
-  session_compact?: string
-  /**
-   * Scroll messages up by one page
-   */
-  messages_page_up?: string
-  /**
-   * Scroll messages down by one page
-   */
-  messages_page_down?: string
-  /**
-   * Scroll messages up by one line
-   */
-  messages_line_up?: string
-  /**
-   * Scroll messages down by one line
-   */
-  messages_line_down?: string
-  /**
-   * Scroll messages up by half page
-   */
-  messages_half_page_up?: string
-  /**
-   * Scroll messages down by half page
-   */
-  messages_half_page_down?: string
-  /**
-   * Navigate to first message
-   */
-  messages_first?: string
-  /**
-   * Navigate to last message
-   */
-  messages_last?: string
-  /**
-   * Force scroll to bottom of conversation
-   */
-  scroll_to_bottom?: string
-  /**
-   * Navigate to next message
-   */
-  messages_next?: string
-  /**
-   * Navigate to previous message
-   */
-  messages_previous?: string
-  /**
-   * Navigate to next user message (when jump mode enabled)
-   */
-  messages_next_user?: string
-  /**
-   * Navigate to previous user message (when jump mode enabled)
-   */
-  messages_previous_user?: string
-  /**
-   * Toggle user message jump mode ([ and ] jump between user messages)
-   */
-  messages_jump_mode_toggle?: string
-  /**
-   * Navigate to last user message
-   */
-  messages_last_user?: string
-  /**
-   * Copy message
-   */
-  messages_copy?: string
-  /**
-   * Undo message
-   */
-  messages_undo?: string
-  /**
-   * Redo message
-   */
-  messages_redo?: string
-  /**
-   * Toggle code block concealment in messages
-   */
-  messages_toggle_conceal?: string
-  /**
-   * Toggle tool details visibility
-   */
-  tool_details?: string
-  /**
-   * List available models
-   */
-  model_list?: string
-  /**
-   * Next recently used model
-   */
-  model_cycle_recent?: string
-  /**
-   * Previous recently used model
-   */
-  model_cycle_recent_reverse?: string
-  /**
-   * Next favorite model
-   */
-  model_cycle_favorite?: string
-  /**
-   * Previous favorite model
-   */
-  model_cycle_favorite_reverse?: string
-  /**
-   * List available commands
-   */
-  command_list?: string
-  /**
-   * List agents
-   */
-  agent_list?: string
-  /**
-   * Next agent
-   */
-  agent_cycle?: string
-  /**
-   * Previous agent
-   */
-  agent_cycle_reverse?: string
-  /**
-   * List skills and insert at cursor
-   */
-  skill_list?: string
-  /**
-   * Set cache probe block index for testing
-   */
-  cache_probe?: string
-  /**
-   * Cycle model variants
-   */
-  variant_cycle?: string
-  /**
-   * Clear input field
-   */
-  input_clear?: string
-  /**
-   * Paste from clipboard
-   */
-  input_paste?: string
-  /**
-   * Submit input
-   */
-  input_submit?: string
-  /**
-   * Insert newline in input
-   */
-  input_newline?: string
-  /**
-   * Move cursor left in input
-   */
-  input_move_left?: string
-  /**
-   * Move cursor right in input
-   */
-  input_move_right?: string
-  /**
-   * Move cursor up in input
-   */
-  input_move_up?: string
-  /**
-   * Move cursor down in input
-   */
-  input_move_down?: string
-  /**
-   * Select left in input
-   */
-  input_select_left?: string
-  /**
-   * Select right in input
-   */
-  input_select_right?: string
-  /**
-   * Select up in input
-   */
-  input_select_up?: string
-  /**
-   * Select down in input
-   */
-  input_select_down?: string
-  /**
-   * Move to start of line in input
-   */
-  input_line_home?: string
-  /**
-   * Move to end of line in input
-   */
-  input_line_end?: string
-  /**
-   * Select to start of line in input
-   */
-  input_select_line_home?: string
-  /**
-   * Select to end of line in input
-   */
-  input_select_line_end?: string
-  /**
-   * Move to start of visual line in input
-   */
-  input_visual_line_home?: string
-  /**
-   * Move to end of visual line in input
-   */
-  input_visual_line_end?: string
-  /**
-   * Select to start of visual line in input
-   */
-  input_select_visual_line_home?: string
-  /**
-   * Select to end of visual line in input
-   */
-  input_select_visual_line_end?: string
-  /**
-   * Move to start of buffer in input
-   */
-  input_buffer_home?: string
-  /**
-   * Move to end of buffer in input
-   */
-  input_buffer_end?: string
-  /**
-   * Select to start of buffer in input
-   */
-  input_select_buffer_home?: string
-  /**
-   * Select to end of buffer in input
-   */
-  input_select_buffer_end?: string
-  /**
-   * Delete line in input
-   */
-  input_delete_line?: string
-  /**
-   * Stash or pop the current prompt
-   */
-  prompt_stash?: string
-  /**
-   * Delete to end of line in input
-   */
-  input_delete_to_line_end?: string
-  /**
-   * Delete to start of line in input
-   */
-  input_delete_to_line_start?: string
-  /**
-   * Backspace in input
-   */
-  input_backspace?: string
-  /**
-   * Delete character in input
-   */
-  input_delete?: string
-  /**
-   * Undo in input
-   */
-  input_undo?: string
-  /**
-   * Redo in input
-   */
-  input_redo?: string
-  /**
-   * Move word forward in input
-   */
-  input_word_forward?: string
-  /**
-   * Move word backward in input
-   */
-  input_word_backward?: string
-  /**
-   * Select word forward in input
-   */
-  input_select_word_forward?: string
-  /**
-   * Select word backward in input
-   */
-  input_select_word_backward?: string
-  /**
-   * Delete word forward in input
-   */
-  input_delete_word_forward?: string
-  /**
-   * Delete word backward in input
-   */
-  input_delete_word_backward?: string
-  /**
-   * Previous history item
-   */
-  history_previous?: string
-  /**
-   * Next history item
-   */
-  history_next?: string
-  /**
-   * Next child session
-   */
-  session_child_cycle?: string
-  /**
-   * Previous child session
-   */
-  session_child_cycle_reverse?: string
-  /**
-   * Go to parent session
-   */
-  session_parent?: string
-  /**
-   * Cancel running subagent
-   */
-  session_child_cancel?: string
-  /**
-   * Show subagent list
-   */
-  subagent_list?: string
-  /**
-   * Show pending questions
-   */
-  question_list?: string
-  /**
-   * Dismiss pending question permanently
-   */
-  question_dismiss?: string
-  /**
-   * Suspend terminal
-   */
-  terminal_suspend?: string
-  /**
-   * Toggle terminal title
-   */
-  terminal_title_toggle?: string
-  /**
-   * Toggle console
-   */
-  console_toggle?: string
-  /**
-   * Toggle cache markers in statusline
-   */
-  cache_markers_toggle?: string
-  /**
-   * Toggle tips on home screen
-   */
-  tips_toggle?: string
-  /**
-   * Accept pending background subagent results
-   */
-  accept_pending_results?: string
-  /**
-   * Toggle auto-inject for background subagent results
-   */
-  background_auto_inject_toggle?: string
-  /**
-   * Toggle paste mode between summary and inline
-   */
-  paste_mode_toggle?: string
-  /**
-   * Toggle auto-scroll lock to prevent scroll resuming
-   */
-  auto_scroll_lock_toggle?: string
-  /**
-   * Toggle session header bar
-   */
-  header_toggle?: string
 }
 
 /**
@@ -2136,42 +1591,7 @@ export type Config = {
    * Theme name to use for the interface
    */
   theme?: string
-  keybinds?: KeybindsConfig
   logLevel?: LogLevel
-  /**
-   * TUI specific settings
-   */
-  tui?: {
-    /**
-     * TUI scroll speed
-     */
-    scroll_speed?: number
-    /**
-     * Scroll acceleration settings
-     */
-    scroll_acceleration?: {
-      /**
-       * Enable scroll acceleration
-       */
-      enabled: boolean
-    }
-    /**
-     * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
-     */
-    diff_style?: "auto" | "stacked"
-    /**
-     * Maximum number of messages to load when opening a session (default: 100)
-     */
-    message_limit?: number
-    /**
-     * Default paste mode: 'summary' collapses long pastes, 'inline' always pastes as editable text
-     */
-    paste_mode?: "summary" | "inline"
-    /**
-     * Show the session header bar at the top of the TUI
-     */
-    header?: boolean
-  }
   server?: ServerConfig
   /**
    * Command configuration, see https://opencode.ai/docs/commands
@@ -2369,10 +1789,6 @@ export type Config = {
     before_expiry?: number
   }
   background?: {
-    /**
-     * Auto-inject background subagent results when they complete (default: false)
-     */
-    auto_inject?: boolean
     /**
      * Settings for background shell jobs (the bash tool), distinct from background subagents
      */
@@ -2811,6 +2227,22 @@ export type McpStatus =
   | McpStatusFailed
   | McpStatusNeedsAuth
   | McpStatusNeedsClientRegistration
+
+export type Subagent = {
+  id: string
+  parentSessionID: string
+  status: "running" | "completed" | "failed" | "stopped"
+  description: string
+  agent: string
+  time: {
+    created: number
+    completed?: number
+  }
+  progress?: {
+    toolCount: number
+    currentActivity?: string
+  }
+}
 
 export type BackgroundJobSummary = {
   id: string
@@ -4667,42 +4099,6 @@ export type SessionPromptAsyncResponses = {
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
 
-export type SessionRestoreData = {
-  body?: never
-  path: {
-    /**
-     * The parent session to resume
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/restore"
-}
-
-export type SessionRestoreErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionRestoreError = SessionRestoreErrors[keyof SessionRestoreErrors]
-
-export type SessionRestoreResponses = {
-  /**
-   * Resume accepted
-   */
-  204: void
-}
-
-export type SessionRestoreResponse = SessionRestoreResponses[keyof SessionRestoreResponses]
-
 export type SessionCommandData = {
   body?: {
     messageID?: string
@@ -4941,41 +4337,6 @@ export type SessionArmResponses = {
 }
 
 export type SessionArmResponse = SessionArmResponses[keyof SessionArmResponses]
-
-export type SessionPingStopData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/ping/stop"
-}
-
-export type SessionPingStopErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionPingStopError = SessionPingStopErrors[keyof SessionPingStopErrors]
-
-export type SessionPingStopResponses = {
-  /**
-   * Ping daemon stopped
-   */
-  200: {
-    ok: boolean
-  }
-}
-
-export type SessionPingStopResponse = SessionPingStopResponses[keyof SessionPingStopResponses]
 
 export type SessionSeenData = {
   body?: never
@@ -6399,330 +5760,24 @@ export type McpRemoveResponse = McpRemoveResponses[keyof McpRemoveResponses]
 export type BackgroundListData = {
   body?: never
   path?: never
-  query?: {
+  query: {
     directory?: string
     /**
-     * Filter by parent session ID
+     * The parent session
      */
-    sessionID?: string
+    sessionID: string
   }
   url: "/background"
 }
 
 export type BackgroundListResponses = {
   /**
-   * List of background subagents
+   * Subagents of the session
    */
-  200: Array<BackgroundSubagent>
+  200: Array<Subagent>
 }
 
 export type BackgroundListResponse = BackgroundListResponses[keyof BackgroundListResponses]
-
-export type BackgroundGetData = {
-  body?: never
-  path: {
-    /**
-     * Subagent ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/{id}"
-}
-
-export type BackgroundGetErrors = {
-  /**
-   * Subagent not found
-   */
-  404: unknown
-}
-
-export type BackgroundGetResponses = {
-  /**
-   * Background subagent
-   */
-  200: BackgroundSubagent
-}
-
-export type BackgroundGetResponse = BackgroundGetResponses[keyof BackgroundGetResponses]
-
-export type BackgroundCancelData = {
-  body?: never
-  path: {
-    /**
-     * Subagent ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/{id}/cancel"
-}
-
-export type BackgroundCancelResponses = {
-  /**
-   * Subagent cancelled
-   */
-  200: {
-    success: boolean
-  }
-}
-
-export type BackgroundCancelResponse = BackgroundCancelResponses[keyof BackgroundCancelResponses]
-
-export type BackgroundGetAutoInjectData = {
-  body?: never
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/session/{sessionID}/auto-inject"
-}
-
-export type BackgroundGetAutoInjectResponses = {
-  /**
-   * Auto-inject setting
-   */
-  200: {
-    autoInject: boolean
-  }
-}
-
-export type BackgroundGetAutoInjectResponse = BackgroundGetAutoInjectResponses[keyof BackgroundGetAutoInjectResponses]
-
-export type BackgroundSetAutoInjectData = {
-  body?: {
-    /**
-     * Enable or disable auto-inject
-     */
-    autoInject: boolean
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/session/{sessionID}/auto-inject"
-}
-
-export type BackgroundSetAutoInjectResponses = {
-  /**
-   * Auto-inject setting updated
-   */
-  200: {
-    autoInject: boolean
-  }
-}
-
-export type BackgroundSetAutoInjectResponse = BackgroundSetAutoInjectResponses[keyof BackgroundSetAutoInjectResponses]
-
-export type BackgroundToggleAutoInjectData = {
-  body?: never
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/session/{sessionID}/auto-inject/toggle"
-}
-
-export type BackgroundToggleAutoInjectResponses = {
-  /**
-   * Auto-inject setting toggled
-   */
-  200: {
-    autoInject: boolean
-  }
-}
-
-export type BackgroundToggleAutoInjectResponse =
-  BackgroundToggleAutoInjectResponses[keyof BackgroundToggleAutoInjectResponses]
-
-export type BackgroundGetPendingData = {
-  body?: never
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/session/{sessionID}/pending"
-}
-
-export type BackgroundGetPendingResponses = {
-  /**
-   * Pending results
-   */
-  200: Array<{
-    subagentId: string
-    parentSessionID: string
-    description: string
-    agent?: string
-    output: string
-    error?: string
-    completedAt: number
-    duration: number
-  }>
-}
-
-export type BackgroundGetPendingResponse = BackgroundGetPendingResponses[keyof BackgroundGetPendingResponses]
-
-export type BackgroundAcceptPendingData = {
-  body?: {
-    /**
-     * Trigger LLM to process the result after injection
-     */
-    triggerLLM?: boolean
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-    /**
-     * Subagent ID
-     */
-    subagentId: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/session/{sessionID}/pending/{subagentId}/accept"
-}
-
-export type BackgroundAcceptPendingResponses = {
-  /**
-   * Result accepted
-   */
-  200: {
-    success: boolean
-  }
-}
-
-export type BackgroundAcceptPendingResponse = BackgroundAcceptPendingResponses[keyof BackgroundAcceptPendingResponses]
-
-export type BackgroundAcceptAllPendingData = {
-  body?: {
-    /**
-     * Trigger LLM to process the results after injection
-     */
-    triggerLLM?: boolean
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/session/{sessionID}/pending/accept-all"
-}
-
-export type BackgroundAcceptAllPendingResponses = {
-  /**
-   * All results accepted
-   */
-  200: {
-    count: number
-  }
-}
-
-export type BackgroundAcceptAllPendingResponse =
-  BackgroundAcceptAllPendingResponses[keyof BackgroundAcceptAllPendingResponses]
-
-export type BackgroundDismissPendingData = {
-  body?: {
-    /**
-     * Subagent IDs to dismiss (all if not specified)
-     */
-    subagentIds?: Array<string>
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/background/session/{sessionID}/pending/dismiss"
-}
-
-export type BackgroundDismissPendingResponses = {
-  /**
-   * Results dismissed
-   */
-  200: {
-    count: number
-  }
-}
-
-export type BackgroundDismissPendingResponse =
-  BackgroundDismissPendingResponses[keyof BackgroundDismissPendingResponses]
-
-export type BackgroundGetAutoInjectDefaultData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/background/auto-inject/default"
-}
-
-export type BackgroundGetAutoInjectDefaultResponses = {
-  /**
-   * Auto-inject default
-   */
-  200: {
-    autoInject: boolean
-  }
-}
-
-export type BackgroundGetAutoInjectDefaultResponse =
-  BackgroundGetAutoInjectDefaultResponses[keyof BackgroundGetAutoInjectDefaultResponses]
-
-export type BackgroundToggleAutoInjectDefaultData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/background/auto-inject/default/toggle"
-}
-
-export type BackgroundToggleAutoInjectDefaultResponses = {
-  /**
-   * Auto-inject default toggled
-   */
-  200: {
-    autoInject: boolean
-  }
-}
-
-export type BackgroundToggleAutoInjectDefaultResponse =
-  BackgroundToggleAutoInjectDefaultResponses[keyof BackgroundToggleAutoInjectDefaultResponses]
 
 export type JobListData = {
   body?: never
