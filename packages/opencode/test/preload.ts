@@ -44,8 +44,11 @@ delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_SKILLS"]
 delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
 delete process.env["OPENCODE_DISABLE_PROJECT_CONFIG"]
 delete process.env["OPENCODE_DISABLE_AUTOUPDATE"]
-delete process.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"]
 delete process.env["OPENCODE_DISABLE_LSP_DOWNLOAD"]
+// Set, not cleared: the default plugins are installed from npm into this
+// process's fresh cache on the first model call, under a process-wide lock,
+// so a slow registry stalls every turn in the file past its test's deadline.
+process.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "1"
 delete process.env["OPENCODE_CONFIG"]
 delete process.env["OPENCODE_CONFIG_CONTENT"]
 delete process.env["OPENCODE_PERMISSION"]
