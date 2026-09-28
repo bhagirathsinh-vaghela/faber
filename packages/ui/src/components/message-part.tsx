@@ -1245,6 +1245,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
         subtitle={noticeSummary(throttledText())}
         summaryOnly
         tool="reasoning"
+        accent="claude"
         numberKey={part.id}
         raw
         copy={throttledText}

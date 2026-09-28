@@ -84,7 +84,7 @@ export interface TranscriptCardProps {
 
 // Every colour a card can wear. A family owns a matching accent/border/fill set
 // in the theme, so naming the family is enough for the base to reach all three.
-export type CardAccent = "user" | "assistant" | "subagent" | "job" | "tool"
+export type CardAccent = "user" | "assistant" | "subagent" | "job" | "claude" | "tool"
 
 // Per-tool accent: a tool can name its own token, or fall back to its
 // family's. The family is the default so the transcript is scannable by
@@ -103,7 +103,6 @@ const TOOL_FAMILIES: Record<string, ToolFamily> = {
   webfetch: "readonly",
   mcp_search: "readonly",
   todoread: "readonly",
-  reasoning: "readonly",
   write: "write",
   edit: "write",
   patch: "write",
