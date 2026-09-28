@@ -23,8 +23,7 @@ import { MicIcon } from "@/components/mic-icon"
 import { usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
 
-// Pinned question prompt. Mirrors the TUI QuestionPrompt
-// (packages/opencode/src/cli/cmd/tui/routes/session/question.tsx): tabbed
+// Pinned question prompt: tabbed
 // multi-question/multi-request flow, single-question fast path, custom answers,
 // multi-select, and review/confirm.
 //
