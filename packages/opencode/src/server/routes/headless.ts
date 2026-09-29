@@ -26,7 +26,7 @@ export const HeadlessRoutes = lazy(() =>
       // would reap it mid-flight. c.env is the Bun Server; absent in tests.
       const server = c.env as { timeout?: (req: Request, seconds: number) => void }
       server?.timeout?.(c.req.raw, 0)
-      return c.json(await HeadlessAgent.run(c.req.valid("json")))
+      return c.json(await HeadlessAgent.run(c.req.valid("json"), c.req.raw.signal))
     },
   ),
 )

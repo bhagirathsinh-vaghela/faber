@@ -5,6 +5,8 @@ import { Session } from "../../src/session"
 import { Sessions } from "../../src/storage/sessions"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
+import { BackgroundProcess } from "../../src/background/process"
+import { GlobalBus } from "../../src/bus/global"
 import { Log } from "../../src/util/log"
 import { Recovery } from "../../src/session/recovery"
 import { tmpdir } from "../fixture/fixture"
@@ -87,6 +89,28 @@ function reply(blocks: Record<string, any>[][], stop: string) {
     { type: "message_delta", delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 6 } },
     { type: "message_stop" },
   ])
+}
+
+// A reply that starts streaming and never ends.
+function endless(streams: ReadableStreamDefaultController<Uint8Array>[]) {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        streams.push(controller)
+        const chunk = { type: "message_start", message: { id: "msg-1", model: MODEL, usage: { input_tokens: 1 } } }
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`))
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
+  )
+}
+
+// A stream the aborted request already cancelled refuses a close.
+function close(streams: ReadableStreamDefaultController<Uint8Array>[]) {
+  for (const stream of streams)
+    void Promise.resolve()
+      .then(() => stream.close())
+      .catch(() => {})
 }
 
 async function withProject(fn: (dir: string) => Promise<void>, permission: Record<string, string> = { bash: "ask" }) {
@@ -263,24 +287,8 @@ describe("HeadlessAgent.run", () => {
 
   test("a run past its timeout is stopped and reports the timeout", async () => {
     await withProject(async (dir) => {
-      // A reply that starts streaming and never ends.
       const streams: ReadableStreamDefaultController<Uint8Array>[] = []
-      const started = respond(
-        () =>
-          new Response(
-            new ReadableStream<Uint8Array>({
-              start(controller) {
-                streams.push(controller)
-                const chunk = {
-                  type: "message_start",
-                  message: { id: "msg-1", model: MODEL, usage: { input_tokens: 1 } },
-                }
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`))
-              },
-            }),
-            { status: 200, headers: { "Content-Type": "text/event-stream" } },
-          ),
-      )
+      const started = respond(() => endless(streams))
       const before = Date.now()
 
       try {
@@ -299,12 +307,73 @@ describe("HeadlessAgent.run", () => {
         const stopped = (await Session.get(outcome.session_id!)).time.stopped!
         expect(stopped >= before + 1500 && stopped <= Date.now()).toBe(true)
       } finally {
-        // A stream the aborted request already cancelled refuses a close.
-        for (const stream of streams)
-          void Promise.resolve()
-            .then(() => stream.close())
-            .catch(() => {})
+        close(streams)
       }
+    })
+  }, 60_000)
+
+  test("a caller that disconnects as the prompt is written stops the turn it opens", async () => {
+    await withProject(async (dir) => {
+      const streams: ReadableStreamDefaultController<Uint8Array>[] = []
+      respond(() => endless(streams))
+      const caller = new AbortController()
+      const written = (event: { payload: { type: string; properties: { info?: { role?: string } } } }) => {
+        if (event.payload.type === "message.updated" && event.payload.properties.info?.role === "user") caller.abort()
+      }
+      GlobalBus.on("event", written)
+
+      try {
+        const outcome = await HeadlessAgent.run(
+          { model: "default", variant: "default", agent: "build", prompt: "hang", timeoutMs: 20_000 },
+          caller.signal,
+        )
+        expect(outcome.errors).toEqual([`headless: build in ${dir}: the caller disconnected`])
+      } finally {
+        GlobalBus.off("event", written)
+        close(streams)
+      }
+    })
+  }, 60_000)
+
+  test("a caller that disconnects while the run waits on its job stops the run, kills the job, and removes the session", async () => {
+    await withProject(
+      async (dir) => {
+        const { BackgroundOrchestrator } = await import("../../src/background/orchestrator")
+        BackgroundOrchestrator.init()
+        const pidfile = path.join(dir, "job.pid")
+        const command = `sleep 1000 & echo $! > ${pidfile}; wait`
+        respond(() => reply([toolUse("bash", { command, description: "endless step" })], "tool_use"))
+        const waiting = respond(() => reply([text("Started it, waiting.")], "end_turn"))
+        const caller = new AbortController()
+        void waiting.then(() => Bun.sleep(1000)).then(() => caller.abort())
+
+        const outcome = await HeadlessAgent.run(
+          { model: "default", variant: "default", agent: "build", prompt: "Run the endless step.", timeoutMs: 20_000 },
+          caller.signal,
+        )
+
+        expect(outcome).toMatchObject({ is_error: true, errors: [`headless: build in ${dir}: the caller disconnected`] })
+        expect(await BackgroundProcess.inspect(Number(await Bun.file(pidfile).text()))).toBeUndefined()
+        const remaining = []
+        for await (const session of Session.list()) remaining.push(session.id)
+        expect(remaining).toEqual([])
+        expect(state.captured.length).toBe(2)
+      },
+      { bash: "allow" },
+    )
+  }, 60_000)
+
+  test("a caller already gone before the prompt starts no turn", async () => {
+    await withProject(async (dir) => {
+      const outcome = await HeadlessAgent.run(
+        { model: "default", variant: "default", agent: "build", prompt: "hi" },
+        AbortSignal.abort(),
+      )
+      expect(outcome).toMatchObject({ is_error: true, errors: [`headless: build in ${dir}: the caller disconnected`] })
+      expect(state.captured.length).toBe(0)
+      const remaining = []
+      for await (const session of Session.list()) remaining.push(session.id)
+      expect(remaining).toEqual([])
     })
   }, 60_000)
 

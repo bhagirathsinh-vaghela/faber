@@ -84,7 +84,7 @@ export namespace HeadlessAgent {
     { permission: "agent", pattern: "*", action: "deny" },
   ]
 
-  export async function run(input: Input): Promise<Result> {
+  export async function run(input: Input, caller?: AbortSignal): Promise<Result> {
     const agent = await Agent.get(input.agent)
     if (!agent) return failure([`headless: unknown agent "${input.agent}"`])
     const ref =
@@ -108,6 +108,11 @@ export namespace HeadlessAgent {
     // session's busy facts, the trigger Recovery itself acts on. The slow net
     // covers a push that failed to emit.
     const deadline = AbortSignal.timeout(input.timeoutMs ?? DEFAULT_TIMEOUT)
+    const ended = caller ? AbortSignal.any([deadline, caller]) : deadline
+    const why = () =>
+      ended.reason === deadline.reason
+        ? `timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`
+        : "the caller disconnected"
     // A bus or timer callback has no instance context, so it re-enters the run's own.
     const directory = Instance.directory
     const settled = () => {
@@ -126,40 +131,61 @@ export namespace HeadlessAgent {
       const listener = (event: { payload: { type: string; properties: { sessions?: Record<string, unknown> } } }) => {
         if (event.payload.type === ServerEvent.Busy.type && event.payload.properties.sessions?.[session.id]) void check()
       }
-      const expired = () => over.reject(new Error(`timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`))
+      const expired = () => over.reject(new Error(why()))
       GlobalBus.on("event", listener)
       const net = setInterval(check, NET_MS)
-      deadline.addEventListener("abort", expired)
-      if (deadline.aborted) expired()
+      ended.addEventListener("abort", expired)
+      if (ended.aborted) expired()
       // Listening starts after the prompt returned, so its turn-end push may
       // already have passed.
       void check()
       return over.promise.finally(() => {
         GlobalBus.off("event", listener)
         clearInterval(net)
-        deadline.removeEventListener("abort", expired)
+        ended.removeEventListener("abort", expired)
       })
     }
-    const expiry = () =>
-      void Instance.provide({ directory, fn: () => Session.stop({ sessionID: session.id }) }).catch((error) =>
-        log.error("headless timeout stop failed", { sessionID: session.id, error }),
-      )
-    deadline.addEventListener("abort", expiry)
+    // Stops are chained and awaited before the run returns: two concurrent
+    // Stops race for a job's claim, and only the winner waits out its kill.
+    let stopping = Promise.resolve()
+    const expiry = () => {
+      stopping = stopping.then(async () => {
+        await Instance.provide({ directory, fn: () => Session.stop({ sessionID: session.id }) }).catch((error) =>
+          log.error("headless abort stop failed", { sessionID: session.id, error }),
+        )
+      })
+    }
+    ended.addEventListener("abort", expiry)
 
-    const outcome = await SessionPrompt.prompt({
-      sessionID: session.id,
-      agent: agent.name,
-      model: { providerID: model.providerID, modelID: model.id },
-      variant: input.variant,
-      parts: [
-        ...(input.system ? [{ type: "text" as const, text: input.system }] : []),
-        { type: "text" as const, text: input.prompt },
-      ],
-    })
-      .then(settled)
+    // An abort that landed before the listener must not start a turn: a prompt
+    // into a stopped session is an ordinary message and would run. One that
+    // lands while the prompt is written finds no turn to cancel, so it is
+    // repeated once `send` has claimed the turn.
+    const outcome = await (
+      ended.aborted
+        ? Promise.reject(new Error(why()))
+        : SessionPrompt.send({
+            sessionID: session.id,
+            agent: agent.name,
+            model: { providerID: model.providerID, modelID: model.id },
+            variant: input.variant,
+            parts: [
+              ...(input.system ? [{ type: "text" as const, text: input.system }] : []),
+              { type: "text" as const, text: input.prompt },
+            ],
+          })
+            .then((sent) => {
+              if (ended.aborted) expiry()
+              return sent.answer
+            })
+            .then(settled)
+    )
       .then(() => summarize(session.id))
-      .catch((error) => failure([`headless: ${agent.name} in ${Instance.directory}: ${describe(error)}`]))
-      .finally(() => deadline.removeEventListener("abort", expiry))
+      .catch((error) =>
+        failure([`headless: ${agent.name} in ${Instance.directory}: ${ended.aborted ? why() : describe(error)}`]),
+      )
+      .finally(() => ended.removeEventListener("abort", expiry))
+    await stopping
 
     const permission_denials = denials()
     if (!input.keep) {
