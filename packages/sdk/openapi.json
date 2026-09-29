@@ -7835,7 +7835,7 @@
                     "type": "string"
                   },
                   "cache": {
-                    "description": "Place prompt-cache markers. Off by default.",
+                    "description": "Cache the system prompt: one 1h marker on it and none on the prompt, which is never re-sent. Off by default; turn it on only for a system prompt reused across calls.",
                     "type": "boolean"
                   },
                   "timeoutMs": {

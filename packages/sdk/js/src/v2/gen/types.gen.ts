@@ -4408,7 +4408,7 @@ export type OneshotData = {
      */
     variant: string
     /**
-     * Place prompt-cache markers. Off by default.
+     * Cache the system prompt: one 1h marker on it and none on the prompt, which is never re-sent. Off by default; turn it on only for a system prompt reused across calls.
      */
     cache?: boolean
     timeoutMs?: number

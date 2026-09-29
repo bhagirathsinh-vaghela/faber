@@ -9,7 +9,9 @@ import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
 
-type Capture = { headers: Headers; body: Record<string, any> }
+type Body = { system?: unknown[]; messages: unknown[]; tools?: unknown; thinking?: unknown }
+
+type Capture = { headers: Headers; body: Body }
 
 const state = {
   server: null as ReturnType<typeof Bun.serve> | null,
@@ -26,7 +28,7 @@ beforeAll(() => {
     async fetch(req) {
       const next = state.queue.shift()
       if (!next) return new Response("unexpected request", { status: 500 })
-      next.resolve({ headers: req.headers, body: (await req.json()) as Record<string, any> })
+      next.resolve({ headers: req.headers, body: (await req.json()) as Body })
       return next.response()
     },
   })
@@ -89,7 +91,52 @@ async function withInstance(fn: () => Promise<void>, models: Record<string, obje
   await Instance.provide({ directory: tmp.path, fn })
 }
 
-function systemText(body: Record<string, any>) {
+function markers(body: Body) {
+  return [...JSON.stringify(body).matchAll(/"cache_control":(\{[^}]*\})/g)].map((match) => JSON.parse(match[1]))
+}
+
+function thinkingReply(thought: string, text: string, reason = "end_turn") {
+  return sse([
+    start,
+    { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: thought } },
+    { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig" } },
+    { type: "content_block_stop", index: 0 },
+    { type: "content_block_start", index: 1, content_block: { type: "text", text: "" } },
+    { type: "content_block_delta", index: 1, delta: { type: "text_delta", text } },
+    { type: "content_block_stop", index: 1 },
+    ...stop(reason, 4),
+  ])
+}
+
+const priced = {
+  [MODEL]: {
+    name: "Claude",
+    family: "claude",
+    release_date: "2024-10-22",
+    attachment: false,
+    reasoning: false,
+    temperature: true,
+    tool_call: true,
+    cost: { input: 1, output: 2, cache_read: 0.1, cache_write: 1 },
+    limit: { context: 200000, output: 8192 },
+    modalities: { input: ["text"], output: ["text"] },
+  },
+}
+
+const overloaded = () =>
+  new Response(JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }), {
+    status: 529,
+    headers: { "Content-Type": "application/json" },
+  })
+
+async function collect(events: AsyncIterable<Oneshot.Event>) {
+  const out: Oneshot.Event[] = []
+  for await (const event of events) out.push(event)
+  return out
+}
+
+function systemText(body: Body) {
   return JSON.stringify(body.system ?? "")
 }
 
@@ -117,29 +164,29 @@ describe("Oneshot.run", () => {
     })
   }, 30_000)
 
-  test("places cache markers when the caller opts in", async () => {
+  test("cache on marks only the system prompt, once, with a 1h ttl; the prompt stays unmarked", async () => {
     await withInstance(async () => {
       const request = respond(() => textReply("ok"))
       await Oneshot.run({ model: "default", variant: "default", system: "S", prompt: "Hi", cache: true })
-      expect(JSON.stringify((await request).body)).toContain("cache_control")
+      const body = (await request).body
+      expect(markers(body)).toEqual([{ type: "ephemeral", ttl: "1h" }])
+      expect(body.system?.at(-1)).toMatchObject({ text: "S", cache_control: { type: "ephemeral", ttl: "1h" } })
+      expect(JSON.stringify(body.messages)).not.toContain("cache_control")
     })
   }, 30_000)
 
   test("surfaces a provider failure as an error instead of an empty answer", async () => {
     await withInstance(async () => {
-      respond(
-        () =>
-          new Response(JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }), {
-            status: 529,
-            headers: { "Content-Type": "application/json" },
-          }),
-      )
+      respond(overloaded)
       const answer = await Oneshot.run({ model: "default", variant: "default", prompt: "Hi" })
-      expect(answer.is_error).toBe(true)
-      expect(answer.result).toBe("")
-      expect(answer.errors).toHaveLength(1)
-      expect(answer.errors[0]).toStartWith(`oneshot: anthropic/${MODEL}: `)
-      expect(answer.errors[0]).toContain("Overloaded")
+      expect(answer).toEqual({
+        result: "",
+        usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        cost: 0,
+        is_error: true,
+        errors: [`oneshot: anthropic/${MODEL}: Overloaded`],
+        model: `anthropic/${MODEL}`,
+      })
     })
   }, 30_000)
 
@@ -202,5 +249,70 @@ describe("Oneshot.run", () => {
         },
       },
     )
+  }, 30_000)
+})
+
+describe("Oneshot.stream", () => {
+  const input = (abort = new AbortController().signal) => ({
+    system: "SYS",
+    prompt: "Hi",
+    sessionID: "ses_test",
+    model: "default",
+    variant: "default",
+    abort,
+    cache: true,
+  })
+
+  test("yields only answer text, drops reasoning by type, and ends with done", async () => {
+    await withInstance(async () => {
+      const request = respond(() => thinkingReply("SECRET-THOUGHT", "Spoken line."))
+      const events = await collect(Oneshot.stream(input()))
+      expect(markers((await request).body)).toEqual([{ type: "ephemeral", ttl: "1h" }])
+      expect(events).toEqual([
+        { type: "text", text: "Spoken line." },
+        {
+          type: "done",
+          finish: "stop",
+          model: `anthropic/${MODEL}`,
+          usage: { input: 10, output: 4, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+          cost: (10 * 1 + 4 * 2) / 1_000_000,
+          thoughts: 1,
+        },
+      ])
+    }, priced)
+  }, 30_000)
+
+  test("a truncated answer is an error, not a done", async () => {
+    await withInstance(async () => {
+      respond(() => thinkingReply("t", "Cut off", "max_tokens"))
+      const events = await collect(Oneshot.stream(input()))
+      expect(events).toEqual([
+        { type: "text", text: "Cut off" },
+        {
+          type: "error",
+          message: `oneshot: anthropic/${MODEL}: finished with "length" instead of a normal stop`,
+        },
+      ])
+    })
+  }, 30_000)
+
+  test("a provider failure ends the stream with one error naming the model", async () => {
+    await withInstance(async () => {
+      respond(overloaded)
+      const events = await collect(Oneshot.stream(input()))
+      expect(events).toEqual([{ type: "error", message: `oneshot: anthropic/${MODEL}: Overloaded` }])
+    })
+  }, 30_000)
+
+  test("a model that cannot be resolved is one error, not a throw", async () => {
+    const events = await collect(Oneshot.stream(input()))
+    expect(events).toEqual([{ type: "error", message: 'oneshot: model "default": No context found for instance' }])
+  }, 30_000)
+
+  test("an unknown variant fails before any request", async () => {
+    await withInstance(async () => {
+      const events = await collect(Oneshot.stream({ ...input(), variant: "nope" }))
+      expect(events).toEqual([{ type: "error", message: `oneshot: model anthropic/${MODEL} offers no variant "nope"` }])
+    })
   }, 30_000)
 })

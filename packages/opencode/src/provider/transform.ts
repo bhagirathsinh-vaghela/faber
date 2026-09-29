@@ -203,16 +203,26 @@ export namespace ProviderTransform {
    * - Previous turn's last assistant (falls back to the last user prompt on the
    *   first turn): stable checkpoint for the current turn
    * - Last message (N): moves with each API call for incremental caching
+   *
+   * "system" scope is for a single call whose messages are never re-sent: one
+   * 1h marker on the last system block, and none on the messages, which would
+   * pay a write that is never read.
    */
   function selectCacheMarkers(
     msgs: ModelMessage[],
     probeIndex?: number,
+    cache: Cache = true,
   ): { messages: ModelMessage[]; indices: number[] } {
     const systemMsgs = msgs.filter((msg) => msg.role === "system")
     const conversationMsgs = msgs.filter((msg) => msg.role !== "system")
 
     const markers: ModelMessage[] = []
     const indices: number[] = []
+
+    if (cache === "system") {
+      const last = systemMsgs.findLast((msg) => !isSessionContext(msg))
+      return last ? { messages: [last], indices: [msgs.indexOf(last)] } : { messages: [], indices: [] }
+    }
 
     // System blocks before these last 2 sit within the 20-block lookback and
     // cache for free. The session-context block carries the current date and
@@ -259,8 +269,13 @@ export namespace ProviderTransform {
     return { messages: markers, indices }
   }
 
-  function applyCaching(msgs: ModelMessage[], providerID: string, probeIndex?: number): ModelMessage[] {
-    const { messages: markerMsgs, indices } = selectCacheMarkers(msgs, probeIndex)
+  function applyCaching(
+    msgs: ModelMessage[],
+    providerID: string,
+    probeIndex?: number,
+    cache: Cache = true,
+  ): ModelMessage[] {
+    const { messages: markerMsgs, indices } = selectCacheMarkers(msgs, probeIndex, cache)
 
     log.info("cache markers", {
       providerID,
@@ -346,9 +361,12 @@ export namespace ProviderTransform {
    *   - The checkpoint marker at 150 stays fixed during a turn, while N moves
    *     with each API call, enabling incremental caching throughout long tool chains
    */
-  export function cacheMarkerIndices(msgs: ModelMessage[], probeIndex?: number): number[] {
-    return selectCacheMarkers(msgs, probeIndex).indices
+  export function cacheMarkerIndices(msgs: ModelMessage[], probeIndex?: number, cache: Cache = true): number[] {
+    return selectCacheMarkers(msgs, probeIndex, cache).indices
   }
+
+  /** true: the session strategy. "system": one 1h marker on the system prompt only. false: none. */
+  export type Cache = boolean | "system"
 
   // A miss here hands the block a 1h marker, keying an entry to a value that
   // turns over daily, so the tag is matched anywhere in the block rather than
@@ -400,7 +418,7 @@ export namespace ProviderTransform {
     model: Provider.Model,
     options: Record<string, unknown>,
     probeIndex?: number,
-    cache = true,
+    cache: Cache = true,
   ) {
     msgs = unsupportedParts(msgs, model)
     msgs = normalizeMessages(msgs, model, options)
@@ -413,7 +431,7 @@ export namespace ProviderTransform {
         model.id.includes("claude") ||
         model.api.npm === "@ai-sdk/anthropic")
     ) {
-      msgs = applyCaching(msgs, model.providerID, probeIndex)
+      msgs = applyCaching(msgs, model.providerID, probeIndex, cache)
     }
 
     // Remap providerOptions keys from stored providerID to expected SDK key
