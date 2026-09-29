@@ -6,14 +6,15 @@ import { Identifier } from "../../src/id/id"
 import { Instance } from "../../src/project/instance"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
+import { Provider } from "../../src/provider/provider"
 
 Log.init({ print: false })
 
-describe("promptAsync ack ordering", () => {
-  // The async route acks on this callback, so the message must be durable by the
-  // time it fires. A client that reads the pre-allocated id right after the ack
-  // then gets a truthful answer instead of a race against the write.
-  test("onPersisted fires only after the message is readable", async () => {
+describe("send ack ordering", () => {
+  // The async route acks once this resolves, so the message must be durable by
+  // then. A client that reads the pre-allocated id right after the ack gets a
+  // truthful answer instead of a race against the write.
+  test("resolves only after the message is readable", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -21,21 +22,18 @@ describe("promptAsync ack ordering", () => {
         const session = await Session.create({})
         const messageID = Identifier.ascending("message")
 
-        let roleAtPersist: string | undefined
-        await SessionPrompt.promptAsync(
-          {
-            sessionID: session.id,
-            messageID,
-            noReply: true,
-            parts: [{ type: "text", text: "probe" }],
-          },
-          async () => {
-            const stored = await MessageV2.get({ sessionID: session.id, messageID })
-            roleAtPersist = stored.info.role
-          },
-        )
+        const sent = await SessionPrompt.send({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
+          sessionID: session.id,
+          messageID,
+          noReply: true,
+          parts: [{ type: "text", text: "probe" }],
+        })
 
-        expect(roleAtPersist).toBe("user")
+        expect(sent.message.info.id).toBe(messageID)
+        expect((await MessageV2.get({ sessionID: session.id, messageID })).info.role).toBe("user")
+        await sent.answer
       },
     })
   }, 30000)

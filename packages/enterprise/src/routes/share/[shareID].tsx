@@ -69,7 +69,7 @@ const getData = query(async (shareID) => {
       [sessionID: string]: SessionStatus
     }
     session_busy: {
-      [sessionID: string]: { busy: boolean; busySelf: boolean; busyDescendant: boolean }
+      [sessionID: string]: { turn: boolean; subagents: number; jobs: number }
     }
     message: {
       [sessionID: string]: Message[]

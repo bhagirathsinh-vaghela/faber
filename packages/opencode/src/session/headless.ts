@@ -23,7 +23,10 @@ export namespace HeadlessAgent {
     agent: z.string().min(1).describe("Agent name, e.g. build or plan"),
     prompt: z.string().min(1),
     system: z.string().optional().describe("Extra instructions, sent ahead of the prompt"),
-    model: z.string().optional().describe("provider/model; defaults to the agent's model, then the configured one"),
+    model: z.string().describe('provider/model, or "default" for the agent\'s model, then the configured one'),
+    variant: z
+      .string()
+      .describe("A variant the model offers, or \"default\" for the agent's, then the model's configured one"),
     bare: z.boolean().optional().describe("Leave out AGENTS.md, MCP tools, and skills. Defaults to true."),
     timeoutMs: z.number().int().positive().optional(),
     keep: z.boolean().optional().describe("Keep the session after the run, for debugging"),
@@ -81,10 +84,9 @@ export namespace HeadlessAgent {
   export async function run(input: Input): Promise<Result> {
     const agent = await Agent.get(input.agent)
     if (!agent) return failure([`headless: unknown agent "${input.agent}"`])
-    const ref = input.model ? Provider.parseModel(input.model) : undefined
-    const model = ref
-      ? await Provider.getModel(ref.providerID, ref.modelID).catch((error) => error as Error)
-      : undefined
+    const ref =
+      input.model === Provider.DEFAULT ? (await SessionPrompt.defaults(agent)).model : Provider.parseModel(input.model)
+    const model = await Provider.getModel(ref.providerID, ref.modelID).catch((error) => error as Error)
     if (model instanceof Error) return failure([`headless: model "${input.model}": ${model.message}`])
 
     const session = await Session.createNext({
@@ -105,7 +107,9 @@ export namespace HeadlessAgent {
         await Bun.sleep(TICK)
         if (await Recovery.done(await Session.get(session.id))) return
       }
-      await Session.stop({ sessionID: session.id })
+      await Session.stop({ sessionID: session.id }).catch((error) =>
+        log.error("headless stop failed", { sessionID: session.id, error }),
+      )
       throw new Error(`timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`)
     }
     // A timer callback has no instance context, so it re-enters the run's own.
@@ -119,7 +123,8 @@ export namespace HeadlessAgent {
     const outcome = await SessionPrompt.prompt({
       sessionID: session.id,
       agent: agent.name,
-      ...(model && { model: { providerID: model.providerID, modelID: model.id } }),
+      model: { providerID: model.providerID, modelID: model.id },
+      variant: input.variant,
       parts: [
         ...(input.system ? [{ type: "text" as const, text: input.system }] : []),
         { type: "text" as const, text: input.prompt },
@@ -132,7 +137,9 @@ export namespace HeadlessAgent {
 
     const permission_denials = denials()
     if (!input.keep) {
-      await Session.stop({ sessionID: session.id })
+      await Session.stop({ sessionID: session.id }).catch((error) =>
+        log.error("headless stop failed", { sessionID: session.id, error }),
+      )
       await Session.remove(session.id)
     }
     log.info("headless", {
@@ -159,7 +166,9 @@ export namespace HeadlessAgent {
       await Instance.provide({
         directory: orphan.directory,
         fn: async () => {
-          await Session.stop({ sessionID: orphan.id })
+          await Session.stop({ sessionID: orphan.id }).catch((error) =>
+            log.error("headless sweep stop failed", { sessionID: orphan.id, error }),
+          )
           await Session.remove(orphan.id)
         },
       }).catch((error) => log.error("headless sweep failed", { sessionID: orphan.id, error }))

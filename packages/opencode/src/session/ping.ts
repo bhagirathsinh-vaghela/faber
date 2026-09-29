@@ -170,6 +170,12 @@ export namespace SessionPing {
     armed(sessionID, entry.directory, false)
   }
 
+  // Whether this process runs a daemon for the session. An implicit re-arm
+  // skips one that does, so it never resets the misses that stand it down.
+  export function running(sessionID: string) {
+    return active.has(sessionID)
+  }
+
   export function start(sessionID: string) {
     // Re-arm: every call (including from an organic turn via prompt.ts) clears
     // the miss counter, even when a loop is already running. This is the "you

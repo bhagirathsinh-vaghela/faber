@@ -87,7 +87,7 @@ export namespace MessageV2 {
     // `ended` is a job that finished without recording an exit code, which a
     // kill before its own exit write leaves behind. Distinct from `failed`,
     // since nothing knows whether the command succeeded.
-    status: z.enum(["completed", "failed", "timeout", "running", "ended"]),
+    status: z.enum(["completed", "failed", "timeout", "stopped", "running", "ended"]),
     exit: z.number().optional(),
     log: z.string(),
     duration: z.number(),
@@ -751,15 +751,10 @@ export namespace MessageV2 {
   // stamps it makes the next loop iteration call getModel on a model that no
   // longer exists and throw, aborting the turn. `variant` is resolved from the
   // SAME current record as the model, so a caller pairs the two consistently, and
-  // drops the variant with the model when it fell back. A caller that has already
-  // read `current` passes it in, so agent/model/variant all come from one read.
-  const UNREAD = Symbol("unread")
-  export async function validModel(
-    sessionID: string,
-    stored: Awaited<ReturnType<typeof current>> | typeof UNREAD = UNREAD,
-  ) {
+  // drops the variant with the model when it fell back.
+  export async function validModel(sessionID: string) {
     const { Provider } = await import("@/provider/provider")
-    const record = stored === UNREAD ? await current(sessionID) : stored
+    const record = await current(sessionID)
     const valid = record?.model
       ? await Provider.getModel(record.model.providerID, record.model.modelID).then(
           () => true,
@@ -785,74 +780,10 @@ export namespace MessageV2 {
     return { agent: source.agent, model: source.model, variant: source.variant }
   }
 
-  // The model stamped when a session has never had a real send establish one.
-  export const UNKNOWN_MODEL = { providerID: "unknown", modelID: "unknown" }
-
   // The agent shown for a subagent whose record names none. An honest "unknown"
-  // rather than a plausible real agent, matching UNKNOWN_MODEL, so a display
-  // projection never claims a subagent ran as an agent it may not have.
+  // rather than a plausible real agent, so a display projection never claims a
+  // subagent ran as an agent it may not have.
   export const UNKNOWN_AGENT = "unknown"
-
-  // The parameters a synthetic mint runs as: the session's persistent pick,
-  // each resolved through config so a name the config has since dropped is not
-  // used. The model is checked against the provider (getModel throws for a model
-  // config no longer offers) and falls back to the default, since a synthetic
-  // delivery must not crash the turn on a stale model. A dropped model takes its
-  // per-model variant with it.
-  export async function currentParams(sessionID: string, messages: WithParts[]) {
-    const { Agent } = await import("@/agent/agent")
-    // One read of current for all three params, so agent, model, and variant come
-    // from a single snapshot a concurrent write cannot split.
-    const stored = await current(sessionID)
-    // The agent, like the model below, falls back to the configured default
-    // (which honours cfg.default_agent). defaultAgent throws on a misconfigured
-    // default; this is a synthetic delivery that must never crash the turn, so it
-    // degrades to the built-in "build" rather than propagating the throw.
-    const agent = stored?.agent ?? (await Agent.defaultAgent().catch(() => "build"))
-    // validModel validates that same record's model (with its variant) or falls
-    // back to the default, dropping the variant with a dropped model. Guarded
-    // against a total provider outage, which validModel would otherwise throw
-    // on — a synthetic delivery must not crash even then.
-    const resolved = await validModel(sessionID, stored).catch(() => ({
-      model: UNKNOWN_MODEL,
-      valid: false as const,
-      variant: undefined,
-    }))
-    return {
-      agent,
-      model: resolved.model,
-      variant: resolved.variant,
-    }
-  }
-
-  // The wire block position for the next synthetic message minted into a session:
-  // one past the highest promptIndex any message carries. Every synthetic mint
-  // (a task result, a job result) shares this, so the position is computed one
-  // way rather than re-derived at each mint site.
-  export function nextPromptIndex(messages: WithParts[]) {
-    return messages.reduce((max, m) => Math.max(max, m.info.promptIndex ?? 0), 0) + 1
-  }
-
-  // Write the synthetic user message a delivered result rides on and return its
-  // id, so the caller attaches its own part(s). The envelope is identical for
-  // every delivery (a job result, a task result, a batch of them): it inherits
-  // the session's params, marks itself synthetic so the prompt count and title
-  // skip it, and takes the next wire position. `messages` is the pre-mint history
-  // nextPromptIndex reads, so the caller loads it before calling.
-  export async function mintSyntheticMessage(sessionID: string, messages: WithParts[]) {
-    const { Session } = await import(".")
-    const id = Identifier.ascending("message")
-    await Session.updateMessage({
-      id,
-      sessionID,
-      role: "user",
-      time: { created: Date.now() },
-      ...(await currentParams(sessionID, messages)),
-      synthetic: true,
-      promptIndex: nextPromptIndex(messages),
-    })
-    return id
-  }
 
   // A message the human typed, as opposed to one the loop minted (a task/job
   // result, a compaction, a resume prompt). The single predicate for "was this

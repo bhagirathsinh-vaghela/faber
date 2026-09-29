@@ -27,9 +27,10 @@ import {
 import { formatKeybind, matchKeybind, parseKeybind } from "@/context/command"
 import { attention, busy, flat } from "@/utils/attention"
 import { busyDelay } from "@opencode-ai/ui/util/busy-tint"
+import { isAlive } from "@opencode-ai/util/session"
 
 function stoppable(row: OverviewRow) {
-  return row.busy || row.busyJob || !!row.pingAt
+  return isAlive(row)
 }
 
 function getFilename(dir: string) {
@@ -54,10 +55,9 @@ function archivedRow(session: Session): Item {
     directory: session.directory,
     title: session.title,
     updated: session.time.archived ?? session.time.updated,
-    busy: false,
-    busySelf: false,
-    busyDescendant: false,
-    busyJob: false,
+    turn: false,
+    subagents: 0,
+    jobs: 0,
     unseen: false,
     question: false,
     permission: false,
@@ -226,15 +226,15 @@ function Row(props: { row: Item }) {
           <span
             data-slot="busy-dot"
             // A turn describes itself first, then the work no turn accounts for.
-            // A running job is the only cause left once self and descendant are
+            // A running job is the only cause left once turn and subagents are
             // ruled out, so it is the terminal branch: the dot never lights for
             // anything else.
             title={
-              props.row.busySelf
-                ? props.row.busyDescendant
+              props.row.turn
+                ? props.row.subagents > 0
                   ? language.t("home.attention.busyDelegating")
                   : language.t("home.attention.busy")
-                : props.row.busyDescendant
+                : props.row.subagents > 0
                   ? language.t("home.attention.delegating")
                   : language.t("home.attention.job")
             }

@@ -5,6 +5,32 @@ import { SessionPrompt } from "../../src/session/prompt"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Identifier } from "../../src/id/id"
 import { tmpdir } from "../fixture/fixture"
+import { Provider } from "../../src/provider/provider"
+
+const COMPLETE = {
+  name: "Model",
+  family: "gpt",
+  release_date: "2025-01-01",
+  attachment: false,
+  reasoning: true,
+  temperature: false,
+  tool_call: true,
+  cost: { input: 1, output: 2, cache_read: 0.1, cache_write: 1 },
+  limit: { context: 400000, output: 128000 },
+  modalities: { input: ["text" as const], output: ["text" as const] },
+}
+
+// Each model a test picks a concrete variant on must offer it.
+const OFFERING = {
+  openai: {
+    options: { apiKey: "test-key" },
+    models: { "gpt-5.2": { ...COMPLETE, name: "GPT-5.2", variants: { high: {}, xhigh: {} } } },
+  },
+  opencode: {
+    options: { apiKey: "test-key" },
+    models: { "kimi-k2.5-free": { ...COMPLETE, name: "Kimi", variants: { high: {}, xhigh: {} } } },
+  },
+}
 
 describe("session.prompt agent variant", () => {
   test("inherits model from last session message, falls back to agent model", async () => {
@@ -17,6 +43,7 @@ describe("session.prompt agent variant", () => {
             variant: "xhigh",
           },
         },
+        provider: OFFERING,
       },
     })
 
@@ -27,6 +54,7 @@ describe("session.prompt agent variant", () => {
 
         // Explicit model wins; the agent's variant still applies
         const first = await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           model: { providerID: "opencode", modelID: "kimi-k2.5-free" },
@@ -39,6 +67,8 @@ describe("session.prompt agent variant", () => {
 
         // Second prompt without model - inherits from last message (not agent's model)
         const second = await SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
           sessionID: session.id,
           agent: "build",
           noReply: true,
@@ -50,6 +80,7 @@ describe("session.prompt agent variant", () => {
 
         // Third prompt with explicit variant - uses it
         const third = await SessionPrompt.prompt({
+          model: Provider.INHERIT,
           sessionID: session.id,
           agent: "build",
           noReply: true,
@@ -86,6 +117,8 @@ describe("session.prompt agent variant", () => {
         // input.model and current.model to the build agent's configured model
         // (the provider default is only the last resort after agent.model).
         const first = await SessionPrompt.prompt({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           noReply: true,
@@ -101,19 +134,6 @@ describe("session.prompt agent variant", () => {
 })
 
 describe("session.prompt model default variant", () => {
-  const COMPLETE = {
-    name: "Model",
-    family: "gpt",
-    release_date: "2025-01-01",
-    attachment: false,
-    reasoning: true,
-    temperature: false,
-    tool_call: true,
-    cost: { input: 1, output: 2, cache_read: 0.1, cache_write: 1 },
-    limit: { context: 400000, output: 128000 },
-    modalities: { input: ["text" as const], output: ["text" as const] },
-  }
-
   function config(agent?: { variant?: string }) {
     return {
       model: "openai/gpt-5.2",
@@ -137,6 +157,8 @@ describe("session.prompt model default variant", () => {
       noReply: true,
       parts: [{ type: "text", text: "hello" }],
       ...input,
+      model: input.model ?? Provider.INHERIT,
+      variant: input.variant ?? Provider.INHERIT,
     })
     if (message.info.role !== "user") throw new Error("expected user message")
     return message.info
@@ -214,13 +236,14 @@ describe("session.prompt variant inheritance through synthetic turns", () => {
   test("a turn after a synthetic tail inherits the session's variant, not the agent default", async () => {
     await using tmp = await tmpdir({
       git: true,
-      config: { agent: { build: { model: "openai/gpt-5.2", variant: "xhigh" } } },
+      config: { agent: { build: { model: "openai/gpt-5.2", variant: "xhigh" } }, provider: OFFERING },
     })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
         await SessionPrompt.prompt({
+          model: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           noReply: true,
@@ -233,6 +256,8 @@ describe("session.prompt variant inheritance through synthetic turns", () => {
         expect(await MessageV2.lastVariant(session.id)).toBe("high")
 
         const next = await SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
           sessionID: session.id,
           agent: "build",
           noReply: true,

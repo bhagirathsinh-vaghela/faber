@@ -44,7 +44,7 @@ import { SessionReview } from "@opencode-ai/ui/session-review"
 import { Mark } from "@opencode-ai/ui/logo"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
-import { busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
+import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
 
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
@@ -868,16 +868,10 @@ export default function Page() {
     ),
   )
 
-  // The single busy read for this session: busy = effective (own OR any subagent,
-  // full subtree, computed server-side); busySelf = own turn only. No local
-  // child scan — the server already rolled the subtree up.
-  const busy = createMemo(
-    () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
-  )
-  // busy because a subagent runs (own turn may or may not also be running).
-  const subagentBusy = createMemo(() => busy().busyDescendant)
-  // A running background job keeps the bar up too: work is still coming back,
-  // so the bar going dark would say the session is done.
+  // The single busy read for this session, from the one operative store.
+  const busy = createMemo(() => sync.data.session_busy[params.id ?? ""] ?? IDLE)
+  // A subagent this session called is open (own turn may or may not also be running).
+  const subagentBusy = createMemo(() => busy().subagents > 0)
   const titleWorking = createMemo(() => busyShown(busy()))
   const workingTint = createMemo(() => {
     const agent = local.agent.current()
@@ -925,7 +919,7 @@ export default function Page() {
   createEffect(() => {
     const id = lastUserMessage()?.id
     if (!id) return
-    if (busy().busy && params.id) layout.boxes.setOpen(params.id, stepsBoxID(id), true)
+    if ((busy().turn || subagentBusy()) && params.id) layout.boxes.setOpen(params.id, stepsBoxID(id), true)
   })
 
   const selectionPreview = (path: string, selection: FileSelection) => {
@@ -995,7 +989,7 @@ export default function Page() {
         description: language.t("session.revert.busy.description"),
         duration: STASH_TOAST_MS,
       })
-    if (sync.data.session_busy[sessionID]?.busySelf) {
+    if (sync.data.session_busy[sessionID]?.turn) {
       busyToast()
       return false
     }
@@ -1257,7 +1251,6 @@ export default function Page() {
       title: language.t("command.model.variant.cycle"),
       description: language.t("command.model.variant.cycle.description"),
       category: language.t("command.category.model"),
-      keybind: "shift+mod+d",
       onSelect: () => {
         local.model.variant.cycle()
       },
@@ -1349,19 +1342,7 @@ export default function Page() {
       onSelect: async () => {
         const sessionID = params.id
         if (!sessionID) return
-        const model = local.model.current()
-        if (!model) {
-          showToast({
-            title: language.t("toast.model.none.title"),
-            description: language.t("toast.model.none.description"),
-          })
-          return
-        }
-        await sdk.client.session.summarize({
-          sessionID,
-          modelID: model.id,
-          providerID: model.provider.id,
-        })
+        await sdk.client.session.summarize({ sessionID })
       },
     },
     {

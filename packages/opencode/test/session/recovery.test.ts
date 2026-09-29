@@ -6,15 +6,18 @@ import { Identifier } from "../../src/id/id"
 import { Instance } from "../../src/project/instance"
 import { Db } from "../../src/storage/db"
 import { Meta } from "../../src/storage/meta"
-import { Owed } from "../../src/storage/owed"
+import { Debt } from "../../src/storage/debt"
 import { Sessions } from "../../src/storage/sessions"
 import { BackgroundJob } from "../../src/background/job"
+import { BackgroundDeliver } from "../../src/background/deliver"
+import { BackgroundProcess } from "../../src/background/process"
 import { SessionBusy } from "../../src/session/busy"
 import { SessionPrompt } from "../../src/session/prompt"
 import { Messages } from "../../src/storage/messages"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
+import { Provider } from "../../src/provider/provider"
 
 Log.init({ print: false })
 
@@ -59,11 +62,13 @@ beforeEach(async () => {
 
 afterEach(async () => {
   const ids = made.splice(0)
-  for (const id of ids)
+  for (const id of ids) {
     await Sessions.update(id, (draft) => {
       draft.time.stopped = Date.now() + 60_000
       draft.turn = undefined
     }).catch(() => {})
+    await Debt.drop(id)
+  }
   // A wake still running would carry into the next test's requests. Cancel
   // needs the session's instance, which afterEach runs outside of.
   for (const id of ids.filter((id) => SessionBusy.busy(id))) {
@@ -211,10 +216,8 @@ async function root() {
 async function child(parentID: string) {
   const created = await Session.create({ parentID, title: "count files (@general subagent)" })
   made.push(created.id)
-  return Session.update(created.id, (draft) => {
-    draft.time.injected = 0
-    draft.current = { agent: "build", model }
-  })
+  await Debt.add(created.id, "subagent", parentID)
+  return Session.update(created.id, (draft) => void (draft.current = { agent: "build", model }))
 }
 
 async function tick() {
@@ -266,17 +269,37 @@ async function texts(sessionID: string) {
   )
 }
 
-describe("Recovery.owed", () => {
-  test("follows the prompt, delivery, and stop facts", () => {
-    const base = { parentID: "ses_p", time: { created: 1, updated: 1, injected: 0 } } as Session.Info
-    expect(Recovery.owed(base, 5)).toBe(true)
-    expect(Recovery.owed({ ...base, time: { ...base.time, injected: 6 } }, 5)).toBe(false)
-    expect(Recovery.owed({ ...base, time: { ...base.time, stopped: 6 } }, 5)).toBe(false)
-    expect(Recovery.owed({ ...base, time: { ...base.time, injected: 6 } }, 7)).toBe(true)
-    expect(Recovery.owed({ ...base, time: { created: 1, updated: 1 } }, 5)).toBe(false)
-    expect(Recovery.owed({ ...base, parentID: undefined }, 5)).toBe(false)
+// A job record owned by `sessionID`, finished unless `status` says otherwise,
+// with its debt.
+async function job(id: string, sessionID: string, status: BackgroundJob.Status = "exited") {
+  await BackgroundJob.write({
+    id,
+    sessionID,
+    directory: Instance.directory,
+    project: Instance.directory,
+    command: "echo hi",
+    description: "say hi",
+    status,
+    ...(status === "running" ? {} : { exit: 0 }),
+    time: {
+      created: Date.now() - 1000,
+      hard: Date.now() + 60_000,
+      ...(status === "running" ? {} : { completed: Date.now() }),
+    },
   })
-})
+  await Debt.add(id, "job", sessionID)
+}
+
+async function drop(id: string) {
+  await Debt.remove(id)
+  await BackgroundJob.remove(id)
+}
+
+async function jobs(sessionID: string) {
+  return (await Session.messages({ sessionID }))
+    .flatMap((m) => m.parts)
+    .flatMap((p) => (p.type === "text" && p.backgroundJobResult ? [p.backgroundJobResult] : []))
+}
 
 describe("Recovery delivery", () => {
   test("a finished child is delivered once, and a second pass delivers nothing", async () => {
@@ -302,7 +325,7 @@ describe("Recovery delivery", () => {
         sessionID: sub.id,
       })
       expect(part.type === "text" && part.text).toContain("There are 7 files.")
-      expect((await Session.get(sub.id)).time.injected).toBe(card.info.time.created)
+      expect(await Debt.has(sub.id)).toBe(false)
       expect(state.requests.length).toBe(1)
     })
   }, 30_000)
@@ -329,95 +352,124 @@ describe("Recovery delivery", () => {
     })
   }, 30_000)
 
-  test("a child waiting on an unanswered message is not done, so nothing is delivered early", async () => {
+  test("done needs no turn, nothing owed, nothing waiting, and a last turn not interrupted", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
       const prompt = await user(sub.id, "count the files")
       await tick()
-      await assistant(sub.id, prompt.id, "first answer")
-      await user(sub.id, "a job finished", true)
+      const first = await assistant(sub.id, prompt.id, "first answer")
+      expect(await Recovery.done(await Session.get(sub.id))).toBe(true)
 
+      await job("job_done_rule", sub.id)
+      try {
+        expect(await Recovery.done(await Session.get(sub.id))).toBe(false)
+      } finally {
+        await drop("job_done_rule")
+      }
+
+      const waiting = await user(sub.id, "a job finished", true)
       expect(await Recovery.done(await Session.get(sub.id))).toBe(false)
+      await tick()
+      const cut = await assistant(sub.id, waiting.id, "half", undefined)
+      await Session.updateMessage({
+        ...cut,
+        time: { ...cut.time, completed: Date.now() },
+        error: { name: "MessageAbortedError", data: { message: "aborted" } },
+      } as typeof cut)
+      expect(await Recovery.done(await Session.get(sub.id))).toBe(false)
+      expect(first.id < cut.id).toBe(true)
     })
   }, 30_000)
 
-  test("a stopped child delivers nothing and does not wake the parent", async () => {
+  test("an interrupted child keeps its debt and reports once a new message runs it to an end", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
       const prompt = await user(sub.id, "count the files")
       await tick()
-      await assistant(sub.id, prompt.id, "partial")
-      await Session.stop({ sessionID: sub.id })
+      const cut = await assistant(sub.id, prompt.id, "half", undefined)
+      await Session.updateMessage({
+        ...cut,
+        time: { ...cut.time, completed: Date.now() },
+        error: { name: "MessageAbortedError", data: { message: "aborted" } },
+      } as typeof cut)
+      await Session.interrupt(sub.id)
 
       await settle({ idle: true })
-
       expect(await results(parent.id)).toEqual([])
-      expect(state.requests.length).toBe(0)
-    })
-  }, 30_000)
+      expect(await Debt.has(sub.id)).toBe(true)
+      expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["interrupted"])
 
-  test("stopping the parent stops the child too, stamped no earlier", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      const prompt = await user(sub.id, "count the files")
-      await tick()
-      await assistant(sub.id, prompt.id, "partial")
-      await Session.stop({ sessionID: parent.id })
-
-      await settle({ idle: true })
-
-      expect(await results(parent.id)).toEqual([])
-      expect((await Session.get(sub.id)).time.stopped).toBeGreaterThanOrEqual((await Session.get(parent.id)).time.stopped!)
-    })
-  }, 30_000)
-
-  test("prompting a stopped child again makes it owed and delivers the new answer", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      await user(sub.id, "count the files")
-      await Session.stop({ sessionID: sub.id })
-      await tick()
-      const again = await user(sub.id, "try again")
-      await tick()
-      await assistant(sub.id, again.id, "Now 9 files.")
-      state.replies.push("ok")
-
+      state.replies.push("Now 9 files.", "ok")
+      await SessionPrompt.prompt({
+        model: Provider.INHERIT,
+        variant: Provider.INHERIT,
+        sessionID: sub.id,
+        parts: [{ type: "text", text: "go on" }],
+      })
       await settle()
 
       expect((await results(parent.id)).map((r) => r.status)).toEqual(["completed"])
+      expect(await Debt.has(sub.id)).toBe(false)
     })
   }, 30_000)
 
-  test("a child whose finished job is not paid yet is not done", async () => {
+  test("stopping a child whose parent is live tells the parent it was stopped", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
-      const prompt = await user(sub.id, "run it")
+      const prompt = await user(sub.id, "count the files")
       await tick()
-      await assistant(sub.id, prompt.id, "Started a job.")
-      await BackgroundJob.write({
-        id: "job_still_owed",
-        sessionID: sub.id,
-        directory: Instance.directory,
-        project: Instance.directory,
-        command: "true",
-        description: "x",
-        status: "exited",
-        exit: 0,
-        time: { created: Date.now() - 1000, hard: Date.now() + 60_000, completed: Date.now() },
-      })
-      await Owed.add("job_still_owed", sub.id)
+      await assistant(sub.id, prompt.id, "partial")
+      state.replies.push("ok")
+      await Session.stop({ sessionID: sub.id })
+
+      await settle()
+
+      expect((await results(parent.id)).map((r) => r.status)).toEqual(["cancelled"])
+      expect(await Debt.has(sub.id)).toBe(false)
+      expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["stopped"])
+    })
+  }, 30_000)
+
+  test("stopping the parent pays every debt it is owed without starting its turn", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      await user(parent.id, "start")
+      const sub = await child(parent.id)
+      const prompt = await user(sub.id, "count the files")
+      await tick()
+      await assistant(sub.id, prompt.id, "partial")
+      await job("job_under_stop", parent.id)
       try {
-        expect(await Recovery.done(await Session.get(sub.id))).toBe(false)
-        await Owed.remove("job_still_owed")
-        expect(await Recovery.done(await Session.get(sub.id))).toBe(true)
+        await Session.stop({ sessionID: parent.id })
+        await settle({ idle: true })
+
+        expect((await results(parent.id)).map((r) => r.status)).toEqual(["cancelled"])
+        expect((await jobs(parent.id)).map((j) => j.jobId)).toEqual(["job_under_stop"])
+        expect(await Recovery.debts(parent.id)).toEqual([])
+        expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["stopped"])
+        expect((await Sessions.listUnanswered()).map((s) => s.id).filter((id) => made.includes(id))).toEqual([])
+        expect(state.requests.length).toBe(0)
+
+        // A message sent afterwards starts a turn that reads both notices.
+        state.replies.push("back", "back")
+        await SessionPrompt.prompt({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
+          sessionID: parent.id,
+          parts: [{ type: "text", text: "carry on" }],
+        })
+        await settle()
+
+        const sent = (state.requests as { messages: unknown[] }[]).map((r) => JSON.stringify(r.messages))
+        const turn = sent.filter((body) => body.includes("<background-job-result>"))
+        expect(turn.length).toBe(1)
+        expect(turn[0].split("<background-subagent-result>").length).toBe(2)
+        expect(turn[0]).toContain("carry on")
       } finally {
-        await Owed.remove("job_still_owed")
-        await BackgroundJob.remove("job_still_owed")
+        await drop("job_under_stop")
       }
     })
   }, 30_000)
@@ -426,77 +478,67 @@ describe("Recovery delivery", () => {
     await withProject(async () => {
       const session = await root()
       await user(session.id, "run it")
-      await BackgroundJob.write({
-        id: "job_settled_1",
-        sessionID: session.id,
-        directory: Instance.directory,
-        project: Instance.directory,
-        command: "echo hi",
-        description: "say hi",
-        status: "exited",
-        exit: 0,
-        time: { created: Date.now() - 1000, hard: Date.now() + 60_000, completed: Date.now() },
-      })
-      await Owed.add("job_settled_1", session.id)
+      await job("job_settled_1", session.id)
       state.replies.push("Got it.")
 
       try {
         await settle()
         await settle()
 
-        const jobs = (await Session.messages({ sessionID: session.id }))
-          .flatMap((m) => m.parts)
-          .flatMap((p) => (p.type === "text" && p.backgroundJobResult ? [p.backgroundJobResult.jobId] : []))
-        expect(jobs).toEqual(["job_settled_1"])
-        expect(await Owed.pending(session.id)).toBe(false)
+        expect((await jobs(session.id)).map((j) => j.jobId)).toEqual(["job_settled_1"])
+        expect(await Debt.owing(session.id)).toBe(false)
         expect(state.requests.length).toBe(1)
       } finally {
-        await Owed.remove("job_settled_1")
-        await BackgroundJob.remove("job_settled_1")
+        await drop("job_settled_1")
       }
     })
   }, 30_000)
 
-  test("stopping a session drops its debts, so a finished job's result is not posted", async () => {
+  test("a delivered job result runs at the session's current variant, not the model's default", async () => {
     await withProject(async () => {
       const session = await root()
       await user(session.id, "run it")
-      await BackgroundJob.write({
-        id: "job_after_stop",
-        sessionID: session.id,
-        directory: Instance.directory,
-        project: Instance.directory,
-        command: "echo hi",
-        description: "say hi",
-        status: "exited",
-        exit: 0,
-        time: { created: Date.now() - 1000, hard: Date.now() + 60_000, completed: Date.now() },
-      })
-      await Owed.add("job_after_stop", session.id)
-      await Session.stop({ sessionID: session.id })
+      await Session.update(session.id, (draft) => void (draft.current = { agent: "build", model, variant: "high" }))
+      await job("job_variant_1", session.id)
+      state.replies.push("Got it.")
 
       try {
-        await settle({ idle: true })
+        await settle()
 
-        expect(await Owed.pending(session.id)).toBe(false)
-        expect((await Session.messages({ sessionID: session.id })).length).toBe(1)
+        const delivered = (await Session.messages({ sessionID: session.id })).find((m) =>
+          m.parts.some((p) => p.type === "text" && p.backgroundJobResult?.jobId === "job_variant_1"),
+        )
+        expect(delivered?.info.role === "user" && delivered.info.variant).toBe("high")
+        expect(delivered?.info.role === "user" && delivered.info.model).toEqual(model)
       } finally {
-        await Owed.remove("job_after_stop")
-        await BackgroundJob.remove("job_after_stop")
+        await drop("job_variant_1")
       }
     })
   }, 30_000)
 
-  test("a child whose launch failed before its prompt was written reports failed to its parent", async () => {
+  test("a running job a Stop kills is reported as stopped at once, without starting a turn", async () => {
     await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
+      const session = await root()
+      await user(session.id, "run it")
+      const proc = Bun.spawn({ cmd: ["sleep", "30"], detached: true, stdio: ["ignore", "ignore", "ignore"] })
+      await job("job_killed_by_stop", session.id, "running")
+      const live = (await BackgroundProcess.inspect(proc.pid))!
+      await BackgroundJob.update(
+        "job_killed_by_stop",
+        (draft) => void (draft.process = { pid: live.pid, start: live.start, pgid: live.pgid }),
+      )
+      try {
+        await Session.stop({ sessionID: session.id })
+        await settle({ idle: true })
 
-      await Recovery.fail(sub.id, "agent not found", Date.now())
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect((await texts(parent.id)).some((t) => t.includes("ERROR: agent not found"))).toBe(true)
-      expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["failed"])
+        expect((await BackgroundJob.get("job_killed_by_stop"))?.ended).toBe("stop")
+        expect((await jobs(session.id)).map((j) => j.status)).toEqual(["stopped"])
+        expect(await Debt.has("job_killed_by_stop")).toBe(false)
+        expect(state.requests.length).toBe(0)
+      } finally {
+        proc.kill()
+        await drop("job_killed_by_stop")
+      }
     })
   }, 30_000)
 
@@ -504,56 +546,26 @@ describe("Recovery delivery", () => {
     await withProject(async () => {
       const session = await root()
       await user(session.id, "run it")
-      await BackgroundJob.write({
-        id: "job_after_interrupt",
-        sessionID: session.id,
-        directory: Instance.directory,
-        project: Instance.directory,
-        command: "echo hi",
-        description: "say hi",
-        status: "exited",
-        exit: 0,
-        time: { created: Date.now() - 1000, hard: Date.now() + 60_000, completed: Date.now() },
-      })
-      // The Esc first, then the debt: a pass already running could pay a debt
-      // written before the Esc, and an Esc after a delivery rightly wins over
-      // its wake. This test is about a result that settles after the Esc.
       await Session.interrupt(session.id)
       state.replies.push("Got it.")
-      await Owed.add("job_after_interrupt", session.id)
+      await job("job_after_interrupt", session.id)
 
       try {
         await settle()
 
-        const jobs = (await Session.messages({ sessionID: session.id }))
-          .flatMap((m) => m.parts)
-          .flatMap((p) => (p.type === "text" && p.backgroundJobResult ? [p.backgroundJobResult.jobId] : []))
-        expect(jobs).toEqual(["job_after_interrupt"])
-        expect(await Owed.pending(session.id)).toBe(false)
+        expect((await jobs(session.id)).map((j) => j.jobId)).toEqual(["job_after_interrupt"])
+        expect(await Debt.owing(session.id)).toBe(false)
       } finally {
-        await Owed.remove("job_after_interrupt")
-        await BackgroundJob.remove("job_after_interrupt")
+        await drop("job_after_interrupt")
       }
     })
   }, 30_000)
 
-  // The order a real launch writes things in: the debt at spawn, while the job
-  // is still running, then the Esc, then the job's exit.
   test("a job still running at an Esc delivers and wakes once it exits", async () => {
     await withProject(async () => {
       const session = await root()
       await user(session.id, "run it")
-      await BackgroundJob.write({
-        id: "job_through_interrupt",
-        sessionID: session.id,
-        directory: Instance.directory,
-        project: Instance.directory,
-        command: "echo hi",
-        description: "say hi",
-        status: "running",
-        time: { created: Date.now() - 1000, hard: Date.now() + 60_000 },
-      })
-      await Owed.add("job_through_interrupt", session.id)
+      await job("job_through_interrupt", session.id, "running")
       try {
         await Session.interrupt(session.id)
         await tick()
@@ -566,15 +578,11 @@ describe("Recovery delivery", () => {
 
         await settle()
 
-        const jobs = (await Session.messages({ sessionID: session.id }))
-          .flatMap((m) => m.parts)
-          .flatMap((p) => (p.type === "text" && p.backgroundJobResult ? [p.backgroundJobResult.jobId] : []))
-        expect(jobs).toEqual(["job_through_interrupt"])
+        expect((await jobs(session.id)).map((j) => j.jobId)).toEqual(["job_through_interrupt"])
         expect(await texts(session.id)).toContain("Got it.")
-        expect(await Owed.pending(session.id)).toBe(false)
+        expect(await Debt.owing(session.id)).toBe(false)
       } finally {
-        await Owed.remove("job_through_interrupt")
-        await BackgroundJob.remove("job_through_interrupt")
+        await drop("job_through_interrupt")
       }
     })
   }, 30_000)
@@ -585,25 +593,32 @@ describe("Recovery delivery", () => {
       await user(tied.id, "a")
       const now = Date.now()
       await Session.update(tied.id, (draft) => void (draft.time.stopped = now))
-      const job = "job_time_bound"
-      await Owed.add(job, tied.id)
+      const id = "job_time_bound"
+      await Debt.add(id, "job", tied.id)
       try {
-        expect(await Recovery.deliver(tied.id, [{ text: "tied", synthetic: true }], { kind: "job", job }, false)).toBe(
-          true,
-        )
-        const tie = (await Session.messages({ sessionID: tied.id })).at(-1)!.info
-        expect(tie.time.created).toBeGreaterThan(now)
+        const claim = await Debt.claimer()
+        const tie = await SessionPrompt.deliver({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
+          sessionID: tied.id,
+          parts: [{ type: "text", text: "tied", synthetic: true }],
+          wake: false,
+          claim: () => claim.pay(id),
+        })
+        expect(tie!.info.time.created).toBeGreaterThan(now)
 
         const ahead = await root()
         await user(ahead.id, "b")
         await Session.update(ahead.id, (draft) => void (draft.time.stopped = Date.now() + 10_000))
-        await Owed.add(job, ahead.id)
         const before = Date.now()
-        expect(
-          await Recovery.deliver(ahead.id, [{ text: "ahead", synthetic: true }], { kind: "job", job }, false),
-        ).toBe(true)
+        const bounded = (await SessionPrompt.deliver({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+          sessionID: ahead.id,
+          parts: [{ type: "text", text: "ahead", synthetic: true }],
+          wake: false,
+        }))!.info
         const after = Date.now()
-        const bounded = (await Session.messages({ sessionID: ahead.id })).at(-1)!.info
         expect(bounded.time.created).toBeGreaterThan(before)
         expect(bounded.time.created).toBeLessThanOrEqual(after + 1)
         // A reply written once the clock has passed the delivery sorts after
@@ -613,12 +628,12 @@ describe("Recovery delivery", () => {
         const order = (await Session.messages({ sessionID: ahead.id })).map((m) => m.info.id)
         expect(order.indexOf(later.id)).toBeGreaterThan(order.indexOf(bounded.id))
       } finally {
-        await Owed.remove(job)
+        await Debt.remove(id)
       }
     })
   }, 30_000)
 
-  test("an owed child whose parent is gone stops being owed", async () => {
+  test("a debt whose caller is gone is dropped", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
@@ -629,7 +644,7 @@ describe("Recovery delivery", () => {
 
       await settle({ idle: true })
 
-      expect((await Sessions.listOwed()).map((s) => s.id)).not.toContain(sub.id)
+      expect(await Debt.has(sub.id)).toBe(false)
     })
   }, 30_000)
 
@@ -637,14 +652,9 @@ describe("Recovery delivery", () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
-      const prompt = await user(sub.id, "x")
-      await Session.update(sub.id, (draft) => void (draft.time.injected = Date.now() + 10_000))
-      const delivered = await Recovery.deliver(parent.id, [{ text: "r", synthetic: true }], {
-        kind: "subagent",
-        child: sub.id,
-        status: "completed",
-        prompted: prompt.time.created,
-      })
+      await user(sub.id, "x")
+      await Debt.remove(sub.id)
+      const delivered = await Recovery.deliver(parent.id, [{ text: "r", synthetic: true }], sub.id)
       expect(delivered).toBe(false)
       expect(await Session.messages({ sessionID: parent.id })).toEqual([])
     })
@@ -654,23 +664,80 @@ describe("Recovery delivery", () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
-      const prompt = await user(sub.id, "x")
+      await user(sub.id, "x")
       // Serializing the part throws inside the transaction, after the message
       // row has already been written.
       const broken = { text: "r", synthetic: true, metadata: { size: 1n } } as unknown as Recovery.Part
 
-      await expect(
-        Recovery.deliver(
-          parent.id,
-          [broken],
-          { kind: "subagent", child: sub.id, status: "completed", prompted: prompt.time.created },
-          false,
-        ),
-      ).rejects.toThrow("JSON.stringify cannot serialize BigInt.")
+      await expect(Recovery.deliver(parent.id, [broken], sub.id)).rejects.toThrow(
+        "JSON.stringify cannot serialize BigInt.",
+      )
 
       expect(await Session.messages({ sessionID: parent.id })).toEqual([])
-      expect((await Sessions.read(sub.id)).time.injected).toBe(0)
-      expect((await Sessions.listOwed()).map((s) => s.id)).toContain(sub.id)
+      expect(await Debt.has(sub.id)).toBe(true)
+    })
+  }, 30_000)
+
+  test("a lost-claim opener lets a prompt that joined it resolve and answer", async () => {
+    await withProject(async () => {
+      const session = await root()
+      await user(session.id, "start")
+      state.replies.push("answered")
+      const gate = Promise.withResolvers<void>()
+      const opener = SessionPrompt.deliver({
+        model: Provider.DEFAULT,
+        variant: Provider.DEFAULT,
+        sessionID: session.id,
+        parts: [{ type: "text", text: "paid elsewhere", synthetic: true }],
+        claim: () => false,
+      })
+      const joiner = gate.promise.then(() =>
+        SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          parts: [{ type: "text", text: "typed" }],
+        }),
+      )
+      gate.resolve()
+
+      expect(await opener).toBeUndefined()
+      const answer = await Promise.race([joiner, Bun.sleep(10_000).then(() => "hung" as const)])
+      expect(answer === "hung" ? "hung" : answer.info.role).toBe("assistant")
+    })
+  }, 30_000)
+})
+
+describe("Recovery.debts", () => {
+  test("lists what a caller is owed, with live state, and nothing once paid", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      const prompt = await user(sub.id, "count")
+      await job("job_listed", parent.id, "running")
+      try {
+        const listed = await Recovery.debts(parent.id)
+        const byID = new Map(listed.map((d) => [d.responder, d]))
+        expect(byID.get("job_listed")).toMatchObject({
+          kind: "job",
+          state: "running",
+          description: "say hi",
+          command: "echo hi",
+        })
+        expect(byID.get(sub.id)).toMatchObject({
+          kind: "subagent",
+          state: "running",
+          description: "count files",
+        })
+        expect(listed.length).toBe(2)
+
+        await tick()
+        await assistant(sub.id, prompt.id, "7")
+        await Debt.remove(sub.id)
+        expect((await Recovery.debts(parent.id)).map((d) => d.responder)).toEqual(["job_listed"])
+      } finally {
+        await drop("job_listed")
+      }
     })
   }, 30_000)
 })
@@ -689,12 +756,95 @@ describe("Recovery resume", () => {
 
       await settle()
 
-      expect(await texts(cut.id)).toEqual(["do the thing", Recovery.parentResumeText(0), "Resumed."])
+      expect(await texts(cut.id)).toEqual(["do the thing", Recovery.resumeText(0), "Resumed."])
       expect((await Session.get(cut.id)).turn).toBeUndefined()
       expect((await Session.get(stopped.id)).turn).toBeUndefined()
       expect(await texts(stopped.id)).toEqual(["other thing"])
       expect(state.requests.length).toBe(1)
     })
+  }, 30_000)
+
+  // The pass opens the session's instance between reading the marker and
+  // resuming, so a directory whose bootstrap waits on a plugin holds the pass
+  // in that window while the test writes a fact the pass has not seen.
+  async function held(write: (sessionID: string) => Promise<unknown>) {
+    const hold = globalThis as { recoveryEntered?: () => void; recoveryHold?: Promise<void> }
+    await using dir = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "hold.ts"),
+          `export default async () => {
+            globalThis.recoveryEntered?.()
+            await globalThis.recoveryHold
+            return {}
+          }`,
+        )
+        await Bun.write(
+          path.join(dir, "opencode.json"),
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            enabled_providers: ["anthropic"],
+            model: `anthropic/${MODEL}`,
+            plugin: [`file://${path.join(dir, "hold.ts")}`],
+            provider: { anthropic: { options: { apiKey: "test-key", baseURL: `${state.server!.url.origin}/v1` } } },
+          }),
+        )
+      },
+    })
+    const session = await Instance.provide({
+      directory: dir.path,
+      fn: async () => {
+        const created = await root()
+        await user(created.id, "do the thing")
+        await Session.mark(created.id, (draft) => void (draft.turn = { at: Date.now() - 10, pid: DEAD }))
+        await Instance.dispose()
+        return created
+      },
+    })
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    hold.recoveryEntered = entered.resolve
+    hold.recoveryHold = release.promise
+    try {
+      const pass = Recovery.poke()
+      await entered.promise
+      await write(session.id)
+      release.resolve()
+      await pass
+      // The pass does not await the resume's send, whose lost claim is what
+      // clears the marker this process claimed; a new turn's marker is not it.
+      const settled = async () => {
+        const turn = (await Sessions.read(session.id)).turn
+        return turn?.pid !== process.pid || turn.nonce === "fresh"
+      }
+      await until(settled, "the resume to settle")
+      return {
+        turn: (await Sessions.read(session.id)).turn,
+        texts: await Instance.provide({ directory: dir.path, fn: () => texts(session.id) }),
+      }
+    } finally {
+      release.resolve()
+      hold.recoveryEntered = undefined
+      hold.recoveryHold = undefined
+    }
+  }
+
+  test("a stop stamped after the pass read the marker wins: no resume, and the marker is cleared", async () => {
+    const outcome = await held((id) => Sessions.update(id, (draft) => void (draft.time.stopped = Date.now())))
+
+    expect(outcome.turn).toBeUndefined()
+    expect(outcome.texts).toEqual(["do the thing"])
+    expect(state.requests.length).toBe(0)
+  }, 30_000)
+
+  test("a marker a new turn replaced after the pass read it is left alone", async () => {
+    const fresh = { at: Date.now() + 1000, pid: process.pid, boot: Recovery.boot, nonce: "fresh" }
+    const outcome = await held((id) => Sessions.update(id, (draft) => void (draft.turn = fresh)))
+
+    expect(outcome.turn).toEqual(fresh)
+    expect(outcome.texts).toEqual(["do the thing"])
+    expect(state.requests.length).toBe(0)
   }, 30_000)
 
   test("a marker whose pid is alive but started at another time is a cut turn", async () => {
@@ -749,6 +899,52 @@ describe("Recovery resume", () => {
     })
   }, 30_000)
 
+  test("a cut child whose job finished across the restart answers once and reports that answer", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      const prompt = await user(sub.id, "count")
+      await assistant(sub.id, prompt.id, "", "tool-calls")
+      await Session.mark(sub.id, (draft) => void (draft.turn = { at: Date.now(), pid: DEAD }))
+      await job("job_across_restart", sub.id)
+      // The child's answer, then the parent's reply to the result.
+      state.replies.push("7 files", "noted")
+
+      try {
+        await settle()
+
+        // Every request ends on what the model has yet to answer.
+        for (const request of state.requests as { messages: { role: string }[] }[])
+          expect(request.messages.at(-1)?.role).toBe("user")
+        expect(state.requests.length).toBe(2)
+        expect((await results(parent.id)).map((r) => r.status)).toEqual(["completed"])
+        expect((await texts(parent.id)).some((t) => t.includes("7 files"))).toBe(true)
+      } finally {
+        await drop("job_across_restart")
+      }
+    })
+  }, 30_000)
+
+  test("a message written while a step was starting is answered next, not sent ahead of the reply", async () => {
+    await withProject(async () => {
+      const session = await root()
+      const prompt = await user(session.id, "count")
+      const landed = await user(session.id, "job done", true)
+      // Written after the step read the history, but minted before its reply.
+      await user(session.id, "continue", true)
+      await assistant(session.id, landed.id, "7 files")
+      state.replies.push("carrying on")
+
+      await SessionPrompt.loop(session.id)
+
+      expect(prompt.id < landed.id).toBe(true)
+      const sent = state.requests as { messages: { role: string; content: unknown }[] }[]
+      expect(sent.length).toBe(1)
+      expect(sent[0].messages.at(-1)?.role).toBe("user")
+      expect(JSON.stringify(sent[0].messages.at(-1)?.content)).toContain("continue")
+    })
+  }, 30_000)
+
   test("gives up after the cap, delivering a failed result for an owed child", async () => {
     await withProject(async () => {
       const parent = await root()
@@ -756,11 +952,86 @@ describe("Recovery resume", () => {
       await user(sub.id, "count")
       await Session.mark(sub.id, (draft) => void (draft.turn = { at: Date.now(), pid: DEAD, resumes: Recovery.CAP }))
       state.replies.push("ok")
+      const before = Date.now()
 
       await settle()
 
       expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect((await Session.get(sub.id)).turn).toBeUndefined()
+      const given = await Session.get(sub.id)
+      expect(given.turn).toBeUndefined()
+      expect(given.time.stopped).toBeGreaterThanOrEqual(before)
+    })
+  }, 30_000)
+
+  test("a root that gives up is only unmarked, so a later job result still wakes it", async () => {
+    await withProject(async () => {
+      const session = await root()
+      await user(session.id, "do the thing")
+      await Session.mark(
+        session.id,
+        (draft) => void (draft.turn = { at: Date.now(), pid: DEAD, resumes: Recovery.CAP }),
+      )
+
+      await settle({ idle: true })
+
+      const given = await Session.get(session.id)
+      expect(given.turn).toBeUndefined()
+      expect(given.time.stopped).toBeUndefined()
+      expect(await texts(session.id)).toEqual(["do the thing"])
+
+      await job("job_after_give_up", session.id)
+      state.replies.push("Got it.")
+      try {
+        await settle()
+
+        expect((await jobs(session.id)).map((j) => j.jobId)).toEqual(["job_after_give_up"])
+        expect((await texts(session.id)).at(-1)).toBe("Got it.")
+        expect(await Debt.owing(session.id)).toBe(false)
+      } finally {
+        await drop("job_after_give_up")
+      }
+    })
+  }, 30_000)
+
+  test("giving up waits for a job the cut turn started, whose result reports instead", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      await user(sub.id, "count")
+      await Session.mark(sub.id, (draft) => void (draft.turn = { at: Date.now(), pid: DEAD, resumes: Recovery.CAP }))
+      const record = {
+        id: "job_from_cut_child",
+        sessionID: sub.id,
+        directory: Instance.directory,
+        project: Instance.directory,
+        command: "sleep 1",
+        description: "wait",
+        status: "running" as const,
+        // Launched by this process, so no pass here settles or reaps it.
+        launcher: { pid: process.pid, boot: Recovery.boot },
+        time: { created: Date.now(), hard: Date.now() + 60_000 },
+      }
+      await BackgroundJob.write(record)
+      await Debt.add(record.id, "job", sub.id)
+
+      try {
+        await settle({ idle: true })
+        expect(await results(parent.id)).toEqual([])
+        expect((await Session.get(sub.id)).turn).toBeUndefined()
+
+        await BackgroundJob.write({
+          ...record,
+          status: "exited",
+          exit: 0,
+          time: { ...record.time, completed: Date.now() },
+        })
+        state.replies.push("counted 7", "noted")
+        await settle()
+
+        expect((await results(parent.id)).map((r) => r.status)).toEqual(["completed"])
+      } finally {
+        await drop(record.id)
+      }
     })
   }, 30_000)
 })
@@ -832,435 +1103,70 @@ describe("Recovery after a lost wake", () => {
       await settle({ idle: true })
 
       expect(state.requests.length).toBe(0)
-      const unanswered = (await Sessions.listUnanswered(Date.now())).map((s) => s.id)
+      const unanswered = (await Sessions.listUnanswered()).map((s) => s.id)
       expect(unanswered.includes(typed.id)).toBe(false)
       expect(unanswered.includes(stopped.id)).toBe(false)
     })
   }, 30_000)
 
-  test("a subagent that no longer reports is not woken by a job result", async () => {
+  test("a subagent that owes nothing is not woken for a message waiting in it", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
-      const prompt = await user(sub.id, "count")
-      await assistant(sub.id, prompt.id, "7")
-      await Session.update(sub.id, (draft) => void (draft.time.injected = Date.now() + 1))
-      await BackgroundJob.write({
-        id: "job_into_finished_child",
+      await Debt.remove(sub.id)
+      await Session.updateMessage({
+        id: Identifier.ascending("message"),
         sessionID: sub.id,
-        directory: Instance.directory,
-        project: Instance.directory,
-        command: "echo hi",
-        description: "say hi",
-        status: "exited",
-        exit: 0,
-        time: { created: Date.now() - 1000, hard: Date.now() + 60_000, completed: Date.now() },
+        role: "user",
+        time: { created: Date.now() - 20_000 },
+        agent: "build",
+        model,
+        synthetic: true,
       })
-      await Owed.add("job_into_finished_child", sub.id)
 
-      try {
-        await settle({ idle: true })
+      await settle({ idle: true })
 
-        expect(await Owed.pending(sub.id)).toBe(false)
-        expect(state.requests.length).toBe(0)
-      } finally {
-        await Owed.remove("job_into_finished_child")
-        await BackgroundJob.remove("job_into_finished_child")
-      }
+      expect(state.requests.length).toBe(0)
     })
   }, 30_000)
 })
 
 describe("Recovery launch failures", () => {
-  test("a child launched before this process that never got its prompt reports failed", async () => {
+  test("a child whose turn could not run reports failed once, and one with no debt reports nothing", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
-      await Sessions.update(sub.id, (draft) => void (draft.time.created = Recovery.boot * 1000 - 5000))
+      const prompt = await user(sub.id, "count")
+      state.replies.push("ok")
 
+      await Recovery.fail(sub.id, "model unavailable", prompt.time.created)
+      await Recovery.fail(sub.id, "model unavailable", prompt.time.created)
       await settle()
 
       expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect((await texts(parent.id)).some((t) => t.includes("the server stopped before this subagent started"))).toBe(
-        true,
-      )
+      expect((await texts(parent.id)).some((t) => t.includes("ERROR: model unavailable"))).toBe(true)
       expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["failed"])
     })
   }, 30_000)
 
-  test("a continued child whose second prompt failed reports it once", async () => {
+  test("a failure after an Esc is the person's, so it reports nothing", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
       const prompt = await user(sub.id, "count")
-      await assistant(sub.id, prompt.id, "7")
-      await Session.update(sub.id, (draft) => void (draft.time.injected = Date.now()))
       await tick()
-      const launched = Date.now()
+      await Session.interrupt(sub.id)
 
-      await Recovery.fail(sub.id, "model unavailable", launched)
-      await Recovery.fail(sub.id, "model unavailable", launched)
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["failed"])
-    })
-  }, 30_000)
-})
-
-describe("Recovery transient turns", () => {
-  test("a cut turn from a process that does not recover is dropped, and its child reports failed", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      await user(sub.id, "count")
-      await Session.mark(sub.id, (draft) => void (draft.turn = { at: Date.now(), pid: DEAD, transient: true }))
-
-      await settle({ idle: true })
-
-      expect((await Session.get(sub.id)).turn).toBeUndefined()
-      expect(await texts(sub.id)).toEqual(["count"])
-      expect((await texts(parent.id)).some((t) => t.includes("the process running it exited before it finished"))).toBe(
-        true,
-      )
-    })
-  }, 30_000)
-
-  test("a cut turn left behind does not report for a newer launch's prompt", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      // A marker a dead transient process left, then a launch's prompt that
-      // landed before that launch's own turn marked the session.
-      await Session.mark(sub.id, (draft) => void (draft.turn = { at: Date.now(), pid: DEAD, transient: true }))
-      await tick()
-      await user(sub.id, "count again")
-
-      await settle({ idle: true })
-
-      expect((await Session.get(sub.id)).turn).toBeUndefined()
-      expect((await results(parent.id)).filter((r) => r.status === "failed")).toEqual([])
-    })
-  }, 30_000)
-
-  test("a prompt that joined a transient turn whose process left is not answered early", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.turn = { at: Date.now(), pid: DEAD, transient: true }
-        draft.left = { pid: DEAD, boot: 1 }
-      })
-      await tick()
-      await user(sub.id, "count")
-
-      await settle({ idle: true })
-
-      // Not the cut turn's own prompt, and not yet past SETTLE_MS.
-      expect((await Session.get(sub.id)).turn).toBeUndefined()
-      expect(await results(parent.id)).toEqual([])
-      expect(state.requests.length).toBe(0)
-    })
-  }, 30_000)
-
-  test("a subagent its transient process left owed reports failed once its prompt has waited, and runs nothing", async () => {
-    await withProject(async () => {
-      // Dated past SETTLE_MS but after this process began, which the
-      // first-boot baseline would otherwise stop as history.
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      // A prompt never counts from before its session was made.
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      const waited = Date.now() - 13_000
-      await Session.updateMessage({ ...prompt, time: { created: waited } })
-      expect((await Messages.reader()).prompted(sub.id)).toBe(waited)
-      // The parent's reader is here, so the result wakes it as any other does.
-      state.replies.push("noted")
-
-      await settle()
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect(await texts(sub.id)).toEqual(["count"])
-      expect(await texts(parent.id)).toContain("noted")
-    })
-  }, 40_000)
-
-  test("a subagent that answered before its transient process left reports that answer, not a failure", async () => {
-    await withProject(async () => {
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      await Session.updateMessage({ ...prompt, time: { created: Date.now() - 13_000 } })
-      await assistant(sub.id, prompt.id, "7 files")
-      state.replies.push("noted")
-
-      // A job it left running lands after its answer, and its delivery wakes
-      // the child as any job result does.
-      const job = "job_after_answer"
-      await Owed.add(job, sub.id)
-      try {
-        expect(await Recovery.deliver(sub.id, [{ text: "job done", synthetic: true }], { kind: "job", job })).toBe(true)
-        await until(async () => (await results(parent.id)).length > 0, "the child's result to reach its parent")
-        await settle({ idle: true })
-      } finally {
-        await Owed.remove(job)
-      }
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["completed"])
-      expect((await texts(parent.id)).some((t) => t.includes("7 files"))).toBe(true)
-      expect(await texts(sub.id)).toEqual(["count", "7 files", "job done"])
-    })
-  }, 40_000)
-
-  test("a subagent whose turn went on past a job result mid-turn reports its final answer", async () => {
-    await withProject(async () => {
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      await Session.updateMessage({ ...prompt, time: { created: Date.now() - 13_000 } })
-      await assistant(sub.id, prompt.id, "let me look first", "tool-calls")
-      // A job result landed mid-turn; the rest of the turn links to it.
-      const landed = await user(sub.id, "first job done", true)
-      await assistant(sub.id, landed.id, "7 files")
-      state.replies.push("noted")
-
-      const job = "job_after_final"
-      await Owed.add(job, sub.id)
-      try {
-        expect(await Recovery.deliver(sub.id, [{ text: "second job done", synthetic: true }], { kind: "job", job })).toBe(true)
-        await until(async () => (await results(parent.id)).length > 0, "the child's result to reach its parent")
-        await settle({ idle: true })
-      } finally {
-        await Owed.remove(job)
-      }
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["completed"])
-      expect((await texts(parent.id)).some((t) => t.includes("7 files"))).toBe(true)
-    })
-  }, 40_000)
-
-  test("a subagent its transient process left between steps reports failed, not the step's text", async () => {
-    await withProject(async () => {
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      await Session.updateMessage({ ...prompt, time: { created: Date.now() - 13_000 } })
-      // A finished step that asked for tools: more of the turn was coming.
-      await assistant(sub.id, prompt.id, "let me look first", "tool-calls")
-      state.replies.push("noted")
-
-      const job = "job_between_steps"
-      await Owed.add(job, sub.id)
-      try {
-        expect(await Recovery.deliver(sub.id, [{ text: "job done", synthetic: true }], { kind: "job", job })).toBe(true)
-        await until(async () => (await results(parent.id)).length > 0, "the child's result to reach its parent")
-        await settle({ idle: true })
-      } finally {
-        await Owed.remove(job)
-      }
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect((await texts(parent.id)).some((t) => t.includes("let me look first"))).toBe(false)
-      expect((await texts(parent.id)).some((t) => t.includes("it stopped before it answered its prompt"))).toBe(true)
-    })
-  }, 40_000)
-
-  test("a subagent whose last step errored after its process left reports that error, past any summary", async () => {
-    await withProject(async () => {
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      await Session.updateMessage({ ...prompt, time: { created: Date.now() - 13_000 } })
-      // A compaction mid-turn: its summary step, then a step that errored.
-      const compaction = await user(sub.id, "compact", true)
-      const summary = (await assistant(sub.id, compaction.id, "summary of the work so far")) as MessageV2.Assistant
-      await Session.updateMessage({ ...summary, summary: true })
-      const failed = (await assistant(sub.id, compaction.id, "", undefined)) as MessageV2.Assistant
-      await Session.updateMessage({
-        ...failed,
-        error: { name: "APIError", data: { message: "overloaded", isRetryable: false } },
-      })
-      state.replies.push("noted")
-
-      const job = "job_after_error"
-      await Owed.add(job, sub.id)
-      try {
-        expect(await Recovery.deliver(sub.id, [{ text: "job done", synthetic: true }], { kind: "job", job })).toBe(true)
-        await until(async () => (await results(parent.id)).length > 0, "the child's result to reach its parent")
-        await settle({ idle: true })
-      } finally {
-        await Owed.remove(job)
-      }
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      const said = await texts(parent.id)
-      expect(said.some((t) => t.includes("ERROR: overloaded"))).toBe(true)
-      expect(said.some((t) => t.includes("summary of the work so far"))).toBe(false)
-    })
-  }, 40_000)
-
-  test("a subagent whose turn ended at a compaction's summary reports no answer, not the summary", async () => {
-    await withProject(async () => {
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      await Session.updateMessage({ ...prompt, time: { created: Date.now() - 13_000 } })
-      await assistant(sub.id, prompt.id, "let me look first", "tool-calls")
-      const compaction = await user(sub.id, "compact", true)
-      const summary = (await assistant(sub.id, compaction.id, "summary of the work so far")) as MessageV2.Assistant
-      await Session.updateMessage({ ...summary, summary: true })
-      state.replies.push("noted")
-
-      const job = "job_after_summary"
-      await Owed.add(job, sub.id)
-      try {
-        expect(await Recovery.deliver(sub.id, [{ text: "job done", synthetic: true }], { kind: "job", job })).toBe(true)
-        await until(async () => (await results(parent.id)).length > 0, "the child's result to reach its parent")
-        await settle({ idle: true })
-      } finally {
-        await Owed.remove(job)
-      }
-
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect((await texts(parent.id)).some((t) => t.includes("summary of the work so far"))).toBe(false)
-    })
-  }, 40_000)
-
-  test("a subagent its transient process left owed to a parent that is gone stops owing it", async () => {
-    await withProject(async () => {
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      await Session.updateMessage({ ...prompt, time: { created: Date.now() - 13_000 } })
-      await Sessions.remove(parent.id)
-
-      // A job result it left running lands, and wakes it.
-      const job = "job_for_gone_parent"
-      await Owed.add(job, sub.id)
-      try {
-        expect(await Recovery.deliver(sub.id, [{ text: "job done", synthetic: true }], { kind: "job", job })).toBe(true)
-        await until(async () => (await Sessions.read(sub.id)).time.stopped !== undefined, "the child to stop owing")
-      } finally {
-        await Owed.remove(job)
-      }
-
-      const orphaned = await Sessions.read(sub.id)
-      expect(Recovery.owed(orphaned, (await Messages.reader()).prompted(sub.id))).toBe(false)
-    })
-  }, 40_000)
-
-  test("a subagent its transient process left owed with its cut turn still marked is left to resume", async () => {
-    await withProject(async () => {
-      await until(() => Date.now() - Recovery.boot * 1000 > 16_000, "the process to be older than SETTLE_MS", 25_000)
-      const parent = await root()
-      const sub = await child(parent.id)
-      await Session.mark(sub.id, (draft) => {
-        draft.left = { pid: DEAD, boot: 1 }
-        draft.time.created = Date.now() - 14_000
-      })
-      const prompt = await user(sub.id, "count")
-      await Session.updateMessage({ ...prompt, time: { created: Date.now() - 13_000 } })
-      await assistant(sub.id, prompt.id, "7 files")
-      await Session.mark(sub.id, (draft) => void (draft.turn = { at: Date.now(), pid: DEAD, transient: true }))
-
-      const job = "job_under_marker"
-      await Owed.add(job, sub.id)
-      // Only the child's own wake runs; a pass would resume the cut turn. The
-      // wake is not awaited by deliver, so the parent is watched for long
-      // enough that a report from it would have landed (a report is one
-      // delivery, well under this).
-      Recovery.stop()
-      try {
-        expect(await Recovery.deliver(sub.id, [{ text: "job done", synthetic: true }], { kind: "job", job })).toBe(true)
-        const reported = await until(async () => (await results(parent.id)).length > 0, "a report", 1500).then(
-          () => true,
-          () => false,
-        )
-        expect(reported).toBe(false)
-        expect((await Session.get(sub.id)).turn?.pid).toBe(DEAD)
-      } finally {
-        await Owed.remove(job)
-        Recovery.start()
-      }
-    })
-  }, 40_000)
-})
-
-describe("Recovery.deliver judged against a prompt", () => {
-  test("a report judged against an earlier prompt is refused once a newer one lands", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      const first = await user(sub.id, "count")
-      await tick()
-      // A launch continuing the child lands while the report was being built.
-      await user(sub.id, "count again")
-
-      const paid = await Recovery.deliver(parent.id, [{ text: "stale", synthetic: true }], {
-        kind: "subagent",
-        child: sub.id,
-        status: "failed",
-        prompted: first.time.created,
-      })
-
-      expect(paid).toBe(false)
-      expect(await texts(parent.id)).toEqual([])
-      expect(Recovery.owed(await Session.get(sub.id), (await Messages.reader()).prompted(sub.id))).toBe(true)
-    })
-  }, 30_000)
-
-  test("a failure for an earlier prompt pays nothing once a newer launch prompts the child", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      const first = await user(sub.id, "count")
-      await tick()
-      await user(sub.id, "count again")
-
-      await Recovery.fail(sub.id, "the wake kept failing", first.time.created, first.time.created)
+      await Recovery.fail(sub.id, "aborted", prompt.time.created)
 
       expect(await results(parent.id)).toEqual([])
-      expect(Recovery.owed(await Session.get(sub.id), (await Messages.reader()).prompted(sub.id))).toBe(true)
+      expect(await Debt.has(sub.id)).toBe(true)
     })
   }, 30_000)
 })
 
 describe("Recovery job strikes", () => {
-  test("a job whose delivery throws is kept for a retry, then recorded lost", async () => {
+  test("a job whose delivery throws keeps its debt after every retry", async () => {
     await withProject(async () => {
       const session = await root()
       await BackgroundJob.write({
@@ -1273,66 +1179,15 @@ describe("Recovery job strikes", () => {
         exit: 0,
         time: { created: Date.now() - 1000, hard: Date.now() + 60_000, completed: Date.now() },
       } as unknown as BackgroundJob.Info)
-      await Owed.add("job_throws", session.id)
+      await Debt.add("job_throws", "job", session.id)
 
       try {
-        await Recovery.poke()
-        expect(await Owed.pending(session.id)).toBe(true)
-        await Recovery.poke()
-        expect(await Owed.pending(session.id)).toBe(true)
-        await Recovery.poke()
+        for (let pass = 0; pass < 5; pass++) await Recovery.poke()
 
-        expect(await Owed.pending(session.id)).toBe(false)
-        expect((await BackgroundJob.get("job_throws"))?.time.lost).toBeGreaterThan(0)
+        expect(await Debt.has("job_throws")).toBe(true)
+        expect(await jobs(session.id)).toEqual([])
       } finally {
-        await Owed.remove("job_throws")
-        await BackgroundJob.remove("job_throws")
-      }
-    })
-  }, 30_000)
-})
-
-describe("Recovery.baseline", () => {
-  test("stops what predates this process exactly once per database, and makes running jobs owed", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const old = await child(parent.id)
-      await Session.updateMessage({
-        id: Identifier.ascending("message"),
-        sessionID: old.id,
-        role: "user",
-        time: { created: Recovery.boot * 1000 - 5000 },
-        agent: "build",
-        model,
-      })
-      const fresh = await child(parent.id)
-      await user(fresh.id, "new work")
-      const cut = await root()
-      await Session.mark(cut.id, (draft) => void (draft.turn = { at: 1, pid: DEAD }))
-      await BackgroundJob.write({
-        id: "job_baseline_running",
-        sessionID: cut.id,
-        directory: Instance.directory,
-        command: "true",
-        description: "x",
-        status: "running",
-        // Before boot, so baseline's own stamp on `cut` would suppress it.
-        time: { created: Recovery.boot * 1000 - 2000, hard: Date.now() + 60_000 },
-      })
-      ;(await Db.open()).run(`DELETE FROM meta WHERE key = 'recovery.baseline'`)
-
-      try {
-        await Recovery.baseline()
-
-        expect((await Meta.get("recovery.baseline"))?.startsWith("done")).toBe(true)
-        expect((await Session.get(old.id)).time.stopped).toBe(Recovery.boot * 1000 - 1)
-        expect((await Session.get(fresh.id)).time.stopped).toBeUndefined()
-        expect((await Session.get(cut.id)).turn).toBeUndefined()
-        expect(await Owed.pending(cut.id)).toBe(true)
-        expect(await Recovery.baseline()).toBe(0)
-      } finally {
-        await Owed.remove("job_baseline_running")
-        await BackgroundJob.remove("job_baseline_running")
+        await drop("job_throws")
       }
     })
   }, 30_000)
@@ -1379,179 +1234,171 @@ describe("Recovery.lease", () => {
 })
 
 describe("Session.stop", () => {
-  test("stamps a session before its children, each when written, and every stamp before any cancel", async () => {
+  test("stamps the whole subtree before any turn in it ends", async () => {
     await withProject(async () => {
       const parent = await root()
       const sub = await child(parent.id)
       const grandchild = await child(sub.id)
-      // Observes the order only; the real cancel still runs. Each cancel reads
-      // the stamps straight from the database.
-      const read = await Sessions.reader()
       const ids = [parent.id, sub.id, grandchild.id]
-      const seen: { id: string; stamped: boolean; cleared: number }[] = []
-      const cleared: string[] = []
-      const cancel = SessionPrompt.cancel
-      const remove = Owed.removeSession
-      SessionPrompt.cancel = (sessionID: string) => {
-        seen.push({
-          id: sessionID,
-          stamped: ids.every((id) => (read(id)?.time.stopped ?? 0) > 0),
-          cleared: cleared.length,
-        })
-        return cancel(sessionID)
-      }
-      Owed.removeSession = (sessionID: string) => {
-        cleared.push(sessionID)
-        return remove(sessionID)
-      }
+      // Every model call waits here, so each session's turn is live at the stop.
+      const gate = Promise.withResolvers<void>()
+      state.holds.push(...ids.flatMap(() => [gate.promise, gate.promise]))
+      const turns = ids.map((id) =>
+        SessionPrompt.prompt({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
+          sessionID: id,
+          parts: [{ type: "text", text: "go" }],
+        }).catch(() => undefined),
+      )
+      await until(() => ids.every((id) => SessionBusy.busy(id)), "every turn to start")
+      // A turn's end is observed where the cancel that aborts it ends it, and
+      // the stamps are read straight from the database at that moment.
+      const read = await Sessions.reader()
       const before = Date.now()
+      const stamped = (id: string) => (read(id)?.time.stopped ?? 0) >= before
+      const seen: { id: string; subtree: boolean }[] = []
+      const unsubscribe = SessionBusy.onIdle((sessionID) => {
+        if (!ids.includes(sessionID)) return
+        seen.push({ id: sessionID, subtree: ids.every(stamped) })
+      })
       try {
         await Session.stop({ sessionID: parent.id })
       } finally {
-        SessionPrompt.cancel = cancel
-        Owed.removeSession = remove
+        unsubscribe()
+        gate.resolve()
       }
+      await Promise.all(turns)
 
       const stamps = (await Promise.all([parent, sub, grandchild].map((s) => Session.get(s.id)))).map(
         (s) => s.time.stopped!,
       )
-      expect(seen.map((s) => s.id)).toEqual([grandchild.id, sub.id, parent.id])
+      expect(seen.map((entry) => entry.id).toSorted()).toEqual(ids.toSorted())
+      expect(seen.map((entry) => entry.subtree)).toEqual([true, true, true])
       expect(stamps.every((t) => t >= before)).toBe(true)
-      expect(stamps).toEqual([...stamps].sort((x, y) => x - y))
-      // Every stamp and every debt removal lands before the first cancel.
-      expect(seen.map((s) => [s.stamped, s.cleared])).toEqual([
-        [true, 3],
-        [true, 3],
-        [true, 3],
-      ])
-      expect(cleared).toEqual([parent.id, sub.id, grandchild.id])
     })
   }, 30_000)
 
-  test("a child whose debts cannot be dropped still has its subtree stopped, and the stop reports it", async () => {
+  test("an Esc stamps the turn stopped and leaves what the session is owed", async () => {
     await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      const grandchild = await child(sub.id)
-      const cancelled: string[] = []
-      const cancel = SessionPrompt.cancel
-      const remove = Owed.removeSession
-      SessionPrompt.cancel = (sessionID: string) => {
-        cancelled.push(sessionID)
-        return cancel(sessionID)
-      }
-      Owed.removeSession = async (sessionID: string) => {
-        if (sessionID === sub.id) throw new Error(`could not drop the debts of ${sessionID}`)
-        return remove(sessionID)
-      }
-      try {
-        await expect(Session.stop({ sessionID: parent.id })).rejects.toThrow(`could not drop the debts of ${sub.id}`)
-      } finally {
-        SessionPrompt.cancel = cancel
-        Owed.removeSession = remove
-      }
+      const session = await root()
+      await user(session.id, "go")
+      const sub = await child(session.id)
+      await user(sub.id, "count")
 
-      expect(cancelled).toEqual([grandchild.id, sub.id, parent.id])
-      for (const id of [parent.id, sub.id, grandchild.id]) expect((await Session.get(id)).time.stopped).toBeNumber()
-    })
-  }, 30_000)
+      await Session.interrupt(session.id)
 
-  test("a child's prompt written in the gap before its stamp is covered by that stamp", async () => {
-    await withProject(async () => {
-      const parent = await root()
-      const sub = await child(parent.id)
-      // Runs straight after the parent's stamp, before the walk reaches the
-      // child: a launch whose prompt landed in that gap.
-      const remove = Owed.removeSession
-      const written: MessageV2.User[] = []
-      Owed.removeSession = async (sessionID: string) => {
-        if (sessionID === parent.id) {
-          await tick()
-          written.push((await user(sub.id, "count")) as MessageV2.User)
-        }
-        return remove(sessionID)
-      }
-      try {
-        await Session.stop({ sessionID: parent.id })
-      } finally {
-        Owed.removeSession = remove
-      }
-
-      const stopped = await Session.get(sub.id)
-      expect(written.length).toBe(1)
-      expect(stopped.time.stopped).toBeGreaterThanOrEqual(written[0].time.created)
-      expect(Recovery.owed(stopped, (await Messages.reader()).prompted(sub.id))).toBe(false)
+      expect((await Session.get(session.id)).time.stopped).toBeNumber()
+      expect(await Debt.has(sub.id)).toBe(true)
+      expect((await Recovery.subagents(session.id)).map((s) => s.status)).toEqual(["running"])
     })
   }, 30_000)
 })
 
 describe("Recovery.subagents", () => {
-  test("reports running, completed, and stopped from the database alone", async () => {
+  test("only an open debt makes a child live; one without shows what it delivered", async () => {
     await withProject(async () => {
       const parent = await root()
       const running = await child(parent.id)
       await user(running.id, "a")
+      await Session.mark(
+        running.id,
+        (draft) => void (draft.turn = { at: Date.now(), pid: process.pid, boot: Recovery.boot }),
+      )
+      const interrupted = await child(parent.id)
+      const asked = await user(interrupted.id, "b")
+      const cut = (await assistant(interrupted.id, asked.id, "partial")) as MessageV2.Assistant
+      await Session.updateMessage({ ...cut, error: { name: "MessageAbortedError", data: { message: "aborted" } } })
+      const unpaid = await child(parent.id)
+      const counted = await user(unpaid.id, "c")
+      await assistant(unpaid.id, counted.id, "C")
       const done = await child(parent.id)
-      const prompt = await user(done.id, "b")
-      await assistant(done.id, prompt.id, "B")
-      const delivered = Date.now() + 1
-      await Session.update(done.id, (draft) => void (draft.time.injected = delivered))
-      const stopped = await child(parent.id)
-      await user(stopped.id, "c")
-      await Session.stop({ sessionID: stopped.id })
-      const fresh = await child(parent.id)
+      const prompt = await user(done.id, "d")
+      await assistant(done.id, prompt.id, "D")
+      const statuses = async () =>
+        Object.fromEntries((await Recovery.subagents(parent.id)).map((s) => [s.id, s.status]))
+
+      // Nothing has paid yet: both finished children are owed and unpaid.
+      expect(await statuses()).toEqual({
+        [running.id]: "running",
+        [interrupted.id]: "interrupted",
+        [unpaid.id]: "unpaid",
+        [done.id]: "unpaid",
+      })
+
+      state.replies.push("ok")
+      await Recovery.collect(done.id)
+      await settle({ idle: true })
 
       const list = await Recovery.subagents(parent.id)
-      expect(Object.fromEntries(list.map((s) => [s.id, s.status]))).toEqual({
+      expect(await statuses()).toEqual({
         [running.id]: "running",
+        [interrupted.id]: "interrupted",
+        [unpaid.id]: "completed",
         [done.id]: "completed",
-        [stopped.id]: "stopped",
-        [fresh.id]: "running",
-      })
-      expect(list.find((s) => s.id === done.id)).toEqual({
-        id: done.id,
-        parentSessionID: parent.id,
-        status: "completed",
-        description: "count files",
-        agent: "build",
-        time: { created: prompt.time.created, completed: delivered },
       })
       expect(list.find((s) => s.id === running.id)?.progress).toEqual({ toolCount: 0, currentActivity: undefined })
-      expect(list.find((s) => s.id === stopped.id)?.time.completed).toBe((await Session.get(stopped.id)).time.stopped!)
+      expect(list.find((s) => s.id === done.id)?.time.completed).toBeNumber()
+      await Session.mark(running.id, (draft) => void (draft.turn = undefined))
     })
   }, 30_000)
 
-  test("shows what was reported, not how the child's last turn ended", async () => {
+  test("a child with no debt and no delivered result shows stopped, never running", async () => {
     await withProject(async () => {
       const parent = await root()
+      // What a child in flight across the upgrade looks like: a prompt, maybe
+      // a turn in progress, and no debt row, since the table started empty.
       const sub = await child(parent.id)
-      const prompt = await user(sub.id, "count")
-      const reply = (await assistant(sub.id, prompt.id, "partial")) as MessageV2.Assistant
-      await Session.updateMessage({ ...reply, error: { name: "MessageAbortedError", data: { message: "aborted" } } })
+      await Debt.remove(sub.id)
+      await user(sub.id, "count")
 
-      await Recovery.fail(sub.id, "gave up after 3 wakes", prompt.time.created)
+      const list = await Recovery.subagents(parent.id)
 
-      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
-      expect((await Session.get(sub.id)).time.reported).toBe("failed")
-      expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["failed"])
+      expect(list.map((s) => s.status)).toEqual(["stopped"])
+      expect(await Recovery.debts(parent.id)).toEqual([])
     })
   }, 30_000)
 
-  test("a parent stopped after its child reported keeps the report and its time", async () => {
+  test("a child under a stopped parent shows stopped, its debt paid by the Stop", async () => {
     await withProject(async () => {
       const parent = await root()
+      await user(parent.id, "go")
       const sub = await child(parent.id)
-      const prompt = await user(sub.id, "count")
-      await Recovery.fail(sub.id, "model unavailable", prompt.time.created)
-      const delivered = (await Session.get(sub.id)).time.injected
-      await tick()
-
+      await user(sub.id, "count")
       await Session.stop({ sessionID: parent.id })
 
-      expect((await Session.get(sub.id)).time.stopped).toBeGreaterThan(delivered!)
-      expect((await Recovery.subagents(parent.id)).map((s) => [s.status, s.time.completed])).toEqual([
-        ["failed", delivered],
-      ])
+      expect((await Recovery.subagents(parent.id)).map((s) => s.status)).toEqual(["stopped"])
+      expect(await Recovery.debts(parent.id)).toEqual([])
+      expect((await results(parent.id)).map((r) => r.status)).toEqual(["cancelled"])
     })
   }, 30_000)
+})
+
+describe("check-ins", () => {
+  test("a check-in for a job that has since finished is dropped", async () => {
+    await withProject(async () => {
+      const session = await root()
+      await user(session.id, "run it")
+      await job("job_checkin_late", session.id)
+
+      try {
+        const record = (await BackgroundJob.get("job_checkin_late"))!
+        expect(await BackgroundDeliver.checkin({ ...record, status: "running" })).toBe(false)
+        expect(await texts(session.id)).toEqual(["run it"])
+      } finally {
+        await drop("job_checkin_late")
+      }
+    })
+  }, 30_000)
+})
+
+describe("Recovery.init", () => {
+  test("a live server opens the lease gate at once; any other waits out the grace", async () => {
+    Recovery.stop()
+    Recovery.init()
+    await Bun.sleep(20)
+    expect(await Recovery.lease()).toBe(false)
+    Recovery.init({ live: true })
+    await until(async () => (await Recovery.lease()) === true, "the live gate to open", 1_000)
+  })
 })

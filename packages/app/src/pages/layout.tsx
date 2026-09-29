@@ -61,7 +61,7 @@ import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
-import { busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
+import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
 import { useShell } from "@/utils/mobile"
 import { SidebarModeProvider, useSidebarMode } from "@/context/sidebar-mode"
 
@@ -1565,9 +1565,9 @@ export default function Layout(props: ParentProps) {
     const directory = decode64(dir)
     if (!directory) return
     const [activeStore] = globalSync.child(directory)
-    // Don't mark seen while the session is working (own turn or a subagent) —
-    // effective busy from the one operative store.
-    if (activeStore.session_busy[id]?.busy) return
+    // Don't mark seen while the session is working (own turn or a subagent).
+    const facts = activeStore.session_busy[id]
+    if (facts && (facts.turn || facts.subagents > 0)) return
     void globalSDK.client.session.seen({ directory, sessionID: id })
   })
 
@@ -1682,14 +1682,7 @@ export default function Layout(props: ParentProps) {
       }
       return false
     })
-    // The single operative store carries the three busy facts (effective, own,
-    // descendant), rolled up server-side — no local child scan.
-    const busyFacts = createMemo(
-      () => sessionStore.session_busy[props.session.id] ?? { busy: false, busySelf: false, busyDescendant: false },
-    )
-    // busyShown also lights for a running background job, which is work this
-    // session is waiting on that no turn is executing, so a reader deciding
-    // whether to stop the session sees that a result is still coming back.
+    const busyFacts = createMemo(() => sessionStore.session_busy[props.session.id] ?? IDLE)
     const isWorking = createMemo(() => {
       if (hasPermissions()) return false
       return busyShown(busyFacts())

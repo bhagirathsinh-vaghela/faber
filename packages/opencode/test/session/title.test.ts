@@ -8,6 +8,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { Identifier } from "../../src/id/id"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
+import { Provider } from "../../src/provider/provider"
 
 Log.init({ print: false })
 
@@ -269,6 +270,8 @@ describe("session prompt ordinal", () => {
         const session = await Session.create({})
 
         const first = await SessionPrompt.prompt({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "add retries to the http client" }],
@@ -278,6 +281,8 @@ describe("session prompt ordinal", () => {
         expect(first.info.synthetic).toBeUndefined()
 
         const resume = await SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "Pardon the interruption", synthetic: true }],
@@ -287,6 +292,8 @@ describe("session prompt ordinal", () => {
         expect(resume.info.ordinal).toBeUndefined()
 
         const second = await SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "cap them at three" }],
@@ -306,7 +313,13 @@ describe("session prompt ordinal", () => {
       fn: async () => {
         const session = await Session.create({})
         for (const text of ["one", "two", "three"]) {
-          await SessionPrompt.prompt({ sessionID: session.id, noReply: true, parts: [{ type: "text", text }] })
+          await SessionPrompt.prompt({
+            model: Provider.DEFAULT,
+            variant: Provider.DEFAULT,
+            sessionID: session.id,
+            noReply: true,
+            parts: [{ type: "text", text }],
+          })
         }
         expect(await Session.get(session.id).then((s) => s.prompts)).toBe(3)
       },
@@ -322,6 +335,8 @@ describe("session prompt ordinal", () => {
         expect(Session.isDefaultTitle(session.title)).toBe(true)
 
         await SessionPrompt.prompt({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "add retries to the http client" }],
@@ -341,6 +356,8 @@ describe("session prompt ordinal", () => {
       fn: async () => {
         const session = await Session.create({ title: "Named up front" })
         await SessionPrompt.prompt({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "add retries to the http client" }],

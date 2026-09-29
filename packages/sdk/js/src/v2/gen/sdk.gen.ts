@@ -163,14 +163,14 @@ import type {
   SessionAbortTurnResponses,
   SessionArmErrors,
   SessionArmResponses,
-  SessionBusyErrors,
-  SessionBusyResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
   SessionCommandResponses,
   SessionCreateErrors,
   SessionCreateResponses,
+  SessionDebtsErrors,
+  SessionDebtsResponses,
   SessionDeleteErrors,
   SessionDeleteResponses,
   SessionDiffResponses,
@@ -1273,25 +1273,6 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Get session busy state
-   *
-   * Busy facts for every currently-busy session in this instance (own turn or any subagent). Bootstrap for clients that read the session.working event; absent sessions are idle.
-   */
-  public busy<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<SessionBusyResponses, SessionBusyErrors, ThrowOnError>({
-      url: "/session/busy",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
    * Get armed ping daemons
    *
    * Session IDs whose cache ping daemon is armed on this server instance.
@@ -1313,7 +1294,7 @@ export class Session extends HeyApiClient {
   /**
    * Get session liveness
    *
-   * Whether the server is working on this session right now: its own turn or a descendant's, a ping scheduled inside the cache window, or a running background job. Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.
+   * Whether the server is working on this session right now: its own turn, a ping scheduled inside the cache window, or open subagent and background-job debts owed to it (a Stop pays every debt, so both read 0 right after one). Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.
    */
   public live<ThrowOnError extends boolean = false>(
     parameters: {
@@ -1335,6 +1316,36 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionLiveResponses, SessionLiveErrors, ThrowOnError>({
       url: "/session/{sessionID}/live",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List what a session is owed
+   *
+   * Every open debt owed to this session: each background job and subagent that has yet to deliver its outcome, with its live state. Paid debts are not listed.
+   */
+  public debts<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionDebtsResponses, SessionDebtsErrors, ThrowOnError>({
+      url: "/session/{sessionID}/debts",
       ...options,
       ...params,
     })
@@ -1451,7 +1462,7 @@ export class Session extends HeyApiClient {
   /**
    * Get session children
    *
-   * Retrieve all child sessions that were forked from the specified parent session.
+   * Retrieve all sessions whose parent is the specified session.
    */
   public children<ThrowOnError extends boolean = false>(
     parameters: {
@@ -1751,8 +1762,6 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
-      providerID?: string
-      modelID?: string
       auto?: boolean
     },
     options?: Options<never, ThrowOnError>,
@@ -1764,8 +1773,6 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
-            { in: "body", key: "providerID" },
-            { in: "body", key: "modelID" },
             { in: "body", key: "auto" },
           ],
         },
@@ -2479,6 +2486,7 @@ export class Agent extends HeyApiClient {
       prompt?: string
       system?: string
       model?: string
+      variant?: string
       bare?: boolean
       timeoutMs?: number
       keep?: boolean
@@ -2495,6 +2503,7 @@ export class Agent extends HeyApiClient {
             { in: "body", key: "prompt" },
             { in: "body", key: "system" },
             { in: "body", key: "model" },
+            { in: "body", key: "variant" },
             { in: "body", key: "bare" },
             { in: "body", key: "timeoutMs" },
             { in: "body", key: "keep" },
@@ -2519,7 +2528,7 @@ export class Model extends HeyApiClient {
   /**
    * Get model preferences
    *
-   * Get the server-owned model preferences (visibility, recents, variants).
+   * Get the server-owned model preferences (visibility, recents).
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3212,7 +3221,7 @@ export class Provider extends HeyApiClient {
   /**
    * Get default model
    *
-   * Resolve the model a new session in this directory will use when the caller expresses no preference: the config `model` key, else a connected provider's default. Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.
+   * Resolve what a new session in this directory runs when the caller expresses no preference: the default agent, its model (else the config `model` key, else a connected provider's default), and its variant (else that model's configured `variant`). Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.
    */
   public default<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3765,7 +3774,7 @@ export class Background extends HeyApiClient {
   /**
    * List subagents
    *
-   * A session's subagents as the database records them, newest first. Stopping one is POST /session/:id/abort on the subagent's session.
+   * A session's subagents, newest first. Only an open debt makes one running, interrupted, or unpaid (outcome known, about to be delivered); one with none shows the outcome it delivered, or stopped when it never delivered one. Stopping one is POST /session/:id/abort on the subagent's session.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters: {
@@ -4235,6 +4244,7 @@ export class OpencodeClient extends HeyApiClient {
       system?: string
       prompt?: string
       model?: string
+      variant?: string
       cache?: boolean
       timeoutMs?: number
     },
@@ -4249,6 +4259,7 @@ export class OpencodeClient extends HeyApiClient {
             { in: "body", key: "system" },
             { in: "body", key: "prompt" },
             { in: "body", key: "model" },
+            { in: "body", key: "variant" },
             { in: "body", key: "cache" },
             { in: "body", key: "timeoutMs" },
           ],

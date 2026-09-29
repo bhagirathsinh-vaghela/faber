@@ -1,7 +1,7 @@
 import { watch, type FSWatcher } from "fs"
 import path from "path"
 import { Log } from "@/util/log"
-import { Owed } from "@/storage/owed"
+import { Debt } from "@/storage/debt"
 import { BackgroundJob } from "./job"
 import { BackgroundProcess } from "./process"
 import { BackgroundSpawn } from "./spawn"
@@ -17,20 +17,11 @@ import { BackgroundSpawn } from "./spawn"
 export namespace BackgroundReconcile {
   const log = Log.create({ service: "background-reconcile" })
 
-  // Whether the session that owns a job still exists in a form that could read
-  // a result. Injected rather than imported so a pass can be driven in a test
-  // with no session store, and so the caller decides what liveness means.
-  //
-  // UNDEFINED means the answer could not be established, and is NOT the same as
-  // false. False is a verdict about the user's intent and reaps; undefined is a
-  // failed lookup, which says nothing about intent and must leave the job alone.
-  export type Alive = (sessionID: string, directory: string) => boolean | undefined | Promise<boolean | undefined>
-
   export type Action =
     | { type: "kept"; job: BackgroundJob.Info }
     | { type: "completed"; job: BackgroundJob.Info; exit: number | undefined }
     | { type: "expired"; job: BackgroundJob.Info }
-    | { type: "reaped"; job: BackgroundJob.Info; reason: "owner-gone" | "orphaned" }
+    | { type: "reaped"; job: BackgroundJob.Info; reason: "orphaned" }
 
   export type Pass = {
     actions: Action[]
@@ -39,12 +30,12 @@ export namespace BackgroundReconcile {
   // One pass over every record. Safe to run at boot, on a timer, or right
   // after a stop: each record's fate depends only on its own state, so the
   // entry point changes nothing about the outcome.
-  export async function run(input: { alive: Alive; now?: number }): Promise<Pass> {
+  export async function run(input: { now?: number } = {}): Promise<Pass> {
     const now = input.now ?? Date.now()
     const actions: Action[] = []
 
     for (const job of await BackgroundJob.list()) {
-      const action = await reconcile(job, input.alive, now)
+      const action = await reconcile(job, now)
       if (action) actions.push(action)
     }
 
@@ -52,7 +43,7 @@ export namespace BackgroundReconcile {
     return { actions }
   }
 
-  async function reconcile(job: BackgroundJob.Info, alive: Alive, now: number): Promise<Action | undefined> {
+  async function reconcile(job: BackgroundJob.Info, now: number): Promise<Action | undefined> {
     // A record already past running has nothing left to decide; cleanup takes
     // it later on age, so its result stays readable until then.
     if (job.status !== "running") return undefined
@@ -78,7 +69,9 @@ export namespace BackgroundReconcile {
     if (verdict.type === "orphaned") {
       if (await held()) return { type: "kept", job }
       await BackgroundJob.remove(job.id)
-      await Owed.remove(job.id)
+      await Debt.remove(job.id)
+      const { SessionBusy } = await import("@/session/busy")
+      await SessionBusy.push(job.sessionID)
       return { type: "reaped", job, reason: "orphaned" }
     }
     if (verdict.type === "finished" && (await held())) return { type: "kept", job }
@@ -102,25 +95,6 @@ export namespace BackgroundReconcile {
         : { type: "completed", job: completed, exit: verdict.exit }
     }
 
-    // Still running, so the owner decides whether it may continue. A job whose
-    // session was deliberately stopped is work nobody will read.
-    //
-    // ONLY an explicit false reaps. An undefined answer means the lookup could
-    // not run, which is a fact about this server rather than about the user's
-    // intent, and killing on it destroys healthy work for an infrastructure
-    // reason the job had nothing to do with.
-    //
-    // A LATENT BACKSTOP, not the primary reaper. Stopping a session kills its
-    // jobs directly, so the common case never reaches here. This branch fires
-    // only for a caller that can supply a definite false — it stays as the
-    // shape a future owner-gone signal would use.
-    if ((await alive(job.sessionID, BackgroundJob.owner(job))) === false) {
-      await BackgroundProcess.kill(verdict.identity)
-      await BackgroundJob.remove(job.id)
-      await Owed.remove(job.id)
-      return { type: "reaped", job, reason: "owner-gone" }
-    }
-
     // Past its hard deadline and still alive. The job's own watchdog should
     // have ended it, so reaching here means the watchdog itself was killed;
     // this is the backstop for that, not the primary mechanism. A held job's
@@ -133,7 +107,7 @@ export namespace BackgroundReconcile {
       return { type: "expired", job: completed }
     }
 
-    // Alive, owned, inside its bound. The soft-deadline nudge is not decided
+    // Alive and inside its bound. The soft-deadline nudge is not decided
     // here: it repeats on its own cadence, which is finer than a reconcile pass,
     // so the orchestrator runs it on a dedicated timer reading the same running
     // records. A pass that reaches here has nothing left to do but keep the job.
@@ -149,19 +123,16 @@ export namespace BackgroundReconcile {
   // The claim is made INSIDE the update, which takes a write lock on the
   // record, so the read and the write cannot be interleaved by a second pass.
   // Returning undefined means another pass got there first and this one has
-  // nothing to deliver.
+  // nothing to publish.
   async function settle(job: BackgroundJob.Info, status: BackgroundJob.Status, exit: number | undefined, now: number) {
-    let claimed = false
-    await BackgroundJob.update(job.id, (draft) => {
-      if (draft.status !== "running") return
-      claimed = true
+    const settled = await BackgroundJob.update(job.id, (draft) => {
+      if (draft.status !== "running") return false
       draft.status = status
+      if (status === "killed") draft.ended = "timeout"
       draft.exit = exit
       draft.time.completed = now
     })
-    if (!claimed) return undefined
-    await BackgroundJob.settled(job.sessionID)
-    const settled = { ...job, status, exit, time: { ...job.time, completed: now } }
+    if (!settled) return undefined
     // The record just crossed into a terminal state on a server that never held
     // its handle (a restart adopted it). Announce it the same way the live
     // handle does, so a view watching an adopted job sees it end in real time

@@ -151,8 +151,16 @@ export const SuperviseCommand = cmd({
       return null
     }
 
+    // Only the server on the main port is told it is live. A staged build is
+    // health-checked and killed, and must never act on the sessions the live
+    // one serves; the live one recovers at once rather than after a grace, so a
+    // restart does not leave cut turns and warm caches waiting a minute. An env
+    // var, not a flag: a binary that predates it ignores it instead of refusing
+    // to start.
     function launch(port: number, restore = false) {
-      return spawn(serveArgs(port, restore), { stdout: "inherit", stderr: "inherit" })
+      const { OPENCODE_LIVE: _, ...rest } = process.env
+      const env = port === PORT ? { ...rest, OPENCODE_LIVE: "1" } : rest
+      return spawn(serveArgs(port, restore), { stdout: "inherit", stderr: "inherit", env })
     }
 
     // The supervisor owns processes only. Which sessions to resume, deliver
@@ -242,7 +250,7 @@ export const SuperviseCommand = cmd({
     refresh()
   }
 
-  const RESTART_CONFIRM = "Restart the server?\\n\\nCut turns resume and warm sessions re-arm about a minute after the new server starts, and every session re-pins against current config. Stop any session you do NOT want resumed before restarting."
+  const RESTART_CONFIRM = "Restart the server?\\n\\nCut turns resume and warm sessions re-arm as soon as the new server starts, and every session re-pins against current config. Stop any session you do NOT want resumed before restarting."
   const STOP_CONFIRM = "Stop the server?\\n\\nEvery open session's UI will disconnect until the next start."
 
   function render(s) {

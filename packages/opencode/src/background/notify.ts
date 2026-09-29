@@ -13,7 +13,9 @@ export namespace BackgroundNotify {
   export const MAX_LINES = 50
   export const MAX_BYTES = 4_000
 
-  export type Kind = "completed" | "timeout" | "checkin"
+  // `stopped` is a job a Stop killed; `killed` one the model (or a reap)
+  // ended on purpose; `timeout` one its own deadline ended.
+  export type Kind = "completed" | "timeout" | "stopped" | "killed" | "checkin"
 
   // Keep a header value from forging the header/body separator, which the reader
   // finds at the first blank line. The value must never contain a blank line NOR
@@ -107,7 +109,14 @@ export namespace BackgroundNotify {
       jobId: job.id,
       command: job.command,
       description: job.description,
-      status: kind === "checkin" ? ("running" as const) : kind === "timeout" ? ("timeout" as const) : statusWord(job),
+      status:
+        kind === "checkin"
+          ? ("running" as const)
+          : kind === "timeout"
+            ? ("timeout" as const)
+            : kind === "stopped" || kind === "killed"
+              ? ("stopped" as const)
+              : statusWord(job),
       exit: job.exit,
       log: BackgroundJob.logPath(job.id),
       duration: (job.time.completed ?? now) - job.time.created,
@@ -117,8 +126,7 @@ export namespace BackgroundNotify {
   // An absent exit code is UNKNOWN, not a failure. A job killed before it could
   // write its own exit file leaves none, so treating the absence as non-zero
   // claims the command failed when nothing knows whether it did. The record
-  // keeps the two apart and the reader has to as well, the same way `time.lost`
-  // is kept apart from `status`.
+  // keeps the two apart and the reader has to as well.
   function statusWord(job: BackgroundJob.Info) {
     if (job.exit === undefined) return "ended" as const
     return job.exit === 0 ? ("completed" as const) : ("failed" as const)
@@ -126,6 +134,8 @@ export namespace BackgroundNotify {
 
   function status(job: BackgroundJob.Info, kind: Kind) {
     if (kind === "timeout") return "killed after exceeding its time limit"
+    if (kind === "stopped") return "killed when the session was stopped"
+    if (kind === "killed") return "killed before it finished"
     if (job.exit === undefined) return "ended without recording an exit code"
     return job.exit === 0 ? "completed" : "failed"
   }

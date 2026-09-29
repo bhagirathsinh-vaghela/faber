@@ -14,16 +14,11 @@ export type OverviewRow = {
   agent?: string
   updated: number
   // Live busy facts, read from the one operative store (session_busy), NOT the
-  // recent_hub row's own busy — so the dot animates off the same state the
-  // session view does and can never lag it. busySelf = own turn only; the
-  // overview picks the delegating animation when `busy && !busySelf`.
-  busy: boolean
-  busySelf: boolean
-  busyDescendant: boolean
-  // Work the session waits on rather than executes: a background job still
-  // running. It does not reach `busy`, which covers only the turns in the open
-  // subtree.
-  busyJob: boolean
+  // recent_hub row's own copy — so the dot animates off the same state the
+  // session view does and can never lag it.
+  turn: boolean
+  subagents: number
+  jobs: number
   unseen: boolean
   question: boolean
   permission: boolean
@@ -68,21 +63,14 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           get updated() {
             return entry.updated
           },
-          get busy() {
-            return globalSync.busy(entry.directory, entry.sessionID).busy
+          get turn() {
+            return globalSync.busy(entry.directory, entry.sessionID).turn
           },
-          get busySelf() {
-            return globalSync.busy(entry.directory, entry.sessionID).busySelf
+          get subagents() {
+            return globalSync.busy(entry.directory, entry.sessionID).subagents
           },
-          get busyDescendant() {
-            return globalSync.busy(entry.directory, entry.sessionID).busyDescendant
-          },
-          // Work no turn accounts for: the session waits on it rather than
-          // executing it, so `busy` is false while it holds, and a row that omits
-          // it leaves the overview dot dark on a session every other indicator
-          // shows as working.
-          get busyJob() {
-            return globalSync.busy(entry.directory, entry.sessionID).busyJob === true
+          get jobs() {
+            return globalSync.busy(entry.directory, entry.sessionID).jobs
           },
           get unseen() {
             return entry.unseen

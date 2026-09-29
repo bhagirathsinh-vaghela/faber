@@ -19,8 +19,6 @@ type Job = {
   // When the job's log last grew, present only on a running row. A finished
   // job's last activity is its completion time, so the server omits this for it.
   updated?: number
-  // `lost` is when the result never reached the session that asked for it,
-  // which is not a property of the command: it ran, and its output is on disk.
   time: {
     created: number
     soft?: number
@@ -28,7 +26,6 @@ type Job = {
     completed?: number
     nudges?: number
     nudgedAt?: number
-    lost?: number
   }
 }
 
@@ -61,14 +58,6 @@ function updatedAgo(job: Job, now: number) {
   return `updated ${Math.floor(minutes / 60)}h ago`
 }
 
-// Green reads as "this went well", which a job that is merely still running has
-// not earned yet. Blue is the neutral in-progress colour used elsewhere.
-//
-// A result nobody received is checked FIRST and outranks a clean exit. The
-// command succeeding is the less useful half of that record: what a reader
-// needs to notice is that its output never reached the session that asked, and
-// a row saying "completed" hides exactly the class of record worth finding.
-
 // An absent exit code is UNKNOWN, not a failure. A job killed before it could
 // write its own exit file leaves none, and calling that "failed" claims
 // something about the command that nothing establishes. Neutral, and named as
@@ -77,8 +66,9 @@ function unknown(job: Job) {
   return job.exit === undefined
 }
 
+// Green reads as "this went well", which a job that is merely still running has
+// not earned yet. Blue is the neutral in-progress colour used elsewhere.
 function tone(job: Job) {
-  if (job.time.lost) return "var(--syntax-critical)"
   if (job.status === "running") return "var(--box-indicator-job)"
   if (job.status === "killed") return "var(--syntax-critical)"
   if (unknown(job)) return "var(--text-weak)"
@@ -86,7 +76,6 @@ function tone(job: Job) {
 }
 
 function label(job: Job) {
-  if (job.time.lost) return "never delivered"
   if (job.status === "running") return "running"
   if (job.status === "killed") return "timed out"
   if (unknown(job)) return "ended (exit unknown)"

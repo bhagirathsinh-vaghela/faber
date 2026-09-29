@@ -19,12 +19,39 @@ import { SessionRecent } from "../../session/recent"
 import { Session } from "../../session"
 import { Sessions } from "../../storage/sessions"
 import { SessionBusy } from "../../session/busy"
+import { Debt } from "../../storage/debt"
 import { Event as ServerEvent } from "../event"
 import { HEARTBEAT_MS } from "@opencode-ai/util/stream"
 import { errors } from "../error"
 import { Web } from "../web"
 
 const log = Log.create({ service: "server" })
+
+// The /global/event busy heal tick's period, and a hook called after each
+// heal a connection completes, so a test can count ticks instead of sleeping.
+export namespace BusyHeal {
+  const tick = Number(process.env.OPENCODE_BUSY_TICK_MS)
+  let period = Number.isFinite(tick) && tick > 0 ? tick : 5000
+  const listeners = new Set<(connectionID: string | undefined) => void>()
+
+  export function interval() {
+    return period
+  }
+
+  // Applies to connections opened after the call.
+  export function set(ms: number) {
+    period = ms
+  }
+
+  export function onTick(listener: (connectionID: string | undefined) => void) {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+
+  export function ticked(connectionID: string | undefined) {
+    for (const listener of listeners) listener(connectionID)
+  }
+}
 
 const host = os.hostname()
 
@@ -313,44 +340,85 @@ export const GlobalRoutes = lazy(() =>
             void send({ payload: { type: "server.heartbeat", properties: {} } })
           }, HEARTBEAT_MS)
 
-          // Busy reconcile tick (independent of the 30s keepalive above). Level-
-          // triggered safety net for the open session's subtree: recent.updated
-          // heals hub ROOTS, but subagent children are not in the hub, so their
-          // busy state can only self-heal here. Quiescence-gated — we send only
-          // while the scoped subtree has a busy session, plus ONE trailing all-
-          // idle when it clears, then stay silent. So a client wakes only while
-          // work is actually happening in what it's viewing; an idle connection
-          // gets nothing from this timer (the keepalive still covers liveness).
-          // A connection with no interest set is the overview: it reconciles via
-          // recent.updated, so this tick does nothing for it.
+          // Busy heal tick (independent of the 30s keepalive above). Every busy
+          // change is pushed as it happens; this re-sends the current facts so
+          // a client that missed a push heals within one tick, not only on
+          // reconnect. Quiescence-gated: it sends while anything in its scope
+          // is active (a turn, or open subagent or job debts), then once more
+          // when that clears, then stays silent.
+          //   - An open session (a busy scope): one session.busy frame for it
+          //     and only the children with an open debt or a live turn, plus
+          //     one trailing zero entry for a child that just went idle. Every
+          //     entry carries the scope's directory, the store the session
+          //     page reads.
+          //   - The overview (no busy scope): one session.busy frame per root
+          //     the hub holds as active, recomputed from the live sources and
+          //     written back to the hub, and one zero frame per root when it
+          //     goes idle.
+          // Sent on the "global" channel: the client's handler lives only in
+          // its global dispatch branch, and each entry carries its own
+          // directory for store routing.
           let busyActive = false
+          // Overview roots last sent active, and those already sent their one
+          // zero frame, so a hub entry the live sources no longer back costs
+          // one zero frame, not one per tick.
+          const roots = new Set<string>()
+          const sentIdle = new Set<string>()
+          // Scoped children sent active last tick: each rides the next frame
+          // once with its idle facts, so a missed idle push still zeroes it.
+          let owed = new Set<string>()
+          let ticking = false
           busyTick = setInterval(() => {
-            // Busy scope is exactly ONE open session's subtree (or none, on the
-            // overview). Not the message interest set, not a directory list.
+            if (ticking) return
+            ticking = true
+            void heal()
+              .catch((error) => log.error("busy heal tick failed", { connectionID, error }))
+              .finally(() => {
+                ticking = false
+                BusyHeal.ticked(connectionID)
+              })
+          }, BusyHeal.interval())
+          async function heal() {
             const scope = connectionID ? GlobalInterest.busy(connectionID) : undefined
-            if (!scope) return
-
-            const busy = SessionBusy.subtreeBusy(scope.sessionID, scope.directory)
-            // Quiescence gate: nothing busy in the open subtree. Send ONE trailing
-            // all-idle snapshot so a client that saw busy clears it, then stay
-            // silent until work resumes.
-            if (!busy && !busyActive) return
-            busyActive = busy
-            const sessions = SessionBusy.subtreeSnapshot(scope.sessionID, scope.directory)
-            // Send on the "global" channel, like recent.updated: the client's
-            // `session.busy` handler lives ONLY in the `directory === "global"`
-            // dispatch branch, so a frame stamped with the real directory routes
-            // to the per-directory handler, which has no case for it, and is
-            // dropped. Each session entry carries its own directory, so per-entry
-            // store routing is unaffected. A root also gets busy via the "global"
-            // recent hub, but a directly-opened subagent (not in the hub) has this
-            // tick as its only channel — stamping the real directory hid its
-            // indicators entirely.
-            void send({
-              directory: "global",
-              payload: { type: ServerEvent.Busy.type, properties: { sessions } },
-            })
-          }, 5000)
+            if (!scope) {
+              const candidates = new Set([...roots, ...(await SessionRecent.active())])
+              const sessions = await SessionBusy.snapshot([...candidates])
+              for (const id of roots) if (!sessions[id]) roots.delete(id)
+              for (const id of sentIdle) if (!candidates.has(id)) sentIdle.delete(id)
+              for (const [id, entry] of Object.entries(sessions)) {
+                await SessionRecent.setBusy(id, { turn: entry.turn, subagents: entry.subagents, jobs: entry.jobs })
+                const active = SessionBusy.active(entry)
+                if (!active && sentIdle.has(id)) continue
+                const [into, out] = active ? [roots, sentIdle] : [sentIdle, roots]
+                into.add(id)
+                out.delete(id)
+                await send({
+                  directory: "global",
+                  payload: { type: ServerEvent.Busy.type, properties: { sessions: { [id]: entry } } },
+                })
+              }
+              return
+            }
+            const children = await Sessions.children(scope.sessionID)
+            // A child is live while it has a turn, owes its caller, or is
+            // itself owed something (its own jobs or subagents).
+            const owing = await Promise.all(
+              children.map(async (id) => SessionBusy.busy(id) || (await Debt.has(id)) || (await Debt.owing(id))),
+            )
+            const live = children.filter((_, index) => owing[index])
+            const snapshot = await SessionBusy.snapshot([
+              scope.sessionID,
+              ...new Set([...live, ...children.filter((id) => owed.has(id))]),
+            ])
+            owed = new Set(live)
+            const sessions = Object.fromEntries(
+              Object.entries(snapshot).map(([id, entry]) => [id, { ...entry, directory: scope.directory }]),
+            )
+            const active = Object.values(sessions).some(SessionBusy.active)
+            if (!active && !busyActive) return
+            busyActive = active
+            await send({ directory: "global", payload: { type: ServerEvent.Busy.type, properties: { sessions } } })
+          }
 
           // Replayed frames are already stored in delta form, so they ship as
           // recorded. Live events arriving during this loop are held by the
@@ -411,9 +479,11 @@ export const GlobalRoutes = lazy(() =>
           connectionID: z.string(),
           directory: z.string().nullish(),
           sessions: z.array(z.string()),
-          // The open session whose subtree the busy reconcile tick heals. Null on
-          // the overview (no open session) — the tick then stays silent and busy
-          // is served by recent.updated. Separate from `sessions` (message scope).
+          // The open session whose busy facts, with those of its children that
+          // have an open debt or a live turn (plus one trailing zero for a child
+          // that just went idle), the heal tick re-sends. Null on the overview (no open session): the tick
+          // then sends one frame per active root. Separate from `sessions`
+          // (message scope).
           busySession: z.string().nullish(),
         }),
       ),

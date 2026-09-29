@@ -43,6 +43,13 @@ describe("job-status: the other statuses are unchanged", () => {
     expect(jobAccent("timeout")).toBe("var(--syntax-critical)")
   })
 
+  test("a job a Stop killed is muted and named, never the success vocabulary", () => {
+    expect(jobLabel("stopped")).toBe("JOB STOPPED")
+    expect(jobGlyph("stopped")).toBe("■")
+    expect(jobAccent("stopped")).toBe("var(--text-weak)")
+    expect(jobStatusColor("stopped")).toBe("var(--text-weak)")
+  })
+
   test("running is its own not-finished treatment", () => {
     expect(jobGlyph("running")).toBe("◐")
     expect(jobLabel("running")).toBe("JOB RUNNING")

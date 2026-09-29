@@ -6,7 +6,7 @@ import { BackgroundProcess } from "../../src/background/process"
 import { BackgroundOrchestrator } from "../../src/background/orchestrator"
 import { BackgroundReconcile } from "../../src/background/reconcile"
 import { Recovery } from "../../src/session/recovery"
-import { Owed } from "../../src/storage/owed"
+import { Debt } from "../../src/storage/debt"
 import { tmpdir } from "../fixture/fixture"
 
 const created: string[] = []
@@ -16,8 +16,7 @@ function spawnJob(script: string) {
 }
 
 // A session that exists. It is idle, never armed, and absent from the recent
-// list — the shape of nearly every session on a real machine, and the one a
-// reap must never touch. `aliveFor` answers `true` for it.
+// list: the shape of nearly every session on a real machine.
 async function owned() {
   const tmp = await tmpdir({ git: true })
   const id = await Instance.provide({
@@ -26,13 +25,6 @@ async function owned() {
   })
   return { id, directory: tmp.path }
 }
-
-// The `false` verdict, supplied directly. `aliveFor` never produces one: it
-// answers `true` for a session it can read and `undefined` for one it cannot,
-// so the reap belongs to a caller that knows something the predicate does not.
-// Reaching it through a stub is what keeps the reap tested without pretending
-// an idle session earns it.
-const gone = async () => false as const
 
 async function store(pid: number, owner: { id: string; directory: string }) {
   const live = (await BackgroundProcess.inspect(pid))!
@@ -57,41 +49,16 @@ afterEach(async () => {
     const job = await BackgroundJob.get(id)
     if (job?.process) await BackgroundProcess.kill(job.process)
     await BackgroundJob.remove(id)
-    await Owed.remove(id)
+    await Debt.remove(id)
   }
 })
 
 afterAll(() => Recovery.stop())
 
-// A boot sweep must not reap a job whose session cannot be resolved yet:
-// liveness is rebuilt after the sweep runs, so every session reads as absent
-// and ownership is not knowable at that moment.
-//
-// Driven through sweep() rather than the reconciler beneath it, because the
-// flag under test lives here — a test against the reconciler passes whether or
-// not this guard exists.
 // A session read is scoped to the project its directory maps to, so a job whose
-// recorded directory belongs to a different one finds nothing. That is a failed
-// lookup, not a deleted session, and reaping on it kills healthy work — the
-// reachable case being any job run with a `workdir` outside the project.
+// recorded directory belongs to a different one finds no session. A pass never
+// reads the session, so such a job is kept like any other.
 describe("BackgroundOrchestrator: a job whose directory names another project", () => {
-  // Driven through the reconciler with the ORCHESTRATOR'S OWN predicate rather
-  // than through sweep(): a fresh process is inside its settle window, so
-  // sweep() defers every ownership verdict and would pass whatever the
-  // predicate returns.
-  test("reports unknown rather than gone when the session is not in that project", async () => {
-    const alive = BackgroundOrchestrator.aliveFor
-    expect(await alive("ses_orchestrator_wrong_project", "/tmp")).toBeUndefined()
-  })
-
-  test("resolves a session that IS in the given project", async () => {
-    // Its own directory, where nothing is stored either, so the miss is the
-    // project scoping rather than the id: both must read as unknown, never as
-    // a deletion.
-    const alive = BackgroundOrchestrator.aliveFor
-    expect(await alive("ses_orchestrator_absent", process.cwd())).toBeUndefined()
-  })
-
   test("a job carrying such a directory survives a pass", async () => {
     const proc = spawnJob("sleep 30")
     const live = (await BackgroundProcess.inspect(proc.pid))!
@@ -108,16 +75,16 @@ describe("BackgroundOrchestrator: a job whose directory names another project", 
       process: { pid: live.pid, start: live.start, pgid: live.pgid },
     })
 
-    const pass = await BackgroundReconcile.run({ alive: BackgroundOrchestrator.aliveFor })
+    const pass = await BackgroundReconcile.run()
     expect(pass.actions.find((entry) => entry.job.id === id)?.type).toBe("kept")
-    expect(await BackgroundJob.get(id)).toBeDefined()
+    expect((await BackgroundJob.get(id))?.status).toBe("running")
   }, 20_000)
 })
 
-// Surviving the ownership verdict is only half the job: a record that is kept
-// but never resolvable runs to completion and is dropped at delivery, which is
-// strictly worse than being reaped early. The command's cwd and the owner's
-// project are therefore separate fields, and every session read uses the owner.
+// Surviving a pass is only half the job: a record whose session is never
+// resolvable runs to completion and its result has nowhere to land. The
+// command's cwd and the owner's project are therefore separate fields, and
+// every session read uses the owner.
 describe("BackgroundJob.owner", () => {
   test("resolves under the project rather than where the command ran", async () => {
     const elsewhere = await tmpdir({ git: true })
@@ -168,31 +135,24 @@ describe("BackgroundJob.owner", () => {
       time: { created: Date.now(), hard: Date.now() + 600_000 },
     }
 
-    // Resolvable (a real verdict) under the owner, unknowable under the cwd.
-    expect(await BackgroundOrchestrator.aliveFor(job.sessionID, BackgroundJob.owner(job))).toBe(true)
-    expect(await BackgroundOrchestrator.aliveFor(job.sessionID, job.directory)).toBeUndefined()
+    const found = await Instance.provide({
+      directory: BackgroundJob.owner(job),
+      fn: () => Session.get(job.sessionID),
+    })
+    expect(found.id).toBe(owner.id)
   })
 
-  // An idle session is the ordinary case, not an abandoned one: its turn ended
-  // and its user reads the result when the job finishes, which is the whole
-  // reason a job outlives the turn that started it. A predicate keyed on
-  // activity answers `false` for nearly every session on a real machine.
-  test("a session that exists is kept, however idle", async () => {
-    const owner = await owned()
-    expect(await BackgroundOrchestrator.aliveFor(owner.id, owner.directory)).toBe(true)
-  })
-
-  // The end-to-end shape of the same rule: a live process owned by an idle
-  // session survives a full pass. The predicate above is what decides it, and a
-  // pass is what would have killed it.
+  // An idle session is the ordinary case, not an abandoned one: its user reads
+  // the result when the job finishes, which is the whole reason a job outlives
+  // the turn that started it.
   test("a live job owned by an idle session survives a pass", async () => {
     const owner = await owned()
     const proc = spawnJob("sleep 30")
     const job = await store(proc.pid, owner)
 
-    const pass = await BackgroundReconcile.run({ alive: BackgroundOrchestrator.aliveFor })
+    const pass = await BackgroundReconcile.run()
 
-    expect(pass.actions.find((action) => action.job.id === job.id)?.type).not.toBe("reaped")
+    expect(pass.actions.find((action) => action.job.id === job.id)?.type).toBe("kept")
     expect(await BackgroundJob.get(job.id)).toBeDefined()
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
     proc.kill()
@@ -200,8 +160,8 @@ describe("BackgroundJob.owner", () => {
 })
 
 // A settled job's result is a debt Recovery pays. When the session it belongs to
-// is gone there is nowhere to pay it, so the record is stamped lost and the debt
-// dropped: the result is recorded as unread rather than retried forever.
+// is gone there is nobody to pay, so the debt goes; a delivery that throws keeps
+// its debt for a later process.
 describe("BackgroundOrchestrator: a result with nowhere to go", () => {
   // A running record whose process has gone, owed to `sessionID`: what a sweep
   // finds after a job ended while nothing held its handle.
@@ -222,48 +182,41 @@ describe("BackgroundOrchestrator: a result with nowhere to go", () => {
       process: { pid: proc.pid, start: "gone", pgid: proc.pid },
       ...record,
     })
-    await Owed.add(id, sessionID)
+    await Debt.add(id, "job", sessionID)
     return id
   }
 
   // Driven through sweep(), so the test fails if a sweep that settles a job
   // stops waking recovery to pay it.
-  test("stamps the record lost and drops the debt", async () => {
+  test("drops the debt of a session that does not exist", async () => {
     const project = await tmpdir({ git: true })
     const id = await ended("ses_orchestrator_undeliverable", project.path)
 
     Recovery.start()
     await BackgroundOrchestrator.sweep()
 
-    const job = await BackgroundJob.get(id)
-    expect(job?.status).toBe("exited")
-    expect(job?.time.lost).toBeGreaterThan(0)
-    expect(await Owed.pending("ses_orchestrator_undeliverable")).toBe(false)
+    expect((await BackgroundJob.get(id))?.status).toBe("exited")
+    expect(await Debt.has(id)).toBe(false)
   }, 20_000)
 
-  // A delivery that throws is kept for later passes and recorded lost only
-  // after repeated failures; the jobs behind it in the same pass are reached.
-  test("a job whose delivery throws does not stop the jobs behind it", async () => {
-    const project = await tmpdir({ git: true })
-    const first = await ended("ses_orchestrator_before_throw", project.path)
+  // A delivery that throws keeps its debt past every retry; the jobs behind it
+  // in the same pass are reached.
+  test("a job whose delivery throws keeps its debt and does not stop the jobs behind it", async () => {
+    const owner = await owned()
+    const first = await ended("ses_orchestrator_before_throw", owner.directory)
     // No command: rendering the result throws inside the delivery.
-    const middle = await ended("ses_orchestrator_throws", project.path, { command: undefined })
-    const last = await ended("ses_orchestrator_after_throw", project.path)
+    const middle = await ended(owner.id, owner.directory, { command: undefined })
+    const last = await ended("ses_orchestrator_after_throw", owner.directory)
 
     Recovery.start()
     await BackgroundOrchestrator.sweep()
-
-    for (const id of [first, last]) expect((await BackgroundJob.get(id))?.time.lost).toBeGreaterThan(0)
-    expect(await Owed.pending("ses_orchestrator_before_throw")).toBe(false)
-    expect(await Owed.pending("ses_orchestrator_after_throw")).toBe(false)
-    expect((await BackgroundJob.get(middle))?.time.lost).toBeUndefined()
-    expect(await Owed.pending("ses_orchestrator_throws")).toBe(true)
-
+    await Recovery.poke()
     await Recovery.poke()
     await Recovery.poke()
 
-    expect((await BackgroundJob.get(middle))?.time.lost).toBeGreaterThan(0)
-    expect(await Owed.pending("ses_orchestrator_throws")).toBe(false)
+    expect(await Debt.has(first)).toBe(false)
+    expect(await Debt.has(last)).toBe(false)
+    expect(await Debt.has(middle)).toBe(true)
   }, 20_000)
 })
 
@@ -282,60 +235,55 @@ describe("BackgroundReconcile: a reaped job's debt", () => {
       status: "running",
       time: { created: Date.now(), hard: Date.now() + 600_000 },
     })
-    await Owed.add(id, "ses_orchestrator_orphan")
+    await Debt.add(id, "job", "ses_orchestrator_orphan")
 
-    const pass = await BackgroundReconcile.run({ alive: () => true })
+    const pass = await BackgroundReconcile.run()
+    const action = pass.actions.find((entry) => entry.job.id === id)
 
-    expect(pass.actions.find((entry) => entry.job.id === id)?.type).toBe("reaped")
-    expect(await Owed.pending("ses_orchestrator_orphan")).toBe(false)
+    expect(action?.type).toBe("reaped")
+    expect(action?.type === "reaped" && action.reason).toBe("orphaned")
+    expect(await BackgroundJob.get(id)).toBeUndefined()
+    expect(await Debt.has(id)).toBe(false)
   })
-
-  test("goes with a job whose owner is gone", async () => {
-    const owner = await owned()
-    const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid, owner)
-    await Owed.add(job.id, owner.id)
-
-    const pass = await BackgroundReconcile.run({ alive: gone })
-
-    expect(pass.actions.find((entry) => entry.job.id === job.id)?.type).toBe("reaped")
-    expect(await Owed.pending(owner.id)).toBe(false)
-  }, 20_000)
-})
-
-describe("BackgroundOrchestrator settle window", () => {
-  // The window has to outlast the asynchronous rebuild of session liveness
-  // (re-arming daemons, resuming interrupted turns) and still end well before
-  // the first scheduled sweep, so the first ownership verdict is taken on a
-  // view that is real.
-  test("ends before the first scheduled sweep would run", () => {
-    expect(BackgroundOrchestrator.SETTLE_MS).toBeLessThan(BackgroundOrchestrator.SWEEP_MS)
-  })
-
-  test("is long enough to cover a restart's liveness rebuild", () => {
-    expect(BackgroundOrchestrator.SETTLE_MS).toBeGreaterThanOrEqual(30_000)
-  })
-
-  // A sweep can be fired by the abort route or the exit watcher at any moment,
-  // including seconds into the window, so the deferral is time-based rather
-  // than a flag the boot path sets.
-  test("defers ownership for any caller inside the window, not just the boot one", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid, await owned())
-
-    // No adopting flag: this is what the abort route's sweep looks like.
-    await BackgroundOrchestrator.sweep()
-
-    expect(await BackgroundJob.get(job.id)).toBeDefined()
-    expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
-  }, 20_000)
 })
 
 // The nudge is delivered on its own timer, reading the running set off disk and
 // claiming each due job. A job past its soft deadline gets exactly one nudge per
 // call, stamped on the record so the next call paces off it.
 describe("BackgroundOrchestrator.nudgeAll", () => {
+  test("a process whose recovery gate is closed sends no check-in and stamps nothing", async () => {
+    Recovery.stop()
+    const owner = await owned()
+    const proc = spawnJob("sleep 30")
+    const live = (await BackgroundProcess.inspect(proc.pid))!
+    const id = BackgroundJob.id()
+    created.push(id)
+    const now = Date.now()
+    await BackgroundJob.write({
+      id,
+      sessionID: owner.id,
+      directory: owner.directory,
+      project: owner.directory,
+      command: "sleep 30",
+      description: "staged nudge",
+      status: "running",
+      time: { created: now - 300_000, soft: now - 200_000, hard: now + 600_000 },
+      process: { pid: live.pid, start: live.start, pgid: live.pgid },
+    })
+
+    await BackgroundOrchestrator.nudgeAll(now)
+
+    expect((await BackgroundJob.get(id))?.time.nudges).toBeUndefined()
+    const messages = await Instance.provide({
+      directory: owner.directory,
+      fn: () => Session.messages({ sessionID: owner.id }),
+    })
+    expect(messages).toEqual([])
+    proc.kill()
+  }, 20_000)
+
   test("nudges a running job past its soft deadline and stamps it", async () => {
+    Recovery.start()
     const owner = await owned()
     const proc = spawnJob("sleep 30")
     const live = (await BackgroundProcess.inspect(proc.pid))!
@@ -361,6 +309,7 @@ describe("BackgroundOrchestrator.nudgeAll", () => {
   }, 20_000)
 
   test("does not nudge a job still inside its soft deadline", async () => {
+    Recovery.start()
     const owner = await owned()
     const proc = spawnJob("sleep 30")
     const live = (await BackgroundProcess.inspect(proc.pid))!
@@ -390,6 +339,7 @@ describe("BackgroundOrchestrator.nudgeAll", () => {
   // the disk stamp: the ordinal render keys on is written by the claim, so a
   // deliver from the pre-claim copy renders every second nudge as the first.
   test("the second nudge is delivered with the tighter repeat prose", async () => {
+    Recovery.start()
     const owner = await owned()
     const proc = spawnJob("sleep 30")
     const live = (await BackgroundProcess.inspect(proc.pid))!
@@ -427,34 +377,75 @@ describe("BackgroundOrchestrator.nudgeAll", () => {
   }, 20_000)
 })
 
-describe("BackgroundOrchestrator.sweep at boot", () => {
-  test("adopts a job whose session cannot be resolved yet", async () => {
+describe("BackgroundOrchestrator.sweep", () => {
+  // A sweep can be fired by the abort route or the exit watcher at any moment,
+  // including right after boot, and none of them may reap a live job.
+  test("keeps a live job owned by an idle session", async () => {
     const proc = spawnJob("sleep 30")
     const job = await store(proc.pid, await owned())
 
-    await BackgroundOrchestrator.sweep({ adopting: true })
+    await BackgroundOrchestrator.sweep()
 
-    expect(await BackgroundJob.get(job.id)).toBeDefined()
+    expect((await BackgroundJob.get(job.id))?.status).toBe("running")
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
   }, 20_000)
 
-  // The same record IS reaped once ownership is judged, which is what makes the
-  // test above say something: a fixture that survives every verdict would pass
-  // it whether or not the window defers anything.
-  //
-  // The verdict is injected, because the window suppresses the ANSWER rather
-  // than one predicate's opinion: `sweep({ adopting: true })` substitutes
-  // `() => true` for whatever it was given, so a `false` reaching the
-  // reconciler here is the same `false` the window swallows there.
-  test("reaps that same job once ownership is judged", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store(proc.pid, await owned())
+  test("reaps a record whose spawn never landed, and its debt", async () => {
+    const id = BackgroundJob.id()
+    created.push(id)
+    await BackgroundJob.write({
+      id,
+      sessionID: "ses_orchestrator_sweep_orphan",
+      directory: "/tmp",
+      command: "sleep 30",
+      description: "orphaned job",
+      status: "running",
+      time: { created: Date.now(), hard: Date.now() + 600_000 },
+    })
+    await Debt.add(id, "job", "ses_orchestrator_sweep_orphan")
 
-    const pass = await BackgroundReconcile.run({ alive: gone })
-    const action = pass.actions.find((entry) => entry.job.id === job.id)
+    await BackgroundOrchestrator.sweep()
 
-    expect(action?.type).toBe("reaped")
-    expect(await BackgroundJob.get(job.id)).toBeUndefined()
-    expect(await BackgroundProcess.verify(job.process!)).not.toBe("alive")
+    expect(await BackgroundJob.get(id)).toBeUndefined()
+    expect(await Debt.has(id)).toBe(false)
   }, 20_000)
+})
+
+// Removing a record takes its output with it, so a finished job still owed to
+// its session outlives the age bound; one owed nothing does not.
+describe("BackgroundJob.cleanup", () => {
+  async function aged(sessionID: string) {
+    const id = BackgroundJob.id()
+    created.push(id)
+    const old = Date.now() - BackgroundJob.MAX_AGE_MS - 60_000
+    await BackgroundJob.write({
+      id,
+      sessionID,
+      directory: "/tmp",
+      command: "true",
+      description: "aged job",
+      status: "exited",
+      exit: 0,
+      time: { created: old, hard: old + 600_000, completed: old },
+    })
+    return id
+  }
+
+  test("keeps a job past the age bound while a debt names it", async () => {
+    const id = await aged("ses_orchestrator_cleanup_owed")
+    await Debt.add(id, "job", "ses_orchestrator_cleanup_owed")
+
+    await BackgroundJob.cleanup()
+
+    expect((await BackgroundJob.get(id))?.status).toBe("exited")
+    expect(await Debt.has(id)).toBe(true)
+  })
+
+  test("removes a job past the age bound once nothing is owed", async () => {
+    const id = await aged("ses_orchestrator_cleanup_paid")
+
+    await BackgroundJob.cleanup()
+
+    expect(await BackgroundJob.get(id)).toBeUndefined()
+  })
 })

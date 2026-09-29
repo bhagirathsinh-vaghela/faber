@@ -2,6 +2,7 @@ import { describe, expect, test, afterEach } from "bun:test"
 import { BackgroundJob } from "../../src/background/job"
 import { BackgroundProcess } from "../../src/background/process"
 import { BackgroundSpawn } from "../../src/background/spawn"
+import { Debt } from "../../src/storage/debt"
 
 const spawned: string[] = []
 
@@ -194,7 +195,7 @@ describe("BackgroundSpawn: a reconcile pass leaves a held job to its handle", ()
     await BackgroundJob.update(spawn.job.id, (draft) => void (draft.process = state))
 
     try {
-      const pass = await BackgroundReconcile.run({ alive: () => true })
+      const pass = await BackgroundReconcile.run()
       const record = await BackgroundJob.get(spawn.job.id)
       return { action: pass.actions.find((entry) => entry.job.id === spawn.job.id)?.type, record }
     } finally {
@@ -400,4 +401,177 @@ describe("BackgroundSpawn: a kill reaches the command, not just the wrapper", ()
     const alive = await Bun.$`ps -p ${cmdpid} -o pid=`.quiet().nothrow()
     expect(alive.stdout.toString().trim()).toBe("")
   }, 30_000)
+})
+
+// A Stop whose abort lands while the process is being spawned is caught by the
+// check after the spawn, which kills the job without paying and then collects
+// its result itself: no exit handle is held for it to do so.
+describe("BackgroundSpawn: a Stop during the spawn", () => {
+  test("kills the job as stopped and delivers the stopped result without waking", async () => {
+    const path = await import("path")
+    const { tmpdir } = await import("../fixture/fixture")
+    const { Instance } = await import("../../src/project/instance")
+    const { Session } = await import("../../src/session")
+    const { SessionPrompt } = await import("../../src/session/prompt")
+    await using project = await tmpdir({
+      git: true,
+      init: (dir) =>
+        Bun.write(
+          path.join(dir, "opencode.json"),
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            enabled_providers: ["anthropic"],
+            model: "anthropic/claude-3-5-sonnet-20241022",
+            provider: { anthropic: { options: { apiKey: "test-key", baseURL: "http://127.0.0.1:9/v1" } } },
+          }),
+        ),
+    })
+    await Instance.provide({
+      directory: project.path,
+      fn: async () => {
+        const session = await Session.create({ title: "stopped mid-spawn" })
+        // Clear at the check before the spawn, aborted at the one after it.
+        const reads = { count: 0 }
+        const signal = {
+          get aborted() {
+            reads.count++
+            return reads.count > 1
+          },
+          reason: SessionPrompt.STOPPED,
+        } as AbortSignal
+
+        const error = await BackgroundSpawn.run({
+          command: "sleep 30",
+          description: "stopped mid-spawn",
+          sessionID: session.id,
+          signal,
+          directory: project.path,
+          project: project.path,
+          shell: "/bin/sh",
+          env: {},
+          hard: 60_000,
+        }).then(
+          () => undefined,
+          (failure: Error) => failure.message,
+        )
+
+        const [job] = (await BackgroundJob.list()).filter((record) => record.sessionID === session.id)
+        expect(error).toBe(`session ${session.id} was stopped while launching job ${job!.id}`)
+        expect(job!.status).toBe("killed")
+        expect(job!.ended).toBe("stop")
+        expect(await Debt.has(job!.id)).toBe(false)
+        const delivered = (await Session.messages({ sessionID: session.id })).flatMap((message) =>
+          message.parts.flatMap((part) =>
+            part.type === "text" && part.backgroundJobResult?.jobId === job!.id
+              ? [part.backgroundJobResult.status]
+              : [],
+          ),
+        )
+        expect(delivered).toEqual(["stopped"])
+
+        await Session.remove(session.id)
+        await BackgroundJob.remove(job!.id)
+      },
+    })
+  }, 30_000)
+})
+
+describe("BackgroundJob.create", () => {
+  test("writes the record and its debt together", async () => {
+    const id = BackgroundJob.id()
+    const job: BackgroundJob.Info = {
+      id,
+      sessionID: "ses_create_both",
+      directory: "/tmp",
+      command: "true",
+      description: "create",
+      status: "running",
+      time: { created: 1000, hard: 61_000 },
+    }
+    await BackgroundJob.create(job)
+    expect(await BackgroundJob.get(id)).toEqual(job)
+    expect(await Debt.get(id)).toEqual({
+      responder: id,
+      kind: "job",
+      caller: "ses_create_both",
+      created: 1000,
+      asks: 0,
+    })
+    await Debt.remove(id)
+    await BackgroundJob.remove(id)
+  })
+
+  // A record that cannot be serialized throws after the debt is written in
+  // the same transaction, which rolls both back.
+  test("a throw inside the write leaves neither the record nor the debt", async () => {
+    const id = BackgroundJob.id()
+    const job = {
+      id,
+      sessionID: "ses_create_neither",
+      directory: "/tmp",
+      command: "true",
+      description: "create",
+      status: "running",
+      exit: 1n,
+      time: { created: 1000, hard: 61_000 },
+    } as unknown as BackgroundJob.Info
+    await expect(BackgroundJob.create(job)).rejects.toThrow("BigInt")
+    expect(await BackgroundJob.get(id)).toBeUndefined()
+    expect(await Debt.get(id)).toBeUndefined()
+  })
+})
+
+// A Stop's abort precedes its payment, so a Stop that lands after an inline job
+// paid its debt and settled must not open that debt again.
+describe("BackgroundSpawn: a Stop after the inline payment", () => {
+  test("leaves no job debt behind", async () => {
+    const { GlobalBus } = await import("../../src/bus/global")
+    const { SessionPrompt } = await import("../../src/session/prompt")
+    const abort = new AbortController()
+    const listener = (event: { payload: { type: string; properties: { job?: BackgroundJob.Info } } }) => {
+      if (event.payload.properties.job?.status === "exited") abort.abort(SessionPrompt.STOPPED)
+    }
+    GlobalBus.on("event", listener)
+    const spawn = await run("echo done", { signal: abort.signal }).finally(() => GlobalBus.off("event", listener))
+
+    expect(spawn.type).toBe("inline")
+    expect(abort.signal.aborted).toBe(true)
+    expect(await Debt.has(spawn.job.id)).toBe(false)
+  })
+
+  test("an Esc there still puts the debt back for the collector", async () => {
+    const { GlobalBus } = await import("../../src/bus/global")
+    const abort = new AbortController()
+    const listener = (event: { payload: { type: string; properties: { job?: BackgroundJob.Info } } }) => {
+      if (event.payload.properties.job?.status === "exited") abort.abort()
+    }
+    GlobalBus.on("event", listener)
+    const spawn = await watching(
+      () => {},
+      () => run("echo done", { signal: abort.signal }),
+    ).finally(() => GlobalBus.off("event", listener))
+
+    expect(spawn.type).toBe("inline")
+    expect(await Debt.has(spawn.job.id)).toBe(true)
+    await Debt.remove(spawn.job.id)
+  })
+
+  test("an Esc there while a Stop holds the session leaves no job debt behind", async () => {
+    const { GlobalBus } = await import("../../src/bus/global")
+    const { Recovery } = await import("../../src/session/recovery")
+    const abort = new AbortController()
+    const listener = (event: { payload: { type: string; properties: { job?: BackgroundJob.Info } } }) => {
+      if (event.payload.properties.job?.status === "exited") abort.abort()
+    }
+    GlobalBus.on("event", listener)
+    Recovery.hold(["ses_spawn_test"])
+    const spawn = await run("echo done", { signal: abort.signal }).finally(() => {
+      GlobalBus.off("event", listener)
+      Recovery.release(["ses_spawn_test"])
+    })
+
+    expect(spawn.type).toBe("inline")
+    expect(abort.signal.aborted).toBe(true)
+    expect(await Debt.has(spawn.job.id)).toBe(false)
+  })
 })

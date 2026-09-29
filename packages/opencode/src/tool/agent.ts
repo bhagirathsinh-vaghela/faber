@@ -3,12 +3,9 @@ import DESCRIPTION from "./agent.txt"
 import z from "zod"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
-import { Identifier } from "../id/id"
+import { Provider } from "../provider/provider"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
-import { Recovery } from "../session/recovery"
-import { Sessions } from "../storage/sessions"
-import { Messages } from "../storage/messages"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
 import { Config } from "@/config/config"
@@ -126,11 +123,10 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
         }
       }
 
-      // The launch belongs to this turn: one a stop has cancelled, or is about
-      // to (a stop stamps first and cancels last), launches nothing.
-      const launched = Date.now()
-      const halted = () => ctx.abort.aborted || Sessions.halted(ctx.sessionID, launched)
-      if (await halted()) throw new Error(`session ${ctx.sessionID} was stopped before its subagent launched`)
+      // The launch belongs to this turn: one an Esc or Stop has cancelled
+      // launches nothing.
+      const stopped = () => new Error(`session ${ctx.sessionID} was stopped before its subagent launched`)
+      if (ctx.abort.aborted) throw stopped()
 
       const session =
         found ??
@@ -139,80 +135,78 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
             parentID: ctx.sessionID,
             title: params.description + ` (@${params.subagent_type} subagent)`,
           })
-          return Session.update(created.id, (draft) => {
-            draft.allowedTools = allowed
-            draft.time.injected = 0
-          })
+          return Session.update(created.id, (draft) => void (draft.allowedTools = allowed))
         }))
-      // A launch that fails from here on leaves a child that will not run for
-      // it: a new child, or one whose prompt for this launch landed, is
-      // stopped over that prompt rather than left owed with no turn. A
-      // continued child the launch never reached is left as it was.
-      const abandon = async (error: unknown) => {
-        const prompted = (await Messages.reader()).prompted(session.id)
-        if (!found || prompted >= launched)
-          await Session.mark(session.id, (draft) => void (draft.time.stopped = Math.max(Date.now(), prompted)))
-        throw error
+      // A child this call made goes with a failed preparation, so no orphan
+      // (possibly a copy of the caller's transcript) is left behind.
+      const parts = await prepare(session.id, !found && params.include_context ? ctx.sessionID : undefined).catch(
+        async (error) => {
+          if (!found) await Session.remove(session.id)
+          throw error
+        },
+      )
+
+      // Checked again after the awaits above, before anything is written into
+      // the child: a child this call made goes with nothing owed.
+      if (ctx.abort.aborted) {
+        if (!found) await Session.remove(session.id)
+        throw stopped()
       }
-      const stopped = () => new Error(`session ${ctx.sessionID} was stopped before its subagent launched`)
-      const parts = await prepare(session.id).catch(abandon)
 
-      // Checked again after the awaits above: a stop that landed meanwhile has
-      // already stamped this child, and a prompt written now would outrun it.
-      if (await halted()) await abandon(stopped())
-
-      // The prompt is the fact that makes the parent owed this child's result,
-      // so it is written before the tool returns.
-      const written = await SessionPrompt.prompt({
+      // Written like any message into a subagent, whose write opens the
+      // child's debt or joins the one still open. Its turn is the typed
+      // prompt's: a steer into a busy child asks again once the running turn
+      // ends, and a failed turn reports itself. Recovery delivers the result
+      // once the child is done, however many restarts that takes.
+      const sent = await SessionPrompt.send({
         sessionID: session.id,
         model: parts.model,
+        variant: parts.variant ?? (found ? Provider.INHERIT : Provider.DEFAULT),
         agent: agent.name,
         tools: {},
         parts: parts.prompt,
-        noReply: true,
-      }).catch(abandon)
-
-      // A continued child reports from this prompt on: whatever it answered
-      // before was already its parent's, or never will be. After the prompt,
-      // so a launch that fails to write it leaves the earlier result owed;
-      // `max` keeps a delivery that just landed.
-      if (found)
-        await Session.update(found.id, (draft) => {
-          draft.time.injected = Math.max(draft.time.injected ?? 0, launched - 1)
-        }).catch(abandon)
-
-      // A stop stamps parent before child and every stamp before any cancel
-      // (Session.stop). So the parent is read first and the child last, with
-      // nothing awaited between that read and the turn's start: a child read
-      // unstamped means its cancel comes after the turn below is registered,
-      // and its stamp after the prompt, so the child is owed nothing.
-      if (await halted()) await abandon(stopped())
-      const child = await Sessions.read(session.id).catch(abandon)
-      if ((child.time.stopped ?? 0) >= launched) await abandon(stopped())
-
-      // Fire and forget. Recovery delivers the result once the child is done,
-      // however many restarts that takes.
-      void SessionPrompt.loop(session.id).catch(async (error) => {
-        log.error("subagent turn failed", { sessionID: session.id, error })
-        const message = error instanceof Error ? error.message : String(error)
-        await Recovery.fail(session.id, message, launched, written.info.time.created).catch(
-          (failure) => log.error("could not report the failed subagent", { sessionID: session.id, error: failure }),
-        )
       })
+      sent.answer.catch((error) => log.error("subagent turn failed", { sessionID: session.id, error }))
+
+      // Only a Stop after the write abandons the launch; an Esc lets it run,
+      // since the child's turn is its own. A child this call made goes, and
+      // its debt with it: its turn is cancelled and settles before the child
+      // is removed, so nothing writes into a deleted session. A continued or
+      // steered child is left to the Stop, whose walk of the subtree reaches it;
+      // a write that lands after that walk started is the accepted case of a
+      // message written during a Stop, which may start a turn stopped by hand.
+      if (ctx.abort.reason === SessionPrompt.STOPPED && !found) {
+        SessionPrompt.cancel(session.id, SessionPrompt.STOPPED)
+        await sent.answer.catch(() => undefined)
+        await Session.remove(session.id)
+        throw stopped()
+      }
+      const mode = sent.message.debt === "joined" ? "steered" : found ? "continued" : "launched"
 
       return {
         title: params.description,
         metadata: {
           status: "async_launched",
+          // Everything the launcher card shows; it never reads `output`.
+          mode,
+          description: params.description,
+          summary: params.summary,
+          subagentType: params.subagent_type,
+          // Whether THIS call copied the caller's conversation: a prompt into
+          // an existing child carries that child's own transcript instead.
+          includeContext: !found && !!params.include_context,
+          toolset: params.toolset,
+          tools: allowed,
           subagentId: session.id,
           sessionId: session.id,
           model: parts.model,
-          toolset: params.toolset,
-          tools: allowed,
-          summary: params.summary,
         } as Record<string, unknown>,
         output: [
-          `Background subagent started: ${params.description}`,
+          {
+            steered: `Prompt delivered to the running subagent: ${params.description}. It reports once, covering both asks.`,
+            continued: `Subagent continued: ${params.description}. It reports again once it answers.`,
+            launched: `Background subagent started: ${params.description}`,
+          }[mode],
           `agent: ${agent.name}`,
           `toolset: ${params.toolset} (${allowed.join(", ")})`,
           ...(params.summary ? [`summary: ${params.summary}`] : []),
@@ -240,43 +234,17 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
         ].join("\n"),
       }
 
-      // Everything the prompt needs, read before it is written: the parent's
-      // conversation copied into a new child (shared context, cache reuse),
-      // the caller's model, and the resolved parts.
-      async function prepare(childID: string) {
-        const copied = params.include_context && !found ? await Session.messages({ sessionID: ctx.sessionID }) : []
-        const ids = new Map<string, string>()
-        for (const parentMsg of copied) {
-          const newID = Identifier.ascending("message")
-          ids.set(parentMsg.info.id, newID)
-          const parentID =
-            parentMsg.info.role === "assistant" && parentMsg.info.parentID
-              ? ids.get(parentMsg.info.parentID)
-              : undefined
-          // Dated before the child existed, however late the parent wrote it:
-          // recovery counts only messages from the child's creation on as its
-          // own prompts, and a copied one must never pass for the real prompt.
-          await Session.updateMessage({
-            ...parentMsg.info,
-            sessionID: childID,
-            id: newID,
-            time: { ...parentMsg.info.time, created: Math.min(parentMsg.info.time.created, session.time.created - 1) },
-            ...(parentID && { parentID }),
-          })
-          for (const part of parentMsg.parts) {
-            await Session.updatePart({
-              ...part,
-              id: Identifier.ascending("part"),
-              messageID: newID,
-              sessionID: childID,
-            })
-          }
-        }
+      // Everything the prompt needs, read before it is written: the caller's
+      // conversation copied into a new child from `source` (shared context,
+      // cache reuse), the caller's model and variant, and the resolved parts.
+      async function prepare(childID: string, source: string | undefined) {
+        if (source) await Session.copy(source, childID)
         const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
         if (msg.info.role !== "assistant")
           throw new Error(`message ${ctx.messageID} calling the agent tool is not an assistant message`)
         return {
           model: { modelID: msg.info.modelID, providerID: msg.info.providerID },
+          variant: msg.info.variant,
           prompt: await SessionPrompt.resolvePromptParts(params.prompt),
         }
       }

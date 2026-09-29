@@ -11,6 +11,7 @@ import type {
 import { createSimpleContext } from "./helper"
 import { createMemo } from "solid-js"
 import { type FileDiffPreload } from "../pierre"
+import type { BusyFacts } from "../util/busy-tint"
 
 type Data = {
   session: Session[]
@@ -18,20 +19,9 @@ type Data = {
   session_status: {
     [sessionID: string]: SessionStatus
   }
-  // The one operative busy state: busy = effective (own turn OR any subagent,
-  // full subtree, rolled up server-side); busySelf = own turn only. Every busy
-  // indicator reads this; busySelf picks own-vs-delegating animation.
-  //
-  // busyJob is optional because it answers to a different clock: busy tracks
-  // turns in the server's own process, while a background job outlives the turn
-  // that spawned it, so a record written before the field existed simply lacks it.
+  // The one operative busy state; every busy indicator reads this.
   session_busy: {
-    [sessionID: string]: {
-      busy: boolean
-      busySelf: boolean
-      busyDescendant: boolean
-      busyJob?: boolean
-    }
+    [sessionID: string]: BusyFacts
   }
   session_diff: {
     [sessionID: string]: FileDiff[]

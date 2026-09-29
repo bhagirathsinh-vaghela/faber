@@ -14,10 +14,9 @@ export type AttentionInput = {
   error?: boolean
   question?: boolean
   permission?: boolean
-  busy?: boolean
-  busySelf?: boolean
-  busyDescendant?: boolean
-  busyJob?: boolean
+  turn?: boolean
+  subagents?: number
+  jobs?: number
   unseen?: boolean
   agent?: string
 }
@@ -36,19 +35,11 @@ export function attention(input: AttentionInput, custom?: string): Attention | u
   if (input.error) return { kind: "error" }
   if (input.question) return { kind: "question", tint: agentTint(input.agent, custom) }
   if (input.permission) return { kind: "permission" }
-  // Gated on busyShown, not on `busy` alone. `busy` covers only the turns in
-  // the open subtree, so a session whose sole live work is a background job
-  // would show no dot while the spinners elsewhere show one. The dot and the
-  // spinners read the same facts through the same table, so they cannot disagree
-  // about whether to show or about which colour.
-  const facts = {
-    busy: !!input.busy,
-    busySelf: !!input.busySelf,
-    busyDescendant: !!input.busyDescendant,
-    busyJob: !!input.busyJob,
-  }
+  // The dot and the spinners read the same facts through the same table, so
+  // they cannot disagree about whether to show or about which colour.
+  const facts = { turn: !!input.turn, subagents: input.subagents ?? 0, jobs: input.jobs ?? 0 }
   if (busyShown(facts)) {
-    const agent = input.busySelf ? agentTint(input.agent, custom) : undefined
+    const agent = facts.turn ? agentTint(input.agent, custom) : undefined
     return { kind: "busy", tint: busyBase(facts, agent), overlays: busyOverlays(facts, agent) }
   }
   if (input.unseen) return { kind: "unseen" }

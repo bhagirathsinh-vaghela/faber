@@ -18,6 +18,8 @@ import { Plugin } from "@/plugin"
 import { Server } from "@/server/server"
 import { BackgroundSpawn } from "@/background/spawn"
 import { BackgroundJob } from "@/background/job"
+import { BackgroundNotify } from "@/background/notify"
+import { Debt } from "@/storage/debt"
 import { Config } from "@/config/config"
 import { parseDuration, formatDuration } from "@/util/format"
 
@@ -102,7 +104,27 @@ export const BashTool = Tool.define("bash", async () => {
       // job id instead of a command and returns before any of the command
       // machinery below.
       if (params.kill) {
-        const stopped = await BackgroundJob.stop(params.kill)
+        const target = await BackgroundJob.get(params.kill)
+        if (target && target.sessionID !== ctx.sessionID) {
+          throw new Error(
+            `Refusing to kill job ${params.kill}: it belongs to session ${target.sessionID}, not this session (${ctx.sessionID}).`,
+          )
+        }
+        // The reply below is the payment only for a job THIS call ended. One
+        // that finished on its own keeps its debt, so Recovery delivers its
+        // output. So does one killed by a turn that is being cancelled, since
+        // nothing reads this reply; that result is collected at once. So is
+        // one this call found dead and settled without a kill, which is owed
+        // now rather than at the next pass.
+        const pay = !ctx.abort.aborted
+        const stopped = await BackgroundJob.stop(params.kill, { why: "kill", pay })
+        const collect = stopped.type === "settled" && (stopped.killed ? !pay : await Debt.has(params.kill))
+        if (collect) {
+          const { Recovery } = await import("@/session/recovery")
+          const { SessionPrompt } = await import("@/session/prompt")
+          await Recovery.collect(ctx.sessionID, { fresh: true, wake: ctx.abort.reason !== SessionPrompt.STOPPED })
+        }
+        const owed = await Debt.has(params.kill)
         const output =
           stopped.type === "unknown"
             ? `No job ${params.kill}. It may have finished and been cleaned up.`
@@ -111,9 +133,9 @@ export const BashTool = Tool.define("bash", async () => {
               // did not happen: the caller can try again in a moment.
               stopped.type === "unspawned"
               ? `Job ${params.kill} is still starting and cannot be killed yet. Try again in a moment.`
-              : stopped.job.status === "killed"
+              : stopped.killed
                 ? `Killed job ${params.kill} and everything it spawned.`
-                : `Job ${params.kill} had already finished (exit ${stopped.job.exit ?? "unknown"}).`
+                : `Job ${params.kill} had already ended (${BackgroundNotify.meta(stopped.job, BackgroundJob.outcome(stopped.job)).status}, exit ${stopped.job.exit ?? "unknown"}); its result ${owed ? "will be" : "was already"} delivered.`
         return {
           title: params.description,
           metadata: {

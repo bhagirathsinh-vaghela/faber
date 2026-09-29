@@ -11,25 +11,6 @@ import type { MessageV2 } from "../session/message-v2"
 // (value + byte length for the message cache budget), and a per-session ordered
 // list — so the caller's reconcile/preserveTerminal/broadcast logic is unchanged.
 export namespace Messages {
-  // When the session named by `column` was last prompted, as a scalar SQL
-  // subquery: its newest user message that is not synthetic, not a compaction
-  // request, and written since the session was created. The one definition,
-  // shared by `reader().prompted` and Sessions' owed query, so the two can
-  // never disagree. The creation bound leaves out context the agent tool
-  // copies from the parent, which keeps the parent's older timestamps: until
-  // the child's own prompt lands, it has not been prompted.
-  export function prompts(column: string) {
-    // Each json_extract sits behind a json_valid of its own row inside a CASE,
-    // which SQLite evaluates in order: json_extract throws on a malformed
-    // blob, and one torn row must not fail every session's query.
-    return `(SELECT max(m.time_created) FROM message m
-         WHERE m.session_id = ${column}
-           AND m.time_created >= (SELECT time_created FROM session WHERE id = ${column})
-           AND CASE WHEN json_valid(m.json) THEN json_extract(m.json, '$.role') = 'user' AND json_extract(m.json, '$.synthetic') IS NOT 1 END
-           AND NOT EXISTS (SELECT 1 FROM part p WHERE p.message_id = m.id
-             AND CASE WHEN json_valid(p.json) THEN json_extract(p.json, '$.type') = 'compaction' END))`
-  }
-
   const open = lazy(async () => {
     const db = await Db.open()
     db.run(`
@@ -59,6 +40,15 @@ export namespace Messages {
       ),
       newest: db.query<{ json: string }, [string]>(
         `SELECT json FROM message WHERE session_id = ? ORDER BY id DESC LIMIT 1`,
+      ),
+      // The newest assistant message, the reply the session last made.
+      reply: db.query<{ json: string }, [string]>(
+        `SELECT json FROM message WHERE session_id = ?
+           AND CASE WHEN json_valid(json) THEN json_extract(json, '$.role') = 'assistant' END
+         ORDER BY id DESC LIMIT 1`,
+      ),
+      after: db.query<{ json: string }, [string, string]>(
+        `SELECT json FROM message WHERE session_id = ? AND id >= ? ORDER BY id`,
       ),
       remove: db.query<void, [string]>(`DELETE FROM message WHERE id = ?`),
       removeSession: db.query<void, [string]>(`DELETE FROM message WHERE session_id = ?`),
@@ -114,27 +104,46 @@ export namespace Messages {
   }
 
   // Synchronous reads for a caller's Db.transaction, which re-checks a decision
-  // taken outside it. `newest` is by id, the order MessageV2.stream reads in;
-  // `prompted` is when a person (or a parent, through the agent tool) last
-  // prompted the session, as opposed to a message the loop minted.
-  // Excludes compaction requests: the loop writes those as user messages, and
-  // they are not a person or a parent asking for work.
-  const latest = lazy(async () => {
-    const [{ Parts }, q] = await Promise.all([import("./parts"), open()])
-    await Parts.removeSessionQuery()
-    // Numbered, since the fragment names the session twice.
-    return q.db.query<{ at: number | null }, [string]>(`SELECT ${prompts("?1")} AS at`)
-  })
-
+  // taken outside it. `newest` is by id, the order MessageV2.stream reads in.
+  // `waiting` is a user message written after the newest reply's own request
+  // that no reply links to: a message written while a step was starting sorts
+  // before the reply that never saw it (MessageV2.filterCompacted moves it
+  // after), so the newest row alone would read it as answered.
+  // `pending` is the first such message written after `since` (a stop's
+  // stamp, say), for a caller that needs its id or time rather than the
+  // newest row's.
+  // `aborted` is a last turn an interrupt ended, which waits for a new message.
   export async function reader() {
     const q = await open()
-    const prompted = await latest()
+    const parse = (row: { json: string } | null) => (row ? (JSON.parse(row.json) as MessageV2.Info) : undefined)
+    const pending = (sessionID: string, since = 0) => {
+      const reply = parse(q.reply.get(sessionID))
+      if (reply?.role !== "assistant") {
+        const newest = parse(q.newest.get(sessionID))
+        return newest?.role === "user" && newest.time.created > since ? newest : undefined
+      }
+      return q.after
+        .all(sessionID, reply.parentID)
+        .map(parse)
+        .find((msg) => msg?.role === "user" && msg.id !== reply.parentID && msg.time.created > since)
+    }
     return {
-      newest: (sessionID: string) => {
-        const row = q.newest.get(sessionID)
-        return row ? (JSON.parse(row.json) as MessageV2.Info) : undefined
+      newest: (sessionID: string) => parse(q.newest.get(sessionID)),
+      pending,
+      waiting: (sessionID: string, since = 0) => !!pending(sessionID, since),
+      // A last turn a stop or an Esc cut: its reply was aborted, or a message
+      // still unanswered when `since` (the stop) landed was dropped by it.
+      // Either way the session waits for a new message; reading it as done
+      // would report the previous task's reply as this one's result.
+      interrupted: (sessionID: string, since = 0) => {
+        const reply = parse(q.reply.get(sessionID))
+        if (reply?.role === "assistant" && reply.error?.name === "MessageAbortedError") return true
+        return !!pending(sessionID) && !pending(sessionID, since)
       },
-      prompted: (sessionID: string) => prompted.get(sessionID)?.at ?? 0,
+      aborted: (sessionID: string) => {
+        const reply = parse(q.reply.get(sessionID))
+        return reply?.role === "assistant" && reply.error?.name === "MessageAbortedError"
+      },
     }
   }
 

@@ -33,26 +33,8 @@ afterEach(async () => {
 })
 
 describe("job.list", () => {
-  // A result nobody received is the record the page exists to surface, and the
-  // cap is by count: without an exemption it falls out of the list as soon as
-  // newer jobs exist, leaving it reachable only by an id nobody wrote down.
-  test("keeps a result that was never delivered, however far down the list", async () => {
-    const lost = await write({ time: { created: 1, hard: 2, completed: 3, lost: Date.now() } })
-    // Every one of these sorts ahead of it: the id is time-ordered and these
-    // are minted later.
-    for (let i = 0; i < 60; i++) await write({})
-
-    const body = await Instance.provide({
-      directory: projectRoot,
-      fn: async () => (await Server.App().request("/job")).json() as Promise<{ id: string }[]>,
-    })
-
-    expect(body.find((job) => job.id === lost)).toBeDefined()
-  }, 20_000)
-
-  // The cap itself, so the exemption above cannot be read as "nothing is
-  // bounded". Only jobs this test wrote are counted: the machine's own records
-  // share the list.
+  // Only jobs this test wrote are counted: the machine's own records share the
+  // list.
   test("bounds the finished jobs it returns", async () => {
     const ids = new Set<string>()
     for (let i = 0; i < 60; i++) ids.add(await write({}))

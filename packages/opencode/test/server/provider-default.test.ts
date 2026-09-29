@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
+import { Session } from "../../src/session"
+import { SessionPrompt } from "../../src/session/prompt"
+import { Provider } from "../../src/provider/provider"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 
@@ -33,7 +36,17 @@ async function resolve(agent?: Record<string, { variant: string }>) {
     directory: project.path,
     fn: async () => {
       const response = await Server.App().request(`/provider/default?directory=${encodeURIComponent(project.path)}`)
-      return { body: await response.json() }
+      const session = await Session.create({})
+      const message = await SessionPrompt.prompt({
+        sessionID: session.id,
+        model: Provider.DEFAULT,
+        variant: Provider.DEFAULT,
+        noReply: true,
+        parts: [{ type: "text", text: "hello" }],
+      })
+      await Session.remove(session.id)
+      if (message.info.role !== "user") throw new Error(`expected a user message in ${session.id}`)
+      return { body: await response.json(), written: message.info }
     },
   })
 }
@@ -41,9 +54,12 @@ async function resolve(agent?: Record<string, { variant: string }>) {
 test("GET /provider/default returns the model's configured variant", async () => {
   const resolved = await resolve()
   expect(resolved.body).toEqual({ providerID: "openai", modelID: "gpt-5.2", variant: "effort-medium", agent: "build" })
+  expect(resolved.written.model).toEqual({ providerID: "openai", modelID: "gpt-5.2" })
+  expect(resolved.written.variant).toBe("effort-medium")
 })
 
 test("GET /provider/default returns the default agent's variant over the model's", async () => {
   const resolved = await resolve({ build: { variant: "effort-low" } })
   expect(resolved.body).toEqual({ providerID: "openai", modelID: "gpt-5.2", variant: "effort-low", agent: "build" })
+  expect(resolved.written.variant).toBe("effort-low")
 })

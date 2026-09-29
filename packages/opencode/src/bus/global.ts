@@ -31,7 +31,9 @@ export namespace GlobalInterest {
   // open session + subagent children + the handful of live/attention sessions
   // the user juggles, which CAN span directories (transcript warmth). Separate
   // from `busy`, which is the simple two-mode busy scope: the ONE open session
-  // (server expands to its subtree) or none (overview → heals via recent.updated).
+  // (the heal tick adds children with an open debt or a live turn,
+  // plus one trailing zero for a child that just went idle) or none (overview → the tick heals
+  // each active root).
   // directory routes the busy tick frame back to the right per-directory store.
   type Interest = { directory?: string; sessions: Set<string>; busy?: string }
   const registry = new Map<string, Interest>()
@@ -49,9 +51,10 @@ export namespace GlobalInterest {
     registry.delete(connectionID)
   }
 
-  // The open session whose subtree the busy reconcile tick heals, and its
-  // directory. Absent = overview (or nothing open): the tick stays silent, since
-  // the overview heals busy via recent.updated instead.
+  // The open session the busy heal tick covers (with children that have an open debt or
+  // a live turn, plus one trailing zero per child that just went idle), and
+  // its directory. Absent = overview (or nothing open): the tick heals each
+  // active root instead.
   export function busy(connectionID: string): { sessionID: string; directory: string } | undefined {
     const entry = registry.get(connectionID)
     if (!entry?.busy || !entry.directory) return undefined

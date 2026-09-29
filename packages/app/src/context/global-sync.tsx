@@ -29,6 +29,7 @@ import { createStore, produce, reconcile, type SetStoreFunction, type Store } fr
 import { Binary } from "@opencode-ai/util/binary"
 import { Identifier } from "@opencode-ai/util/identifier"
 import { isAlive } from "@opencode-ai/util/session"
+import { IDLE, type BusyFacts } from "@opencode-ai/ui/util/busy-tint"
 import { Snapshot } from "@/utils/snapshot"
 import { retry } from "@opencode-ai/util/retry"
 import { useGlobalSDK } from "./global-sdk"
@@ -66,6 +67,23 @@ type ProjectMeta = {
   }
 }
 
+// Bootstrap and the new-session refetch both write `default_model`; one
+// counter per directory drops a response issued before one that already
+// landed. Call the ticket only on success: a failed newer request must not
+// shadow an older success still in flight.
+const defaultModelSeq = new Map<string, { issued: number; landed: number }>()
+export function defaultModelTicket(directory: string) {
+  const seq = defaultModelSeq.get(directory) ?? { issued: 0, landed: 0 }
+  const ticket = seq.issued + 1
+  seq.issued = ticket
+  defaultModelSeq.set(directory, seq)
+  return () => {
+    if (ticket < seq.landed) return false
+    seq.landed = ticket
+    return true
+  }
+}
+
 type State = {
   status: "loading" | "partial" | "complete"
   agent: Agent[]
@@ -92,18 +110,11 @@ type State = {
     [sessionID: string]: SessionStatus
   }
   // The single live busy source, keyed by sessionID, fed by the always-global
-  // `session.busy` event. `busy` = effective (own turn OR any in-flight
-  // descendant subagent, full subtree); `busySelf` = own turn only. Every
-  // consumer (overview, sidebar, open session, dock, title, SessionTurn) reads
-  // this — no more recent_hub-vs-session_status split. recent_hub still carries
-  // busy for the durable list, but the live flip everyone animates off is here.
+  // `session.busy` event and the recent hub. Every consumer (overview, sidebar,
+  // open session, dock, title, SessionTurn) reads this. recent_hub still carries
+  // the facts for the durable list, but the live flip everyone animates off is here.
   session_busy: {
-    [sessionID: string]: {
-      busy: boolean
-      busySelf: boolean
-      busyDescendant: boolean
-      busyJob?: boolean
-    }
+    [sessionID: string]: BusyFacts
   }
   // Session IDs whose ping daemon is armed on this server instance. The hub's
   // will-ping countdown is gated on this, never on the persisted cache anchor
@@ -276,22 +287,21 @@ function createGlobalSync() {
     // The complete home overview, server-owned so every client renders the same
     // list without opening any directory. Seeded once at bootstrap, then replaced
     // wholesale from the recent.updated event (which carries the full list). Each
-    // entry already carries its live flags (busy, unseen) and next-ping deadline;
-    // the client only ticks the deadline into a countdown string.
-    recent_hub: {
+    // entry already carries its live flags (busy facts, unseen) and next-ping
+    // deadline; the client only ticks the deadline into a countdown string.
+    recent_hub: (BusyFacts & {
       sessionID: string
       directory: string
       title: string
       agent?: string
       updated: number
-      busy: boolean
       unseen: boolean
       question?: boolean
       permission?: boolean
       error?: boolean
       pingAt?: number
       pinged?: number
-    }[]
+    })[]
     // The server-owned set of projects shown in the sidebar. Every client
     // connected to this server renders the same set: seeded at bootstrap from
     // GET /global/projects/open, then replaced wholesale from the
@@ -305,7 +315,7 @@ function createGlobalSync() {
     provider: { all: [], connected: [], default: {} },
     provider_auth: {},
     config: {},
-    model_preference: { user: [], recent: [], variant: {} },
+    model_preference: { user: [], recent: [] },
     voice_preference: { name: null },
     stash: [],
     reload: undefined,
@@ -540,7 +550,7 @@ function createGlobalSync() {
           config: {},
           default_model: null,
           path: { state: "", config: "", worktree: "", directory: "", home: "" },
-          model_preference: { user: [], recent: [], variant: {} },
+          model_preference: { user: [], recent: [] },
           voice_preference: { name: null },
           stash: [],
           status: "loading" as const,
@@ -714,7 +724,12 @@ function createGlobalSync() {
         provider: () => providerList(directory).then((list) => setStore("provider", list)),
         agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
         config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
-        default_model: () => sdk.provider.default().then((x) => setStore("default_model", x.data ?? null)),
+        default_model: () => {
+          const latest = defaultModelTicket(directory)
+          return sdk.provider.default().then((x) => {
+            if (latest()) setStore("default_model", x.data ?? null)
+          })
+        },
       }
 
       try {
@@ -998,12 +1013,13 @@ function createGlobalSync() {
           return
         }
         case "recent.updated": {
-          setGlobalStore("recent_hub", reconcile(event.properties.entries, { key: "sessionID" }))
+          const entries = event.properties.entries
+          setGlobalStore("recent_hub", reconcile(entries, { key: "sessionID" }))
           // Feed the one operative busy store from the aggregated hub channel:
           // the overview's breadth source. Each row carries the same busy facts
           // the server stamped; writing them here keeps session_busy the single
           // thing every animation reads, with no per-session event storm.
-          seedBusy(event.properties.entries)
+          seedBusy(entries)
           return
         }
         case "session.busy": {
@@ -1012,26 +1028,15 @@ function createGlobalSync() {
           // heals the CHILDREN the hub can't (children aren't in recent_hub), and
           // self-corrects any dropped transition within one tick. Each entry
           // carries its own directory, so route it into that directory's store.
+          // A frame for a root also carries its hub row's counts, so the overview
+          // dot follows per-root heal frames without a fresh recent.updated list.
           for (const [id, facts] of Object.entries(event.properties.sessions)) {
-            const [store, set] = ensureChild(facts.directory)
-            const prev = store.session_busy[id]
-            if (
-              prev &&
-              prev.busy === facts.busy &&
-              prev.busySelf === facts.busySelf &&
-              prev.busyDescendant === facts.busyDescendant
-            )
-              continue
-            // busyJob is CARRIED, not rewritten. This tick is authoritative about
-            // turns in the open subtree and knows nothing about a background job
-            // the session is waiting on, so writing the whole record would blank
-            // that flag every five seconds and leave the spinner strobing.
-            set("session_busy", id, {
-              busy: facts.busy,
-              busySelf: facts.busySelf,
-              busyDescendant: facts.busyDescendant,
-              busyJob: prev?.busyJob,
-            })
+            writeBusy(facts.directory, id, facts)
+            const index = globalStore.recent_hub.findIndex((entry) => entry.sessionID === id)
+            if (index === -1) continue
+            const row = globalStore.recent_hub[index]
+            if (row.turn === facts.turn && row.subagents === facts.subagents && row.jobs === facts.jobs) continue
+            setGlobalStore("recent_hub", index, { turn: facts.turn, subagents: facts.subagents, jobs: facts.jobs })
           }
           return
         }
@@ -1715,33 +1720,24 @@ function createGlobalSync() {
   // load) is not busy.
   function busy(directory: string, sessionID: string) {
     const [store] = ensureChild(directory)
-    return store.session_busy[sessionID] ?? { busy: false, busySelf: false, busyDescendant: false }
+    return store.session_busy[sessionID] ?? IDLE
+  }
+
+  // Only writes on change so a repeated snapshot can't churn reactions.
+  function writeBusy(directory: string, sessionID: string, facts: BusyFacts) {
+    const [store, setStore] = ensureChild(directory)
+    const prev = store.session_busy[sessionID]
+    if (prev && prev.turn === facts.turn && prev.subagents === facts.subagents && prev.jobs === facts.jobs) return
+    setStore("session_busy", sessionID, { turn: facts.turn, subagents: facts.subagents, jobs: facts.jobs })
   }
 
   // Write hub rows' busy facts into the per-directory session_busy stores. This
   // is how the aggregated recent.updated / bootstrap /recent channel feeds the
   // one operative busy state, so a session already busy on connect animates
   // immediately (no stale-on-connect gap) and the overview never needs a
-  // per-session event. Only writes on change so it can't churn reactions.
+  // per-session event.
   function seedBusy(entries: RecentSession[]) {
-    for (const entry of entries) {
-      const [store, setStore] = ensureChild(entry.directory)
-      const prev = store.session_busy[entry.sessionID]
-      if (
-        prev &&
-        prev.busy === entry.busy &&
-        prev.busySelf === entry.busySelf &&
-        prev.busyDescendant === entry.busyDescendant &&
-        prev.busyJob === entry.busyJob
-      )
-        continue
-      setStore("session_busy", entry.sessionID, {
-        busy: entry.busy,
-        busySelf: entry.busySelf,
-        busyDescendant: entry.busyDescendant,
-        busyJob: entry.busyJob,
-      })
-    }
+    for (const entry of entries) writeBusy(entry.directory, entry.sessionID, entry)
   }
 
   // Drop a session's cached liveness the moment the user stops it, instead of
@@ -1754,19 +1750,12 @@ function createGlobalSync() {
   // it. A failed abort is healed by that push like any other drift.
   function clearLiveness(sessionID: string, directory: string) {
     const [store, setStore] = ensureChild(directory)
-    // busyJob goes with them: this runs when the user stops the session, and a
-    // stopped session is no longer waiting on anything. The server's own pass is
-    // what restores the flag if a job is somehow still running.
-    if (store.session_busy[sessionID])
-      setStore("session_busy", sessionID, {
-        busy: false,
-        busySelf: false,
-        busyDescendant: false,
-        busyJob: false,
-      })
+    // Subagent and job debts go with the turn: a Stop pays every debt in the
+    // subtree, so zero is what the server reports next.
+    if (store.session_busy[sessionID]) setStore("session_busy", sessionID, IDLE)
     const index = globalStore.recent_hub.findIndex((entry) => entry.sessionID === sessionID)
     if (index === -1) return
-    setGlobalStore("recent_hub", index, { busy: false, pingAt: undefined })
+    setGlobalStore("recent_hub", index, { ...IDLE, pingAt: undefined })
   }
 
   return {

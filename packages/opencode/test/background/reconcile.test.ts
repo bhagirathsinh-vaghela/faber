@@ -4,8 +4,6 @@ import { BackgroundProcess } from "../../src/background/process"
 import { BackgroundReconcile } from "../../src/background/reconcile"
 
 const created: string[] = []
-const alive = () => true
-const dead = () => false
 
 function spawnJob(script: string) {
   return Bun.spawn({ cmd: ["sh", "-c", script], detached: true, stdio: ["ignore", "ignore", "ignore"] })
@@ -56,11 +54,14 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
     await proc.exited
     await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("completed")
     expect(action?.type === "completed" && action.exit).toBe(0)
-    expect((await BackgroundJob.get(job.id))?.status).toBe("exited")
+    const record = await BackgroundJob.get(job.id)
+    expect(record?.status).toBe("exited")
+    expect(record?.exit).toBe(0)
+    expect(record?.ended).toBeUndefined()
   })
 
   // The recovery path the whole subsystem exists for: a job self-timed out via
@@ -79,10 +80,13 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
     // the deadline set above, which is what marks the end as a timeout.
     await Bun.write(BackgroundJob.exitPath(job.id), "143\n")
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("expired")
-    expect((await BackgroundJob.get(job.id))?.status).toBe("killed")
+    const record = await BackgroundJob.get(job.id)
+    expect(record?.status).toBe("killed")
+    expect(record?.ended).toBe("timeout")
+    expect(record?.exit).toBe(143)
   })
 
   // The false positive the mtime guards against: a job that finished NORMALLY
@@ -100,7 +104,7 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
     await proc.exited
     await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("completed")
     expect((await BackgroundJob.get(job.id))?.status).toBe("exited")
@@ -110,7 +114,7 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
     const proc = spawnJob("sleep 30")
     const job = await store({ process: await identify(proc.pid) })
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("kept")
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
@@ -125,137 +129,29 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
       time: { created: Date.now() - 7200_000, hard: Date.now() - 3600_000 },
     })
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("expired")
     expect(await BackgroundProcess.verify(job.process!)).not.toBe("alive")
-    expect((await BackgroundJob.get(job.id))?.status).toBe("killed")
+    const record = await BackgroundJob.get(job.id)
+    expect(record?.status).toBe("killed")
+    expect(record?.ended).toBe("timeout")
   })
 })
 
 describe("BackgroundReconcile: ownership", () => {
-  // A job whose session was stopped is work nobody will read.
-  test("kills a healthy job whose owner is gone", async () => {
+  // No session is consulted: a job whose session does not exist, or is idle,
+  // or was stopped, is kept while it runs inside its bound. Stopping a job is
+  // the stop path's decision, never a pass's.
+  test("keeps a running job whose session does not exist", async () => {
     const proc = spawnJob("sleep 30")
-    const job = await store({ process: await identify(proc.pid) })
+    const job = await store({ process: await identify(proc.pid), sessionID: "ses_reconcile_no_such_session" })
 
-    const action = actionFor(await BackgroundReconcile.run({ alive: dead }), job.id)
-
-    expect(action?.type).toBe("reaped")
-    expect(action?.type === "reaped" && action.reason).toBe("owner-gone")
-    expect(await BackgroundProcess.verify(job.process!)).not.toBe("alive")
-    expect(await BackgroundJob.get(job.id)).toBeUndefined()
-  })
-
-  // The rule that lets a long build survive the turn that launched it.
-  test("keeps a job running when its owner is alive, whatever the turn did", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({ process: await identify(proc.pid) })
-
-    expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)?.type).toBe("kept")
-    expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
-  })
-
-  test("consults liveness with the owning session id", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({ process: await identify(proc.pid), sessionID: "ses_specific_owner" })
-
-    const asked: string[] = []
-    await BackgroundReconcile.run({
-      alive: (id) => {
-        asked.push(id)
-        return true
-      },
-    })
-
-    expect(asked).toContain("ses_specific_owner")
-  })
-})
-
-describe("BackgroundReconcile: an unresolved owner", () => {
-  // Only an explicit false is a verdict about the user's intent. A lookup that
-  // could not run says nothing about intent, and reaping on it kills healthy
-  // work for a reason belonging to the server rather than to the job.
-  test("keeps a running job when liveness cannot be established", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({ process: await identify(proc.pid) })
-
-    const action = actionFor(await BackgroundReconcile.run({ alive: () => undefined }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("kept")
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
-    expect(await BackgroundJob.get(job.id)).toBeDefined()
-  })
-
-  test("still reaps when the owner is explicitly gone", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({ process: await identify(proc.pid) })
-
-    const action = actionFor(await BackgroundReconcile.run({ alive: () => false }), job.id)
-
-    expect(action?.type).toBe("reaped")
-    expect(await BackgroundJob.get(job.id)).toBeUndefined()
-  })
-
-  // The predicate needs the job's directory, since a session resolves inside
-  // its own project and a sweep runs with no ambient context.
-  test("passes the job's directory alongside the session id", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({ process: await identify(proc.pid), directory: "/tmp/some-project" })
-
-    const seen: Array<{ id: string; dir: string }> = []
-    await BackgroundReconcile.run({
-      alive: (id, dir) => {
-        seen.push({ id, dir })
-        return true
-      },
-    })
-
-    expect(seen).toContainEqual({ id: job.sessionID, dir: "/tmp/some-project" })
-  })
-})
-
-describe("BackgroundReconcile: the boot window", () => {
-  // A pass that runs before session liveness has been rebuilt sees every
-  // session as not alive, including ones whose turns are about to resume.
-  // Reaping on that reading kills healthy jobs, so a boot pass adopts instead
-  // and leaves the ownership call to a later one.
-  test("adopts a running job instead of reaping it when ownership is deferred", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({ process: await identify(proc.pid) })
-
-    // What the boot pass passes: ownership not yet knowable, so not judged.
-    const action = actionFor(await BackgroundReconcile.run({ alive: () => true }), job.id)
-
-    expect(action?.type).toBe("kept")
-    expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
-    expect(await BackgroundJob.get(job.id)).toBeDefined()
-  })
-
-  // Deferring ownership must not defer anything derived from the job itself:
-  // those verdicts come off disk and are correct immediately.
-  test("still collects a finished job while ownership is deferred", async () => {
-    const proc = spawnJob("true")
-    const job = await store({ process: await identify(proc.pid) })
-    await proc.exited
-    await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
-
-    const action = actionFor(await BackgroundReconcile.run({ alive: () => true }), job.id)
-
-    expect(action?.type).toBe("completed")
-  })
-
-  test("still kills a job past its deadline while ownership is deferred", async () => {
-    const proc = spawnJob("sleep 30")
-    const job = await store({
-      process: await identify(proc.pid),
-      time: { created: Date.now() - 7200_000, hard: Date.now() - 3600_000 },
-    })
-
-    const action = actionFor(await BackgroundReconcile.run({ alive: () => true }), job.id)
-
-    expect(action?.type).toBe("expired")
-    expect(await BackgroundProcess.verify(job.process!)).not.toBe("alive")
+    expect((await BackgroundJob.get(job.id))?.status).toBe("running")
   })
 })
 
@@ -264,7 +160,7 @@ describe("BackgroundReconcile: records with nothing behind them", () => {
   test("discards a record whose spawn never landed", async () => {
     const job = await store({ process: undefined })
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("reaped")
     expect(action?.type === "reaped" && action.reason).toBe("orphaned")
@@ -277,7 +173,7 @@ describe("BackgroundReconcile: records with nothing behind them", () => {
     const identity = await identify(proc.pid)
     const job = await store({ process: { ...identity, start: "Mon Jan  1 00:00:00 2001" } })
 
-    const action = actionFor(await BackgroundReconcile.run({ alive }), job.id)
+    const action = actionFor(await BackgroundReconcile.run(), job.id)
 
     expect(action?.type).toBe("completed")
     expect(await BackgroundProcess.inspect(proc.pid)).toBeDefined()
@@ -289,7 +185,7 @@ describe("BackgroundReconcile: records with nothing behind them", () => {
   test("ignores a record that already finished", async () => {
     const job = await store({ status: "exited", exit: 0, time: { created: 0, hard: 0, completed: Date.now() } })
 
-    expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)).toBeUndefined()
+    expect(actionFor(await BackgroundReconcile.run(), job.id)).toBeUndefined()
     expect(await BackgroundJob.get(job.id)).toBeDefined()
   })
 })
@@ -386,7 +282,7 @@ describe("BackgroundReconcile: past the soft deadline", () => {
       time: { created: Date.now() - 60_000, soft: Date.now() - 30_000, hard: Date.now() + 600_000 },
     })
 
-    expect(actionFor(await BackgroundReconcile.run({ alive }), job.id)?.type).toBe("kept")
+    expect(actionFor(await BackgroundReconcile.run(), job.id)?.type).toBe("kept")
     expect(await BackgroundProcess.verify(job.process!)).toBe("alive")
   })
 })
@@ -405,7 +301,7 @@ describe("BackgroundReconcile concurrency", () => {
     const job = await store({ process })
 
     // Started together, so both observe the record while it is still running.
-    const passes = await Promise.all([BackgroundReconcile.run({ alive }), BackgroundReconcile.run({ alive })])
+    const passes = await Promise.all([BackgroundReconcile.run(), BackgroundReconcile.run()])
 
     const completed = passes.filter((pass) => actionFor(pass, job.id)?.type === "completed")
     expect(completed.length).toBe(1)

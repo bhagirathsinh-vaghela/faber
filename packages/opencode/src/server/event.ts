@@ -10,28 +10,23 @@ export const Event = {
     z.object({ resumed: z.boolean().optional(), cursor: z.string().optional() }),
   ),
   Disposed: BusEvent.define("global.disposed", z.object({})),
-  // Level-triggered busy reconcile, pushed on the per-connection 5s tick in
-  // /global/event (quiescence-gated: emitted only while the connection's scoped
-  // subtree has a busy session, plus one trailing all-idle when it clears). The
-  // map is authoritative for exactly the connection's interest set — a session
-  // in scope but absent from the map is idle. Sparse (busy-only) so it stays
-  // tiny; the client replaces its scoped slice wholesale, self-healing any drop.
+  // Busy facts for one or more sessions: a single-entry frame from every change
+  // (SessionBusy.push), and a snapshot of the open session plus the children
+  // with an open debt or a live turn (and one trailing zero entry for a child
+  // that just went idle) from the /global/event heal tick while any is active,
+  // with one trailing all-zero frame when that clears. Each entry carries its
+  // directory to route to the right per-directory store (the frame is global,
+  // like recent.updated).
   Busy: BusEvent.define(
     "session.busy",
     z.object({
-      // Full snapshot of EVERY session in the connection's interest scope, with
-      // explicit facts (not sparse) — so the client is authoritative by
-      // construction: it writes each entry into its directory store directly, no
-      // idle-by-omission inference and no cross-directory clear. Each entry
-      // carries its directory to route to the right per-directory store (the
-      // frame is global, like recent.updated). Scope is a subtree — tiny.
       sessions: z.record(
         z.string(),
         z.object({
           directory: z.string(),
-          busy: z.boolean(),
-          busySelf: z.boolean(),
-          busyDescendant: z.boolean(),
+          turn: z.boolean(),
+          subagents: z.number(),
+          jobs: z.number(),
         }),
       ),
     }),

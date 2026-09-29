@@ -19,9 +19,10 @@ const JOB_ACCENT = "var(--box-accent-job)"
 export function jobAccent(status: string): string {
   if (status === "failed" || status === "timeout") return "var(--syntax-critical)"
   if (status === "running") return "var(--syntax-constant)"
-  // Muted, like the jobs page: an unknown exit is neither success nor failure,
-  // so it must not borrow the job accent that reads as a completed run.
-  if (status === "ended") return "var(--text-weak)"
+  // Muted, like the jobs page: an unknown exit, or a job a Stop killed, is
+  // neither success nor failure, so it must not borrow the job accent that
+  // reads as a completed run.
+  if (status === "ended" || status === "stopped") return "var(--text-weak)"
   return JOB_ACCENT
 }
 
@@ -34,6 +35,7 @@ export function jobGlyph(status: string): string {
   // A job killed before it wrote its exit code recorded no outcome, so it is
   // not a success: `ended` gets a neutral glyph, never the ✓.
   if (status === "ended") return "•"
+  if (status === "stopped") return "■"
   return "✓"
 }
 
@@ -44,6 +46,7 @@ export function jobLabel(status: string): string {
   if (status === "running") return "JOB RUNNING"
   if (status === "failed") return "JOB FAILED"
   if (status === "ended") return "JOB ENDED (EXIT UNKNOWN)"
+  if (status === "stopped") return "JOB STOPPED"
   return "JOB DONE"
 }
 
@@ -52,8 +55,8 @@ export function jobStatusColor(status: string): string {
   // A check-in reports a job still going, so it must not wear the colour that
   // means finished.
   if (status === "running") return "var(--syntax-constant)"
-  // An unknown exit is not a success; muted, so it does not wear the finished
-  // colour.
-  if (status === "ended") return "var(--text-weak)"
+  // An unknown exit, or a Stop's kill, is not a success; muted, so it does not
+  // wear the finished colour.
+  if (status === "ended" || status === "stopped") return "var(--text-weak)"
   return "var(--syntax-string)"
 }

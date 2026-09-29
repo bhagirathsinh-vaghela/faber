@@ -14,6 +14,7 @@ import type { Subagent } from "@opencode-ai/sdk/v2/client"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { useMru } from "@/context/mru"
 import { useStopSession } from "@/hooks/use-stop-session"
+import { look, moving, owing } from "@/utils/subagent"
 
 function duration(task: Subagent, now: number): string {
   const end = task.time.completed ?? now
@@ -21,14 +22,10 @@ function duration(task: Subagent, now: number): string {
 }
 
 function StatusIcon(props: { status: Subagent["status"] }) {
+  const row = () => look(props.status)
   return (
-    <Show when={props.status !== "running"} fallback={<Spinner />}>
-      <Icon
-        name={props.status === "completed" ? "circle-check" : "circle-x"}
-        class={
-          props.status === "completed" ? "text-success" : props.status === "stopped" ? "text-text-weak" : "text-error"
-        }
-      />
+    <Show when={row().icon} fallback={<Spinner />}>
+      {(icon) => <Icon name={icon()} class={row().tone} />}
     </Show>
   )
 }
@@ -62,28 +59,59 @@ export const DialogSubagents: Component<{
   const parentOnly = () => !!parentID() && !props.switcher
 
   // The server list is the source of truth, read from the database, so it is
-  // the same before and after a restart. Refetched when a descendant's turn
-  // starts or ends (the busy edge) and on a slow tick for tool progress. A plain
+  // the same before and after a restart. Refetched when the count of open
+  // subagents changes and on a slow tick for tool progress. A plain
   // store, not createResource: a resource is Suspense-coupled and would flicker
   // the transcript on every refetch. The sequence keeps a late response from
   // overwriting a newer one.
   const [tasks, setTasks] = createStore<Subagent[]>([])
   const [view, setView] = createStore({ now: Date.now(), switched: undefined as Subagent[] | undefined })
   let seq = 0
+  // The listed children whose turn is live, by default as the busy store reports
+  // them now.
+  const turningOf = (list: readonly Subagent[], live = (id: string) => !!sync.data.session_busy[id]?.turn) =>
+    list
+      .filter((task) => live(task.id))
+      .map((task) => task.id)
+      .join()
+  // What the latest fetch answers for: the busy store as it stood when the fetch
+  // started, applied to the rows it brings back. The server read the rows after
+  // that point, so a turn that flipped before the response landed differs from
+  // this and refetches, while a child already live at the start does not.
+  let fetchedTurning = ""
   const refetch = async () => {
     const sessionID = source()
     if (!sessionID) return
     const mine = ++seq
+    const started = new Set(Object.keys(sync.data.session_busy).filter((id) => sync.data.session_busy[id]?.turn))
+    fetchedTurning = turningOf(tasks, (id) => started.has(id))
     const res = await sdk.client.background.list({ sessionID })
     if (mine !== seq) return
-    setTasks(reconcile(res.data ?? [], { key: "id" }))
+    const rows = res.data ?? []
+    fetchedTurning = turningOf(rows, (id) => started.has(id))
+    setTasks(reconcile(rows, { key: "id" }))
+    // The memo below fires only when its value changes, and a child that was live
+    // at the start but was not listed has no value to change. A follow-up starts
+    // from the live store, so it repeats only while the busy set keeps changing.
+    if (mine === seq && turningOf(tasks) !== fetchedTurning) void refetch()
   }
-  const descendant = () => sync.data.session_busy[source() ?? ""]?.busyDescendant ?? false
-  createEffect(on(descendant, () => void refetch(), { defer: true }))
-  // The clock and the poll run only while a listed subagent is running: a
-  // finished row's duration is fixed, and each poll makes the server read every
-  // running child's transcript.
-  const active = createMemo(() => tasks.some((task) => task.status === "running"))
+  const subagents = () => sync.data.session_busy[source() ?? ""]?.subagents ?? 0
+  createEffect(on(subagents, () => void refetch(), { defer: true }))
+  // Resuming an interrupted child joins its existing debt, so the count holds
+  // still; the child's own turn flipping is the signal its row changed.
+  const turning = createMemo(() => turningOf(tasks))
+  createEffect(
+    on(
+      turning,
+      (now) => {
+        if (now !== fetchedTurning) void refetch()
+      },
+      { defer: true },
+    ),
+  )
+  // The clock and the poll run only while a listed subagent can change on its
+  // own: a finished row's duration is fixed, and each poll makes the server read the parent's whole transcript.
+  const active = createMemo(() => tasks.some(moving))
   createEffect(() => {
     if (!active()) return
     setView("now", Date.now())
@@ -96,13 +124,13 @@ export const DialogSubagents: Component<{
   })
 
   // The Ctrl+Tab switcher is OS Alt+Tab over siblings within each section:
-  // running first, then finished, each in view order, with siblings never viewed
+  // in progress first, then finished, each in view order, with siblings never viewed
   // last, newest launch first. Snapshotted from the first fetch, so a sibling
   // finishing mid-cycle cannot move a row out from under the highlight.
   const snapshot = () => {
     const rank = new Map(mru.order().map((id, i) => [id, i]))
     const at = (task: Subagent) => rank.get(task.id) ?? rank.size
-    const section = (task: Subagent) => (task.status === "running" ? 0 : 1)
+    const section = (task: Subagent) => (owing(task) ? 0 : 1)
     setView(
       "switched",
       tasks.toSorted((a, b) => section(a) - section(b) || at(a) - at(b) || b.time.created - a.time.created),
@@ -111,14 +139,14 @@ export const DialogSubagents: Component<{
 
   onMount(() => refetch().then(() => props.switcher && snapshot()))
 
-  const running = language.t("dialog.subagents.section.running")
+  const progress = language.t("dialog.subagents.section.progress")
   const completed = language.t("dialog.subagents.section.completed")
 
   // Both sections chronological by launch time (newest first).
   const sections = createMemo(() =>
     tasks.toSorted((a, b) => {
-      if (a.status === "running" && b.status !== "running") return -1
-      if (a.status !== "running" && b.status === "running") return 1
+      if (owing(a) && !owing(b)) return -1
+      if (!owing(a) && owing(b)) return 1
       return b.time.created - a.time.created
     }),
   )
@@ -231,11 +259,11 @@ export const DialogSubagents: Component<{
             onMove={setHighlight}
             key={(x) => x.id}
             items={items}
-            groupBy={(x) => (x.status === "running" ? running : completed)}
-            groups={[running, completed]}
+            groupBy={(x) => (owing(x) ? progress : completed)}
+            groups={[progress, completed]}
             onSelect={select}
             onKeyEvent={(event, task) => {
-              if (event.key.toLowerCase() === "x" && !event.ctrlKey && !event.metaKey && task?.status === "running") {
+              if (event.key.toLowerCase() === "x" && !event.ctrlKey && !event.metaKey && task && owing(task)) {
                 event.preventDefault()
                 cancel(task)
               }
@@ -247,7 +275,7 @@ export const DialogSubagents: Component<{
                 <div class="flex-1 min-w-0 flex flex-col text-left">
                   <span class="truncate font-normal">{task.description}</span>
                   <span class="truncate text-text-weak font-normal">
-                    {task.agent + " · " + duration(task, view.now)}
+                    {[language.t(look(task.status).label), task.agent, duration(task, view.now)].join(" · ")}
                   </span>
                 </div>
               </div>

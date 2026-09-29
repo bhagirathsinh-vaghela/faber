@@ -15,8 +15,8 @@ import z from "zod"
 // carries the live per-session flags the overview buckets on (busy, unseen) and
 // the next-ping deadline. Those flags only ever flip for a session that a turn
 // already touched, so the entry is present when they change — no join, no scan.
-// They are instance-lifetime, so the disk flush strips them and hydrate defaults
-// them off.
+// The disk flush strips them; hydrate defaults them off except the debt counts,
+// which it seeds from the debt table.
 export namespace SessionRecent {
   const KEY = ["recent"]
   const LIMIT = 500
@@ -38,20 +38,13 @@ export namespace SessionRecent {
       // Last real-turn timestamp — the same signal that stamps session
       // lastActivity. Pings and views never reach here.
       updated: z.number(),
-      // Effective busy: this session's own turn OR any in-flight descendant
-      // subagent (full subtree). The single boolean isAlive reads.
-      busy: z.boolean(),
-      // This session's OWN turn only.
-      busySelf: z.boolean(),
-      // Any descendant subagent's own turn is in flight (full subtree). With
-      // busySelf, lets the client pick own-only / both / delegating-only visuals
-      // (busy+busySelf alone can't tell own-only from both).
-      busyDescendant: z.boolean(),
-      // A background job this session started is still running. Unlike the other
-      // two busy flags, this is work the session is waiting on that no turn is
-      // executing: the job outlives the turn that spawned it, so without this a
-      // session with a twenty-minute build running looks idle.
-      busyJob: z.boolean(),
+      // This session's OWN turn is in flight.
+      turn: z.boolean(),
+      // Open debts owed to this session by its subagents and by its background
+      // jobs (SessionBusy.debts). Debts persist, so a restart shows them at
+      // once; turns do not.
+      subagents: z.number(),
+      jobs: z.number(),
       unseen: z.boolean(),
       // A question is pending an answer. Derived from the pending set rather
       // than counted, so a session with several open questions clears only when
@@ -101,15 +94,25 @@ export namespace SessionRecent {
     for (const entry of stored)
       entries.set(entry.sessionID, {
         ...entry,
-        busy: false,
-        busySelf: false,
-        busyDescendant: false,
-        busyJob: false,
+        turn: false,
+        subagents: 0,
+        jobs: 0,
         question: false,
         error: false,
         permission: false,
       })
+    await seed()
   })
+
+  // Debts persist across a restart and turns do not, so each entry's debt
+  // counts are read from the debt table rather than left at 0.
+  export async function seed() {
+    const { SessionBusy } = await import("./busy")
+    const { Debt } = await import("@/storage/debt")
+    const callers = new Set((await Debt.list()).map((debt) => debt.caller))
+    for (const entry of entries.values())
+      if (callers.has(entry.sessionID)) Object.assign(entry, await SessionBusy.debts(entry.sessionID))
+  }
 
   const sorted = () => [...entries.values()].sort((a, b) => b.updated - a.updated)
 
@@ -119,7 +122,7 @@ export namespace SessionRecent {
     timer = setTimeout(() => {
       timer = undefined
       const durable: Stored[] = sorted().map(
-        ({ busy, busySelf, busyDescendant, busyJob, question, error, permission, pingAt, ...rest }) => rest,
+        ({ turn, subagents, jobs, question, error, permission, pingAt, ...rest }) => rest,
       )
       void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
@@ -173,16 +176,7 @@ export namespace SessionRecent {
   export async function touch(
     input: Omit<
       Entry,
-      | "agent"
-      | "busy"
-      | "busySelf"
-      | "busyDescendant"
-      | "busyJob"
-      | "unseen"
-      | "question"
-      | "permission"
-      | "error"
-      | "pingAt"
+      "agent" | "turn" | "subagents" | "jobs" | "unseen" | "question" | "permission" | "error" | "pingAt"
     > & { agent?: string },
   ) {
     await hydrate()
@@ -198,10 +192,9 @@ export namespace SessionRecent {
     entries.set(input.sessionID, {
       ...input,
       agent: input.agent ?? prev?.agent,
-      busy: prev?.busy ?? false,
-      busySelf: prev?.busySelf ?? false,
-      busyDescendant: prev?.busyDescendant ?? false,
-      busyJob: prev?.busyJob ?? false,
+      turn: prev?.turn ?? false,
+      subagents: prev?.subagents ?? 0,
+      jobs: prev?.jobs ?? 0,
       unseen: prev?.unseen ?? false,
       question: prev?.question ?? false,
       permission: prev?.permission ?? false,
@@ -228,58 +221,37 @@ export namespace SessionRecent {
   export async function restore(
     input: Parameters<typeof touch>[0] & {
       unseen: boolean
-      flags: () => { busy: boolean; busySelf: boolean; busyDescendant: boolean }
-      running: boolean
+      flags: () => Busy
       still: () => boolean
     },
   ) {
-    const { unseen, flags, running, still, ...fields } = input
+    const { unseen, flags, still, ...fields } = input
     await hydrate()
     if (!still()) return
     insert(fields)
     const entry = entries.get(input.sessionID)
-    if (entry) Object.assign(entry, flags(), { unseen, busyJob: running })
+    if (entry) Object.assign(entry, flags(), { unseen })
     publish()
   }
 
-  // Live-flag flips. The entry is guaranteed present (the turn that set the flag
-  // already touched it); a missing entry means the session aged out of the cap,
-  // so the flip is irrelevant to the overview and dropped.
-  export async function setBusy(sessionID: string, busy: boolean, busySelf: boolean, busyDescendant: boolean) {
+  type Busy = Pick<Entry, "turn" | "subagents" | "jobs">
+
+  // Busy-fact flips. A missing entry means the session was never touched by a
+  // turn or aged out of the cap, so the flip is irrelevant to the overview.
+  export async function setBusy(sessionID: string, busy: Busy) {
     await hydrate()
     const entry = entries.get(sessionID)
-    if (!entry || (entry.busy === busy && entry.busySelf === busySelf && entry.busyDescendant === busyDescendant))
-      return
-    entry.busy = busy
-    entry.busySelf = busySelf
-    entry.busyDescendant = busyDescendant
+    if (!entry || (entry.turn === busy.turn && entry.subagents === busy.subagents && entry.jobs === busy.jobs)) return
+    Object.assign(entry, busy)
     publish()
   }
 
-  // A job this session started began or ended. The per-edge setter is what
-  // makes the flag land at the moment the job spawns rather than at the next
-  // sweep, which is five minutes away and would leave a short job invisible for
-  // its whole life.
-  export async function setBusyJob(sessionID: string, busyJob: boolean) {
+  // The roots the hub holds as working, for the overview heal tick to recompute.
+  export async function active() {
     await hydrate()
-    const entry = entries.get(sessionID)
-    if (!entry || entry.busyJob === busyJob) return
-    entry.busyJob = busyJob
-    publish()
-  }
-
-  // Derived from the job records rather than only toggled per edge: a job
-  // outlives both the turn that started it and the process that spawned it, so
-  // nothing held in memory has seen both ends. A flag with no running job behind
-  // it is cleared by the pass that discovers it.
-  export async function syncBusyJob(running: Set<string>) {
-    await hydrate()
-    for (const entry of entries.values()) {
-      const next = running.has(entry.sessionID)
-      if (entry.busyJob === next) continue
-      entry.busyJob = next
-      publish()
-    }
+    return [...entries.values()]
+      .filter((entry) => entry.turn || entry.subagents > 0 || entry.jobs > 0)
+      .map((entry) => entry.sessionID)
   }
 
   export async function setUnseen(sessionID: string, unseen: boolean) {

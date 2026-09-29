@@ -122,7 +122,12 @@ describe("HeadlessAgent.run", () => {
       const first = respond(() => reply([toolUse("read", { filePath: path.join(dir, "notes.txt") })], "tool_use"))
       const second = respond(() => reply([text("It says 42.")], "end_turn"))
 
-      const outcome = await HeadlessAgent.run({ agent: "build", prompt: "What does notes.txt say?" })
+      const outcome = await HeadlessAgent.run({
+        model: "default",
+        variant: "default",
+        agent: "build",
+        prompt: "What does notes.txt say?",
+      })
       const [call1, call2] = [await first, await second]
 
       expect(outcome).toMatchObject({
@@ -156,7 +161,12 @@ describe("HeadlessAgent.run", () => {
       respond(() => reply([toolUse("bash", { command: "rm -rf build", description: "clean" })], "tool_use"))
       const second = respond(() => reply([text("Could not run it.")], "end_turn"))
 
-      const outcome = await HeadlessAgent.run({ agent: "build", prompt: "Clean the build dir." })
+      const outcome = await HeadlessAgent.run({
+        model: "default",
+        variant: "default",
+        agent: "build",
+        prompt: "Clean the build dir.",
+      })
       const followUp = JSON.stringify((await second).body)
 
       expect(outcome.result).toBe("Could not run it.")
@@ -169,7 +179,14 @@ describe("HeadlessAgent.run", () => {
   test("loads project instructions when bare is false, and keeps the session when asked", async () => {
     await withProject(async () => {
       const first = respond(() => reply([text("ok")], "end_turn"))
-      const outcome = await HeadlessAgent.run({ agent: "build", prompt: "hi", bare: false, keep: true })
+      const outcome = await HeadlessAgent.run({
+        model: "default",
+        variant: "default",
+        agent: "build",
+        prompt: "hi",
+        bare: false,
+        keep: true,
+      })
 
       expect(JSON.stringify((await first).body)).toContain("PROJECT-RULES-MUST-NOT-LEAK")
       expect(outcome.session_id).toStartWith("ses_")
@@ -192,7 +209,12 @@ describe("HeadlessAgent.run", () => {
         respond(() => reply([text("Started it, waiting.")], "end_turn"))
         const wake = respond(() => reply([text("The job printed JOB-DONE-9913.")], "end_turn"))
 
-        const outcome = await HeadlessAgent.run({ agent: "build", prompt: "Run the slow step." })
+        const outcome = await HeadlessAgent.run({
+          model: "default",
+          variant: "default",
+          agent: "build",
+          prompt: "Run the slow step.",
+        })
 
         expect(JSON.stringify((await wake).body)).toContain("JOB-DONE-9913")
         expect(outcome).toMatchObject({
@@ -209,7 +231,13 @@ describe("HeadlessAgent.run", () => {
   test("sweep removes headless sessions created before the cutoff and leaves ordinary sessions alone", async () => {
     await withProject(async () => {
       respond(() => reply([text("ok")], "end_turn"))
-      const kept = await HeadlessAgent.run({ agent: "build", prompt: "hi", keep: true })
+      const kept = await HeadlessAgent.run({
+        model: "default",
+        variant: "default",
+        agent: "build",
+        prompt: "hi",
+        keep: true,
+      })
       const ordinary = await Session.create({})
       const cutoff = Date.now() + 1
       const survivor = await Sessions.listEphemeral(cutoff).then((all) => all.map((s) => s.id))
@@ -246,7 +274,14 @@ describe("HeadlessAgent.run", () => {
       const before = Date.now()
 
       try {
-        const outcome = await HeadlessAgent.run({ agent: "build", prompt: "hang", timeoutMs: 1500, keep: true })
+        const outcome = await HeadlessAgent.run({
+          model: "default",
+          variant: "default",
+          agent: "build",
+          prompt: "hang",
+          timeoutMs: 1500,
+          keep: true,
+        })
         await started
 
         expect(outcome.is_error).toBe(true)
@@ -265,7 +300,7 @@ describe("HeadlessAgent.run", () => {
 
   test("rejects an unknown agent without creating a session", async () => {
     await withProject(async () => {
-      const outcome = await HeadlessAgent.run({ agent: "nope", prompt: "hi" })
+      const outcome = await HeadlessAgent.run({ model: "default", variant: "default", agent: "nope", prompt: "hi" })
       expect(outcome).toMatchObject({ is_error: true, errors: ['headless: unknown agent "nope"'] })
       expect(state.captured.length).toBe(0)
     })
@@ -280,7 +315,7 @@ describe("HeadlessAgent.run", () => {
       const ok = await app.request(`/agent/headless${query}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent: "build", prompt: "hi", keep: true }),
+        body: JSON.stringify({ agent: "build", prompt: "hi", keep: true, model: "default", variant: "default" }),
       })
       expect(ok.status).toBe(200)
       expect(await ok.json()).toMatchObject({ result: "via http", is_error: false })
@@ -291,9 +326,16 @@ describe("HeadlessAgent.run", () => {
       const bad = await app.request(`/agent/headless${query}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent: "build" }),
+        body: JSON.stringify({ agent: "build", model: "default", variant: "default" }),
       })
       expect(bad.status).toBe(400)
+
+      const unchosen = await app.request(`/agent/headless${query}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent: "build", prompt: "hi" }),
+      })
+      expect(unchosen.status).toBe(400)
     })
   }, 60_000)
 })

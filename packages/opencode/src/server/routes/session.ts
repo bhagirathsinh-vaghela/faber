@@ -6,6 +6,7 @@ import { Session } from "../../session"
 import { Identifier } from "../../id/id"
 import { MessageV2 } from "../../session/message-v2"
 import { SessionPrompt } from "../../session/prompt"
+import { Provider } from "../../provider/provider"
 import { SessionCompaction } from "../../session/compaction"
 import { SessionRevert } from "../../session/revert"
 import { SessionPing } from "../../session/ping"
@@ -14,8 +15,8 @@ import { OpenProjects } from "../../project/open"
 import { SessionPin } from "../../session/pin"
 import { SessionStatus } from "@/session/status"
 import { SessionBusy } from "@/session/busy"
-import { BackgroundJob } from "@/background/job"
 import { Sessions } from "@/storage/sessions"
+import { Recovery } from "@/session/recovery"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
 import { Agent } from "../../agent/agent"
@@ -99,35 +100,6 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .get(
-      "/busy",
-      describeRoute({
-        summary: "Get session busy state",
-        description:
-          "Busy facts for every currently-busy session in this instance (own turn or any subagent). Bootstrap for clients that read the session.working event; absent sessions are idle.",
-        operationId: "session.busy",
-        responses: {
-          200: {
-            description: "Get session busy state",
-            content: {
-              "application/json": {
-                schema: resolver(
-                  z.record(
-                    z.string(),
-                    z.object({ busy: z.boolean(), busySelf: z.boolean(), busyDescendant: z.boolean() }),
-                  ),
-                ),
-              },
-            },
-          },
-          ...errors(400),
-        },
-      }),
-      async (c) => {
-        const result = SessionBusy.list()
-        return c.json(result)
-      },
-    )
-    .get(
       "/ping/armed",
       describeRoute({
         summary: "Get armed ping daemons",
@@ -154,7 +126,7 @@ export const SessionRoutes = lazy(() =>
       describeRoute({
         summary: "Get session liveness",
         description:
-          "Whether the server is working on this session right now: its own turn or a descendant's, a ping scheduled inside the cache window, or a running background job. Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.",
+          "Whether the server is working on this session right now: its own turn, a ping scheduled inside the cache window, or open subagent and background-job debts owed to it (a Stop pays every debt, so both read 0 right after one). Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.",
         operationId: "session.live",
         responses: {
           200: {
@@ -162,7 +134,13 @@ export const SessionRoutes = lazy(() =>
             content: {
               "application/json": {
                 schema: resolver(
-                  z.object({ live: z.boolean(), busy: z.boolean(), pinging: z.boolean(), job: z.boolean() }),
+                  z.object({
+                    live: z.boolean(),
+                    turn: z.boolean(),
+                    pinging: z.boolean(),
+                    subagents: z.number(),
+                    jobs: z.number(),
+                  }),
                 ),
               },
             },
@@ -174,12 +152,35 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         // An unknown id is a 404, never a "not live".
-        await Sessions.read(sessionID)
-        const busy = SessionBusy.effective(sessionID).busy
+        const session = await Sessions.read(sessionID)
+        const turn = SessionBusy.busy(sessionID)
         const pinging = await SessionPing.scheduled(sessionID)
-        const job = await BackgroundJob.running(sessionID)
-        return c.json({ live: busy || pinging || job, busy, pinging, job })
+        const counts = await SessionBusy.debts(sessionID, session)
+        const live = SessionBusy.active({ turn, ...counts }) || pinging
+        return c.json({ live, turn, pinging, ...counts })
       },
+    )
+    .get(
+      "/:sessionID/debts",
+      describeRoute({
+        summary: "List what a session is owed",
+        description:
+          "Every open debt owed to this session: each background job and subagent that has yet to deliver its outcome, with its live state. Paid debts are not listed.",
+        operationId: "session.debts",
+        responses: {
+          200: {
+            description: "Open debts",
+            content: {
+              "application/json": {
+                schema: resolver(Recovery.Owing.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string() })),
+      async (c) => c.json(await Recovery.debts(c.req.valid("param").sessionID)),
     )
     .get(
       "/:sessionID",
@@ -234,7 +235,7 @@ export const SessionRoutes = lazy(() =>
       describeRoute({
         summary: "Get session children",
         tags: ["Session"],
-        description: "Retrieve all child sessions that were forked from the specified parent session.",
+        description: "Retrieve all sessions whose parent is the specified session.",
         operationId: "session.children",
         responses: {
           200: {
@@ -348,8 +349,9 @@ export const SessionRoutes = lazy(() =>
         // matters — the disarm writes through Session.update, which re-indexes,
         // so running it after remove() would resurrect the session it just
         // deleted. Session.stop recurses into children for the same reason
-        // remove() does.
-        await Session.stop({ sessionID })
+        // remove() does. A Stop that reports an unpaid debt still leaves nothing
+        // running, and the remove drops the debt with the session.
+        await Session.stop({ sessionID }).catch((error) => log.error("stop before delete failed", { sessionID, error }))
         await Session.remove(sessionID)
         return c.json(true)
       },
@@ -399,7 +401,10 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
-        if (typeof updates.time?.archived === "number") await Session.stop({ sessionID })
+        if (typeof updates.time?.archived === "number")
+          await Session.stop({ sessionID }).catch((error) =>
+            log.error("stop before archive failed", { sessionID, error }),
+          )
 
         const updatedSession = await Session.update(
           sessionID,
@@ -407,7 +412,14 @@ export const SessionRoutes = lazy(() =>
             // The generator only writes over a title it still matches, so
             // leaving titleGenerated alone is what makes a rename stick.
             if (updates.title !== undefined) session.title = updates.title
-            if (updates.time?.archived === null) delete session.time.archived
+            // Unarchiving an idle session stamps a stop, so a notice paid while
+            // archived waits for the user's next message instead of waking it.
+            // A running turn is left unstamped: the stamp would read as a user
+            // Stop and keep a cut turn from resuming.
+            if (updates.time?.archived === null) {
+              delete session.time.archived
+              if (!session.turn) session.time.stopped = Date.now()
+            }
             if (typeof updates.time?.archived === "number") session.time.archived = updates.time.archived
             if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
             if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID
@@ -678,8 +690,6 @@ export const SessionRoutes = lazy(() =>
       validator(
         "json",
         z.object({
-          providerID: z.string(),
-          modelID: z.string(),
           auto: z.boolean().optional().default(false),
         }),
       ),
@@ -700,10 +710,6 @@ export const SessionRoutes = lazy(() =>
         await SessionCompaction.create({
           sessionID,
           agent: currentAgent,
-          model: {
-            providerID: body.providerID,
-            modelID: body.modelID,
-          },
           auto: body.auto,
         })
         await SessionPrompt.loop(sessionID)
@@ -913,8 +919,13 @@ export const SessionRoutes = lazy(() =>
         return stream(c, async (stream) => {
           const sessionID = c.req.valid("param").sessionID
           const body = c.req.valid("json")
-          const msg = await SessionPrompt.prompt({ ...body, sessionID })
-          stream.write(JSON.stringify(msg))
+          const sent = await SessionPrompt.send({
+            ...body,
+            sessionID,
+            model: body.model ?? Provider.INHERIT,
+            variant: body.variant ?? Provider.INHERIT,
+          })
+          stream.write(JSON.stringify(await sent.answer))
         })
       },
     )
@@ -940,18 +951,23 @@ export const SessionRoutes = lazy(() =>
       ),
       validator("json", SessionPrompt.PromptInput.omit({ sessionID: true })),
       async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        // Ack only once the user message is durable, so a client that reads it
+        // back after a dropped connection gets a truthful answer. The turn runs
+        // detached past the ack; results stream over SSE. A send that rejects
+        // before the message is durable propagates to the app's error handler,
+        // so the client never gets a 204 for a prompt that was not stored.
+        const sent = await SessionPrompt.send({
+          ...body,
+          sessionID,
+          model: body.model ?? Provider.INHERIT,
+          variant: body.variant ?? Provider.INHERIT,
+        })
+        sent.answer.catch(() => {})
         c.status(204)
         c.header("Content-Type", "application/json")
-        return stream(c, async () => {
-          const sessionID = c.req.valid("param").sessionID
-          const body = c.req.valid("json")
-          // Ack only once the user message is durable, so a client that reads it
-          // back after a dropped connection gets a truthful answer. The turn runs
-          // detached past the ack; results stream over SSE.
-          await new Promise<void>((resolve) => {
-            void SessionPrompt.promptAsync({ ...body, sessionID }, resolve).catch(() => resolve())
-          })
-        })
+        return c.body(null)
       },
     )
     .post(
@@ -987,7 +1003,12 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
-        const msg = await SessionPrompt.command({ ...body, sessionID })
+        const msg = await SessionPrompt.command({
+          ...body,
+          sessionID,
+          model: body.model ? Provider.parseModel(body.model) : Provider.INHERIT,
+          variant: body.variant ?? Provider.INHERIT,
+        })
         return c.json(msg)
       },
     )
@@ -1019,7 +1040,12 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
-        const msg = await SessionPrompt.shell({ ...body, sessionID })
+        const msg = await SessionPrompt.shell({
+          ...body,
+          sessionID,
+          model: body.model ?? Provider.INHERIT,
+          variant: Provider.INHERIT,
+        })
         return c.json(msg)
       },
     )

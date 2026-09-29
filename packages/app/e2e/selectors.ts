@@ -1,7 +1,10 @@
 export const promptSelector = '[data-component="prompt-input"]'
 export const terminalSelector = '[data-component="terminal"]'
 
+export const modelTriggerSelector = '[data-action="model-trigger"]'
+export const selectContentSelector = '[data-component="select-content"]'
 export const modelVariantCycleSelector = '[data-action="model-variant-cycle"]'
+export const modelVariantSelector = '[data-action="model-variant"]'
 export const settingsLanguageSelectSelector = '[data-action="settings-language"]'
 export const settingsColorSchemeSelector = '[data-action="settings-color-scheme"]'
 export const settingsThemeSelector = '[data-action="settings-theme"]'

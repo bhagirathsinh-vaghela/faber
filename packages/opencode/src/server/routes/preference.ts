@@ -16,7 +16,7 @@ export const PreferenceRoutes = lazy(() =>
       "/model",
       describeRoute({
         summary: "Get model preferences",
-        description: "Get the server-owned model preferences (visibility, recents, variants).",
+        description: "Get the server-owned model preferences (visibility, recents).",
         operationId: "preference.model.get",
         responses: {
           200: {

@@ -7,7 +7,6 @@ import { Provider } from "../provider/provider"
 import { MessageV2 } from "./message-v2"
 import z from "zod"
 import { SessionPrompt } from "./prompt"
-import { SessionDeliver } from "./deliver"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { SessionProcessor } from "./processor"
@@ -238,19 +237,21 @@ export namespace SessionCompaction {
     })
 
     if (result === "continue") {
-      // The nudge rides the same spine as a job or subagent result. `wake: false`
-      // because this runs INSIDE the loop, which re-reads the stream on its next
-      // iteration and picks the nudge up as the unanswered opener; a wake here
-      // would only join the loop already running. The reads-dropped reminder is a
-      // second part on the same message: filterCompacted drops every Read before
-      // the summary, so FileTime has no entry for those files and an edit would
-      // be refused. Telling the model up front beats letting it learn by refusal.
-      await SessionDeliver.deliver({
+      // The nudge is sent the way everything else is, and is left to the turn
+      // this runs inside, which reads it on its next step. The reads-dropped
+      // reminder is a second part on the same message: filterCompacted drops
+      // every Read before the summary, so FileTime has no entry for those
+      // files and an edit would be refused. Telling the model up front beats
+      // letting it learn by refusal.
+      await SessionPrompt.deliver({
         sessionID: input.sessionID,
         parts: [
-          { text: CONTINUE_NUDGE, synthetic: true },
-          { text: COMPACTION_READS, synthetic: true },
+          { type: "text", text: CONTINUE_NUDGE, synthetic: true },
+          { type: "text", text: COMPACTION_READS, synthetic: true },
         ],
+        model: Provider.INHERIT,
+        variant: Provider.INHERIT,
+        join: true,
         wake: false,
       })
     }
@@ -268,30 +269,19 @@ export namespace SessionCompaction {
     z.object({
       sessionID: Identifier.schema("session"),
       agent: z.string(),
-      model: z.object({
-        providerID: z.string(),
-        modelID: z.string(),
-      }),
       auto: z.boolean(),
     }),
     async (input) => {
-      const msg = await Session.updateMessage({
-        id: Identifier.ascending("message"),
-        role: "user",
-        model: input.model,
+      // Written without a turn: the loop or the route that asked for it runs
+      // the turn that answers it.
+      await SessionPrompt.deliver({
         sessionID: input.sessionID,
-        agent: input.agent,
-        variant: await MessageV2.lastVariant(input.sessionID),
-        time: {
-          created: Date.now(),
-        },
-      })
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: msg.id,
-        sessionID: msg.sessionID,
-        type: "compaction",
-        auto: input.auto,
+        parts: [{ type: "compaction", auto: input.auto }],
+        model: Provider.INHERIT,
+        variant: Provider.INHERIT,
+        params: { agent: input.agent },
+        join: true,
+        wake: false,
       })
     },
   )

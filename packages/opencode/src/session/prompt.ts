@@ -67,6 +67,11 @@ import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
 import { Image } from "@/image/image"
+import { Db } from "@/storage/db"
+import { Messages } from "@/storage/messages"
+import { Parts } from "@/storage/parts"
+import { Sessions } from "@/storage/sessions"
+import { Debt } from "@/storage/debt"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -76,6 +81,11 @@ export namespace SessionPrompt {
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
 
   const DISPOSED = "instance disposed"
+  // The abort reason of a turn a Stop cancelled, which tools read (by
+  // identity) to tell a Stop from an Esc. Its end pays nothing: the Stop pays
+  // the session itself. An AbortError, because `throwIfAborted` throws the
+  // reason and anything else reads as the turn failing.
+  export const STOPPED = new DOMException("session stopped", "AbortError")
 
   const state = Instance.state(
     () => {
@@ -107,8 +117,9 @@ export namespace SessionPrompt {
   // the opener's first await. A prompt that joins a running turn adopts these
   // instead of resolving its own, so one turn runs under one parameter set. The
   // slot is a Promise so a join arriving while the opener is still resolving
-  // waits for it rather than racing to resolve in parallel.
-  const turnParams = Instance.state(() => new Map<string, Promise<ReturnType<typeof MessageV2.inherit>>>())
+  // waits for it rather than racing to resolve in parallel. It settles
+  // undefined when the opener wrote nothing, and the joiner resolves its own.
+  const turnParams = Instance.state(() => new Map<string, Promise<ReturnType<typeof MessageV2.inherit> | undefined>>())
 
   export function assertNotBusy(sessionID: string) {
     const match = state()[sessionID]
@@ -181,86 +192,252 @@ export namespace SessionPrompt {
   })
   export type PromptInput = z.infer<typeof PromptInput>
 
-  export const prompt = fn(PromptInput, (input) => run(input))
+  // A launch inside the server, where the model and variant are always stated:
+  // a concrete pick, "inherit" (the session's current), or "default" (the
+  // agent's, then the config's). The literals stand in for Provider.INHERIT and
+  // Provider.DEFAULT, which cannot be read at module load without a cycle.
+  export const Launch = PromptInput.extend({
+    model: z.union([PromptInput.shape.model.unwrap(), z.literal("inherit"), z.literal("default")]),
+    variant: z.string(),
+  })
+  export type Launch = z.infer<typeof Launch>
+  export type Choice = Launch["model"]
 
-  // The async route acks the moment the user message is durable, then lets the
-  // turn run detached. onPersisted fires right after the message is written, so a
-  // 204 means "message exists" and a client can trust a follow-up read of it.
-  export function promptAsync(input: PromptInput, onPersisted: () => void | Promise<void>) {
-    return run(input, onPersisted)
+  export const prompt = fn(Launch, (input) => send(input).then((sent) => sent.answer))
+
+  // What createUserMessage writes: a prompt, or a loop-minted compaction
+  // request, whose part no client may send.
+  type Draft = Omit<Launch, "parts"> & {
+    parts: (PromptInput["parts"][number] | { type: "compaction"; auto: boolean })[]
   }
 
-  async function run(input: PromptInput, onPersisted?: () => void | Promise<void>) {
+  // Only a delivery's claim can come back empty, so a prompt always has its
+  // message.
+  function settled(message: MessageV2.WithParts | undefined) {
+    if (!message) throw new Error("a prompt with no claim wrote no message")
+    return message
+  }
+
+  // Run inside the transaction that writes the message; false writes nothing.
+  // How a delivery pays a debt exactly once, and how a launch records one in
+  // the same write as its prompt.
+  export type Claim = (message: MessageV2.User) => boolean
+
+  // What the infrastructure sends a session (a job or subagent result, a
+  // check-in, a continue after a restart) goes the way a typed prompt does, so
+  // it is ordered against everything else arriving and answered by the turn it
+  // starts or joins. `claim` pays for the message inside the transaction that
+  // writes it; `failed` hears a turn it started that throws, since that turn
+  // runs detached. `wake: false` writes the message and leaves the turn to a
+  // caller that is about to start one. `join` marks a message the loop
+  // minted: it may join a subagent's open debt but never opens one, and never
+  // counts as a prompt or moves the session's parameters. `params`
+  // wins even over a running turn's parameters (a plan switch names its
+  // agent). Returns the message, or undefined when the claim was lost.
+  export async function deliver(input: {
+    sessionID: string
+    parts: Draft["parts"]
+    claim?: Claim
+    failed?: (error: unknown) => unknown
+    wake?: boolean
+    join?: boolean
+    model: Choice
+    variant: string
+    params?: { agent?: string }
+  }) {
+    return run(
+      {
+        sessionID: input.sessionID,
+        parts: input.parts,
+        noReply: input.wake === false,
+        agent: input.params?.agent,
+        model: input.model,
+        variant: input.variant,
+      },
+      undefined,
+      {
+        claim: input.claim,
+        join: input.join,
+        params: input.params,
+        detach: input.failed ?? ((error) => log.error("delivered turn failed", { sessionID: input.sessionID, error })),
+      },
+    )
+  }
+
+  // Write `input` and run its turn, resolving once the message is durable,
+  // with the written message and the turn's pending answer. A turn that fails
+  // reports through Recovery.fail when the session is a subagent, the same way
+  // however the message arrived.
+  export async function send(input: Launch) {
+    const persisted = Promise.withResolvers<Written>()
+    let written: Written | undefined
+    const answer = run(input, (message) => {
+      written = message
+      persisted.resolve(message)
+    })
+      .then(settled)
+      .catch(async (error) => {
+        if (error === STOPPED) throw error
+        log.error("prompt failed", { sessionID: input.sessionID, error })
+        if (written)
+          await Recovery.fail(
+            input.sessionID,
+            error instanceof Error ? error.message : String(error),
+            written.info.time.created,
+          ).catch((failure) => log.error("could not report a failed prompt", { sessionID: input.sessionID, failure }))
+        throw error
+      })
+    const message = await Promise.race([persisted.promise, answer.then(() => persisted.promise)])
+    return { message, answer }
+  }
+
+  // A written user message, and for one into a subagent whether it opened the
+  // child's debt or joined the one still open.
+  export type Written = NonNullable<Awaited<ReturnType<typeof createUserMessage>>>
+
+  async function run(
+    input: Draft,
+    onPersisted?: (message: Written) => void | Promise<void>,
+    internal?: Omit<Minted, "joined"> & { detach?: (error: unknown) => unknown },
+  ) {
     // Claim the turn's parameters synchronously, before the first await, so two
     // prompts racing on an idle session cannot both resolve their own: the first
     // installs the slot, the second sees it and joins. The opener resolves the
     // slot once its message is built; a join awaits that. noReply writes a
     // message without running a turn, so it never claims.
     const claimed = !input.noReply && !turnParams().has(input.sessionID)
-    let settleParams: ((params: ReturnType<typeof MessageV2.inherit>) => void) | undefined
-    if (claimed) turnParams().set(input.sessionID, new Promise((resolve) => (settleParams = resolve)))
+    const slot = Promise.withResolvers<ReturnType<typeof MessageV2.inherit> | undefined>()
+    if (claimed) turnParams().set(input.sessionID, slot.promise)
     const joinedParams = !claimed ? turnParams().get(input.sessionID) : undefined
+    // An opener that ends without a message (a lost claim, a throw) settles the
+    // slot empty and frees it, so a prompt that joined meanwhile resolves its
+    // own parameters instead of waiting forever.
+    const release = () => {
+      if (!claimed) return
+      slot.resolve(undefined)
+      if (turnParams().get(input.sessionID) === slot.promise) turnParams().delete(input.sessionID)
+    }
+    return open().then(
+      (message) => {
+        if (!message) release()
+        return message
+      },
+      (error) => {
+        release()
+        throw error
+      },
+    )
 
-    // The cache-ping daemon stays ARMED across the turn — we do NOT stop it here.
-    // A turn that keeps dispatching model requests inside CACHE_TTL re-anchors the
-    // cache faster than the daemon's scheduled ping, so evaluate() naturally keeps
-    // the daemon quiet (its ping target slides past every dispatch). The daemon
-    // only fires when a turn STALLS with no dispatch for longer than
-    // CACHE_TTL - beforeExpiry — a blocking question, a long-running tool, or a
-    // single slow model step — which is exactly the gap that used to let the cache
-    // die mid-turn (footer "--" then a cache miss on resume). Keeping it armed
-    // makes that stall self-heal. Any brief ping/turn overlap is safe: the cache
-    // prefix is read-only shared state and lastRequestAt is last-writer-wins.
-    const session = await Session.get(input.sessionID)
-    // Arm the daemon at turn START, not just the tail. Sending a prompt is the
-    // intended "keep this session" action, so it arms now — one lever (start()
-    // arms and sets keepWarm as its shadow). This costs no ping: a busy turn
-    // re-anchors the cache on every dispatch, sliding pingAt past now so the
-    // armed daemon stays quiet; it fires ONLY if the turn stalls past a cache
-    // window, which is exactly the mid-turn gap we want it to catch. The upshot
-    // is the session reads warm the whole time it is busy, and a client that
-    // Stopped it can't leave it cold once real work resumes.
-    if (Session.attended(session)) SessionPing.start(session.id)
-    // Adopt before any pin read (createUserMessage pins otherwise): a child
-    // must share its parent's snapshot, not the current generation.
-    if (session.parentID) SessionPin.adopt(session.id, session.parentID)
-    await SessionRevert.cleanup(session)
-    // Reset ping telemetry ({ count, time, pending }) for the new turn's display.
-    // This is display state only (statusline's "N× pinged" / in-flight indicator);
-    // it does not touch cache.lastRequestAt, so it never affects the cache clock.
-    if (session.ping) {
-      await Session.update(input.sessionID, (draft) => {
-        draft.ping = undefined
+    async function open() {
+      // The cache-ping daemon stays ARMED across the turn — we do NOT stop it here.
+      // A turn that keeps dispatching model requests inside CACHE_TTL re-anchors the
+      // cache faster than the daemon's scheduled ping, so evaluate() naturally keeps
+      // the daemon quiet (its ping target slides past every dispatch). The daemon
+      // only fires when a turn STALLS with no dispatch for longer than
+      // CACHE_TTL - beforeExpiry — a blocking question, a long-running tool, or a
+      // single slow model step — which is exactly the gap that used to let the cache
+      // die mid-turn (footer "--" then a cache miss on resume). Keeping it armed
+      // makes that stall self-heal. Any brief ping/turn overlap is safe: the cache
+      // prefix is read-only shared state and lastRequestAt is last-writer-wins.
+      const session = await Session.get(input.sessionID)
+      // Adopt before any pin read (createUserMessage pins otherwise): a child
+      // must share its parent's snapshot, not the current generation.
+      if (session.parentID) SessionPin.adopt(session.id, session.parentID)
+
+      const message = await createUserMessage(input, { ...internal, joined: joinedParams })
+      if (!message) return undefined
+      slot.resolve(MessageV2.inherit(message.info as MessageV2.User))
+      // Arm the daemon at turn START, not just the tail. Sending a prompt is the
+      // intended "keep this session" action, so it arms now — one lever (start()
+      // arms and sets keepWarm as its shadow). This costs no ping: a busy turn
+      // re-anchors the cache on every dispatch, sliding pingAt past now so the
+      // armed daemon stays quiet; it fires ONLY if the turn stalls past a cache
+      // window, which is exactly the mid-turn gap we want it to catch. The upshot
+      // is the session reads warm the whole time it is busy, and a client that
+      // Stopped it can't leave it cold once real work resumes. A delivered result
+      // arms it the same way: the turn it starts warms the cache as any other does.
+      // A write that starts no turn (noReply: a Stop's notices, a payment into an
+      // archived session, compaction's writes) never arms: it would re-warm a
+      // session its Stop just disarmed.
+      if (Session.attended(session) && input.noReply !== true) SessionPing.start(session.id)
+      // Reset ping telemetry ({ count, time, pending }) for the new turn's display.
+      // This is display state only (statusline's "N× pinged" / in-flight indicator);
+      // it does not touch cache.lastRequestAt, so it never affects the cache clock.
+      if (session.ping && claimed) {
+        await Session.update(input.sessionID, (draft) => {
+          draft.ping = undefined
+        })
+      }
+
+      await Session.touch(input.sessionID)
+
+      // this is backwards compatibility for allowing `tools` to be specified when
+      // prompting
+      const permissions: PermissionNext.Ruleset = []
+      for (const [tool, enabled] of Object.entries(input.tools ?? {})) {
+        permissions.push({
+          permission: tool,
+          action: enabled ? "allow" : "deny",
+          pattern: "*",
+        })
+      }
+      if (permissions.length > 0) {
+        session.permission = permissions
+        await Session.update(session.id, (draft) => {
+          draft.permission = permissions
+        })
+      }
+
+      if (input.noReply === true) {
+        await onPersisted?.(message)
+        return message
+      }
+
+      // Started before the caller hears the message is written: `answer`
+      // claims the turn synchronously, so a cancel issued once `send` resolves
+      // reaches the turn instead of landing before it exists.
+      const turn = answer(input.sessionID, message.info as MessageV2.User)
+      await onPersisted?.(message)
+      if (internal?.detach) {
+        void turn.catch(internal.detach)
+        return message
+      }
+      return turn
+    }
+  }
+
+  // `loop` joins a turn still unwinding and returns that turn's answer, which
+  // never read a message written after its last look at the history. So a send
+  // asks again while a user message is still waiting (Messages.reader), unless
+  // a stop has landed since it was written. A turn it joined that ends
+  // aborted without a stop (a shell command's) answers nothing, so that is
+  // asked again too.
+  async function answer(sessionID: string, sent: MessageV2.User) {
+    const reading = Messages.reader()
+    // A session that cannot be read reads as stopped forever.
+    const stopped = () =>
+      Sessions.read(sessionID).then(
+        (session) => session.time.stopped ?? 0,
+        () => Infinity,
+      )
+    const unstopped = async () => (await stopped()) < sent.time.created
+    for (let attempt = 1; ; attempt++) {
+      const running = loop(sessionID)
+      // Read after `loop` claims or joins: the controller of the turn this
+      // attempt waits on.
+      const signal = state()[sessionID]?.abort.signal
+      // A stopped turn ends however it ends (a turn cut before its first step
+      // throws), and reports as STOPPED so no caller reads it as a failure.
+      const last = await running.catch(async (error) => {
+        if (signal?.reason === STOPPED) throw STOPPED
+        if (!(error instanceof DOMException && error.name === "AbortError")) throw error
+        if (attempt >= 3 || !(await unstopped())) throw error
+        return undefined
       })
+      if (!last) continue
+      if (attempt >= 3 || signal?.reason === STOPPED || !(await reading).waiting(sessionID, await stopped())) return last
+      if (!(await unstopped())) return last
     }
-
-    const message = await createUserMessage(input, joinedParams)
-    if (settleParams) settleParams(MessageV2.inherit(message.info as MessageV2.User))
-    await Session.touch(input.sessionID)
-    await onPersisted?.()
-
-    // this is backwards compatibility for allowing `tools` to be specified when
-    // prompting
-    const permissions: PermissionNext.Ruleset = []
-    for (const [tool, enabled] of Object.entries(input.tools ?? {})) {
-      permissions.push({
-        permission: tool,
-        action: enabled ? "allow" : "deny",
-        pattern: "*",
-      })
-    }
-    if (permissions.length > 0) {
-      session.permission = permissions
-      await Session.update(session.id, (draft) => {
-        draft.permission = permissions
-      })
-    }
-
-    if (input.noReply === true) {
-      return message
-    }
-
-    return loop(input.sessionID)
   }
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
@@ -347,37 +524,6 @@ export namespace SessionPrompt {
     ]
   }
 
-  // Frame a message that joined a turn already in flight, so the model does not
-  // miss it mid-turn. A delivered background result is framed as just-arrived, a
-  // typed prompt as the user's. An `internal` part (MCP catalog, rule reminder)
-  // is machinery the model already expects, so it is left unframed.
-  export function wrapQueued(messages: MessageV2.WithParts[], lastFinishedID: string) {
-    for (const msg of messages) {
-      if (msg.info.role !== "user" || msg.info.id <= lastFinishedID) continue
-      for (const part of msg.parts) {
-        if (part.type !== "text" || part.ignored || part.internal) continue
-        if (!part.text.trim()) continue
-        const lead = part.backgroundJobResult
-          ? "A background job you started has finished while you were working:"
-          : part.backgroundSubagentResult
-            ? "A background subagent you delegated has finished while you were working:"
-            : part.synthetic
-              ? undefined
-              : "The user sent the following message:"
-        if (!lead) continue
-        part.text = [
-          "<system-reminder>",
-          lead,
-          part.text,
-          "",
-          "Please address this and continue with your tasks.",
-          "</system-reminder>",
-        ].join("\n")
-      }
-    }
-    return messages
-  }
-
   function start(sessionID: string) {
     const s = state()
     if (s[sessionID]) return
@@ -389,8 +535,8 @@ export namespace SessionPrompt {
     return controller.signal
   }
 
-  export function cancel(sessionID: string) {
-    log.info("cancel", { sessionID })
+  export function cancel(sessionID: string, reason?: typeof STOPPED) {
+    log.info("cancel", { sessionID, stopped: reason === STOPPED })
     const s = state()
     const match = s[sessionID]
     // The turn is over, so its parameter claim must go too — otherwise the next
@@ -413,13 +559,12 @@ export namespace SessionPrompt {
       SessionStatus.set(sessionID, { type: "idle" })
       return
     }
-    match.abort.abort()
+    match.abort.abort(reason)
     for (const item of match.callbacks) {
       item.reject(new DOMException("Aborted", "AbortError"))
     }
     delete s[sessionID]
-    // The in-flight handle is gone — clear the derived busy (self + restamp
-    // ancestors) and the retry detail. Both are now false.
+    // The in-flight handle is gone — clear the turn flag and the retry detail.
     SessionBusy.exit(sessionID)
     SessionStatus.set(sessionID, { type: "idle" })
     return
@@ -437,10 +582,13 @@ export namespace SessionPrompt {
     // Declared before the cancel below, so it runs after it: once the turn is
     // over here, whatever the session is owed is paid by this process, even
     // one that never holds the lease. A turn its instance's dispose cut is the
-    // next server's, and nothing is opened for a directory going away.
+    // next server's, and nothing is opened for a directory going away. A
+    // stopped turn's debts are the Stop's to pay.
     using _collect = defer(() => {
-      if (abort.reason === DISPOSED) return
-      void Recovery.collect(sessionID).catch((error) => log.error("could not collect", { sessionID, error }))
+      if (abort.reason === DISPOSED || abort.reason === STOPPED) return
+      void Recovery.collect(sessionID, { fresh: true }).catch((error) =>
+        log.error("could not collect", { sessionID, error }),
+      )
     })
     using _ = defer(() => cancel(sessionID))
 
@@ -449,23 +597,15 @@ export namespace SessionPrompt {
     // Pin prompt-shaping state on the first turn after boot; child sessions
     // inherit the parent's pin so a config refresh mid-task can't split them.
     if (session.parentID) SessionPin.adopt(sessionID, session.parentID)
-    // The in-flight handle now exists — derive busy (self + restamp ancestors,
-    // seeding the child->parent edge). Paired with the defer(cancel) above,
+    // The in-flight handle now exists. Paired with the defer(cancel) above,
     // which calls SessionBusy.exit on every loop exit.
-    SessionBusy.enter(sessionID, session.parentID)
+    SessionBusy.enter(sessionID)
     // Disposed before the cancel above (reverse declaration order), so the
     // marker is gone by the time the busy-exit edge wakes recovery. A marker
     // left behind means this process died holding the turn.
-    const marker = {
-      at: Date.now(),
-      pid: process.pid,
-      boot: Recovery.boot,
-      nonce: ulid(),
-      ...(Recovery.active ? {} : { transient: true }),
-    }
+    const marker = { at: Date.now(), pid: process.pid, boot: Recovery.boot, nonce: ulid() }
     await Session.mark(sessionID, (draft) => {
       draft.turn = { ...marker, resumes: draft.turn?.resumes }
-      draft.left = Recovery.active ? undefined : { pid: process.pid, boot: Recovery.boot }
     })
     // Cleared only while it is still this turn's: a prompt sent right after an
     // interrupt starts the next turn before this one finishes unwinding. A turn
@@ -707,29 +847,22 @@ export namespace SessionPrompt {
           // Add synthetic user message to prevent certain reasoning models from erroring
           // If we create assistant messages w/ out user ones following mid loop thinking signatures
           // will be missing and it can cause errors for models like gemini for example
-          const summaryUserMsg: MessageV2.User = {
-            id: Identifier.ascending("message"),
+          await deliver({
             sessionID,
-            role: "user",
-            // Flagged on the message, not just its part: the reminder helpers
-            // separate a turn the user opened from one the loop minted by
-            // reading this field off the message.
-            synthetic: true,
-            time: {
-              created: Date.now(),
-            },
-            ...MessageV2.inherit(lastUser),
-          }
-          await Session.updateMessage(summaryUserMsg)
-          await Session.updatePart({
-            id: Identifier.ascending("part"),
-            messageID: summaryUserMsg.id,
-            sessionID,
-            type: "text",
-            text: "Summarize the agent tool output above and continue with your task.",
-            synthetic: true,
-            internal: true,
-          } satisfies MessageV2.TextPart)
+            parts: [
+              {
+                type: "text",
+                text: "Summarize the agent tool output above and continue with your task.",
+                synthetic: true,
+                internal: true,
+              },
+            ],
+            model: Provider.INHERIT,
+            variant: Provider.INHERIT,
+            params: MessageV2.inherit(lastUser),
+            join: true,
+            wake: false,
+          })
         }
 
         continue
@@ -752,7 +885,6 @@ export namespace SessionPrompt {
         await SessionCompaction.create({
           sessionID,
           agent: lastUser.agent,
-          model: lastUser.model,
           auto: true,
         })
         continue
@@ -825,9 +957,6 @@ export namespace SessionPrompt {
 
       const sessionMessages = clone(msgs)
 
-      // Ephemerally frame messages that joined this turn after it started.
-      if (step > 1 && lastFinished) wrapQueued(sessionMessages, lastFinished.id)
-
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
       const instructions = snapshot.instructions
@@ -888,7 +1017,6 @@ export namespace SessionPrompt {
         await SessionCompaction.create({
           sessionID,
           agent: lastUser.agent,
-          model: lastUser.model,
           auto: true,
         })
       }
@@ -1235,6 +1363,22 @@ export namespace SessionPrompt {
     return { agent: chosen.name, model: { providerID: resolved.providerID, modelID: resolved.modelID }, variant }
   }
 
+  // The model an "inherit" write runs: what the session last ran, else its
+  // agent's, else the default. Only a model the config no longer offers falls
+  // through to the defaults; any other failure is not a reason to move the
+  // session off its model.
+  async function inherited(sessionID: string, current: Session.Info["current"], agent: Agent.Info) {
+    const last = current?.model ?? agent.model ?? (await MessageV2.model(sessionID))
+    const live = await Provider.getModel(last.providerID, last.modelID).then(
+      () => true,
+      (error: unknown) => {
+        if (Provider.ModelNotFoundError.isInstance(error)) return false
+        throw error
+      },
+    )
+    return live ? last : (await defaults(agent)).model
+  }
+
   // Resolve a candidate agent NAME to a live agent, falling through to the
   // configured default (then the built-in "build" when the default itself is
   // misconfigured) whenever the name does not resolve. Agent.get returns
@@ -1254,9 +1398,30 @@ export namespace SessionPrompt {
     return resolved
   }
 
-  async function createUserMessage(input: PromptInput, joined?: Promise<ReturnType<typeof MessageV2.inherit>>) {
+  // How a message was sent: its claim, whether the loop minted it (`join`),
+  // the running turn's parameters it may adopt, parameters that win over
+  // both (a plan switch's agent, a compaction's model), and whether a person
+  // sent it though every part is synthetic (`prompt`, a shell command).
+  type Minted = {
+    claim?: Claim
+    join?: boolean
+    joined?: Promise<ReturnType<typeof MessageV2.inherit> | undefined>
+    params?: Partial<ReturnType<typeof MessageV2.inherit>>
+    prompt?: boolean
+  }
+
+  // The one writer of user messages. Everything that depends on the session
+  // row (the date, the ordinal, `current`) is read and written inside the
+  // write transaction, so a Stop landing while the parts were being built is
+  // always seen.
+  async function createUserMessage(input: Draft, minted: Minted = {}) {
     const snapshot = await SessionPin.get(input.sessionID)
     const owner = await Session.get(input.sessionID)
+    // Before any write, claimed or not: a message written past a pending
+    // revert would be deleted by the cleanup the next prompt runs. A claimed
+    // write can still be refused after this, which leaves the revert already
+    // cleaned up with nothing written.
+    await SessionRevert.cleanup(owner)
     const current = owner.current
     // Resolve the agent the same way as model/variant below: the request's pick,
     // else the session's established agent, else the default. Without the
@@ -1271,61 +1436,44 @@ export namespace SessionPrompt {
     // take precedence and fall through to the agent default, then the model's own
     // configured default, when neither names one.
     const fresh = async () => {
-      const model = input.model ?? current?.model ?? agent.model ?? (await MessageV2.model(input.sessionID))
+      const model =
+        input.model === Provider.INHERIT
+          ? await inherited(input.sessionID, current, agent)
+          : input.model === Provider.DEFAULT
+            ? (await defaults(agent)).model
+            : input.model
       // A variant only means something to the model that offers it, so the
       // session's carries forward only while the model is unchanged.
       const same = current?.model?.providerID === model.providerID && current?.model?.modelID === model.modelID
+      const pick = input.variant
       const variant =
-        input.variant ??
-        (same ? current?.variant : undefined) ??
-        agent.variant ??
-        (await Provider.getModel(model.providerID, model.modelID).then(
-          (info) => info.variant,
-          () => undefined,
-        ))
+        pick === Provider.INHERIT
+          ? ((same ? current?.variant : undefined) ?? (await defaults(agent, model)).variant)
+          : pick === Provider.DEFAULT
+            ? (await defaults(agent, model)).variant
+            : await Provider.getModel(model.providerID, model.modelID).then((info) => {
+                if (!info.variants?.[pick])
+                  throw new Error(`model ${model.providerID}/${model.modelID} offers no variant "${pick}"`)
+                return pick
+              })
       return { agent: agent.name, model, variant }
     }
-    const resolved = joined ? await joined : await fresh()
+    const given = Object.fromEntries(Object.entries(minted.params ?? {}).filter((entry) => entry[1] !== undefined))
+    const resolved = minted.params ? { ...(await fresh()), ...given } : ((await minted.joined) ?? (await fresh()))
     const info: MessageV2.User = {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
       sessionID: input.sessionID,
-      // Never before the session's own creation: recovery reads a prompt only
-      // from then on (Messages.prompts), so a clock stepped back between the
-      // two would otherwise hide the prompt that launched a subagent.
-      time: {
-        created: Math.max(Date.now(), owner.time.created),
-      },
+      time: { created: Date.now() },
       tools: input.tools,
       system: input.system,
       ...resolved,
     }
-    // Persist what a REAL send resolved to, so the next message (real or
-    // synthetic) runs as the same parameters without re-deriving them.
-    // A synthetic mint (a resume prompt, a task/job result) carries no params of
-    // its own and must only READ current: writing it would rewrite the session's
-    // agent to the default whenever a non-default-agent turn is resumed. A
-    // resolved model is the marker of a real turn; a session whose agent names no
-    // model has nothing to inherit forward.
+    // A synthetic mint (a resume prompt, a task/job result) carries no params
+    // of its own and must only READ current: writing it would rewrite the
+    // session's agent to the default whenever a non-default-agent turn is
+    // resumed. A resolved model is the marker of a real turn.
     const syntheticMint = input.parts.length > 0 && input.parts.every((part) => "synthetic" in part && part.synthetic)
-    if (
-      !syntheticMint &&
-      resolved.model &&
-      (current?.agent !== resolved.agent ||
-        current?.model?.modelID !== resolved.model.modelID ||
-        current?.model?.providerID !== resolved.model.providerID ||
-        current?.variant !== resolved.variant)
-    )
-      await Session.update(
-        input.sessionID,
-        (draft) =>
-          void (draft.current = {
-            agent: resolved.agent,
-            model: resolved.model,
-            variant: resolved.variant,
-          }),
-        { touch: false },
-      )
     using _ = defer(() => InstructionPrompt.clear(info.id))
 
     const parts = await Promise.all(
@@ -1663,6 +1811,89 @@ export namespace SessionPrompt {
 
     await Image.clamp(parts)
 
+    // A message carrying nothing the user typed is the infrastructure talking
+    // (the supervisor's resume prompt, a task result), and marking it here is
+    // what keeps it out of the prompt count and out of every "last real user
+    // message" lookup.
+    if (parts.length > 0 && parts.every((part) => "synthetic" in part && part.synthetic)) info.synthetic = true
+
+    // The message and its parts land together, or not at all, with every
+    // session-row fact they imply: a delivery's claim (a debt paid, a report
+    // recorded) runs inside the same transaction, so a result is written
+    // exactly when it is paid. Every message into a subagent opens the
+    // child's debt or joins the one still open in this same write, so a
+    // report racing it either lands first (and this opens a new debt) or sees
+    // this message and waits for its answer. A loop-minted (join-only) message
+    // only joins, and never counts or moves `current`.
+    const [write, attach, debts, mutate] = await Promise.all([
+      Messages.writer(),
+      Parts.writer(),
+      Debt.claimer(),
+      Sessions.mutator(),
+    ])
+    const asks = !minted.join
+    const outcome = await Db.transaction(() => {
+      const verdict = { refused: false, changed: false, debt: undefined as "opened" | "joined" | undefined }
+      const row = mutate(input.sessionID, (draft) => {
+        const now = Date.now()
+        // After any stop it saw: an Esc or Stop stamped in the same
+        // millisecond would otherwise read as a stop after the message. At
+        // most a millisecond ahead of the clock, so a stop dated later (a
+        // clock stepped back) still wins.
+        info.time.created = Math.max(now, Math.min((draft.time.stopped ?? 0) + 1, now + 1))
+        if (minted.claim && !minted.claim(info)) {
+          verdict.refused = true
+          return false
+        }
+        // Durable the moment the prompt exists, rather than recounted per turn
+        // from a history that compaction shortens.
+        if (asks && (minted.prompt || !info.synthetic)) {
+          draft.prompts = (draft.prompts ?? 0) + 1
+          info.ordinal = draft.prompts
+          verdict.changed = true
+        }
+        // What a real send resolved to, so the next message runs as the same
+        // parameters without re-deriving them. A loop-minted message
+        // never moves them (a plan switch records its agent itself).
+        const moves =
+          asks &&
+          (minted.prompt || !syntheticMint) &&
+          resolved.model &&
+          (draft.current?.agent !== resolved.agent ||
+            draft.current?.model?.providerID !== resolved.model.providerID ||
+            draft.current?.model?.modelID !== resolved.model.modelID ||
+            draft.current?.variant !== resolved.variant)
+        if (moves)
+          draft.current = {
+            agent: resolved.agent,
+            model: resolved.model,
+            variant: resolved.variant,
+          }
+        if (moves) verdict.changed = true
+        verdict.debt = !draft.parentID
+          ? undefined
+          : minted.join
+            ? debts.join(input.sessionID)
+              ? "joined"
+              : undefined
+            : debts.owe(input.sessionID, "subagent", draft.parentID, info.time.created)
+        write(info)
+        for (const part of parts) attach(part)
+        return true
+      })
+      if (!row && !verdict.refused)
+        throw new Error(`session ${input.sessionID} vanished before its message was written`)
+      return row ? { ...verdict, parentID: row.parentID } : undefined
+    })
+    if (!outcome) return undefined
+    if (outcome.changed) Bus.publish(Session.Event.Updated, { info: await Session.reload(input.sessionID) })
+    if (outcome.debt === "opened" && outcome.parentID) await SessionBusy.push(outcome.parentID)
+    MessageV2.uncache(info.id)
+    await Session.updateMessage(info)
+    for (const part of parts) Session.publishPart(part)
+
+    // Read-only, and after the commit: a refused write tells no plugin about a
+    // message that does not exist, and a plugin gets copies to edit freely.
     await Plugin.trigger(
       "chat.message",
       {
@@ -1673,35 +1904,17 @@ export namespace SessionPrompt {
         variant: input.variant,
       },
       {
-        message: info,
-        parts,
+        message: structuredClone(info),
+        parts: structuredClone(parts),
       },
     )
 
-    // A message carrying nothing the user typed is the infrastructure talking
-    // (the supervisor's resume prompt, a task result), and marking it here is
-    // what keeps it out of the prompt count and out of every "last real user
-    // message" lookup.
-    if (parts.length > 0 && parts.every((part) => "synthetic" in part && part.synthetic)) info.synthetic = true
-
-    // Stamped before the message is written so the ordinal is durable the
-    // moment the prompt exists, rather than being recounted per turn from a
-    // history that compaction shortens.
-    if (!info.synthetic)
-      info.ordinal = await Session.update(input.sessionID, (draft) => {
-        draft.prompts = (draft.prompts ?? 0) + 1
-      }).then((session) => session.prompts)
-
-    await Session.updateMessage(info)
-    for (const part of parts) {
-      await Session.updatePart(part)
-    }
-
-    if (info.ordinal === 1) await placeholderTitle(input.sessionID, parts)
+    if (info.ordinal === 1) await placeholderTitle(input.sessionID, typed(parts))
 
     return {
       info,
       parts,
+      debt: outcome.debt,
     }
   }
 
@@ -2197,221 +2410,231 @@ export namespace SessionPrompt {
     command: z.string(),
   })
   export type ShellInput = z.infer<typeof ShellInput>
-  export async function shell(input: ShellInput) {
+  // A person's command, so its message is a prompt like any other (it counts,
+  // titles, and moves `current`), and its execution is a turn: busy while it
+  // runs, and its end pays what the session is owed.
+  export async function shell(input: Omit<ShellInput, "model"> & { model: Choice; variant: string }) {
     const abort = start(input.sessionID)
     if (!abort) {
       throw new Session.BusyError(input.sessionID)
     }
+    // Declared before the cancel, so it runs after it, as the loop's does.
+    using _collect = defer(() => {
+      if (abort.reason === DISPOSED || abort.reason === STOPPED) return
+      void Recovery.collect(input.sessionID, { fresh: true }).catch((error) =>
+        log.error("could not collect", { sessionID: input.sessionID, error }),
+      )
+    })
     using _ = defer(() => cancel(input.sessionID))
+    SessionBusy.enter(input.sessionID)
+    let since: number | undefined
+    return await execute(abort).catch(async (error) => {
+      if (abort.reason === STOPPED) throw error
+      log.error("shell failed", { sessionID: input.sessionID, error })
+      if (since !== undefined)
+        await Recovery.fail(input.sessionID, error instanceof Error ? error.message : String(error), since).catch(
+          (failure) => log.error("could not report a failed shell", { sessionID: input.sessionID, failure }),
+        )
+      throw error
+    })
 
-    const session = await Session.get(input.sessionID)
-    if (session.revert) {
-      await SessionRevert.cleanup(session)
-    }
-    const agent = await resolveAgent(input.agent, await SessionPin.get(input.sessionID))
-    const model = input.model ?? agent.model ?? (await MessageV2.model(input.sessionID))
-    const userMsg: MessageV2.User = {
-      id: input.messageID ?? Identifier.ascending("message"),
-      sessionID: input.sessionID,
-      time: {
-        created: Date.now(),
-      },
-      role: "user",
-      agent: input.agent,
-      model: {
-        providerID: model.providerID,
-        modelID: model.modelID,
-      },
-      variant: await MessageV2.lastVariant(input.sessionID),
-    }
-    await Session.updateMessage(userMsg)
-    const userPart: MessageV2.Part = {
-      type: "text",
-      id: Identifier.ascending("part"),
-      messageID: userMsg.id,
-      sessionID: input.sessionID,
-      text: "The following tool was executed by the user",
-      synthetic: true,
-    }
-    await Session.updatePart(userPart)
+    async function execute(abort: AbortSignal) {
+      const written = (await createUserMessage(
+        {
+          messageID: input.messageID,
+          sessionID: input.sessionID,
+          agent: input.agent,
+          model: input.model,
+          variant: input.variant,
+          parts: [{ type: "text", text: "The following tool was executed by the user", synthetic: true }],
+        },
+        { prompt: true },
+      ))!
+      const userMsg = written.info
+      const model = userMsg.model
+      since = userMsg.time.created
+      // The message's only part is synthetic, so the title comes from what the
+      // person actually typed.
+      if (userMsg.ordinal === 1) await placeholderTitle(input.sessionID, input.command)
 
-    const msg: MessageV2.Assistant = {
-      id: Identifier.ascending("message"),
-      sessionID: input.sessionID,
-      parentID: userMsg.id,
-      mode: input.agent,
-      agent: input.agent,
-      cost: 0,
-      path: {
-        cwd: Instance.directory,
-        root: Instance.worktree,
-      },
-      time: {
-        created: Date.now(),
-      },
-      role: "assistant",
-      tokens: {
-        input: 0,
-        output: 0,
-        reasoning: 0,
-        cache: { read: 0, write: 0 },
-      },
-      modelID: model.modelID,
-      providerID: model.providerID,
-    }
-    await Session.updateMessage(msg)
-    const part: MessageV2.Part = {
-      type: "tool",
-      id: Identifier.ascending("part"),
-      messageID: msg.id,
-      sessionID: input.sessionID,
-      tool: "bash",
-      callID: ulid(),
-      state: {
-        status: "running",
+      const msg: MessageV2.Assistant = {
+        id: Identifier.ascending("message"),
+        sessionID: input.sessionID,
+        parentID: userMsg.id,
+        mode: input.agent,
+        agent: input.agent,
+        cost: 0,
+        path: {
+          cwd: Instance.directory,
+          root: Instance.worktree,
+        },
         time: {
-          start: Date.now(),
+          created: Date.now(),
         },
-        input: {
-          command: input.command,
+        role: "assistant",
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
         },
-      },
-    }
-    await Session.updatePart(part)
-    const shell = Shell.preferred()
-    const shellName = (
-      process.platform === "win32" ? path.win32.basename(shell, ".exe") : path.basename(shell)
-    ).toLowerCase()
+        modelID: model.modelID,
+        providerID: model.providerID,
+      }
+      await Session.updateMessage(msg)
+      const part: MessageV2.Part = {
+        type: "tool",
+        id: Identifier.ascending("part"),
+        messageID: msg.id,
+        sessionID: input.sessionID,
+        tool: "bash",
+        callID: ulid(),
+        state: {
+          status: "running",
+          time: {
+            start: Date.now(),
+          },
+          input: {
+            command: input.command,
+          },
+        },
+      }
+      await Session.updatePart(part)
+      const shell = Shell.preferred()
+      const shellName = (
+        process.platform === "win32" ? path.win32.basename(shell, ".exe") : path.basename(shell)
+      ).toLowerCase()
 
-    const invocations: Record<string, { args: string[] }> = {
-      nu: {
-        args: ["-c", input.command],
-      },
-      fish: {
-        args: ["-c", input.command],
-      },
-      zsh: {
-        args: [
-          "-c",
-          "-l",
-          `
+      const invocations: Record<string, { args: string[] }> = {
+        nu: {
+          args: ["-c", input.command],
+        },
+        fish: {
+          args: ["-c", input.command],
+        },
+        zsh: {
+          args: [
+            "-c",
+            "-l",
+            `
             [[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true
             [[ -f "\${ZDOTDIR:-$HOME}/.zshrc" ]] && source "\${ZDOTDIR:-$HOME}/.zshrc" >/dev/null 2>&1 || true
             eval ${JSON.stringify(input.command)}
           `,
-        ],
-      },
-      bash: {
-        args: [
-          "-c",
-          "-l",
-          `
+          ],
+        },
+        bash: {
+          args: [
+            "-c",
+            "-l",
+            `
             shopt -s expand_aliases
             [[ -f ~/.bashrc ]] && source ~/.bashrc >/dev/null 2>&1 || true
             eval ${JSON.stringify(input.command)}
           `,
-        ],
-      },
-      // Windows cmd
-      cmd: {
-        args: ["/c", input.command],
-      },
-      // Windows PowerShell
-      powershell: {
-        args: ["-NoProfile", "-Command", input.command],
-      },
-      pwsh: {
-        args: ["-NoProfile", "-Command", input.command],
-      },
-      // Fallback: any shell that doesn't match those above
-      //  - No -l, for max compatibility
-      "": {
-        args: ["-c", `${input.command}`],
-      },
-    }
-
-    const matchingInvocation = invocations[shellName] ?? invocations[""]
-    const args = matchingInvocation?.args
-
-    const cwd = Instance.directory
-    const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
-    const proc = spawn(shell, args, {
-      cwd,
-      detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        ...shellEnv.env,
-        TERM: "dumb",
-      },
-    })
-
-    let output = ""
-
-    // Both streams append to one `output` and persist one shared `part`, so the
-    // writes must not overlap: an un-awaited write captures the part as it is
-    // when the write actually runs, and two in flight can land newest-first,
-    // leaving the stale snapshot stored. Chaining keeps them ordered while
-    // still returning to the stream handler immediately.
-    let pending: Promise<unknown> = Promise.resolve()
-    const persist = (chunk: unknown) => {
-      output += String(chunk)
-      if (part.state.status !== "running") return
-      part.state.metadata = { output, description: "" }
-      pending = pending.then(() => Session.updatePart(part)).catch(() => {})
-    }
-
-    proc.stdout?.on("data", persist)
-    proc.stderr?.on("data", persist)
-
-    let aborted = false
-    let exited = false
-
-    const kill = () => Shell.killTree(proc, { exited: () => exited })
-
-    if (abort.aborted) {
-      aborted = true
-      await kill()
-    }
-
-    const abortHandler = () => {
-      aborted = true
-      void kill()
-    }
-
-    abort.addEventListener("abort", abortHandler, { once: true })
-
-    await new Promise<void>((resolve) => {
-      proc.on("close", () => {
-        exited = true
-        abort.removeEventListener("abort", abortHandler)
-        resolve()
-      })
-    })
-
-    if (aborted) {
-      output += "\n\n" + ["<metadata>", "User aborted the command", "</metadata>"].join("\n")
-    }
-    msg.time.completed = Date.now()
-    await Session.updateMessage(msg)
-    if (part.state.status === "running") {
-      part.state = {
-        status: "completed",
-        time: {
-          ...part.state.time,
-          end: Date.now(),
+          ],
         },
-        input: part.state.input,
-        title: "",
-        metadata: {
-          output,
-          description: "",
+        // Windows cmd
+        cmd: {
+          args: ["/c", input.command],
         },
-        output,
+        // Windows PowerShell
+        powershell: {
+          args: ["-NoProfile", "-Command", input.command],
+        },
+        pwsh: {
+          args: ["-NoProfile", "-Command", input.command],
+        },
+        // Fallback: any shell that doesn't match those above
+        //  - No -l, for max compatibility
+        "": {
+          args: ["-c", `${input.command}`],
+        },
       }
-      await Session.updatePart(part)
+
+      const matchingInvocation = invocations[shellName] ?? invocations[""]
+      const args = matchingInvocation?.args
+
+      const cwd = Instance.directory
+      const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
+      const proc = spawn(shell, args, {
+        cwd,
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          ...shellEnv.env,
+          TERM: "dumb",
+        },
+      })
+
+      let output = ""
+
+      // Both streams append to one `output` and persist one shared `part`, so the
+      // writes must not overlap: an un-awaited write captures the part as it is
+      // when the write actually runs, and two in flight can land newest-first,
+      // leaving the stale snapshot stored. Chaining keeps them ordered while
+      // still returning to the stream handler immediately.
+      let pending: Promise<unknown> = Promise.resolve()
+      const persist = (chunk: unknown) => {
+        output += String(chunk)
+        if (part.state.status !== "running") return
+        part.state.metadata = { output, description: "" }
+        pending = pending.then(() => Session.updatePart(part)).catch(() => {})
+      }
+
+      proc.stdout?.on("data", persist)
+      proc.stderr?.on("data", persist)
+
+      let aborted = false
+      let exited = false
+
+      const kill = () => Shell.killTree(proc, { exited: () => exited })
+
+      if (abort.aborted) {
+        aborted = true
+        await kill()
+      }
+
+      const abortHandler = () => {
+        aborted = true
+        void kill()
+      }
+
+      abort.addEventListener("abort", abortHandler, { once: true })
+
+      await new Promise<void>((resolve) => {
+        proc.on("close", () => {
+          exited = true
+          abort.removeEventListener("abort", abortHandler)
+          resolve()
+        })
+      })
+
+      if (aborted) {
+        output += "\n\n" + ["<metadata>", "User aborted the command", "</metadata>"].join("\n")
+      }
+      msg.time.completed = Date.now()
+      await Session.updateMessage(msg)
+      if (part.state.status === "running") {
+        part.state = {
+          status: "completed",
+          time: {
+            ...part.state.time,
+            end: Date.now(),
+          },
+          input: part.state.input,
+          title: "",
+          metadata: {
+            output,
+            description: "",
+          },
+          output,
+        }
+        await Session.updatePart(part)
+      }
+      return { info: msg, parts: [part] }
     }
-    return { info: msg, parts: [part] }
   }
 
   export const CommandInput = z.object({
@@ -2447,7 +2670,7 @@ export namespace SessionPrompt {
    * Does not match when preceded by word characters or backticks (to avoid email addresses and quoted references)
    */
 
-  export async function command(input: CommandInput) {
+  export async function command(input: Omit<CommandInput, "model" | "variant"> & { model: Choice; variant: string }) {
     log.info("command", input)
     const snapshot = await SessionPin.get(input.sessionID)
     const command = snapshot.commands[input.command] ?? (await Command.get(input.command))
@@ -2502,33 +2725,6 @@ export namespace SessionPrompt {
     }
     template = template.trim()
 
-    const subagentModel = await (async () => {
-      if (command.model) {
-        return Provider.parseModel(command.model)
-      }
-      if (command.agent) {
-        const cmdAgent = snapshot.agents[command.agent] ?? (await Agent.get(command.agent))
-        if (cmdAgent?.model) {
-          return cmdAgent.model
-        }
-      }
-      if (input.model) return Provider.parseModel(input.model)
-      return await MessageV2.model(input.sessionID)
-    })()
-
-    try {
-      await Provider.getModel(subagentModel.providerID, subagentModel.modelID)
-    } catch (e) {
-      if (Provider.ModelNotFoundError.isInstance(e)) {
-        const { providerID, modelID, suggestions } = e.data
-        const hint = suggestions?.length ? ` Did you mean: ${suggestions.join(", ")}?` : ""
-        Bus.publish(Session.Event.Error, {
-          sessionID: input.sessionID,
-          error: new NamedError.Unknown({ message: `Model not found: ${providerID}/${modelID}.${hint}` }).toObject(),
-        })
-      }
-      throw e
-    }
     const agent = snapshot.agents[agentName] ?? (await Agent.get(agentName))
     if (!agent) {
       const available = await Agent.list().then((agents) => agents.filter((a) => !a.hidden).map((a) => a.name))
@@ -2540,6 +2736,26 @@ export namespace SessionPrompt {
       })
       throw error
     }
+    const cmdAgent = command.agent ? (snapshot.agents[command.agent] ?? (await Agent.get(command.agent))) : undefined
+    const override = command.model ? Provider.parseModel(command.model) : cmdAgent?.model
+    const subagentModel: Choice =
+      override ?? (input.model === Provider.DEFAULT ? (await defaults(agent)).model : input.model)
+
+    if (subagentModel !== Provider.INHERIT) {
+      try {
+        await Provider.getModel(subagentModel.providerID, subagentModel.modelID)
+      } catch (e) {
+        if (Provider.ModelNotFoundError.isInstance(e)) {
+          const { providerID, modelID, suggestions } = e.data
+          const hint = suggestions?.length ? ` Did you mean: ${suggestions.join(", ")}?` : ""
+          Bus.publish(Session.Event.Error, {
+            sessionID: input.sessionID,
+            error: new NamedError.Unknown({ message: `Model not found: ${providerID}/${modelID}.${hint}` }).toObject(),
+          })
+        }
+        throw e
+      }
+    }
 
     const templateParts = await resolvePromptParts(template)
     const isSubagent = (agent.mode === "subagent" && command.subagent !== false) || command.subagent === true
@@ -2550,10 +2766,11 @@ export namespace SessionPrompt {
             agent: agent.name,
             description: command.description ?? "",
             command: input.command,
-            model: {
-              providerID: subagentModel.providerID,
-              modelID: subagentModel.modelID,
-            },
+            // Absent, the child runs on the turn's own model.
+            model:
+              subagentModel === Provider.INHERIT
+                ? undefined
+                : { providerID: subagentModel.providerID, modelID: subagentModel.modelID },
             // TODO: how can we make agent tool accept a more complex input?
             prompt: templateParts.find((y) => y.type === "text")?.text ?? "",
           },
@@ -2561,11 +2778,7 @@ export namespace SessionPrompt {
       : [...templateParts, ...(input.parts ?? [])]
 
     const userAgent = isSubagent ? (input.agent ?? snapshot.defaultAgent ?? (await Agent.defaultAgent())) : agentName
-    const userModel = isSubagent
-      ? input.model
-        ? Provider.parseModel(input.model)
-        : await MessageV2.model(input.sessionID)
-      : subagentModel
+    const userModel = isSubagent ? input.model : subagentModel
 
     await Plugin.trigger(
       "command.execute.before",
@@ -2577,13 +2790,26 @@ export namespace SessionPrompt {
       { parts },
     )
 
+    // The client's variant was picked for the model it sent (or, for inherit
+    // and default, the model those resolve to); a command that moves to another
+    // model inherits instead of validating it against that one. A pick the
+    // command leaves in place stays; a lingering one is accepted.
+    const held =
+      !override || isSubagent
+        ? undefined
+        : input.model === Provider.INHERIT
+          ? await inherited(input.sessionID, (await Session.get(input.sessionID)).current, agent)
+          : input.model === Provider.DEFAULT
+            ? (await defaults(agent)).model
+            : input.model
+    const moved = !!override && !!held && (override.providerID !== held.providerID || override.modelID !== held.modelID)
     const result = (await prompt({
       sessionID: input.sessionID,
       messageID: input.messageID,
       model: userModel,
       agent: userAgent,
       parts,
-      variant: input.variant,
+      variant: moved && input.variant !== Provider.DEFAULT ? Provider.INHERIT : input.variant,
     })) as MessageV2.WithParts
 
     Bus.publish(Command.Event.Executed, {
@@ -2603,6 +2829,9 @@ export namespace SessionPrompt {
   // The opening prompt names the session, the third renames it once a topic has
   // established itself. A later prompt describes a session the user already
   // recognises, so generation stops.
+  // A shell command counts as a prompt, so a session opened with one takes the
+  // command as its title and its next typed prompt is ordinal 2, which does
+  // not generate: the third renames it.
   const TITLE_ORDINALS = [1, 3]
 
   // Longer than this is not a 3-7 word title but a model ignoring the prompt,
@@ -2676,14 +2905,17 @@ export namespace SessionPrompt {
     return boundary > 0 ? cut.slice(0, boundary) : cut
   }
 
-  async function placeholderTitle(sessionID: string, parts: MessageV2.Part[]) {
-    const text = parts
+  function typed(parts: MessageV2.Part[]) {
+    return parts
       .flatMap((part) => {
         if (part.type === "subagent") return [part.prompt]
         if (part.type !== "text" || part.synthetic || part.ignored) return []
         return [part.text]
       })
       .join("\n")
+  }
+
+  async function placeholderTitle(sessionID: string, text: string) {
     const placeholder = derivePlaceholder(text)
     if (!placeholder) return
     await Session.update(

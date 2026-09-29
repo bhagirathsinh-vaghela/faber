@@ -2,6 +2,7 @@ import { describe, expect, test, afterEach } from "bun:test"
 import fs from "fs/promises"
 import { BackgroundJob } from "../../src/background/job"
 import { BackgroundProcess } from "../../src/background/process"
+import { Debt } from "../../src/storage/debt"
 
 const created: string[] = []
 
@@ -236,19 +237,23 @@ describe("BackgroundJob.cleanup", () => {
     expect(await BackgroundJob.get(ids[ids.length - 1]!)).toBeUndefined()
   }, 60_000)
 
-  // A result nobody received outranks both bounds: it is the one record a
-  // reader has never had the chance to come back for.
-  test("never reaps an undelivered result, however many newer ones exist", async () => {
+  // A job still owed to its session outranks both bounds: its debt pays with
+  // this record's output.
+  test("never reaps an owed result, however many newer ones exist", async () => {
     const now = Date.now()
-    const lost = record({ status: "exited", time: { created: 0, hard: 0, completed: now - 1, lost: now - 1 } })
-    await BackgroundJob.write(lost)
+    const owed = record({ status: "exited", time: { created: 0, hard: 0, completed: now - 1 } })
+    await BackgroundJob.write(owed)
+    await Debt.add(owed.id, "job", owed.sessionID)
     for (let i = 0; i < BackgroundJob.MAX_RECORDS + 5; i++) {
       await BackgroundJob.write(record({ status: "exited", time: { created: 0, hard: 0, completed: now } }))
     }
 
-    await BackgroundJob.cleanup(now)
-
-    expect(await BackgroundJob.get(lost.id)).toBeDefined()
+    try {
+      await BackgroundJob.cleanup(now)
+      expect(await BackgroundJob.get(owed.id)).toBeDefined()
+    } finally {
+      await Debt.remove(owed.id)
+    }
   }, 60_000)
 
   // A long build must survive the cleanup that runs while it is still going.
@@ -261,21 +266,23 @@ describe("BackgroundJob.cleanup", () => {
     expect(await BackgroundJob.get(old.id)).toBeDefined()
   })
 
-  // Removing a record unlinks its log, so ageing out a result that never
-  // reached a session would destroy the output at the same moment as the stamp
-  // saying the output is worth reading. A result nobody has read is the one
-  // nobody has had the chance to come back for.
-  test("keeps a result that was never delivered, whatever its age", async () => {
+  // Removing a record unlinks its log, so ageing out a result still owed would
+  // leave its debt nothing to pay with.
+  test("keeps an owed result whatever its age", async () => {
     const now = Date.now()
-    const lost = record({
+    const owed = record({
       status: "exited",
-      time: { created: 0, hard: 0, completed: now - BackgroundJob.MAX_AGE_MS - 1, lost: now },
+      time: { created: 0, hard: 0, completed: now - BackgroundJob.MAX_AGE_MS - 1 },
     })
-    await BackgroundJob.write(lost)
+    await BackgroundJob.write(owed)
+    await Debt.add(owed.id, "job", owed.sessionID)
 
-    await BackgroundJob.cleanup(now)
-
-    expect(await BackgroundJob.get(lost.id)).toBeDefined()
+    try {
+      await BackgroundJob.cleanup(now)
+      expect(await BackgroundJob.get(owed.id)).toBeDefined()
+    } finally {
+      await Debt.remove(owed.id)
+    }
   })
 })
 
@@ -380,7 +387,7 @@ describe("BackgroundJob.nudge", () => {
     const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 600_000 } })
     await BackgroundJob.write(job)
 
-    expect(await BackgroundJob.nudge(job.id, now)).toBe(1)
+    expect((await BackgroundJob.nudge(job.id, now))?.ordinal).toBe(1)
     const stamped = await BackgroundJob.get(job.id)
     expect(stamped?.time.nudges).toBe(1)
     expect(stamped?.time.nudgedAt).toBe(now)
@@ -393,7 +400,7 @@ describe("BackgroundJob.nudge", () => {
     const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 600_000 } })
     await BackgroundJob.write(job)
 
-    expect(await BackgroundJob.nudge(job.id, now)).toBe(1)
+    expect((await BackgroundJob.nudge(job.id, now))?.ordinal).toBe(1)
     expect(await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS - 1)).toBeUndefined()
   })
 
@@ -404,8 +411,8 @@ describe("BackgroundJob.nudge", () => {
     const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 3_600_000 } })
     await BackgroundJob.write(job)
 
-    expect(await BackgroundJob.nudge(job.id, now)).toBe(1)
-    expect(await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS)).toBe(2)
+    expect((await BackgroundJob.nudge(job.id, now))?.ordinal).toBe(1)
+    expect((await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS))?.ordinal).toBe(2)
   })
 
   // No count cap: a job keeps being nudged for as long as it runs, bounded only
@@ -418,7 +425,7 @@ describe("BackgroundJob.nudge", () => {
 
     for (let i = 1; i <= 20; i++) {
       const at = start + (i - 1) * BackgroundJob.NUDGE_MS
-      expect(await BackgroundJob.nudge(job.id, at)).toBe(i)
+      expect((await BackgroundJob.nudge(job.id, at))?.ordinal).toBe(i)
     }
   })
 
@@ -442,8 +449,123 @@ describe("BackgroundJob.nudge", () => {
     await BackgroundJob.write(job)
 
     const results = await Promise.all([BackgroundJob.nudge(job.id, now), BackgroundJob.nudge(job.id, now)])
-    expect(results.filter((ordinal) => ordinal !== undefined)).toEqual([1])
+    expect(results.flatMap((claimed) => (claimed ? [claimed.ordinal] : []))).toEqual([1])
   })
+
+  test("a retracted nudge hands its ordinal and stamp back", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 3_600_000 } })
+    await BackgroundJob.write(job)
+
+    expect((await BackgroundJob.nudge(job.id, now))?.ordinal).toBe(1)
+    const lost = await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS)
+    expect(lost).toEqual({ ordinal: 2, previous: { nudges: 1, nudgedAt: now } })
+    await BackgroundJob.retract(job.id, lost!)
+
+    const restored = await BackgroundJob.get(job.id)
+    expect(restored?.time.nudges).toBe(1)
+    expect(restored?.time.nudgedAt).toBe(now)
+    expect((await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS))?.ordinal).toBe(2)
+  })
+
+  test("retracting the first nudge leaves the record un-nudged", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 600_000 } })
+    await BackgroundJob.write(job)
+
+    await BackgroundJob.retract(job.id, (await BackgroundJob.nudge(job.id, now))!)
+
+    const restored = await BackgroundJob.get(job.id)
+    expect(restored?.time.nudges).toBeUndefined()
+    expect(restored?.time.nudgedAt).toBeUndefined()
+  })
+
+  test("a retract after a later claim moved past its ordinal changes nothing", async () => {
+    const now = Date.now()
+    const job = record({ time: { created: now - 60_000, soft: now - 1, hard: now + 3_600_000 } })
+    await BackgroundJob.write(job)
+
+    const stale = (await BackgroundJob.nudge(job.id, now))!
+    await BackgroundJob.nudge(job.id, now + BackgroundJob.NUDGE_MS)
+    await BackgroundJob.retract(job.id, stale)
+
+    const current = await BackgroundJob.get(job.id)
+    expect(current?.time.nudges).toBe(2)
+    expect(current?.time.nudgedAt).toBe(now + BackgroundJob.NUDGE_MS)
+  })
+
+  // A session that no longer exists refuses the check-in, which is the lost
+  // delivery the retract covers.
+  test("nudgeAll retracts a check-in that was not delivered", async () => {
+    const { BackgroundOrchestrator } = await import("../../src/background/orchestrator")
+    const { Recovery } = await import("../../src/session/recovery")
+    const now = Date.now()
+    const job = record({
+      sessionID: "ses_gone",
+      project: "/tmp",
+      time: { created: now - 300_000, soft: now - 200_000, hard: now + 600_000 },
+    })
+    await BackgroundJob.write(job)
+
+    Recovery.start()
+    try {
+      await BackgroundOrchestrator.nudgeAll(now)
+    } finally {
+      Recovery.stop()
+    }
+
+    const current = await BackgroundJob.get(job.id)
+    expect(current?.time.nudges).toBeUndefined()
+    expect(current?.time.nudgedAt).toBeUndefined()
+  })
+})
+
+describe("BackgroundJob.stop on a pid that no longer verifies", () => {
+  async function dead() {
+    const proc = spawnJob("sleep 30")
+    const identity = await identify(proc.pid)
+    process.kill(-proc.pid, "SIGKILL")
+    await proc.exited
+    return identity
+  }
+
+  test("settles the job as it really exited, with its own exit code, and keeps its debt", async () => {
+    const job = record({ process: await dead() })
+    await BackgroundJob.write(job)
+    await BackgroundJob.init()
+    await Bun.write(BackgroundJob.exitPath(job.id), "3\n")
+    const finished = await BackgroundJob.finishedAt(job.id)
+    await Debt.add(job.id, "job", job.sessionID)
+
+    try {
+      const stopped = await BackgroundJob.stop(job.id, { why: "kill", pay: true })
+
+      expect(stopped).toMatchObject({ type: "settled", killed: false })
+      const settled = await BackgroundJob.get(job.id)
+      expect(settled?.status).toBe("exited")
+      expect(settled?.exit).toBe(3)
+      expect(settled?.ended).toBeUndefined()
+      expect(settled?.time.completed).toBe(finished!)
+      expect(await Debt.has(job.id)).toBe(true)
+    } finally {
+      await Debt.remove(job.id)
+    }
+  }, 20_000)
+
+  test("a finish at or past the hard deadline settles as a timeout, never a kill", async () => {
+    const job = record({ process: await dead(), time: { created: 0, hard: 1 } })
+    await BackgroundJob.write(job)
+    await BackgroundJob.init()
+    await Bun.write(BackgroundJob.exitPath(job.id), "143\n")
+
+    const stopped = await BackgroundJob.stop(job.id, { why: "stop" })
+
+    expect(stopped).toMatchObject({ type: "settled", killed: false })
+    const settled = await BackgroundJob.get(job.id)
+    expect(settled?.status).toBe("killed")
+    expect(settled?.ended).toBe("timeout")
+    expect(settled?.exit).toBe(143)
+  }, 20_000)
 })
 
 describe("BackgroundJob paths", () => {
@@ -457,12 +579,16 @@ describe("BackgroundJob paths", () => {
 })
 
 // Three paths take a record out of `running`: the exit watcher, a reconcile
-// pass, and a kill. Each must leave the session's job flag agreeing with the
+// pass, and a kill. Each must leave the session's jobs count agreeing with the
 // records, and a kill is the one with no process handle behind it — the job it
 // stops may have been adopted from a server that is gone.
-describe("BackgroundJob.stop settles the session's flag", () => {
-  test("a killed job stops showing on its session", async () => {
+describe("BackgroundJob.stop settles the session's jobs count", () => {
+  test("a kill that pays the job's debt clears the jobs count on its session", async () => {
     const { SessionRecent } = await import("../../src/session/recent")
+    const { Debt } = await import("../../src/storage/debt")
+    const { Session } = await import("../../src/session")
+    const { Instance } = await import("../../src/project/instance")
+    const session = await Instance.provide({ directory: "/tmp", fn: () => Session.create({}) })
     const proc = Bun.spawn({ cmd: ["sh", "-c", "sleep 30"], detached: true, stdio: ["ignore", "ignore", "ignore"] })
     const live = (await BackgroundProcess.inspect(proc.pid))!
     const id = BackgroundJob.id()
@@ -470,7 +596,7 @@ describe("BackgroundJob.stop settles the session's flag", () => {
 
     await BackgroundJob.write({
       id,
-      sessionID: "ses_job_stop_flag",
+      sessionID: session.id,
       directory: "/tmp",
       project: "/tmp",
       command: "sleep 30",
@@ -479,18 +605,73 @@ describe("BackgroundJob.stop settles the session's flag", () => {
       time: { created: Date.now(), hard: Date.now() + 600_000 },
       process: { pid: live.pid, start: live.start, pgid: live.pgid },
     })
-    await SessionRecent.touch({
-      sessionID: "ses_job_stop_flag",
-      directory: "/tmp",
-      title: "job owner",
-      updated: Date.now(),
-    })
-    await SessionRecent.setBusyJob("ses_job_stop_flag", true)
+    await SessionRecent.touch({ sessionID: session.id, directory: "/tmp", title: "job owner", updated: Date.now() })
+    await Debt.add(id, "job", session.id)
+    await SessionRecent.setBusy(session.id, { turn: false, subagents: 0, jobs: 1 })
 
-    const stopped = await BackgroundJob.stop(id)
+    const stopped = await BackgroundJob.stop(id, { why: "kill", pay: true })
     expect(stopped.type).toBe("settled")
 
-    const entry = (await SessionRecent.list()).find((row) => row.sessionID === "ses_job_stop_flag")
-    expect(entry?.busyJob).toBe(false)
+    const entry = (await SessionRecent.list()).find((row) => row.sessionID === session.id)
+    expect(entry?.jobs).toBe(0)
+    await Instance.provide({ directory: "/tmp", fn: () => Session.remove(session.id) })
   }, 20_000)
+
+  // The kill sleeps through its TERM-to-KILL window, so a session that waited
+  // on it would read busy for seconds after its debt was paid.
+  test("the paid debt reaches busy before the job is signalled", async () => {
+    const { GlobalBus } = await import("../../src/bus/global")
+    const { Event } = await import("../../src/server/event")
+    const { Session } = await import("../../src/session")
+    const { Instance } = await import("../../src/project/instance")
+    const session = await Instance.provide({ directory: "/tmp", fn: () => Session.create({}) })
+    const proc = spawnJob("sleep 30")
+    const job = record({ sessionID: session.id, project: "/tmp", process: await identify(proc.pid) })
+    await BackgroundJob.write(job)
+    await Debt.add(job.id, "job", session.id)
+
+    const seen: (NodeJS.Signals | null)[] = []
+    const listen = (event: {
+      payload: { type: string; properties: { sessions: Record<string, { jobs: number }> } }
+    }) => {
+      if (event.payload.type !== Event.Busy.type) return
+      if (event.payload.properties.sessions[session.id]?.jobs !== 0) return
+      seen.push(proc.signalCode)
+    }
+    GlobalBus.on("event", listen)
+    try {
+      await BackgroundJob.stop(job.id, { why: "kill", pay: true })
+      await proc.exited
+    } finally {
+      GlobalBus.off("event", listen)
+    }
+
+    expect(seen).toEqual([null])
+    expect(proc.signalCode).toBe("SIGTERM")
+    await Instance.provide({ directory: "/tmp", fn: () => Session.remove(session.id) })
+  }, 20_000)
+})
+
+describe("BackgroundJob.update", () => {
+  test("a step returning false writes nothing", async () => {
+    const id = BackgroundJob.id()
+    await BackgroundJob.create({
+      id,
+      sessionID: "ses_update_noop",
+      directory: "/tmp",
+      command: "true",
+      description: "noop",
+      status: "running",
+      time: { created: Date.now(), hard: Date.now() + 60_000 },
+    })
+    const written = await BackgroundJob.update(id, (draft) => {
+      draft.description = "changed"
+      return false
+    })
+
+    expect(written).toBeUndefined()
+    expect((await BackgroundJob.get(id))?.description).toBe("noop")
+    await Debt.remove(id)
+    await BackgroundJob.remove(id)
+  })
 })

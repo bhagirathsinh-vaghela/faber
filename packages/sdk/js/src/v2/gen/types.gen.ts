@@ -18,10 +18,9 @@ export type RecentSession = {
   title: string
   agent?: string
   updated: number
-  busy: boolean
-  busySelf: boolean
-  busyDescendant: boolean
-  busyJob: boolean
+  turn: boolean
+  subagents: number
+  jobs: number
   unseen: boolean
   question: boolean
   error: boolean
@@ -89,8 +88,6 @@ export type Session = {
     updated: number
     compacting?: number
     archived?: number
-    injected?: number
-    reported?: "completed" | "failed"
     stopped?: number
   }
   permission?: PermissionRuleset
@@ -113,15 +110,8 @@ export type Session = {
     pid: number
     boot?: number
     resumes?: number
-    transient?: boolean
     nonce?: string
   }
-  left?:
-    | {
-        pid: number
-        boot: number
-      }
-    | true
   keepWarm?: boolean
   unseen?: boolean
   seen?: {
@@ -168,20 +158,6 @@ export type OpenProject = {
   exists?: boolean
 }
 
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
-  }
-}
-
 export type Project = {
   id: string
   worktree: string
@@ -217,6 +193,20 @@ export type EventServerInstanceDisposed = {
   }
 }
 
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
+  }
+}
+
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -238,9 +228,9 @@ export type EventSessionBusy = {
     sessions: {
       [key: string]: {
         directory: string
-        busy: boolean
-        busySelf: boolean
-        busyDescendant: boolean
+        turn: boolean
+        subagents: number
+        jobs: number
       }
     }
   }
@@ -258,72 +248,6 @@ export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
-  }
-}
-
-export type EventRecentUpdated = {
-  type: "recent.updated"
-  properties: {
-    entries: Array<RecentSession>
-  }
-}
-
-export type PermissionRequest = {
-  id: string
-  sessionID: string
-  permission: string
-  patterns: Array<string>
-  metadata: {
-    [key: string]: unknown
-  }
-  always: Array<string>
-  tool?: {
-    messageID: string
-    callID: string
-  }
-}
-
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "always" | "reject"
-  }
-}
-
-export type EventPermissionAutoaccept = {
-  type: "permission.autoaccept"
-  properties: {
-    sessionID: string
-    enabled: boolean
   }
 }
 
@@ -476,7 +400,7 @@ export type TextPart = {
     jobId: string
     command: string
     description: string
-    status: "completed" | "failed" | "timeout" | "running" | "ended"
+    status: "completed" | "failed" | "timeout" | "stopped" | "running" | "ended"
     exit?: number
     log: string
     duration: number
@@ -742,13 +666,62 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventSessionWorking = {
-  type: "session.working"
+export type EventRecentUpdated = {
+  type: "recent.updated"
+  properties: {
+    entries: Array<RecentSession>
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
+  }
+}
+
+export type PermissionRequest = {
+  id: string
+  sessionID: string
+  permission: string
+  patterns: Array<string>
+  metadata: {
+    [key: string]: unknown
+  }
+  always: Array<string>
+  tool?: {
+    messageID: string
+    callID: string
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
   properties: {
     sessionID: string
-    busy: boolean
-    busySelf: boolean
-    busyDescendant: boolean
+    requestID: string
+    reply: "once" | "always" | "reject"
+  }
+}
+
+export type EventPermissionAutoaccept = {
+  type: "permission.autoaccept"
+  properties: {
+    sessionID: string
+    enabled: boolean
   }
 }
 
@@ -902,15 +875,22 @@ export type BackgroundJob = {
     completed?: number
     nudges?: number
     nudgedAt?: number
-    lost?: number
   }
   exit?: number
+  ended?: "stop" | "kill" | "timeout"
 }
 
 export type EventJobUpdated = {
   type: "job.updated"
   properties: {
     job: BackgroundJob
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
   }
 }
 
@@ -1100,9 +1080,6 @@ export type ModelPreference = {
     providerID: string
     modelID: string
   }>
-  variant: {
-    [key: string]: string
-  }
 }
 
 export type EventModelPreferenceUpdated = {
@@ -1208,27 +1185,25 @@ export type EventStashUpdated = {
 }
 
 export type Event =
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
   | EventProjectUpdated
   | EventServerInstanceDisposed
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventServerConnected
   | EventGlobalDisposed
   | EventSessionBusy
   | EventLspClientDiagnostics
   | EventLspUpdated
-  | EventFileEdited
-  | EventFileWatcherUpdated
-  | EventVcsBranchUpdated
-  | EventRecentUpdated
-  | EventPermissionAsked
-  | EventPermissionReplied
-  | EventPermissionAutoaccept
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventSessionWorking
+  | EventRecentUpdated
+  | EventFileWatcherUpdated
+  | EventVcsBranchUpdated
+  | EventPermissionAsked
+  | EventPermissionReplied
+  | EventPermissionAutoaccept
   | EventSessionStatus
   | EventSessionIdle
   | EventMcpToolsChanged
@@ -1238,6 +1213,7 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventJobUpdated
+  | EventFileEdited
   | EventTodoUpdated
   | EventSessionPingArmed
   | EventSessionCompacted
@@ -2079,6 +2055,17 @@ export type McpResource = {
   client: string
 }
 
+export type Debt = {
+  responder: string
+  kind: "job" | "subagent"
+  created: number
+  stuck: boolean
+  state: "running" | "interrupted" | "unpaid"
+  description: string
+  command?: string
+  elapsed: number
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -2098,7 +2085,7 @@ export type TextPartInput = {
     jobId: string
     command: string
     description: string
-    status: "completed" | "failed" | "timeout" | "running" | "ended"
+    status: "completed" | "failed" | "timeout" | "stopped" | "running" | "ended"
     exit?: number
     log: string
     duration: number
@@ -2231,7 +2218,7 @@ export type McpStatus =
 export type Subagent = {
   id: string
   parentSessionID: string
-  status: "running" | "completed" | "failed" | "stopped"
+  status: "running" | "interrupted" | "unpaid" | "completed" | "failed" | "stopped"
   description: string
   agent: string
   time: {
@@ -2258,7 +2245,6 @@ export type BackgroundJobSummary = {
     completed?: number
     nudges?: number
     nudgedAt?: number
-    lost?: number
   }
   updated?: number
 }
@@ -3284,39 +3270,6 @@ export type SessionStatusResponses = {
 
 export type SessionStatusResponse = SessionStatusResponses[keyof SessionStatusResponses]
 
-export type SessionBusyData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/session/busy"
-}
-
-export type SessionBusyErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type SessionBusyError = SessionBusyErrors[keyof SessionBusyErrors]
-
-export type SessionBusyResponses = {
-  /**
-   * Get session busy state
-   */
-  200: {
-    [key: string]: {
-      busy: boolean
-      busySelf: boolean
-      busyDescendant: boolean
-    }
-  }
-}
-
-export type SessionBusyResponse = SessionBusyResponses[keyof SessionBusyResponses]
-
 export type SessionPingArmedData = {
   body?: never
   path?: never
@@ -3374,13 +3327,47 @@ export type SessionLiveResponses = {
    */
   200: {
     live: boolean
-    busy: boolean
+    turn: boolean
     pinging: boolean
-    job: boolean
+    subagents: number
+    jobs: number
   }
 }
 
 export type SessionLiveResponse = SessionLiveResponses[keyof SessionLiveResponses]
+
+export type SessionDebtsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/debts"
+}
+
+export type SessionDebtsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionDebtsError = SessionDebtsErrors[keyof SessionDebtsErrors]
+
+export type SessionDebtsResponses = {
+  /**
+   * Open debts
+   */
+  200: Array<Debt>
+}
+
+export type SessionDebtsResponse = SessionDebtsResponses[keyof SessionDebtsResponses]
 
 export type SessionDeleteData = {
   body?: never
@@ -3779,8 +3766,6 @@ export type SessionDiffResponse = SessionDiffResponses[keyof SessionDiffResponse
 
 export type SessionSummarizeData = {
   body?: {
-    providerID: string
-    modelID: string
     auto?: boolean
   }
   path: {
@@ -4414,9 +4399,13 @@ export type OneshotData = {
     system?: string
     prompt: string
     /**
-     * provider/model; defaults to the configured model
+     * provider/model, or "default" for the configured model
      */
-    model?: string
+    model: string
+    /**
+     * A variant the model offers, or "default" for the model's configured one
+     */
+    variant: string
     /**
      * Place prompt-cache markers. Off by default.
      */
@@ -4474,9 +4463,13 @@ export type AgentHeadlessData = {
      */
     system?: string
     /**
-     * provider/model; defaults to the agent's model, then the configured one
+     * provider/model, or "default" for the agent's model, then the configured one
      */
-    model?: string
+    model: string
+    /**
+     * A variant the model offers, or "default" for the agent's, then the model's configured one
+     */
+    variant: string
     /**
      * Leave out AGENTS.md, MCP tools, and skills. Defaults to true.
      */
@@ -5207,6 +5200,8 @@ export type ProviderDefaultResponses = {
   200: {
     providerID: string
     modelID: string
+    variant?: string
+    agent: string
   } | null
 }
 

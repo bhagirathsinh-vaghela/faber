@@ -4,16 +4,16 @@ import { Session } from "../../src/session"
 import { BackgroundJob } from "../../src/background/job"
 import { BackgroundSpawn } from "../../src/background/spawn"
 import { BackgroundProcess } from "../../src/background/process"
-import { Owed } from "../../src/storage/owed"
+import { Debt } from "../../src/storage/debt"
 import { GlobalBus } from "../../src/bus/global"
+import { Recovery } from "../../src/session/recovery"
+import { SessionPrompt } from "../../src/session/prompt"
 import { tmpdir } from "../fixture/fixture"
 
 // A background job outlives the turn that launched it, and a session accumulates
 // them across turns. Stopping the session (the Stop button) is the point at
-// which its still-running jobs must end too: nothing else reaps a stopped
-// session's jobs before their hard deadline, because the reconcile owner-gone
-// path never fires in production (its liveness predicate answers only
-// `true`/`undefined`, never `false`).
+// which its still-running jobs must end too: nothing else ends a job before its
+// hard deadline.
 describe("Session.stop reaps the session's background jobs", () => {
   test("stopping a session kills a job it launched", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -49,6 +49,16 @@ describe("Session.stop reaps the session's background jobs", () => {
         // a result. A job that cannot finish on its own during the stop (a 45s
         // sleep under a 600s deadline) therefore always reads `killed`.
         expect((await BackgroundJob.get(spawn.job.id))?.status).toBe("killed")
+        // The Stop pays the killed job's debt itself, with a stopped notice.
+        expect(await Debt.has(spawn.job.id)).toBe(false)
+        const notices = (await Session.messages({ sessionID: session.id })).flatMap((message) =>
+          message.parts.flatMap((part) =>
+            part.type === "text" && part.backgroundJobResult?.jobId === spawn.job.id
+              ? [part.backgroundJobResult.status]
+              : [],
+          ),
+        )
+        expect(notices).toEqual(["stopped"])
 
         await BackgroundJob.remove(spawn.job.id)
       },
@@ -84,6 +94,7 @@ describe("Session.stop reaps the session's background jobs", () => {
         expect(await BackgroundProcess.verify(record!.process!)).toBe("alive")
 
         await BackgroundJob.stop(kept.job.id)
+        await Debt.remove(kept.job.id)
         await BackgroundJob.remove(kept.job.id)
       },
     })
@@ -95,18 +106,15 @@ describe("Session.stop reaps the session's background jobs", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ title: "stopped mid-launch" })
-        // A stop stamped during the running turn but BEFORE this launch: the
-        // stopped turn keeps running until the stop's cancel lands.
-        const now = Date.now()
-        await Session.mark(session.id, (draft) => {
-          draft.turn = { at: now - 1000, pid: process.pid }
-          draft.time.stopped = now - 500
-        })
+        // The Stop's cancel reaches the launching turn as its abort reason.
+        const abort = new AbortController()
+        abort.abort(SessionPrompt.STOPPED)
 
         const launch = BackgroundSpawn.run({
           command: "echo never",
           description: "launched into a stop",
           sessionID: session.id,
+          signal: abort.signal,
           directory: tmp.path,
           project: tmp.path,
           shell: "/bin/sh",
@@ -115,7 +123,7 @@ describe("Session.stop reaps the session's background jobs", () => {
 
         await expect(launch).rejects.toThrow(`session ${session.id} was stopped while launching job`)
         expect((await BackgroundJob.list()).filter((job) => job.sessionID === session.id)).toEqual([])
-        expect(await Owed.pending(session.id)).toBe(false)
+        expect(await Debt.owing(session.id)).toBe(false)
       },
     })
   }, 30_000)
@@ -143,7 +151,7 @@ describe("Session.stop reaps the session's background jobs", () => {
 
         await expect(launch).rejects.toThrow(`session ${session.id} was stopped while launching job`)
         expect((await BackgroundJob.list()).filter((job) => job.sessionID === session.id)).toEqual([])
-        expect(await Owed.pending(session.id)).toBe(false)
+        expect(await Debt.owing(session.id)).toBe(false)
       },
     })
   }, 30_000)
@@ -184,12 +192,24 @@ describe("Session.stop reaps the session's background jobs", () => {
           launched.push(spawn.job.id)
 
           expect(spawn.type).toBe("inline")
-          expect(await Owed.pending(session.id)).toBe(true)
+          expect(await Debt.owing(session.id)).toBe(true)
           expect(announced).toEqual([spawn.job.id])
+
+          await Recovery.collect(session.id, { wake: false })
+          await Recovery.collect(session.id, { wake: false })
+          const delivered = (await Session.messages({ sessionID: session.id })).flatMap((message) =>
+            message.parts.flatMap((part) =>
+              part.type === "text" && part.backgroundJobResult?.jobId === spawn.job.id
+                ? [part.backgroundJobResult.status]
+                : [],
+            ),
+          )
+          expect(delivered).toEqual(["completed"])
+          expect(await Debt.owing(session.id)).toBe(false)
         } finally {
           GlobalBus.off("event", onEvent)
           BackgroundSpawn.watch(previous)
-          await Owed.removeSession(session.id)
+          await Debt.drop(session.id)
           for (const id of launched) await BackgroundJob.remove(id)
         }
       },
@@ -200,12 +220,32 @@ describe("Session.stop reaps the session's background jobs", () => {
     await interrupted("Esc during the grace window", (_session, abort) => abort.abort())
   }, 30_000)
 
-  // An Esc stamps the stop before it cancels the turn. A job finishing in
-  // between sees no abort yet, only the stamp, and must still stay owed.
-  test("a job finishing between an Esc's stamp and its cancel stays owed", async () => {
-    await interrupted("Esc stamped, not yet cancelled", (session) =>
-      Session.mark(session.id, (draft) => void (draft.time.stopped = Date.now())),
-    )
+  // A launch reads only its turn's abort, never the stop stamp: an Esc whose
+  // cancel has not landed yet leaves the job to finish inline, and the tool's
+  // reply carries its output, so nothing stays owed.
+  test("a job finishing between an Esc's stamp and its cancel is answered inline", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "Esc stamped, not yet cancelled" })
+        await Session.mark(session.id, (draft) => void (draft.time.stopped = Date.now()))
+
+        const spawn = await BackgroundSpawn.run({
+          command: "echo done",
+          description: "finishes before the cancel",
+          sessionID: session.id,
+          directory: tmp.path,
+          project: tmp.path,
+          shell: "/bin/sh",
+          env: {},
+        })
+
+        expect(spawn.type === "inline" && spawn.output.trim()).toBe("done")
+        expect(await Debt.owing(session.id)).toBe(false)
+        await BackgroundJob.remove(spawn.job.id)
+      },
+    })
   }, 30_000)
 
   test("a turn started after an interrupt launches its jobs", async () => {
@@ -232,7 +272,7 @@ describe("Session.stop reaps the session's background jobs", () => {
 
         expect(spawn.type).toBe("inline")
         expect(spawn.type === "inline" && spawn.output.trim()).toBe("launched")
-        expect(await Owed.pending(session.id)).toBe(false)
+        expect(await Debt.owing(session.id)).toBe(false)
         await BackgroundJob.remove(spawn.job.id)
       },
     })

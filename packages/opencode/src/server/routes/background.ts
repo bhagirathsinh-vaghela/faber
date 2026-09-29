@@ -10,7 +10,7 @@ export const BackgroundRoutes = lazy(() =>
     describeRoute({
       summary: "List subagents",
       description:
-        "A session's subagents as the database records them, newest first. Stopping one is POST /session/:id/abort on the subagent's session.",
+        "A session's subagents, newest first. Only an open debt makes one running, interrupted, or unpaid (outcome known, about to be delivered); one with none shows the outcome it delivered, or stopped when it never delivered one. Stopping one is POST /session/:id/abort on the subagent's session.",
       operationId: "background.list",
       responses: {
         200: {

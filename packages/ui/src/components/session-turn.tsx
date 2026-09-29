@@ -32,7 +32,7 @@ import {
 } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { Message, Part } from "./message-part"
-import { busyBase, busyDelay, busyOverlays, busyShown } from "../util/busy-tint"
+import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "../util/busy-tint"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
@@ -389,17 +389,15 @@ export function SessionTurn(
   })
 
   const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
-  // Busy boolean from the one operative store (effective: own turn OR subtree).
-  // Only the active (last) turn shows the spinner. session_status is used ONLY
-  // for the retry label below, never for the busy boolean.
-  const busyFacts = createMemo(
-    () => data.store.session_busy[props.sessionID] ?? { busy: false, busySelf: false, busyDescendant: false },
-  )
+  // Busy facts from the one operative store. Only the active (last) turn shows
+  // the spinner. session_status is used ONLY for the retry label below, never
+  // for the busy boolean.
+  const busyFacts = createMemo(() => data.store.session_busy[props.sessionID] ?? IDLE)
   const busy = createMemo(() => busyShown(busyFacts()))
   const working = createMemo(() => busy() && isLastUserMessage())
   // No agent color in the ui context, so an own turn keeps the inherited
   // currentColor rather than resolving a tint of its own.
-  const spinnerTint = createMemo(() => (busyFacts().busySelf ? undefined : busyBase(busyFacts(), undefined)))
+  const spinnerTint = createMemo(() => (busyFacts().turn ? undefined : busyBase(busyFacts(), undefined)))
   const overlays = createMemo(() => busyOverlays(busyFacts(), undefined))
   const retry = createMemo(() => {
     // session_status is session-scoped; only show retry on the active (last) turn

@@ -1,10 +1,10 @@
 import fs from "fs/promises"
 import { Log } from "@/util/log"
-import { SessionRecent } from "@/session/recent"
+import { SessionBusy } from "@/session/busy"
 import { BackgroundJob } from "./job"
 import { BackgroundProcess } from "./process"
-import { Owed } from "@/storage/owed"
-import { Sessions } from "@/storage/sessions"
+import { Debt } from "@/storage/debt"
+import { Db } from "@/storage/db"
 
 // Launching a shell job so that nothing about it depends on this server
 // staying alive.
@@ -119,29 +119,24 @@ export namespace BackgroundSpawn {
     // A launch that never produced a process leaves nothing to wait for: its
     // record and its debt go, so the session is not held open by a ghost.
     const abandon = async (error: unknown) => {
-      await Owed.remove(id).catch(() => {})
-      await BackgroundJob.remove(id).catch(() => {})
-      await BackgroundJob.settled(input.sessionID).catch(() => {})
+      await Debt.remove(id).catch((failure) => log.error("could not drop an abandoned job's debt", { id, failure }))
+      await BackgroundJob.remove(id).catch((failure) => log.error("could not remove an abandoned job", { id, failure }))
+      await SessionBusy.push(input.sessionID)
       throw error
     }
-    await BackgroundJob.write(job)
-    await Owed.add(id, input.sessionID).catch(abandon)
+    await BackgroundJob.create(job)
     // A stop racing this launch can miss it: stopSession finds no process to
-    // kill, and removeSession can run before the add above. So the launch
-    // checks for itself. A cancelled turn is caught by its signal; the gap
-    // before the stop's cancel lands (the stop stamps first and cancels last)
-    // is caught by comparing the stamp with the start of the running turn, not
-    // the job's own time. A turn woken after an Esc starts after that stop, so
-    // its jobs launch.
-    const stopped = async () => input.signal?.aborted || Sessions.halted(input.sessionID, created)
+    // kill. So the launch checks its turn's signal for itself.
+    const stopped = () => !!input.signal?.aborted
     const refused = () => new Error(`session ${input.sessionID} was stopped while launching job ${id}`)
-    if (await stopped()) await abandon(refused())
-    // Flagged at the START, not at the next sweep. The sweep runs every five
-    // minutes, so deriving the flag there alone leaves a session looking idle
-    // for most of a short job's life and for the whole of one that begins and
-    // ends between two passes. The sweep still derives it from disk, which is
-    // what corrects a flag this process never got to clear.
-    void SessionRecent.setBusyJob(input.sessionID, true)
+    // A Stop aborts with its own reason; any other cancel (an Esc, a turn
+    // abort) ends the launch as a kill, and wakes the session with the result.
+    const halt = async () => {
+      const { SessionPrompt } = await import("@/session/prompt")
+      return input.signal?.reason === SessionPrompt.STOPPED
+    }
+    await SessionBusy.push(input.sessionID)
+    if (stopped()) await abandon(refused())
 
     // Output goes to a FILE, never a pipe. A pipe dies with the process
     // holding it, so a server restart would sever a surviving job from its
@@ -198,17 +193,24 @@ export namespace BackgroundSpawn {
       draft.process = identity ? { pid: identity.pid, start: identity.start, pgid: identity.pgid } : undefined
     })
     // A stop between the check above and this write found the record with no
-    // process and killed nothing; its stamp is visible now, so the kill (and
-    // the debt's removal) happens here. A later stop finds the process itself.
-    // An Esc landing between the first check and here (the log open, the
-    // spawn, and the identity reads) kills a job an Esc a moment later would
-    // leave running; the launch belongs to the turn being cancelled.
-    if (await stopped()) {
+    // process and killed nothing; its abort is visible now, so the kill
+    // happens here. A later stop finds the process itself. An Esc landing
+    // between the first check and here (the log open, the spawn, and the
+    // identity reads) kills a job an Esc a moment later would leave running;
+    // the launch belongs to the turn being cancelled.
+    if (stopped()) {
+      const stop = await halt()
+      const ended = await BackgroundJob.stop(id, { why: stop ? "stop" : "kill" })
+      await handle.close().catch(() => {})
       // Unspawned means the record has no identity, which past the check
       // above means the process already exited: the record and debt go now.
-      const halted = await BackgroundJob.stop(id)
-      await handle.close().catch(() => {})
-      if (halted.type === "unspawned") await abandon(refused())
+      if (ended.type === "unspawned") await abandon(refused())
+      // The stop claimed without paying, and no exit handle is held for this
+      // job, so its result is paid here.
+      if (ended.type === "settled") {
+        const { Recovery } = await import("@/session/recovery")
+        await Recovery.collect(input.sessionID, { fresh: true, wake: !stop })
+      }
       throw refused()
     }
 
@@ -242,25 +244,36 @@ export namespace BackgroundSpawn {
       return { type: "background", job: (await BackgroundJob.get(id)) ?? job }
     }
 
-    // The result goes back inline as the tool's output, so nothing is owed.
-    // Dropped before settling: a settled job with a debt is what recovery pays.
-    // Kept when the turn was cancelled meanwhile, since nothing reads that
-    // output: after an Esc the result is still delivered, and a Stop has
-    // removed the debt itself.
-    // A kept debt is announced the way the exit watcher announces one, since
-    // the cancelled turn has already gone idle and nothing else wakes recovery.
-    // The stamp is read too: an Esc stamps before it cancels, so in between
-    // only the stamp shows the output will not be read. A Stop in that same
-    // gap is safe to keep for: its stopSession claims the job or its
-    // removeSession drops the debt.
-    const kept = await stopped()
-    if (!kept) await Owed.remove(id)
+    // The result goes back inline as the tool's output, which pays its debt.
+    // Paid before settling: a settled job with a debt is what recovery pays.
+    // Kept when the turn's signal was cancelled, since nothing reads that
+    // output: the collector delivers it instead. A cancel landing after the
+    // payment puts the debt back once the job is settled, for the same reason,
+    // unless the cancel is a Stop: its abort precedes its payment, so a debt
+    // put back after it would outlive the Stop that paid everything.
+    const early = stopped()
+    if (!early) await Debt.remove(id).then(() => SessionBusy.push(input.sessionID))
     await handle.close().catch(() => {})
     const settled = await settle(id)
-    // An abort landing after the removal is not re-owed: a Stop has already
-    // run its removeSession by the time its cancel aborts, so a re-add here
-    // would deliver into the stopped session. The cost, accepted: an Esc in
-    // that few-ms window loses the result, since the two look the same here.
+    const [{ SessionPrompt }, { Recovery }] = await Promise.all([
+      import("@/session/prompt"),
+      import("@/session/recovery"),
+    ])
+    const debts = await Debt.claimer()
+    // A Stop in flight holds the session before it cancels, so an Esc that
+    // aborted first (its reason stays) is still seen as stopping here. A job
+    // someone else settled (a concurrent kill) is theirs to report, so its debt
+    // is not put back.
+    const late =
+      !early &&
+      settled !== undefined &&
+      (await Db.transaction(() => {
+        if (!stopped() || input.signal?.reason === SessionPrompt.STOPPED || Recovery.held(input.sessionID)) return false
+        debts.owe(id, "job", input.sessionID, created)
+        return true
+      }))
+    if (late) await SessionBusy.push(input.sessionID)
+    const kept = early || late
     if (kept && settled && onExit)
       void Promise.resolve(onExit(settled)).catch((error) =>
         log.error("could not announce a kept result", { id, error }),
@@ -286,25 +299,19 @@ export namespace BackgroundSpawn {
   async function settle(id: string) {
     const exit = await BackgroundJob.exit(id)
     const completed = Date.now()
-    let claimed = false
-    await BackgroundJob.update(id, (draft) => {
-      if (draft.status !== "running") return
-      claimed = true
+    const settled = await BackgroundJob.update(id, (draft) => {
+      if (draft.status !== "running") return false
       // `completed` is the finish instant here (proc.exited just resolved), so
       // it is the moment settledStatus judges the deadline against. A job ended
       // by its own watchdog reads `killed` and is delivered as a timeout.
       draft.status = BackgroundJob.settledStatus(draft.time.hard, completed)
+      if (draft.status === "killed") draft.ended = "timeout"
       draft.exit = exit
       draft.time.completed = completed
     })
-    if (!claimed) return undefined
-    const settled = await BackgroundJob.get(id)
-    // Only the caller that made the transition clears the flag and announces
-    // the settled record, so the view learns a job ended exactly once.
-    if (settled) {
-      await BackgroundJob.settled(settled.sessionID)
-      BackgroundJob.publish(settled)
-    }
+    // Only the caller that made the transition announces the record it wrote,
+    // so the view learns a job ended exactly once.
+    if (settled) BackgroundJob.publish(settled)
     return settled
   }
 }

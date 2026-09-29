@@ -239,15 +239,16 @@ describe("archive and unarchive", () => {
         const elsewhere = async () =>
           (await Server.App().request(`/session/${session.id}/live?directory=${encodeURIComponent(other)}`)).json()
 
-        expect(await live()).toEqual({ live: false, busy: false, pinging: false, job: false })
+        const idle = { live: false, turn: false, pinging: false, subagents: 0, jobs: 0 }
+        expect(await live()).toEqual(idle)
         SessionBusy.enter(session.id)
         await Session.update(session.id, (draft) => {
           draft.time.archived = Date.now()
         })
-        expect(await live()).toEqual({ live: true, busy: true, pinging: false, job: false })
-        expect(await elsewhere()).toEqual({ live: true, busy: true, pinging: false, job: false })
+        expect(await live()).toEqual({ ...idle, live: true, turn: true })
+        expect(await elsewhere()).toEqual({ ...idle, live: true, turn: true })
         SessionBusy.exit(session.id)
-        expect(await live()).toEqual({ live: false, busy: false, pinging: false, job: false })
+        expect(await live()).toEqual(idle)
 
         const missing = await Server.App().request(
           `/session/ses_nope/live?directory=${encodeURIComponent(projectRoot)}`,
@@ -289,8 +290,7 @@ describe("archive and unarchive", () => {
         unsub()
 
         const entry = (await SessionRecent.list()).find((row) => row.sessionID === session.id)
-        expect(entry?.busy).toBe(true)
-        expect(entry?.busySelf).toBe(true)
+        expect(entry?.turn).toBe(true)
         expect(events).toEqual(["archived", "other", "unarchived", "other"])
 
         SessionBusy.exit(session.id)
@@ -311,8 +311,7 @@ describe("archive and unarchive", () => {
           title: session.title,
           updated: 1,
           unseen: false,
-          flags: () => ({ busy: false, busySelf: false, busyDescendant: false }),
-          running: false,
+          flags: () => ({ turn: false, subagents: 0, jobs: 0 }),
         }
         const listed = async () => (await SessionRecent.list()).some((row) => row.sessionID === session.id)
 

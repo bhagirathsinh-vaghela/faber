@@ -17,6 +17,7 @@ describe("session.current — the persistent per-turn parameters", () => {
       fn: async () => {
         const session = await Session.create({})
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           model: MODEL,
@@ -31,51 +32,52 @@ describe("session.current — the persistent per-turn parameters", () => {
     })
   })
 
-  test("a synthetic mint inherits a still-valid session.current model", async () => {
+  test("a delivered message inherits the session's established agent and model", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        // A model that actually resolves in this env, so currentParams' config
-        // check passes it through rather than falling back.
         const real = await Provider.defaultModel()
         const session = await Session.create({})
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
-          agent: "build",
+          agent: "plan",
           model: real,
           noReply: true,
           parts: [{ type: "text", text: "establish" }],
         })
-        const messages = await Session.messages({ sessionID: session.id })
-        const params = await MessageV2.currentParams(session.id, messages)
-        expect(params.model).toEqual(real)
-        expect(params.agent).toBe("build")
+        const delivered = await SessionPrompt.deliver({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          parts: [{ type: "text", text: "job done", synthetic: true }],
+          claim: () => true,
+          wake: false,
+        })
+        if (delivered?.info.role !== "user") throw new Error("expected a delivered user message")
+        expect([delivered.info.agent, delivered.info.model, delivered.info.synthetic]).toEqual(["plan", real, true])
+        expect((await Session.get(session.id)).current?.agent).toBe("plan")
         await Session.remove(session.id)
       },
     })
   })
 
-  test("a synthetic mint falls back when session.current names a dropped model", async () => {
+  test("a delivery whose claim is lost writes nothing", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({})
-        // MODEL does not resolve against the provider, so currentParams must not
-        // forward it (getModel would throw when the mint runs); it falls back to
-        // the default instead.
-        await SessionPrompt.prompt({
+        const delivered = await SessionPrompt.deliver({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
           sessionID: session.id,
-          agent: "build",
-          model: MODEL,
-          noReply: true,
-          parts: [{ type: "text", text: "establish" }],
+          parts: [{ type: "text", text: "already paid", synthetic: true }],
+          claim: () => false,
         })
-        const messages = await Session.messages({ sessionID: session.id })
-        const params = await MessageV2.currentParams(session.id, messages)
-        expect(params.model).toEqual(await Provider.defaultModel())
-        expect(params.model).not.toEqual(MODEL)
+        expect(delivered).toBeUndefined()
+        expect(await Session.messages({ sessionID: session.id })).toEqual([])
         await Session.remove(session.id)
       },
     })
@@ -91,6 +93,7 @@ describe("session.current — the persistent per-turn parameters", () => {
         // MessageV2.model(); if it forwarded the dropped model, the next loop's
         // getModel would throw and abort the turn. It must fall back instead.
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           model: MODEL,
@@ -112,6 +115,7 @@ describe("session.current — the persistent per-turn parameters", () => {
       fn: async () => {
         const session = await Session.create({})
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "plan",
           model: MODEL,
@@ -121,6 +125,8 @@ describe("session.current — the persistent per-turn parameters", () => {
 
         // Exactly what serve.ts sends on restart-resume: synthetic, no agent.
         const resumed = await SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "continue", synthetic: true }],
@@ -160,6 +166,7 @@ describe("session.current — the persistent per-turn parameters", () => {
       fn: async () => {
         const session = await Session.create({})
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           model: MODEL,
@@ -173,6 +180,8 @@ describe("session.current — the persistent per-turn parameters", () => {
           draft.current!.agent = "ghost-agent-that-does-not-exist"
         })
         const resumed = await SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "continue", synthetic: true }],
@@ -192,6 +201,7 @@ describe("session.current — the persistent per-turn parameters", () => {
         const session = await Session.create({})
         // Establish current as a non-default agent.
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "plan",
           model: MODEL,
@@ -203,6 +213,8 @@ describe("session.current — the persistent per-turn parameters", () => {
         // A synthetic-only send (a resume prompt / delivered result) carries no
         // params. It must not rewrite current.agent to the resolved default.
         await SessionPrompt.prompt({
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
           sessionID: session.id,
           noReply: true,
           parts: [{ type: "text", text: "continue", synthetic: true }],
@@ -220,6 +232,7 @@ describe("session.current — the persistent per-turn parameters", () => {
       fn: async () => {
         const spawner = await Session.create({})
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: spawner.id,
           agent: "build",
           model: MODEL,
@@ -244,6 +257,7 @@ describe("session.current — the persistent per-turn parameters", () => {
       fn: async () => {
         const session = await Session.create({})
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           model: MODEL,
@@ -288,6 +302,7 @@ describe("session.current — the persistent per-turn parameters", () => {
       fn: async () => {
         const original = await Session.create({})
         await SessionPrompt.prompt({
+          variant: Provider.DEFAULT,
           sessionID: original.id,
           agent: "plan",
           model: MODEL,
@@ -313,6 +328,8 @@ describe("session.current — the persistent per-turn parameters", () => {
       fn: async () => {
         const session = await Session.create({})
         const sent = await SessionPrompt.prompt({
+          model: Provider.DEFAULT,
+          variant: Provider.DEFAULT,
           sessionID: session.id,
           agent: "build",
           noReply: true,

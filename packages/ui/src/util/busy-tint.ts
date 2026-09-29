@@ -1,7 +1,7 @@
 // The colours a busy indicator cross-fades between, in one place.
 //
 // Three independent things can make a session busy — its own turn, a subagent
-// under it, a background command it is waiting on — and any combination of them
+// it called, a background command it is waiting on — and any combination of them
 // can run at once. Each contributes one colour, and every indicator fades
 // through all the contributing colours in lockstep, so the number of tints a
 // reader sees is the number of things actually working.
@@ -17,36 +17,35 @@
 const SUBAGENT = "var(--box-accent-subagent)"
 const JOB = "var(--box-indicator-job)"
 
+// `subagents` and `jobs` count the open debts where this session is the caller.
 export type BusyFacts = {
-  busySelf: boolean
-  busyDescendant: boolean
-  busyJob?: boolean
+  turn: boolean
+  subagents: number
+  jobs: number
 }
+
+export const IDLE: BusyFacts = { turn: false, subagents: 0, jobs: 0 }
 
 // Ordered by which colour a reader should see first when only one is showing:
 // the session's own turn is what they are watching, then a subagent, then a job.
 // The first entry is the base every overlay fades over.
 export function busyTints(facts: BusyFacts, agent: string | undefined) {
   const tints: string[] = []
-  if (facts.busySelf) tints.push(agent ?? "var(--icon-interactive-base)")
-  if (facts.busyDescendant) tints.push(SUBAGENT)
-  if (facts.busyJob) tints.push(JOB)
+  if (facts.turn) tints.push(agent ?? "var(--icon-interactive-base)")
+  if (facts.subagents > 0) tints.push(SUBAGENT)
+  if (facts.jobs > 0) tints.push(JOB)
   return tints
 }
 
-// The colour the indicator paints when nothing is fading over it. A session can
-// be busy with no fact set (a turn whose rollup has not landed yet), so the
-// base falls back rather than leaving the indicator untinted.
+// The colour the indicator paints when nothing is fading over it. Callers read
+// this unconditionally, including while an indicator fades out after going idle,
+// so an idle session still resolves to a colour rather than leaving it untinted.
 export function busyBase(facts: BusyFacts, agent: string | undefined) {
   return busyTints(facts, agent)[0] ?? SUBAGENT
 }
 
-// Whether an indicator shows at all. `busy` covers the turns in the open
-// subtree; a running job is work the session is waiting on that no turn is
-// executing, so it never reaches that rollup. An indicator keyed on `busy` alone
-// goes dark while the answer is still coming back, which reads as finished.
-export function busyShown(facts: { busy: boolean } & BusyFacts) {
-  return facts.busy || facts.busyJob === true
+export function busyShown(facts: BusyFacts) {
+  return facts.turn || facts.subagents > 0 || facts.jobs > 0
 }
 
 // The colours that fade OVER the base, which is every contributing colour after

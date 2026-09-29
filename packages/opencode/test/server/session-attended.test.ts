@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Session } from "../../src/session"
 import { SessionPing } from "../../src/session/ping"
+import { Identifier } from "../../src/id/id"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { Log } from "../../src/util/log"
@@ -35,4 +36,21 @@ describe("attended-only pings", () => {
       },
     })
   }, 20_000)
+})
+
+describe("GET /session/:id/debts", () => {
+  test("an unknown session id answers 404", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const missing = Identifier.descending("session")
+        const response = await Server.App().request(
+          `/session/${missing}/debts?directory=${encodeURIComponent(tmp.path)}`,
+        )
+        expect(response.status).toBe(404)
+        expect(((await response.json()) as { name: string }).name).toBe("NotFoundError")
+      },
+    })
+  })
 })

@@ -1781,72 +1781,6 @@
         ]
       }
     },
-    "/session/busy": {
-      "get": {
-        "operationId": "session.busy",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Get session busy state",
-        "description": "Busy facts for every currently-busy session in this instance (own turn or any subagent). Bootstrap for clients that read the session.working event; absent sessions are idle.",
-        "responses": {
-          "200": {
-            "description": "Get session busy state",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "additionalProperties": {
-                    "type": "object",
-                    "properties": {
-                      "busy": {
-                        "type": "boolean"
-                      },
-                      "busySelf": {
-                        "type": "boolean"
-                      },
-                      "busyDescendant": {
-                        "type": "boolean"
-                      }
-                    },
-                    "required": [
-                      "busy",
-                      "busySelf",
-                      "busyDescendant"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.busy({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/session/ping/armed": {
       "get": {
         "operationId": "session.pingArmed",
@@ -2143,7 +2077,7 @@
         "tags": [
           "Session"
         ],
-        "description": "Retrieve all child sessions that were forked from the specified parent session.",
+        "description": "Retrieve all sessions whose parent is the specified session.",
         "responses": {
           "200": {
             "description": "List of children",
@@ -2776,21 +2710,11 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "providerID": {
-                    "type": "string"
-                  },
-                  "modelID": {
-                    "type": "string"
-                  },
                   "auto": {
                     "default": false,
                     "type": "boolean"
                   }
-                },
-                "required": [
-                  "providerID",
-                  "modelID"
-                ]
+                }
               }
             }
           }
@@ -4390,7 +4314,7 @@
           }
         ],
         "summary": "Get model preferences",
-        "description": "Get the server-owned model preferences (visibility, recents, variants).",
+        "description": "Get the server-owned model preferences (visibility, recents).",
         "responses": {
           "200": {
             "description": "Model preferences",
@@ -5522,7 +5446,7 @@
           }
         ],
         "summary": "Get default model",
-        "description": "Resolve the model a new session in this directory will use when the caller expresses no preference: the config `model` key, else a connected provider's default. Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.",
+        "description": "Resolve what a new session in this directory runs when the caller expresses no preference: the default agent, its model (else the config `model` key, else a connected provider's default), and its variant (else that model's configured `variant`). Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.",
         "responses": {
           "200": {
             "description": "Default model",
@@ -5531,6 +5455,9 @@
                 "schema": {
                   "anyOf": [
                     {
+                      "type": "null"
+                    },
+                    {
                       "type": "object",
                       "properties": {
                         "providerID": {
@@ -5538,15 +5465,19 @@
                         },
                         "modelID": {
                           "type": "string"
+                        },
+                        "variant": {
+                          "type": "string"
+                        },
+                        "agent": {
+                          "type": "string"
                         }
                       },
                       "required": [
                         "providerID",
-                        "modelID"
+                        "modelID",
+                        "agent"
                       ]
-                    },
-                    {
-                      "type": "null"
                     }
                   ]
                 }
@@ -6801,7 +6732,7 @@
           }
         ],
         "summary": "List subagents",
-        "description": "A session's subagents as the database records them, newest first. Stopping one is POST /session/:id/abort on the subagent's session.",
+        "description": "A session's subagents, newest first. Only an open debt makes one running, interrupted, or unpaid (outcome known, about to be delivered); one with none shows the outcome it delivered, or stopped when it never delivered one. Stopping one is POST /session/:id/abort on the subagent's session.",
         "responses": {
           "200": {
             "description": "Subagents of the session",
@@ -7900,7 +7831,7 @@
                     "minLength": 1
                   },
                   "model": {
-                    "description": "provider/model; defaults to the configured model",
+                    "description": "provider/model, or \"default\" for the configured model",
                     "type": "string"
                   },
                   "cache": {
@@ -7911,10 +7842,16 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  "variant": {
+                    "description": "A variant the model offers, or \"default\" for the model's configured one",
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "prompt"
+                  "prompt",
+                  "model",
+                  "variant"
                 ]
               }
             }
@@ -7949,7 +7886,7 @@
           }
         ],
         "summary": "Get session liveness",
-        "description": "Whether the server is working on this session right now: its own turn or a descendant's, a ping scheduled inside the cache window, or a running background job. Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.",
+        "description": "Whether the server is working on this session right now: its own turn, a ping scheduled inside the cache window, or open subagent and background-job debts owed to it (a Stop pays every debt, so both read 0 right after one). Read from the live sources rather than the recent hub, so it holds for an archived session too. A turn is found under whichever directory it was started in.",
         "responses": {
           "200": {
             "description": "Liveness facts",
@@ -7961,21 +7898,25 @@
                     "live": {
                       "type": "boolean"
                     },
-                    "busy": {
-                      "type": "boolean"
-                    },
                     "pinging": {
                       "type": "boolean"
                     },
-                    "job": {
+                    "jobs": {
+                      "type": "number"
+                    },
+                    "subagents": {
+                      "type": "number"
+                    },
+                    "turn": {
                       "type": "boolean"
                     }
                   },
                   "required": [
                     "live",
-                    "busy",
                     "pinging",
-                    "job"
+                    "turn",
+                    "subagents",
+                    "jobs"
                   ]
                 }
               }
@@ -8160,7 +8101,7 @@
                     "type": "string"
                   },
                   "model": {
-                    "description": "provider/model; defaults to the agent's model, then the configured one",
+                    "description": "provider/model, or \"default\" for the agent's model, then the configured one",
                     "type": "string"
                   },
                   "bare": {
@@ -8175,11 +8116,17 @@
                   "keep": {
                     "description": "Keep the session after the run, for debugging",
                     "type": "boolean"
+                  },
+                  "variant": {
+                    "description": "A variant the model offers, or \"default\" for the agent's, then the model's configured one",
+                    "type": "string"
                   }
                 },
                 "required": [
                   "agent",
-                  "prompt"
+                  "prompt",
+                  "model",
+                  "variant"
                 ]
               }
             }
@@ -8189,6 +8136,71 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.agent.headless({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/debts": {
+      "get": {
+        "operationId": "session.debts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "List what a session is owed",
+        "description": "Every open debt owed to this session: each background job and subagent that has yet to deliver its outcome, with its live state. Paid debts are not listed.",
+        "responses": {
+          "200": {
+            "description": "Open debts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Debt"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.debts({\n  ...\n})"
           }
         ]
       }
@@ -8239,18 +8251,6 @@
           "updated": {
             "type": "number"
           },
-          "busy": {
-            "type": "boolean"
-          },
-          "busySelf": {
-            "type": "boolean"
-          },
-          "busyDescendant": {
-            "type": "boolean"
-          },
-          "busyJob": {
-            "type": "boolean"
-          },
           "unseen": {
             "type": "boolean"
           },
@@ -8268,6 +8268,15 @@
           },
           "pinged": {
             "type": "number"
+          },
+          "jobs": {
+            "type": "number"
+          },
+          "subagents": {
+            "type": "number"
+          },
+          "turn": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -8275,14 +8284,13 @@
           "directory",
           "title",
           "updated",
-          "busy",
-          "busySelf",
-          "busyDescendant",
-          "busyJob",
           "unseen",
           "question",
           "error",
-          "permission"
+          "permission",
+          "turn",
+          "subagents",
+          "jobs"
         ]
       },
       "OpenProject": {
@@ -8517,21 +8525,21 @@
                     "directory": {
                       "type": "string"
                     },
-                    "busy": {
-                      "type": "boolean"
+                    "jobs": {
+                      "type": "number"
                     },
-                    "busySelf": {
-                      "type": "boolean"
+                    "subagents": {
+                      "type": "number"
                     },
-                    "busyDescendant": {
+                    "turn": {
                       "type": "boolean"
                     }
                   },
                   "required": [
                     "directory",
-                    "busy",
-                    "busySelf",
-                    "busyDescendant"
+                    "turn",
+                    "subagents",
+                    "jobs"
                   ]
                 }
               }
@@ -9198,7 +9206,8 @@
                   "failed",
                   "timeout",
                   "running",
-                  "ended"
+                  "ended",
+                  "stopped"
                 ]
               },
               "exit": {
@@ -10870,42 +10879,6 @@
           "properties"
         ]
       },
-      "Event.session.working": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.working"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "busy": {
-                "type": "boolean"
-              },
-              "busySelf": {
-                "type": "boolean"
-              },
-              "busyDescendant": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "sessionID",
-              "busy",
-              "busySelf",
-              "busyDescendant"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
       "PermissionAction": {
         "type": "string",
         "enum": [
@@ -11074,18 +11047,8 @@
               "archived": {
                 "type": "number"
               },
-              "injected": {
-                "type": "number"
-              },
               "stopped": {
                 "type": "number"
-              },
-              "reported": {
-                "type": "string",
-                "enum": [
-                  "completed",
-                  "failed"
-                ]
               }
             },
             "required": [
@@ -11316,9 +11279,6 @@
               "resumes": {
                 "type": "number"
               },
-              "transient": {
-                "type": "boolean"
-              },
               "nonce": {
                 "type": "string"
               }
@@ -11326,29 +11286,6 @@
             "required": [
               "at",
               "pid"
-            ]
-          },
-          "left": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "pid": {
-                    "type": "number"
-                  },
-                  "boot": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "pid",
-                  "boot"
-                ]
-              },
-              {
-                "type": "boolean",
-                "const": true
-              }
             ]
           }
         },
@@ -11887,21 +11824,11 @@
                 "modelID"
               ]
             }
-          },
-          "variant": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "string"
-            }
           }
         },
         "required": [
           "user",
-          "recent",
-          "variant"
+          "recent"
         ]
       },
       "Event.model.preference.updated": {
@@ -12327,9 +12254,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.open-projects.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.session.working"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"
@@ -14346,7 +14270,8 @@
                   "failed",
                   "timeout",
                   "running",
-                  "ended"
+                  "ended",
+                  "stopped"
                 ]
               },
               "exit": {
@@ -14865,9 +14790,6 @@
               "completed": {
                 "type": "number"
               },
-              "lost": {
-                "type": "number"
-              },
               "nudgedAt": {
                 "type": "number"
               },
@@ -14956,9 +14878,6 @@
               "completed": {
                 "type": "number"
               },
-              "lost": {
-                "type": "number"
-              },
               "nudgedAt": {
                 "type": "number"
               },
@@ -14987,6 +14906,14 @@
             "required": [
               "pid",
               "boot"
+            ]
+          },
+          "ended": {
+            "type": "string",
+            "enum": [
+              "stop",
+              "kill",
+              "timeout"
             ]
           }
         },
@@ -15290,7 +15217,9 @@
               "running",
               "completed",
               "failed",
-              "stopped"
+              "stopped",
+              "interrupted",
+              "unpaid"
             ]
           },
           "description": {
@@ -15335,6 +15264,53 @@
           "description",
           "agent",
           "time"
+        ]
+      },
+      "Debt": {
+        "type": "object",
+        "properties": {
+          "responder": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "job",
+              "subagent"
+            ]
+          },
+          "created": {
+            "type": "number"
+          },
+          "stuck": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "interrupted",
+              "unpaid"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "elapsed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "responder",
+          "kind",
+          "created",
+          "stuck",
+          "state",
+          "description",
+          "elapsed"
         ]
       }
     }

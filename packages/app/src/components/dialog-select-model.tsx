@@ -186,6 +186,7 @@ export function ModelSelectorPopover<T extends ValidComponent = "div">(props: {
     >
       <Kobalte.Trigger
         ref={(el) => setStore("trigger", el)}
+        data-action="model-trigger"
         as={props.triggerAs ?? "div"}
         {...(props.triggerProps as any)}
       >

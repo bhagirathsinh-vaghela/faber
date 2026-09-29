@@ -14,7 +14,7 @@ import { Storage } from "../storage/storage"
 import { Parts } from "../storage/parts"
 import { Messages } from "../storage/messages"
 import { Sessions } from "../storage/sessions"
-import { Owed } from "../storage/owed"
+import { Debt } from "../storage/debt"
 import { Db } from "../storage/db"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
@@ -27,7 +27,7 @@ import { fn } from "@/util/fn"
 import { Command } from "../command"
 import { Snapshot } from "@/snapshot"
 
-import type { Provider } from "@/provider/provider"
+import { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { Global } from "@/global"
 import { SessionPricing } from "./pricing"
@@ -84,8 +84,11 @@ export namespace Session {
     return state.entries
   }
 
+  // Index only a session in this instance's project. A cross-project read (a
+  // Stop walking a child in another directory) must not leak a foreign row into
+  // this index, which backs Session.list and children.
   function indexed(session: Info) {
-    index().entries.set(session.id, session)
+    if (session.projectID === Instance.project.id) index().entries.set(session.id, session)
     return session
   }
 
@@ -174,22 +177,12 @@ export namespace Session {
         updated: z.number(),
         compacting: z.number().optional(),
         archived: z.number().optional(),
-        // When this subagent's result last reached its parent. Absent means the
-        // session reports to nobody: a root, or a child from before the field
-        // existed (many sit on disk, and none may ever be delivered). The
-        // agent tool writes 0 at launch. The parent is owed a result while a
-        // prompt into the child is newer than both this and `stopped`; see
-        // Recovery.owed.
-        injected: z.number().optional(),
-        // What the last delivery told the parent this subagent's outcome was,
-        // written in the same transaction as `injected`. The subagents list
-        // shows it rather than re-deriving an outcome from the transcript.
-        reported: z.enum(["completed", "failed"]).optional(),
-        // When this session's work was last stopped: Session.stop (Stop,
-        // archive, delete, or a stop of an ancestor), Session.interrupt (Esc,
-        // this turn only), recovery's first-boot baseline, and recovery when a
-        // child's parent is gone. Recovery reads it to leave a turn unresumed
-        // and a result undelivered; keep-warm reads `keepWarm`, not this.
+        // When this session's turn was last cut by a person: Session.stop
+        // (Stop, archive, delete, or a stop of an ancestor) and
+        // Session.interrupt (Esc). Recovery leaves a turn that started before
+        // it unresumed, and wakes only for a message written after it; a Stop
+        // restamps it past the notices it paid, so none of them wakes the
+        // session. Keep-warm reads `keepWarm`, not this.
         stopped: z.number().optional(),
       }),
       permission: PermissionNext.Ruleset.optional(),
@@ -224,21 +217,11 @@ export namespace Session {
           pid: z.number(),
           boot: z.number().optional(),
           resumes: z.number().optional(),
-          // Run by a process that does not recover its own work (`opencode
-          // run`): its turn ends with that process instead of being resumed.
-          transient: z.boolean().optional(),
           // Unique per turn, so a turn unwinding clears only its own marker
           // even when the next one started in the same millisecond.
           nonce: z.string().optional(),
         })
         .optional(),
-      // The last turn ran in a process that does not recover its own work
-      // (`opencode run`), named by pid and start time. Once that process is
-      // gone, whoever read the session left with it, so a result arriving later
-      // is recorded without starting a turn nobody reads.
-      // A bare `true` is the one shape an earlier build stored, naming no
-      // process; recovery reads it as absent.
-      left: z.union([z.object({ pid: z.number(), boot: z.number() }), z.literal(true)]).optional(),
       // Persisted "keep the cache warm" intent. The daemon arms only when this
       // is true; attach/reconnect reconciles the daemon to it but never sets it.
       // Only an explicit act flips it: an organic turn or the arm route set it
@@ -458,34 +441,26 @@ export namespace Session {
         title,
         current: original.current,
       })
-      const msgs = await messages({ sessionID: input.sessionID })
-      const idMap = new Map<string, string>()
-
-      for (const msg of msgs) {
-        if (input.messageID && msg.info.id >= input.messageID) break
-        const newID = Identifier.ascending("message")
-        idMap.set(msg.info.id, newID)
-
-        const parentID = msg.info.role === "assistant" && msg.info.parentID ? idMap.get(msg.info.parentID) : undefined
-        const cloned = await updateMessage({
-          ...msg.info,
-          sessionID: session.id,
-          id: newID,
-          ...(parentID && { parentID }),
-        })
-
-        for (const part of msg.parts) {
-          await updatePart({
-            ...part,
-            id: Identifier.ascending("part"),
-            messageID: cloned.id,
-            sessionID: session.id,
-          })
-        }
-      }
+      await copy(input.sessionID, session.id, input.messageID)
       return session
     },
   )
+
+  // Copy `from`'s transcript into `to` under fresh ids, keeping each reply
+  // linked to its copied request; stops before `until` when given. The one
+  // copy every fork and every context hand-off uses.
+  export async function copy(from: string, to: string, until?: string) {
+    const ids = new Map<string, string>()
+    for (const msg of await messages({ sessionID: from })) {
+      if (until && msg.info.id >= until) break
+      const id = Identifier.ascending("message")
+      ids.set(msg.info.id, id)
+      const parentID = msg.info.role === "assistant" && msg.info.parentID ? ids.get(msg.info.parentID) : undefined
+      await updateMessage({ ...msg.info, sessionID: to, id, ...(parentID && { parentID }) })
+      for (const part of msg.parts)
+        await updatePart({ ...part, id: Identifier.ascending("part"), messageID: id, sessionID: to })
+    }
+  }
 
   export const touch = fn(Identifier.schema("session"), async (sessionID) => {
     await update(sessionID, (draft) => {
@@ -657,8 +632,8 @@ export namespace Session {
       // so the restored entry reads them from their sources. The fallback slot
       // is time.updated as read before the edit, which a touching update would
       // bump. An armed ping re-publishes its deadline onto the new entry.
-      const { BackgroundJob } = await import("@/background/job")
       const { SessionPing } = await import("./ping")
+      const counts = await SessionBusy.debts(result.id, result)
       const archivedNow = await Sessions.archivedReader()
       await SessionRecent.restore({
         sessionID: result.id,
@@ -666,10 +641,12 @@ export namespace Session {
         title: result.title,
         updated: result.lastActivity ?? updated,
         unseen: result.unseen === true,
-        flags: () => SessionBusy.effective(result.id),
-        running: await BackgroundJob.running(result.id),
+        flags: () => ({ turn: SessionBusy.busy(result.id), ...counts }),
         still: () => !archivedNow(result.id),
       })
+      // The counts were read before restore's awaits; a debt written since
+      // re-sends the facts from their sources.
+      void SessionBusy.push(result.id)
       void SessionPing.refresh(result.id)
     }
     // A rename (or auto-title) must reach the overview, which reads the recent
@@ -815,19 +792,23 @@ export namespace Session {
   })
 
   // Stopping a session: the one implementation, behind the Stop button, the
-  // overview's stop, archive, and delete. A stop is a person's decision, so it
-  // is recorded (`time.stopped`) on the session and every descendant: recovery
-  // reads it to leave the turn unresumed and the result undelivered.
+  // overview's stop, archive, and delete. A stop is a person's decision and
+  // ends the whole subtree: every session in it is stamped (`time.stopped`,
+  // which keeps recovery from resuming its turn), disarmed, cancelled, has its
+  // jobs killed, and has everything it is owed and owes paid as stopped.
   //
-  // The rest only makes sense together: disarm the keep-warm daemon, drop the
-  // prompt pin, kill the session's jobs, cancel its turn. Descendants first, so
-  // nothing below outlives the session that owns it.
+  // Every session in the subtree is stamped, disarmed and cancelled before any
+  // is settled, so no loop still running can re-steer a child or launch while
+  // the rest is paid. Settling runs deepest level first and the stopped
+  // session last, so a session's responders have paid their notices into it
+  // before it pays its own caller. Every notice is written without waking
+  // anyone, except the stopped session's own report to its caller above the
+  // subtree. A session's stamp is then moved past its newest message, so none
+  // of the notices it just received reads as unanswered and wakes it on the
+  // next pass.
   //
-  // Every stamp lands before any cancel, top-down, each dated when it is
-  // written. A launch from inside a turn (the agent tool) checks its parent's
-  // stamp last, straight before its child's turn starts: it either sees the
-  // stop, or its child exists before the walk below lists it and its turn is
-  // registered before the cancels run.
+  // Disarm precedes cancel: cancel() runs on every loop exit, so it must not
+  // be what disarms.
   export const stop = fn(
     z.object({
       sessionID: Identifier.schema("session"),
@@ -836,43 +817,93 @@ export namespace Session {
       const { SessionPing } = await import("./ping")
       const { SessionPin } = await import("./pin")
       const { BackgroundJob } = await import("@/background/job")
-      // Its debts go with the stamp: a job that settles on its own is past
-      // stopSession's reach, and paying it would wake the stopped session.
+      const { Recovery } = await import("./recovery")
       // Every step runs whatever an earlier one threw, so a session whose
-      // stamp failed (deleted meanwhile, a busy database) still has its
-      // subtree walked and its turn cancelled; the first failure is reported
-      // once everything else is stopped.
+      // stamp failed (a busy database) still has its subtree walked and its
+      // turn cancelled; the first failure is reported once everything else is
+      // stopped. A session deleted meanwhile (a launch dropping the child it
+      // just made) has nothing left to stop, so its missing row is no failure.
       const failures: unknown[] = []
-      const attempt = <T,>(step: () => Promise<T> | T, fallback: T) =>
+      const attempt = <T>(step: () => Promise<T> | T, fallback: T) =>
         Promise.resolve()
           .then(step)
           .catch((error: unknown) => {
-            failures.push(error)
+            if (!Storage.NotFoundError.isInstance(error)) failures.push(error)
             return fallback
           })
-      const stamp = async (sessionID: string): Promise<string[]> => {
-        await attempt(() => update(sessionID, (draft) => void (draft.time.stopped = Date.now()), { touch: false }), undefined)
-        await attempt(() => Owed.removeSession(sessionID), undefined)
-        const below = await Promise.all((await attempt(() => children(sessionID), [])).map((child) => stamp(child.id)))
-        return [...below.flat(), sessionID]
+      // Read the subtree from the database (a child another process made is in
+      // no per-process index yet, and a Stop must reach it), level by level,
+      // with a seen set so a parentID cycle cannot loop. Each session's own
+      // directory is carried so a cross-directory turn can be cancelled in the
+      // instance that runs it (see `inChildDir`).
+      const { InstanceBootstrap } = await import("@/project/bootstrap")
+      // Run `step` in a child's own instance, for the one fact that is
+      // instance-scoped: an in-flight turn's AbortController lives in
+      // SessionPrompt's per-directory state, so cancelling a child whose turn
+      // runs in another directory must enter that directory. A directory that
+      // cannot be entered falls back to the caller's context — its id-keyed
+      // cleanup still lands, and the stamp already keeps recovery from resuming
+      // the turn, so an unenterable directory is not itself a Stop failure.
+      // Every other step is keyed by session id or held in a module-global map,
+      // so it is correct in the caller's context and needs no per-child instance.
+      const inChildDir = <T>(dir: string, step: () => Promise<T> | T) =>
+        attempt(
+          () => Instance.provide({ directory: dir, init: InstanceBootstrap, fn: step }).catch(() => step()),
+          undefined,
+        )
+      const seen = new Set<string>()
+      const levels: Session.Info[][] = []
+      for (let level = [await get(input.sessionID)]; level.length > 0; ) {
+        for (const s of level) seen.add(s.id)
+        levels.push(level)
+        const belowIds = (
+          await Promise.all(level.map((s) => attempt(() => Sessions.children(s.id), [] as string[])))
+        ).flat()
+        const below = await Promise.all(belowIds.filter((id) => !seen.has(id)).map((id) => attempt(() => get(id), undefined)))
+        level = below.filter((s): s is Session.Info => s !== undefined)
       }
-      for (const sessionID of await stamp(input.sessionID)) {
-        await attempt(() => SessionPing.stop(sessionID), undefined)
-        SessionPin.drop(sessionID)
-        // A job outlives the turn that launched it, so the stop is what ends
-        // the work the session started.
-        await attempt(() => BackgroundJob.stopSession(sessionID), undefined)
-        // After the disarm, never before: cancel() runs on every loop exit, so
-        // it must not be what disarms.
-        SessionPrompt.cancel(sessionID)
+      const read = await Messages.reader()
+      const halt = async (s: Session.Info) => {
+        await attempt(() => update(s.id, (draft) => void (draft.time.stopped = Date.now()), { touch: false }), undefined)
+        await attempt(() => SessionPing.stop(s.id), undefined)
+        await attempt(() => SessionPin.drop(s.id), undefined)
+        // The only step that reads instance-scoped state: the turn's abort
+        // handle lives in the child's directory, so cancelling a cross-directory
+        // turn must enter it.
+        await inChildDir(s.directory, () => SessionPrompt.cancel(s.id, SessionPrompt.STOPPED))
       }
+      const settle = async (s: Session.Info) => {
+        await attempt(() => BackgroundJob.stopSession(s.id), undefined)
+        // Recovery.stopped enters each debt's own caller directory itself, so it
+        // runs here in the caller's context, not wrapped in the child's: a job
+        // notice into a child whose directory cannot be entered fails on its own
+        // while the child's report to its live parent, entered separately, lands.
+        await attempt(() => Recovery.stopped(s.id, { wake: s.id === input.sessionID }), undefined)
+        await attempt(
+          () =>
+            update(
+              s.id,
+              (draft) => void (draft.time.stopped = Math.max(Date.now(), read.newest(s.id)?.time.created ?? 0)),
+              { touch: false },
+            ),
+          undefined,
+        )
+        await attempt(() => SessionBusy.push(s.id), undefined)
+      }
+      const subtree = levels.flat()
+      Recovery.hold(subtree.map((s) => s.id))
+      await Promise.all(subtree.map(halt))
+        .then(async () => {
+          for (const level of levels.toReversed()) await Promise.all(level.map(settle))
+        })
+        .finally(() => Recovery.release(subtree.map((s) => s.id)))
       if (failures.length > 0) throw failures[0]
     },
   )
 
-  // The dock's Esc: the same stop fact for this session's turn, so recovery
-  // neither resumes it nor delivers it, but the keep-warm daemon, the pin, the
-  // jobs, and the subagents are left running.
+  // The dock's Esc: this session's turn only, so recovery does not resume it.
+  // The keep-warm daemon, the pin, the jobs, the subagents, and every debt are
+  // left as they were.
   export const interrupt = fn(Identifier.schema("session"), async (sessionID) => {
     await update(sessionID, (draft) => void (draft.time.stopped = Date.now()), { touch: false })
     SessionPrompt.cancel(sessionID)
@@ -882,8 +913,11 @@ export namespace Session {
     const project = Instance.project
     try {
       const session = await get(sessionID)
-      for (const child of await children(sessionID)) {
-        await remove(child.id)
+      // Read children from the database, like Session.stop: a child another
+      // process or project made is in no per-process index, and a delete must
+      // reach it too.
+      for (const child of await Sessions.children(sessionID)) {
+        await remove(child)
       }
       await unshare(sessionID).catch(() => {})
       // Drop the whole session (parts, messages, the session row) in ONE
@@ -900,7 +934,8 @@ export namespace Session {
         session_.run(sessionID)
       })
       index().entries.delete(sessionID)
-      await Owed.removeSession(sessionID)
+      await Debt.drop(sessionID)
+      if (session.parentID) await SessionBusy.push(session.parentID)
       void SessionRecent.remove(sessionID)
       Bus.publish(Event.Deleted, {
         info: session,
@@ -1132,7 +1167,8 @@ export namespace Session {
       await SessionPrompt.command({
         sessionID: input.sessionID,
         messageID: input.messageID,
-        model: input.providerID + "/" + input.modelID,
+        model: Provider.INHERIT,
+        variant: Provider.INHERIT,
         command: Command.Default.INIT,
         arguments: "",
       })

@@ -38,7 +38,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
-import { busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
+import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
 import { isEditable } from "@opencode-ai/ui/util/focus"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
@@ -239,12 +239,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   // The single busy read for this session, from the one operative store.
-  // working = effective (own OR any subagent, server-rolled full subtree).
-  const busy = createMemo(
-    () => sync.data.session_busy[params.id ?? ""] ?? { busy: false, busySelf: false, busyDescendant: false },
-  )
-  // A running background job keeps the indicator up too: work is still coming
-  // back, so going dark would say the session is done.
+  const busy = createMemo(() => sync.data.session_busy[params.id ?? ""] ?? IDLE)
   const working = createMemo(() => busyShown(busy()))
   // Something is in the box worth sending — text draft or pending comments.
   const submittable = createMemo(() => prompt.dirty() || commentCount() > 0)
@@ -1532,13 +1527,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
       return
     }
+    // Only an explicit pick rides on the request; otherwise the server resolves
+    // it. Read now: creating a session below navigates, and a read after that
+    // would see the new session's empty picks.
+    const requestModel = local.model.picked()
+    const variant = local.model.variant.request()
+    const held = local.model.held()
 
     const errorMessage = (err: unknown) => describeError(err, language.t("common.requestFailed"))
 
     // A prompt queues behind a running turn, but shell takes the session's
     // in-flight handle exclusively and the server rejects it outright. Say so
     // here and keep the draft, rather than losing it to a Session is busy error.
-    if (mode === "shell" && busy().busySelf) {
+    if (mode === "shell" && busy().turn) {
       showToast({
         title: language.t("prompt.toast.shellBusy.title"),
         description: language.t("prompt.toast.shellBusy.description"),
@@ -1674,17 +1675,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
+    // The resolved display value, right for the optimistic message but never
+    // sent: the request carries `requestModel` instead.
     const model = {
       modelID: currentModel.id,
       providerID: currentModel.provider.id,
     }
-    // Only an explicit pick rides on the request; otherwise the server resolves
-    // the default itself, off config newer than this tab's copy. `model` above
-    // is the resolved display value, right for the optimistic message but not
-    // something to pin the turn to.
-    const requestModel = local.model.picked()
     const agent = currentAgent.name
-    const variant = local.model.variant.current()
 
     // Pre-allocate the id every send path uses, so a send that fails in transit
     // can confirm receipt (read the message back) before restoring the draft,
@@ -1696,6 +1693,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       ))
 
     if (mode === "shell") {
+      // Shell carries no variant, so a fresh send clears the raw variant pick
+      // without handing it to the created session; an open session keeps its own.
+      const shellHeld = {
+        fresh: held.fresh,
+        model: held.model,
+        pick: held.pick,
+        variant: held.fresh && held.variant ? { value: held.variant.value, sent: false } : undefined,
+      }
       clearInput()
       props.onSubmit?.()
       client.session
@@ -1703,11 +1708,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           sessionID: session.id,
           messageID,
           agent,
-          model,
+          model: requestModel,
           command: text,
         })
+        .then(() => local.model.spend(session.id, shellHeld, sessionDirectory))
         .catch(async (err) => {
-          if (err instanceof Error && (await wasReceived())) return
+          if (err instanceof Error && (await wasReceived()))
+            return local.model.spend(session.id, shellHeld, sessionDirectory)
           showToast({
             title: language.t("prompt.toast.shellSendFailed.title"),
             description: errorMessage(err),
@@ -1732,7 +1739,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             command: commandName,
             arguments: args.join(" "),
             agent,
-            model: `${model.providerID}/${model.modelID}`,
+            model: requestModel && `${requestModel.providerID}/${requestModel.modelID}`,
             variant,
             parts: images.map((attachment) => ({
               id: Identifier.ascending("part"),
@@ -1742,6 +1749,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               filename: attachment.filename,
             })),
           })
+          // A command never spends a pick: the server may run it on the
+          // command's own model and drop the pick, and a pick it did apply
+          // equals the session's record afterwards, so it is not sent again.
           .catch(async (err) => {
             if (err instanceof Error && (await wasReceived())) return
             showToast({
@@ -2004,9 +2014,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // session.busy over SSE (or the 5s reconcile tick). Without this the only
     // feedback for a press is the button disabling, which reads as "nothing
     // happened" and invites a second press. The reconcile tick confirms it, and
-    // the send-failure path below clears it. busySelf:true — this is our turn.
+    // the send-failure path below clears it. Only `turn` is ours to assert: a
+    // job or subagent from an earlier turn keeps its count.
     if (sessionDirectory === projectDirectory) {
-      sync.set("session_busy", session.id, { busy: true, busySelf: true, busyDescendant: false })
+      sync.set("session_busy", session.id, (prev) => ({ ...(prev ?? IDLE), turn: true }))
     }
 
     const waitForWorktree = async () => {
@@ -2017,7 +2028,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       const cleanup = () => {
         if (sessionDirectory === projectDirectory) {
-          sync.set("session_busy", session.id, { busy: false, busySelf: false, busyDescendant: false })
+          sync.set("session_busy", session.id, (prev) => ({ ...(prev ?? IDLE), turn: false }))
         }
         reapCreated()
         removeOptimisticMessage()
@@ -2084,6 +2095,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         parts: requestParts,
         variant,
       })
+      local.model.spend(session.id, held, sessionDirectory)
     }
 
     void send().catch(async (err) => {
@@ -2106,12 +2118,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // NotFound is believed only if it holds across retries; a single one can be
       // the write settling behind a just-recovered server. A read that itself
       // fails is unknown, not absent, so it never restores.
-      if (err instanceof Error && (await wasReceived())) return
+      if (err instanceof Error && (await wasReceived())) return local.model.spend(session.id, held, sessionDirectory)
       if (sessionDirectory === projectDirectory) {
-        // Send failed before a turn began — undo the optimistic busy. No subagent
-        // can exist yet, so clearing both facts is correct; the reconcile tick
-        // backstops it regardless.
-        sync.set("session_busy", session.id, { busy: false, busySelf: false, busyDescendant: false })
+        // Send failed before a turn began — undo the optimistic turn; the
+        // reconcile tick backstops it regardless.
+        sync.set("session_busy", session.id, (prev) => ({ ...(prev ?? IDLE), turn: false }))
       }
       showToast({
         title: language.t("prompt.toast.promptSendFailed.title"),
@@ -2532,16 +2543,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Switch>
                   <Match when={store.mode === "shell"}>
-                    <div class="flex items-center gap-2 px-2 h-6" data-blocked={busy().busySelf ? "true" : undefined}>
-                      <Icon
-                        name="console"
-                        size="small"
-                        class={busy().busySelf ? "text-icon-weak" : "text-icon-primary"}
-                      />
-                      <span class={`text-12-regular ${busy().busySelf ? "text-text-weak" : "text-text-primary"}`}>
+                    <div class="flex items-center gap-2 px-2 h-6" data-blocked={busy().turn ? "true" : undefined}>
+                      <Icon name="console" size="small" class={busy().turn ? "text-icon-weak" : "text-icon-primary"} />
+                      <span class={`text-12-regular ${busy().turn ? "text-text-weak" : "text-text-primary"}`}>
                         {language.t("prompt.mode.shell")}
                       </span>
-                      <Show when={busy().busySelf}>
+                      <Show when={busy().turn}>
                         <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.blocked")}</span>
                       </Show>
                       <span class="text-12-regular text-text-weak">{language.t("prompt.mode.shell.exit")}</span>
@@ -2605,7 +2612,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         >
                           <ModelSelectorPopover
                             triggerAs={Button}
-                            triggerProps={{ variant: "ghost", class: "min-w-0 max-w-[240px]" }}
+                            triggerProps={{
+                              variant: "ghost",
+                              class: "min-w-0 max-w-[240px]",
+                              "data-spent": local.model.spent(),
+                            }}
                           >
                             <Show when={local.model.current()?.provider?.id}>
                               <ProviderIcon
@@ -2636,7 +2647,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         title={language.t("command.model.variant.cycle")}
                         keybind={command.keybind("model.variant.cycle")}
                       >
-                        <span class="inline-flex items-center">
+                        <span class="inline-flex items-center" data-action="model-variant">
                           <Select
                             options={["default", ...local.model.variant.list()]}
                             current={local.model.variant.current() ?? "default"}

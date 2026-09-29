@@ -37,10 +37,7 @@ const SECTIONS: { title: string; fields: { id: string; label: string }[] }[] = [
   },
   {
     title: "Subagents",
-    fields: [
-      { id: "pending", label: "Pending (subagents running)" },
-      { id: "mcp", label: "MCP tools" },
-    ],
+    fields: [{ id: "mcp", label: "MCP tools" }],
   },
   {
     title: "Controls",

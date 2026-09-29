@@ -120,7 +120,6 @@ export const dict = {
   "palette.group.commands": "Commands",
   "palette.group.files": "Files",
 
-  "actionbar.pending.tooltip": "Tasks currently running in background",
   "actionbar.questions.tooltip": "Show pending questions",
 
   "dock.hide": "Hide usage",
@@ -343,8 +342,14 @@ export const dict = {
   "dialog.skill.favorite": "Add to favorites",
   "dialog.skill.unfavorite": "Remove from favorites",
   "dialog.subagents.title": "Subagents",
-  "dialog.subagents.section.running": "Running",
+  "dialog.subagents.section.progress": "In progress",
   "dialog.subagents.section.completed": "Completed",
+  "dialog.subagents.status.running": "running",
+  "dialog.subagents.status.interrupted": "interrupted",
+  "dialog.subagents.status.unpaid": "delivering",
+  "dialog.subagents.status.completed": "completed",
+  "dialog.subagents.status.failed": "failed",
+  "dialog.subagents.status.stopped": "stopped",
   "dialog.subagents.parent": "Parent session",
   "dialog.subagents.parentOnly": "This is a subagent session. It has no subagents of its own.",
 
@@ -434,9 +439,6 @@ export const dict = {
   "toast.permissions.autoaccept.on.description": "Edit and write permissions will be automatically approved",
   "toast.permissions.autoaccept.off.title": "Stopped auto-accepting edits",
   "toast.permissions.autoaccept.off.description": "Edit and write permissions will require approval",
-
-  "toast.model.none.title": "No model selected",
-  "toast.model.none.description": "Connect a provider to summarize this session",
 
   "toast.file.loadFailed.title": "Failed to load file",
   "toast.file.listFailed.title": "Failed to list files",

@@ -3,8 +3,8 @@ import path from "path"
 import { Tool } from "./tool"
 import { Question } from "../question"
 import { Session } from "../session"
-import { MessageV2 } from "../session/message-v2"
-import { Identifier } from "../id/id"
+import { Provider } from "../provider/provider"
+import { SessionPrompt } from "../session/prompt"
 import { Instance } from "../project/instance"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
 import ENTER_DESCRIPTION from "./plan-enter.txt"
@@ -34,30 +34,23 @@ export const PlanExitTool = Tool.define("plan_exit", {
     const answer = answers[0]?.[0]
     if (answer === "No") throw new Question.RejectedError()
 
-    const model = await MessageV2.model(ctx.sessionID)
-
-    const userMsg: MessageV2.User = {
-      id: Identifier.ascending("message"),
+    await SessionPrompt.deliver({
       sessionID: ctx.sessionID,
-      role: "user",
-      time: {
-        created: Date.now(),
-      },
-      agent: "build",
-      model,
-      variant: await MessageV2.lastVariant(ctx.sessionID),
-    }
-    await Session.updateMessage(userMsg)
+      parts: [
+        {
+          type: "text",
+          text: `The plan at ${plan} has been approved, you can now edit files. Execute the plan`,
+          synthetic: true,
+          internal: true,
+        },
+      ],
+      model: Provider.INHERIT,
+      variant: Provider.INHERIT,
+      params: { agent: "build" },
+      join: true,
+      wake: false,
+    })
     await Session.setAgent(ctx.sessionID, "build")
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: userMsg.id,
-      sessionID: ctx.sessionID,
-      type: "text",
-      text: `The plan at ${plan} has been approved, you can now edit files. Execute the plan`,
-      synthetic: true,
-      internal: true,
-    } satisfies MessageV2.TextPart)
 
     return {
       title: "Switching to build agent",
@@ -94,30 +87,23 @@ export const PlanEnterTool = Tool.define("plan_enter", {
 
     if (answer === "No") throw new Question.RejectedError()
 
-    const model = await MessageV2.model(ctx.sessionID)
-
-    const userMsg: MessageV2.User = {
-      id: Identifier.ascending("message"),
+    await SessionPrompt.deliver({
       sessionID: ctx.sessionID,
-      role: "user",
-      time: {
-        created: Date.now(),
-      },
-      agent: "plan",
-      model,
-      variant: await MessageV2.lastVariant(ctx.sessionID),
-    }
-    await Session.updateMessage(userMsg)
+      parts: [
+        {
+          type: "text",
+          text: "User has requested to enter plan mode. Switch to plan mode and begin planning.",
+          synthetic: true,
+          internal: true,
+        },
+      ],
+      model: Provider.INHERIT,
+      variant: Provider.INHERIT,
+      params: { agent: "plan" },
+      join: true,
+      wake: false,
+    })
     await Session.setAgent(ctx.sessionID, "plan")
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: userMsg.id,
-      sessionID: ctx.sessionID,
-      type: "text",
-      text: "User has requested to enter plan mode. Switch to plan mode and begin planning.",
-      synthetic: true,
-      internal: true,
-    } satisfies MessageV2.TextPart)
 
     return {
       title: "Switching to plan agent",

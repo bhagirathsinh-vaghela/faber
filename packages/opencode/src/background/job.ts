@@ -2,12 +2,13 @@ import path from "path"
 import fs from "fs/promises"
 import z from "zod"
 import { Global } from "@/global"
-import { Storage } from "@/storage/storage"
 import { Log } from "@/util/log"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
+import { Db } from "@/storage/db"
 import { BackgroundProcess } from "./process"
-import { Owed } from "@/storage/owed"
+import { Debt } from "@/storage/debt"
+import { Jobs } from "@/storage/jobs"
 
 // The durable record of a spawned shell job, and the files it writes.
 //
@@ -24,12 +25,8 @@ import { Owed } from "@/storage/owed"
 export namespace BackgroundJob {
   const log = Log.create({ service: "background-job" })
 
-  const PREFIX = ["background", "job"]
-
-  // What the PROCESS did. Whether anyone read the result is a separate
-  // question, answered by `time.lost`: a result nobody received still came
-  // from a command that exited or was killed, and folding the two together
-  // gives a state that describes neither.
+  // What the PROCESS did. Whether its session has been told is a separate
+  // question, answered by its debt (storage/debt.ts).
   export const Status = z.enum(["running", "exited", "killed"])
   export type Status = z.infer<typeof Status>
 
@@ -79,18 +76,12 @@ export namespace BackgroundJob {
         // for a fresh one.
         nudges: z.number().optional(),
         nudgedAt: z.number().optional(),
-        // When a finished result could not be delivered. The work ran and its
-        // output is still on disk; what is gone is the session that asked for
-        // it, so the stamp is what distinguishes a result nobody read from one
-        // that was never produced.
-        //
-        // It records ONE attempt, not a verdict: the record settles before
-        // delivery is tried and a settled record is never reconciled again, so
-        // a momentary fault (lock contention, a full disk) is stamped the same
-        // as a session that will never exist again.
-        lost: z.number().optional(),
       }),
       exit: z.number().optional(),
+      // Why a job that did not finish on its own ended: a Stop of its session,
+      // a kill (the model's own, or an Esc cancelling its launch), or the
+      // deadline. Absent for a job that ran to its exit.
+      ended: z.enum(["stop", "kill", "timeout"]).optional(),
     })
     .meta({ ref: "BackgroundJob" })
   export type Info = z.infer<typeof Info>
@@ -151,23 +142,6 @@ export namespace BackgroundJob {
   // the one a lookup may use.
   export function owner(job: Info) {
     return job.project ?? job.directory
-  }
-
-  // The session stops showing a running job once it has none left. Called by
-  // every path that takes a record out of `running`, since a session with two
-  // jobs must keep the flag while the second one runs.
-  //
-  // Shared rather than repeated: three paths settle a record (the exit watcher,
-  // a reconcile pass, and a kill), and one predicate answering to three copies
-  // is a predicate that holds in two of them.
-  export async function settled(sessionID: string) {
-    if (await running(sessionID)) return
-    const { SessionRecent } = await import("@/session/recent")
-    void SessionRecent.setBusyJob(sessionID, false)
-  }
-
-  export async function running(sessionID: string) {
-    return list().then((jobs) => jobs.some((job) => job.sessionID === sessionID && job.status === "running"))
   }
 
   // v7 is time-ordered, so listing sorts oldest-first for free and the
@@ -281,45 +255,57 @@ export namespace BackgroundJob {
     return `sh -c ${quote(inner)}`
   }
 
-  export async function write(info: Info) {
-    await Storage.write([...PREFIX, info.id], info)
+  export const write = Jobs.put
+  export const get = Jobs.get
+  export const list = Jobs.list
+
+  // A launch's record and the debt it owes its session, in one transaction: a
+  // job is never owed without a record, nor recorded without being owed.
+  export async function create(job: Info) {
+    const [put, debts] = await Promise.all([Jobs.writer(), Debt.claimer()])
+    await Db.transaction(() => {
+      debts.owe(job.id, "job", job.sessionID, job.time.created)
+      put(job)
+    })
   }
 
-  export async function get(id: string) {
-    return Storage.read<Info>([...PREFIX, id]).catch(() => undefined)
-  }
-
-  export async function update(id: string, fn: (draft: Info) => void) {
-    return Storage.update<Info>([...PREFIX, id], fn).catch(() => undefined)
-  }
-
-  export async function list() {
-    const keys = await Storage.list(PREFIX)
-    const jobs = await Promise.all(keys.map((key) => Storage.read<Info>(key).catch(() => undefined)))
-    return jobs.filter((job): job is Info => job !== undefined)
+  // `fn` returns false for a no-op, which leaves the row unwritten.
+  export async function update(id: string, fn: (draft: Info) => boolean | void) {
+    return Jobs.update(id, fn)
   }
 
   export async function remove(id: string) {
-    await Storage.remove([...PREFIX, id])
+    await Jobs.remove(id)
     await fs.unlink(logPath(id)).catch(() => {})
     await fs.unlink(exitPath(id)).catch(() => {})
   }
 
   // Stop a running job and settle its record.
   //
-  // Three outcomes a caller must be able to tell apart, since each warrants a
+  // A caller must be able to tell the outcomes apart, since each warrants a
   // different thing being said to whoever asked for the kill: no such job, a
   // job that cannot be signalled yet, and the record as it stands after the
-  // attempt.
+  // attempt. `killed` is whether THIS call ended it, as opposed to finding it
+  // already settled.
   //
-  // A job whose pid no longer verifies is settled rather than signalled: it is
-  // already gone, or the number belongs to something else now.
-  export type Stopped = { type: "unknown" } | { type: "unspawned" } | { type: "settled"; job: Info }
+  // A job whose pid no longer verifies is settled as it really ended rather
+  // than signalled: it is already gone, or the number belongs to something
+  // else now. That is never recorded as a kill, and its debt stays for
+  // Recovery to deliver the real result.
+  // `why` is recorded on the job so the outcome its caller is told names the
+  // real cause. `pay` takes the job's debt in the same write that claims it,
+  // for a kill whose own reply is the payment.
+  export type Stopped = { type: "unknown" } | { type: "unspawned" } | { type: "settled"; job: Info; killed: boolean }
 
-  export async function stop(id: string): Promise<Stopped> {
+  // How close to the claim an exit file's time may be and still count as the
+  // kill's own doing: the filesystem clock can trail Date.now() by a few
+  // milliseconds.
+  const GRACE_MS = 50
+
+  export async function stop(id: string, options: { why?: "stop" | "kill"; pay?: boolean } = {}): Promise<Stopped> {
     const job = await get(id)
     if (!job) return { type: "unknown" }
-    if (job.status !== "running") return { type: "settled", job }
+    if (job.status !== "running") return { type: "settled", job, killed: false }
     // A record naming no process is one whose spawn has not returned yet: the
     // write happens first, deliberately, so a crash in that window leaves
     // something findable. Nothing can be signalled, and settling it anyway
@@ -334,16 +320,31 @@ export namespace BackgroundJob {
     // time, because kill() sleeps through its TERM-to-KILL window while the
     // handle runs. Taking the record out of `running` first makes the handle's
     // settle find `status !== "running"` and return undefined, so onExit never
-    // fires. Claimed inside the write lock, the same way a reconcile pass does,
-    // so a stop racing a sweep cannot overwrite a verdict the sweep reached.
-    let claimed = false
+    // fires. The claim and the debt payment commit together, so no pass can
+    // deliver this job's result between them.
+    const claim = await Jobs.mutator()
+    const alive = (await BackgroundProcess.verify(job.process)) === "alive"
+    const code = alive ? undefined : await exit(id)
+    const finished = alive ? undefined : await finishedAt(id)
+    const debts = await Debt.claimer()
     const completed = Date.now()
-    await update(id, (draft) => {
-      if (draft.status !== "running") return
-      claimed = true
-      draft.status = "killed"
-      draft.exit = undefined
-      draft.time.completed = completed
+    const claimed = await Db.transaction(() => {
+      const draft = claim(id, (draft) => {
+        if (draft.status !== "running") return false
+        draft.time.completed = finished ?? completed
+        if (!alive) {
+          draft.status = settledStatus(draft.time.hard, finished)
+          if (draft.status === "killed") draft.ended = "timeout"
+          draft.exit = code
+          return true
+        }
+        draft.status = "killed"
+        draft.ended = options.why ?? "stop"
+        draft.exit = undefined
+        return true
+      })
+      if (draft && alive && options.pay) debts.pay(id)
+      return !!draft
     })
     const current = await get(id)
     // Removed between the read and the write, which only a concurrent cleanup
@@ -352,27 +353,72 @@ export namespace BackgroundJob {
     // The claim lost: the job settled on its own in the same instant (its exit
     // handle or a sweep got there first). It is already gone, so there is
     // nothing to kill and its own recorded status stands.
-    if (!claimed) return { type: "settled", job: current }
-    // A kill someone asked for owes nobody its result.
-    await Owed.remove(id)
+    if (!claimed) return { type: "settled", job: current, killed: false }
+    if (!alive) {
+      publish(current)
+      return { type: "settled", job: current, killed: false }
+    }
+    // The paid debt leaves busy before the kill, which sleeps through its
+    // TERM-to-KILL window.
+    if (options.pay) {
+      const { SessionBusy } = await import("@/session/busy")
+      await SessionBusy.push(current.sessionID)
+    }
     await BackgroundProcess.kill(job.process)
-    await settled(current.sessionID)
-    publish(current)
-    return { type: "settled", job: current }
+    // The liveness check and the claim are not one step: a job can write its
+    // exit file after the check found it alive and before the claim took it.
+    // An exit file older than the claim is that job, which ended on its own;
+    // its record says so, and its debt stays for Recovery to deliver. One
+    // within GRACE_MS of the claim is the kill's own doing (the wrapper writes
+    // it on the TERM).
+    const own = await finishedAt(id)
+    const real = await exit(id)
+    const corrected =
+      own === undefined || own >= completed - GRACE_MS
+        ? undefined
+        : await Db.transaction(() => {
+            const draft = claim(id, (draft) => {
+              if (draft.status !== "killed" || draft.time.completed !== completed) return false
+              draft.status = settledStatus(draft.time.hard, own)
+              draft.ended = draft.status === "killed" ? "timeout" : undefined
+              draft.exit = real
+              draft.time.completed = own
+              return true
+            })
+            if (draft && options.pay) debts.owe(id, "job", draft.sessionID, draft.time.created)
+            return draft
+          })
+    if (!corrected) {
+      publish(current)
+      return { type: "settled", job: current, killed: true }
+    }
+    if (options.pay) {
+      const { SessionBusy } = await import("@/session/busy")
+      await SessionBusy.push(corrected.sessionID)
+    }
+    publish(corrected)
+    return { type: "settled", job: corrected, killed: false }
+  }
+
+  // The kind of result a settled job tells its caller, from how it ended.
+  export function outcome(job: Info) {
+    if (job.status !== "killed") return "completed" as const
+    if (job.ended === "stop") return "stopped" as const
+    if (job.ended === "kill") return "killed" as const
+    return "timeout" as const
   }
 
   // Kill every running job a session owns. A job OUTLIVES the turn that
   // launched it, and a session accumulates them across turns, so stopping the
-  // session is the point at which its still-running work must end too: the
-  // record's `owner-gone` reap never fires for this in production (the liveness
-  // predicate answers only `true`/`undefined`, never `false`), so a stopped
-  // session's jobs would otherwise run to their hard deadline with nobody left
-  // to read them. Signals each in parallel; each `stop` settles its own record.
+  // session is the point at which its still-running work must end too; nothing
+  // else ends a job before its hard deadline. Signals each in parallel; each
+  // `stop` settles its own record. Delivers nothing: its caller,
+  // `Session.stop`, pays every job debt afterwards via `Recovery.stopped`.
   export async function stopSession(sessionID: string) {
     const running = await list().then((jobs) =>
       jobs.filter((job) => job.sessionID === sessionID && job.status === "running"),
     )
-    await Promise.all(running.map((job) => stop(job.id)))
+    await Promise.all(running.map((job) => stop(job.id, { why: "stop" })))
     return running.length
   }
 
@@ -427,9 +473,13 @@ export namespace BackgroundJob {
   // what keeps a repeat worth reading rather than nudge-blindness.
   export const NUDGE_MS = 3 * 60 * 1000
 
+  // A won nudge claim, carrying the stamps it replaced so a check-in that never
+  // landed can hand them back through `retract`.
+  export type Nudge = { ordinal: number; previous: { nudges?: number; nudgedAt?: number } }
+
   // Whether a running job is due another nudge, claimed and stamped atomically
-  // so two passes cannot both send one. Returns the nudge ordinal (1 for the
-  // first) when this caller won the claim, undefined otherwise — the ordinal is
+  // so two passes cannot both send one. Returns the claim, whose ordinal is 1
+  // for the first, when this caller won it, undefined otherwise — the ordinal is
   // what the prose keys on to say the first nudge's fuller contract once and the
   // tighter repeat after.
   //
@@ -443,17 +493,31 @@ export namespace BackgroundJob {
   //
   // The claim runs inside the write lock, the same shape as a settle claim, so
   // the read and the stamp cannot interleave with another pass.
-  export async function nudge(id: string, now = Date.now()): Promise<number | undefined> {
-    let ordinal: number | undefined
+  export async function nudge(id: string, now = Date.now()): Promise<Nudge | undefined> {
+    let claimed: Nudge | undefined
     await update(id, (draft) => {
-      if (draft.status !== "running" || draft.time.soft === undefined) return
+      if (draft.status !== "running" || draft.time.soft === undefined) return false
       const due = draft.time.nudgedAt === undefined ? draft.time.soft : draft.time.nudgedAt + NUDGE_MS
-      if (now < due) return
-      ordinal = (draft.time.nudges ?? 0) + 1
-      draft.time.nudges = ordinal
+      if (now < due) return false
+      claimed = {
+        ordinal: (draft.time.nudges ?? 0) + 1,
+        previous: { nudges: draft.time.nudges, nudgedAt: draft.time.nudgedAt },
+      }
+      draft.time.nudges = claimed.ordinal
       draft.time.nudgedAt = now
     })
-    return ordinal
+    return claimed
+  }
+
+  // Undo a nudge whose check-in was not delivered, so the ordinal it claimed is
+  // the next one sent. Only while the record still holds that ordinal: a later
+  // claim has already moved past it.
+  export async function retract(id: string, claimed: Nudge) {
+    await update(id, (draft) => {
+      if (draft.time.nudges !== claimed.ordinal) return false
+      draft.time.nudges = claimed.previous.nudges
+      draft.time.nudgedAt = claimed.previous.nudgedAt
+    })
   }
 
   export async function output(id: string) {
@@ -499,18 +563,17 @@ export namespace BackgroundJob {
 
   export async function cleanup(now = Date.now()) {
     const jobs = await list()
+    // A job still owed to its session is kept until that session is deleted:
+    // removing the record takes its output with it, and the debt would then
+    // pay nothing.
+    const owed = new Set((await Debt.list()).map((debt) => debt.responder))
     let removed = 0
     // Newest first, so the survivors of the count bound are the ones a reader
     // is most likely to come back for.
     const collectable = jobs
-      .filter((job) => job.status !== "running" && !job.time.lost)
+      .filter((job) => job.status !== "running" && !owed.has(job.id))
       .sort((a, b) => (b.time.completed ?? b.time.created) - (a.time.completed ?? a.time.created))
     for (const [index, job] of collectable.entries()) {
-      // A result that never reached a session is the one nobody has had the
-      // chance to come back for, and removing a record takes its log with it.
-      // Ageing it out on the same clock as a delivered result would destroy
-      // both the output and the stamp that says the output is worth reading.
-      // Such records are filtered out above, so neither bound reaches them.
       const completed = job.time.completed ?? job.time.created
       if (now - completed < MAX_AGE_MS && index < MAX_RECORDS) continue
       await remove(job.id)

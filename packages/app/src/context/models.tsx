@@ -33,7 +33,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       const current = pref()
       globalSDK.client.preference.model
         .set({
-          modelPreference: { user: current.user, recent: current.recent, variant: current.variant, ...next },
+          modelPreference: { user: current.user, recent: current.recent, ...next },
         })
         .catch(() => undefined)
     }
@@ -116,16 +116,6 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       save({ recent: uniq })
     }
 
-    const variantKey = (model: ModelKey) => `${model.providerID}/${model.modelID}`
-    const getVariant = (model: ModelKey) => pref().variant?.[variantKey(model)]
-
-    const setVariant = (model: ModelKey, value: string | undefined) => {
-      const variant = { ...pref().variant }
-      if (value === undefined) delete variant[variantKey(model)]
-      else variant[variantKey(model)] = value
-      save({ variant })
-    }
-
     return {
       ready: () => globalSync.ready,
       list,
@@ -135,10 +125,6 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       recent: {
         list: createMemo(() => pref().recent),
         push,
-      },
-      variant: {
-        get: getVariant,
-        set: setVariant,
       },
     }
   },

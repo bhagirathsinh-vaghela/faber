@@ -21,21 +21,26 @@ export namespace ModelPreference {
     .object({
       user: User.array(),
       recent: ModelKey.array(),
-      variant: z.record(z.string(), z.string().optional()),
     })
     .meta({
       ref: "ModelPreference",
     })
   export type Info = z.infer<typeof Info>
 
-  const EMPTY: Info = { user: [], recent: [], variant: {} }
-
   export const Event = {
     Updated: BusEvent.define("model.preference.updated", Info),
   }
 
-  export async function get() {
-    return Storage.read<Info>(KEY).catch(() => EMPTY)
+  // Parsed per field on read, so a key the schema dropped never reaches a
+  // client and one bad list does not empty the other. A fresh object each
+  // call, so a caller that mutates it cannot corrupt a later read.
+  const Read = z.object({
+    user: User.array().catch([]),
+    recent: ModelKey.array().catch([]),
+  })
+  export async function get(): Promise<Info> {
+    const stored = await Storage.read<unknown>(KEY).catch(() => undefined)
+    return Read.parse(stored ?? {})
   }
 
   export const set = fn(Info, async (input) => {

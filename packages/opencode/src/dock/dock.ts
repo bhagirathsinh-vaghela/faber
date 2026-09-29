@@ -40,14 +40,13 @@ export namespace Dock {
       "output",
       "session-cache-write",
       "cost",
-      "pending",
       "mcp",
       "auto-accept",
       "back-forward",
       "terminal",
       "review",
     ],
-    mobile: ["agent", "model", "cwd", "branch", "context", "cost", "pending", "mcp", "review"],
+    mobile: ["agent", "model", "cwd", "branch", "context", "cost", "mcp", "review"],
   }
 
   // Lives beside skill.json in the global state dir, so every client on one
@@ -68,8 +67,9 @@ export namespace Dock {
     // A legacy file carries no `known`; treat everything current as seen so
     // deliberate hides survive.
     const known = new Set(stored.known ?? registry)
+    // An id the registry no longer has names a field that was removed.
     const grow = (surface: "desktop" | "mobile") => [
-      ...stored[surface],
+      ...stored[surface].filter((id) => registry.includes(id)),
       ...defaults[surface].filter((id) => !known.has(id) && !stored[surface].includes(id)),
     ]
     return { desktop: grow("desktop"), mobile: grow("mobile") }

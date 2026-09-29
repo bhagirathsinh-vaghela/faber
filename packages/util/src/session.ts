@@ -1,25 +1,18 @@
-// `busy` is the effective flag (own turn OR any in-flight descendant subagent).
-// `busySelf` (own turn only) is optional here so isAlive stays on the single
-// effective boolean; only the animation-picking components read busySelf,
-// deriving "busy because of a descendant" as `busy && !busySelf`.
-//
 // Liveness is machine-bounded: work the server is actively doing. A turn in
-// flight, an armed ping daemon, and a background job still running all qualify.
-// A background job is work the session WAITS on rather than executes, so it does
-// not reach `busy`, and leaving it out would drop a session out of the live
-// bucket while its result is still coming. That governs SSE subscription scope
-// and transcript eviction, so the session evicted here is the one the result
-// lands in.
+// flight, an open subagent or background job this session called and waits on,
+// and an armed ping daemon all qualify. That governs SSE subscription scope and
+// transcript eviction, so a caller waiting on a debt stays live and the result
+// lands in a session that was never evicted.
 //
 // `unseen` is deliberately NOT part of it: that is a human-cleared read
 // receipt, so folding it in would let an unread backlog drive the same two.
 export type Flags = {
-  busy: boolean
-  busySelf?: boolean
-  busyJob?: boolean
+  turn: boolean
+  subagents: number
+  jobs: number
   pingAt?: number
 }
 
 export function isAlive(session: Flags) {
-  return session.busy || session.busyJob === true || session.pingAt !== undefined
+  return session.turn || session.subagents > 0 || session.jobs > 0 || session.pingAt !== undefined
 }
