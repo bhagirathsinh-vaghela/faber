@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { stripJobResult, stripSubagentResult } from "../util/envelope"
+import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/envelope"
 
 // The writer emits a fixed header block, one blank line, then the output. The
 // card reads the body back out. Recognising header lines instead of splitting
@@ -89,5 +89,22 @@ describe("stripSubagentResult", () => {
     const body = stripSubagentResult(text)
     expect(body).toContain("status: still here")
     expect(body).toContain("the finding")
+  })
+})
+
+// A launch part recorded without card metadata. It must strip to nothing, or
+// the card mistakes the leftover line for an inline result and never shows its
+// fields.
+describe("stripSubagentMeta on a launch recorded without metadata", () => {
+  test("strips to empty", () => {
+    const launch = [
+      "Background subagent started: count files",
+      `agent: general`,
+      `toolset: explore (read, grep)`,
+      `summary: count the files`,
+      `subagent_id: ses_x`,
+      `session_id: ses_x`,
+    ].join("\n")
+    expect(stripSubagentMeta(launch)).toBe("")
   })
 })

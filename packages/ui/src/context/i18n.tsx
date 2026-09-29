@@ -10,7 +10,7 @@ export type UiI18n = {
   t: (key: UiI18nKey, params?: UiI18nParams) => string
 }
 
-function resolveTemplate(text: string, params?: UiI18nParams) {
+export function resolveTemplate(text: string, params?: UiI18nParams) {
   if (!params) return text
   return text.replace(/{{\s*([^}]+?)\s*}}/g, (_, rawKey) => {
     const key = String(rawKey)
@@ -19,7 +19,7 @@ function resolveTemplate(text: string, params?: UiI18nParams) {
   })
 }
 
-const fallback: UiI18n = {
+export const fallback: UiI18n = {
   locale: () => "en",
   t: (key, params) => {
     const value = en[key] ?? String(key)

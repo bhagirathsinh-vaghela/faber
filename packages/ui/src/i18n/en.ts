@@ -72,6 +72,8 @@ export const dict = {
   "ui.tool.agent": "{{type}} subagent",
   "ui.tool.subagent.box.title": "subagent",
   "ui.tool.subagent.box.launched": "subagent · {{label}} · Launched",
+  "ui.tool.subagent.box.steered": "subagent · {{label}} · Steered",
+  "ui.tool.subagent.box.continued": "subagent · {{label}} · Continued",
   "ui.tool.subagent.box.done": "subagent · {{label}} · Done ({{duration}})",
   "ui.tool.subagent.box.failed": "subagent · {{label}} · Failed ({{duration}})",
   "ui.tool.subagent.box.cancelled": "subagent · {{label}} · Cancelled ({{duration}})",

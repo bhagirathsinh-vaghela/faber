@@ -14,6 +14,8 @@ export function stripSubagentMeta(text: string): string {
       // fields, so it comes OUT of the raw body and renders as UI instead.
       if (trimmed.startsWith("subagent_id:")) return false
       if (trimmed.startsWith("session_id:")) return false
+      // A launch recorded before the card read its metadata; later ones never
+      // reach this strip.
       if (trimmed.startsWith("Background subagent started:")) return false
       if (trimmed.startsWith("agent:")) return false
       if (trimmed.startsWith("toolset:")) return false

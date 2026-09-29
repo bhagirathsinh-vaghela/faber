@@ -30,6 +30,7 @@ import {
 import { legacyInternal, typed } from "../util/internal"
 import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/envelope"
 import { jobAccent, jobLabel } from "../util/job-status"
+import { LaunchCard } from "../util/launch-card"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useDialog } from "../context/dialog"
@@ -313,15 +314,8 @@ function subagentBoxKey(status: string) {
   return SUBAGENT_BOX_KEY[status as keyof typeof SUBAGENT_BOX_KEY] ?? SUBAGENT_BOX_KEY.completed
 }
 
-// The subagent's identifier shown on BOTH its launch card and its result card
-// so the two read as one pair. Capped so a long description cannot blow out the
-// header: at most 5 words, then an ellipsis.
-function subagentLabel(description: string): string {
-  const words = description.trim().split(/\s+/)
-  if (words.length <= 5) return words.join(" ")
-  return words.slice(0, 5).join(" ") + "\u2026"
-}
-
+// Only for a call recorded before the agent tool wrote its card fields into
+// metadata: such a part has nothing but its output text to render from.
 function stripSubagentOutput(text: string): string {
   const cleaned = text
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
@@ -488,7 +482,8 @@ function RevertButton(props: { message: MessageType }) {
 // nothing, leaving the family accent in place.
 function statusTone(status: string): string | undefined {
   if (status === "failed" || status === "timeout") return "var(--syntax-critical)"
-  if (status === "cancelled" || status === "ended" || status === "running") return "var(--text-weak)"
+  if (status === "cancelled" || status === "stopped" || status === "ended" || status === "running")
+    return "var(--text-weak)"
   return undefined
 }
 
@@ -709,7 +704,7 @@ export function Message(props: MessageProps) {
               message={props.message}
               icon="robot"
               title={i18n.t(subagentBoxKey(part().backgroundSubagentResult!.status), {
-                label: subagentLabel(part().backgroundSubagentResult!.description),
+                label: LaunchCard.label(part().backgroundSubagentResult!.description),
                 duration: subagentDuration(part().backgroundSubagentResult!.duration ?? 0),
               })}
               accent="subagent"
@@ -1507,28 +1502,21 @@ ToolRegistry.register({
         />
       ) : undefined
 
-    // Dispatch fields as one markdown block so it themes like the rest of the
-    // UI: bold labels, code pills. Only what a glance needs — Description (the
-    // card's identifier, duplicated here so summaryOnly can hide the header
-    // subtitle on expand without losing it), Summary (the ask), Type, and one
-    // Toolset line. Everything fuller lives in the child session.
-    const dispatchMarkdown = createMemo(() => {
-      const lines: string[] = []
-      const push = (label: string, value: string) => lines.push(`**${label}** ${value}`)
-      if (props.input.description) push(i18n.t("ui.tool.subagent.label.description"), props.input.description as string)
-      if (props.metadata.summary) push(i18n.t("ui.tool.subagent.label.summary"), props.metadata.summary as string)
-      push(
-        i18n.t("ui.tool.subagent.label.context"),
-        i18n.t(props.input.include_context ? "ui.tool.subagent.context.inherited" : "ui.tool.subagent.context.fresh"),
-      )
-      push(i18n.t("ui.tool.subagent.label.agent"), `\`${props.input.subagent_type || props.tool}\``)
-      if (props.metadata.toolset) {
-        const tools = props.metadata.tools
-        const list = Array.isArray(tools) && tools.length ? `: ${tools.map((t) => `\`${t}\``).join(" ")}` : ""
-        push(i18n.t("ui.tool.subagent.label.toolset"), `\`${props.metadata.toolset as string}\`${list}`)
-      }
-      return lines.join("\n\n")
-    })
+    // A call that recorded `mode` also recorded every field its card shows;
+    // an older part without it has only its input to rebuild them from.
+    const launch = createMemo(
+      (): LaunchCard.Launch =>
+        props.metadata.mode
+          ? (props.metadata as LaunchCard.Launch)
+          : {
+              description: props.input.description,
+              summary: props.metadata.summary as string | undefined,
+              subagentType: props.input.subagent_type || props.tool,
+              includeContext: props.input.include_context,
+              toolset: props.metadata.toolset as string | undefined,
+              tools: props.metadata.tools as string[] | undefined,
+            },
+    )
 
     const renderChildToolPart = () => {
       const toolData = childToolPart()
@@ -1615,14 +1603,21 @@ ToolRegistry.register({
               trigger={{
                 title:
                   props.metadata.status === "async_launched"
-                    ? i18n.t("ui.tool.subagent.box.launched", { label: subagentLabel(props.input.description ?? "") })
+                    ? LaunchCard.title(i18n.t, launch())
                     : i18n.t("ui.tool.subagent.box.title"),
                 subtitle:
-                  props.metadata.status !== "async_launched" ? subagentLabel(props.input.description ?? "") : undefined,
+                  props.metadata.status !== "async_launched"
+                    ? LaunchCard.label(props.input.description ?? "")
+                    : undefined,
                 action: openButton(),
               }}
             >
               <Switch>
+                <Match when={props.metadata.mode}>
+                  <div data-slot="subagent-output-dispatch">
+                    <Markdown text={LaunchCard.fields(i18n.t, launch())} complete />
+                  </div>
+                </Match>
                 {/* A real inline result (rare/future sync path) wins. */}
                 <Match when={props.output && stripSubagentOutput(props.output)}>
                   {(body) => (
@@ -1639,7 +1634,7 @@ ToolRegistry.register({
                       separate result box below. */}
                 <Match when={props.metadata.status === "async_launched"}>
                   <div data-slot="subagent-output-dispatch">
-                    <Markdown text={dispatchMarkdown()} complete />
+                    <Markdown text={LaunchCard.fields(i18n.t, launch())} complete />
                   </div>
                 </Match>
                 {/* Args still streaming (prompt/description being written): show
