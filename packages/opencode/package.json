@@ -26,7 +26,6 @@
   },
   "devDependencies": {
     "@babel/core": "7.28.4",
-    "@octokit/webhooks-types": "7.6.1",
     "@opencode-ai/script": "workspace:*",
     "@parcel/watcher-darwin-arm64": "2.5.1",
     "@parcel/watcher-darwin-x64": "2.5.1",
@@ -48,9 +47,6 @@
     "zod-to-json-schema": "3.24.5"
   },
   "dependencies": {
-    "@actions/core": "1.11.1",
-    "@actions/github": "6.0.1",
-    "@agentclientprotocol/sdk": "0.13.0",
     "@ai-sdk/amazon-bedrock": "3.0.74",
     "@ai-sdk/anthropic": "2.0.75",
     "@ai-sdk/azure": "2.0.91",
@@ -75,8 +71,6 @@
     "@hono/standard-validator": "0.1.5",
     "@hono/zod-validator": "catalog:",
     "@modelcontextprotocol/sdk": "1.25.2",
-    "@octokit/graphql": "9.0.2",
-    "@octokit/rest": "catalog:",
     "@openauthjs/openauth": "catalog:",
     "@opencode-ai/plugin": "workspace:*",
     "@opencode-ai/script": "workspace:*",

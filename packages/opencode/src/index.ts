@@ -1,6 +1,5 @@
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
-import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
 import { Log } from "./util/log"
 import { Db } from "./storage/db"
@@ -18,14 +17,10 @@ import { SuperviseCommand } from "./cli/cmd/supervise"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
-import { GithubCommand } from "./cli/cmd/github"
 import { ExportCommand } from "./cli/cmd/export"
 import { ImportCommand } from "./cli/cmd/import"
 import { MigrateStorageCommand } from "./cli/cmd/migrate-storage"
-import { AcpCommand } from "./cli/cmd/acp"
 import { EOL } from "os"
-import { WebCommand } from "./cli/cmd/web"
-import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
 
 // DOMException (e.g. an AbortError from a torn-down fetch/stream) is not an
@@ -105,9 +100,7 @@ const cli = yargs(hideBin(process.argv))
   })
   .usage("\n" + UI.logo())
   .completion("completion", "generate shell completion script")
-  .command(AcpCommand)
   .command(McpCommand)
-  .command(RunCommand)
   .command(GenerateCommand)
   .command(DebugCommand)
   .command(AuthCommand)
@@ -116,14 +109,11 @@ const cli = yargs(hideBin(process.argv))
   .command(UninstallCommand)
   .command(ServeCommand)
   .command(SuperviseCommand)
-  .command(WebCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
   .command(ExportCommand)
   .command(ImportCommand)
   .command(MigrateStorageCommand)
-  .command(GithubCommand)
-  .command(PrCommand)
   .command(SessionCommand)
   .fail((msg, err) => {
     if (
