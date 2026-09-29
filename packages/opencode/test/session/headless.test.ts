@@ -5,7 +5,6 @@ import { Session } from "../../src/session"
 import { Sessions } from "../../src/storage/sessions"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
-import { BackgroundSpawn } from "../../src/background/spawn"
 import { Log } from "../../src/util/log"
 import { Recovery } from "../../src/session/recovery"
 import { tmpdir } from "../fixture/fixture"
@@ -199,15 +198,23 @@ describe("HeadlessAgent.run", () => {
 
   test("waits for a bash job that outlives the turn, and returns the answer written after it lands", async () => {
     await withProject(
-      async () => {
+      async (dir) => {
         // serve starts this in production; a settled job pokes recovery, which
         // delivers the result into its session and wakes the turn.
         const { BackgroundOrchestrator } = await import("../../src/background/orchestrator")
         BackgroundOrchestrator.init()
-        const command = `sleep ${BackgroundSpawn.GRACE_MS / 1000 + 3}; echo JOB-DONE-9913`
+        const release = path.join(dir, "release")
+        const command = `while [ ! -f ${release} ]; do sleep 0.1; done; echo JOB-DONE-9913`
         respond(() => reply([toolUse("bash", { command, description: "slow step" })], "tool_use"))
-        respond(() => reply([text("Started it, waiting.")], "end_turn"))
-        const wake = respond(() => reply([text("The job printed JOB-DONE-9913.")], "end_turn"))
+        const waiting = respond(() => reply([text("Started it, waiting.")], "end_turn"))
+        // The run starts waiting when that turn ends. Releasing the job midway
+        // between the safety net's ticks leaves the next one seconds away, so
+        // only the pushed turn end can return the run promptly.
+        void waiting.then(() => Bun.sleep(HeadlessAgent.NET_MS * 1.5)).then(() => Bun.write(release, ""))
+        const woken = respond(() => reply([text("The job printed JOB-DONE-9913.")], "end_turn")).then((wake) => ({
+          wake,
+          at: Date.now(),
+        }))
 
         const outcome = await HeadlessAgent.run({
           model: "default",
@@ -215,14 +222,17 @@ describe("HeadlessAgent.run", () => {
           agent: "build",
           prompt: "Run the slow step.",
         })
+        const returned = Date.now()
 
-        expect(JSON.stringify((await wake).body)).toContain("JOB-DONE-9913")
         expect(outcome).toMatchObject({
           result: "The job printed JOB-DONE-9913.",
           num_turns: 3,
           permission_denials: [],
           is_error: false,
         })
+        const { wake, at } = await woken
+        expect(returned - at).toBeLessThan(1000)
+        expect(JSON.stringify(wake.body)).toContain("JOB-DONE-9913")
       },
       { bash: "allow" },
     )

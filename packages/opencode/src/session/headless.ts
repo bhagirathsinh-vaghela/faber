@@ -9,6 +9,9 @@ import { SessionPrompt } from "./prompt"
 import { MessageV2 } from "./message-v2"
 import { Recovery } from "./recovery"
 import { Sessions } from "@/storage/sessions"
+import { Storage } from "@/storage/storage"
+import { GlobalBus } from "@/bus/global"
+import { Event as ServerEvent } from "@/server/event"
 
 // An agent run with no parent and no human: the loop a subagent runs, started
 // over HTTP, returning only its final message. Every permission prompt is
@@ -17,7 +20,7 @@ export namespace HeadlessAgent {
   const log = Log.create({ service: "headless-agent" })
 
   const DEFAULT_TIMEOUT = 600_000
-  const TICK = 1000
+  export const NET_MS = 5000
 
   export const Input = z.object({
     agent: z.string().min(1).describe("Agent name, e.g. build or plan"),
@@ -100,20 +103,43 @@ export namespace HeadlessAgent {
 
     // The turn can end while a bash job it started is still running; the job's
     // result wakes the session for another turn. The run is over when the
-    // session is done by the same rule a subagent's result waits on.
+    // session is done by the same rule a subagent's result waits on, checked
+    // when it can change: every debt write and every turn edge pushes this
+    // session's busy facts, the trigger Recovery itself acts on. The slow net
+    // covers a push that failed to emit.
     const deadline = AbortSignal.timeout(input.timeoutMs ?? DEFAULT_TIMEOUT)
-    const settled = async () => {
-      while (!deadline.aborted) {
-        await Bun.sleep(TICK)
-        if (await Recovery.done(await Session.get(session.id))) return
-      }
-      await Session.stop({ sessionID: session.id }).catch((error) =>
-        log.error("headless stop failed", { sessionID: session.id, error }),
-      )
-      throw new Error(`timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`)
-    }
-    // A timer callback has no instance context, so it re-enters the run's own.
+    // A bus or timer callback has no instance context, so it re-enters the run's own.
     const directory = Instance.directory
+    const settled = () => {
+      const over = Promise.withResolvers<void>()
+      const check = async () => {
+        // A session deleted mid-run never settles; any other failure may pass.
+        const done = await Instance.provide({
+          directory,
+          fn: async () => Recovery.done(await Session.get(session.id)),
+        }).catch((error) => {
+          if (Storage.NotFoundError.isInstance(error)) over.reject(error)
+          return false
+        })
+        if (done) over.resolve()
+      }
+      const listener = (event: { payload: { type: string; properties: { sessions?: Record<string, unknown> } } }) => {
+        if (event.payload.type === ServerEvent.Busy.type && event.payload.properties.sessions?.[session.id]) void check()
+      }
+      const expired = () => over.reject(new Error(`timed out after ${input.timeoutMs ?? DEFAULT_TIMEOUT}ms`))
+      GlobalBus.on("event", listener)
+      const net = setInterval(check, NET_MS)
+      deadline.addEventListener("abort", expired)
+      if (deadline.aborted) expired()
+      // Listening starts after the prompt returned, so its turn-end push may
+      // already have passed.
+      void check()
+      return over.promise.finally(() => {
+        GlobalBus.off("event", listener)
+        clearInterval(net)
+        deadline.removeEventListener("abort", expired)
+      })
+    }
     const expiry = () =>
       void Instance.provide({ directory, fn: () => Session.stop({ sessionID: session.id }) }).catch((error) =>
         log.error("headless timeout stop failed", { sessionID: session.id, error }),
