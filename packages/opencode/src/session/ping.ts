@@ -8,7 +8,6 @@ import { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { SystemPrompt } from "./system"
 import { SessionPin } from "./pin"
-import { ProviderTransform } from "@/provider/transform"
 import { Plugin } from "@/plugin"
 import { clone } from "remeda"
 import { SessionPrompt } from "./prompt"
@@ -350,25 +349,10 @@ export namespace SessionPing {
     const sessionMessages = clone(msgs)
     await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
-    const variants = model.variants ?? ProviderTransform.variants(model)
-    const variant = lastUser.variant ? variants[lastUser.variant] : undefined
-    const stripReasoning =
-      (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/google-vertex/anthropic") &&
-      variant?.thinking?.type !== "enabled"
-
     const { messages: modelMessages, idToIndex } = MessageV2.toModelMessages(sessionMessages, model)
-    const stripped = stripReasoning
-      ? modelMessages.map((msg) => {
-          if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
-          return {
-            ...msg,
-            content: msg.content.filter((part) => part.type !== "reasoning"),
-          }
-        })
-      : modelMessages
 
     // Append ephemeral "." user message
-    const allMessages = [...stripped, { role: "user" as const, content: "." }]
+    const allMessages = [...modelMessages, { role: "user" as const, content: "." }]
 
     const tools = await SessionPrompt.resolveTools({
       agent,
@@ -425,8 +409,8 @@ export namespace SessionPing {
         sessionID,
         system: {
           env: SystemPrompt.environment(),
-          globalInstructions: instructions.global,
-          projectInstructions: instructions.project,
+          globalInstructions: session.bare ? [] : instructions.global,
+          projectInstructions: session.bare ? [] : instructions.project,
           sessionContext: SystemPrompt.sessionContext({
             created: session.time.created,
             branch: session.branch,

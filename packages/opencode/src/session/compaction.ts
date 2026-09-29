@@ -179,8 +179,8 @@ export namespace SessionCompaction {
     const instructions = snapshot.instructions
     const system = {
       env: SystemPrompt.environment(),
-      globalInstructions: instructions.global,
-      projectInstructions: instructions.project,
+      globalInstructions: session.bare ? [] : instructions.global,
+      projectInstructions: session.bare ? [] : instructions.project,
       sessionContext: SystemPrompt.sessionContext({
         created: session.time.created,
         branch: session.branch,
