@@ -30,6 +30,7 @@ import { Binary } from "@opencode-ai/util/binary"
 import { Identifier } from "@opencode-ai/util/identifier"
 import { isAlive } from "@opencode-ai/util/session"
 import { IDLE, type BusyFacts } from "@opencode-ai/ui/util/busy-tint"
+import { release, stale } from "@/utils/busy"
 import { Snapshot } from "@/utils/snapshot"
 import { retry } from "@opencode-ai/util/retry"
 import { useGlobalSDK } from "./global-sdk"
@@ -1023,14 +1024,14 @@ function createGlobalSync() {
           return
         }
         case "session.busy": {
-          // The 5s reconcile tick for the open subtree — a FULL snapshot of every
-          // in-scope session (busy AND idle), authoritative by construction. It
-          // heals the CHILDREN the hub can't (children aren't in recent_hub), and
-          // self-corrects any dropped transition within one tick. Each entry
-          // carries its own directory, so route it into that directory's store.
+          // A push, a heal-tick snapshot of the open subtree's active sessions,
+          // or the heartbeat's complete frame of every active session on the
+          // server, after which anything it omits is idle. Each entry carries
+          // its own directory, so route it into that directory's store.
           // A frame for a root also carries its hub row's counts, so the overview
           // dot follows per-root heal frames without a fresh recent.updated list.
           for (const [id, facts] of Object.entries(event.properties.sessions)) {
+            if (facts.turn) release(id)
             writeBusy(facts.directory, id, facts)
             const index = globalStore.recent_hub.findIndex((entry) => entry.sessionID === id)
             if (index === -1) continue
@@ -1038,6 +1039,7 @@ function createGlobalSync() {
             if (row.turn === facts.turn && row.subagents === facts.subagents && row.jobs === facts.jobs) continue
             setGlobalStore("recent_hub", index, { turn: facts.turn, subagents: facts.subagents, jobs: facts.jobs })
           }
+          if (event.properties.complete) idleAbsent(event.properties.sessions)
           return
         }
         case "open-projects.updated": {
@@ -1729,6 +1731,13 @@ function createGlobalSync() {
     const prev = store.session_busy[sessionID]
     if (prev && prev.turn === facts.turn && prev.subagents === facts.subagents && prev.jobs === facts.jobs) return
     setStore("session_busy", sessionID, { turn: facts.turn, subagents: facts.subagents, jobs: facts.jobs })
+  }
+
+  function idleAbsent(live: Record<string, BusyFacts>) {
+    for (const [store, setStore] of Object.values(children))
+      for (const id of stale(store.session_busy, live)) setStore("session_busy", id, IDLE)
+    const rows = Object.fromEntries(globalStore.recent_hub.map((row) => [row.sessionID, row]))
+    for (const id of stale(rows, live)) setGlobalStore("recent_hub", (row) => row.sessionID === id, IDLE)
   }
 
   // Write hub rows' busy facts into the per-directory session_busy stores. This

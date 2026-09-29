@@ -859,12 +859,17 @@ export namespace Session {
         const belowIds = (
           await Promise.all(level.map((s) => attempt(() => Sessions.children(s.id), [] as string[])))
         ).flat()
-        const below = await Promise.all(belowIds.filter((id) => !seen.has(id)).map((id) => attempt(() => get(id), undefined)))
+        const below = await Promise.all(
+          belowIds.filter((id) => !seen.has(id)).map((id) => attempt(() => get(id), undefined)),
+        )
         level = below.filter((s): s is Session.Info => s !== undefined)
       }
       const read = await Messages.reader()
       const halt = async (s: Session.Info) => {
-        await attempt(() => update(s.id, (draft) => void (draft.time.stopped = Date.now()), { touch: false }), undefined)
+        await attempt(
+          () => update(s.id, (draft) => void (draft.time.stopped = Date.now()), { touch: false }),
+          undefined,
+        )
         await attempt(() => SessionPing.stop(s.id), undefined)
         await attempt(() => SessionPin.drop(s.id), undefined)
         // The only step that reads instance-scoped state: the turn's abort

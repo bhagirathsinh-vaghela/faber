@@ -233,6 +233,7 @@ export type EventSessionBusy = {
         jobs: number
       }
     }
+    complete?: boolean
   }
 }
 

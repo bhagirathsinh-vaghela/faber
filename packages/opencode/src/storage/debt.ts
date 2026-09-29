@@ -39,6 +39,7 @@ export namespace Debt {
       caller: db.query<Row, [string]>(`SELECT ${COLUMNS} FROM debt WHERE caller = ? ORDER BY created`),
       get: db.query<Row, [string]>(`SELECT ${COLUMNS} FROM debt WHERE responder = ?`),
       owing: db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM debt WHERE caller = ?`),
+      callers: db.query<{ caller: string }, []>(`SELECT DISTINCT caller FROM debt`),
     }
   })
 
@@ -79,6 +80,10 @@ export namespace Debt {
 
   export async function has(responder: string) {
     return get(responder).then((row) => row !== undefined)
+  }
+
+  export async function callers() {
+    return open().then((q) => q.callers.all().map((row) => row.caller))
   }
 
   // Whether `caller` is still owed anything.

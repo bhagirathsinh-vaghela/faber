@@ -16,7 +16,9 @@ export const Event = {
   // that just went idle) from the /global/event heal tick while any is active,
   // with one trailing all-zero frame when that clears. Each entry carries its
   // directory to route to the right per-directory store (the frame is global,
-  // like recent.updated).
+  // like recent.updated). A `complete` frame (SessionBusy.live, on connect and
+  // on every heartbeat) lists every active session on the server, so a session
+  // it omits is idle.
   Busy: BusEvent.define(
     "session.busy",
     z.object({
@@ -29,6 +31,7 @@ export const Event = {
           jobs: z.number(),
         }),
       ),
+      complete: z.boolean().optional(),
     }),
   ),
 }

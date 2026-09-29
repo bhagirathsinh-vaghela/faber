@@ -42,6 +42,18 @@ export namespace BusyHeal {
     period = ms
   }
 
+  // The heartbeat's period, which the complete busy frame rides so an idle
+  // phone's radio wakes for no extra write.
+  let beat = HEARTBEAT_MS
+  export function census() {
+    return beat
+  }
+
+  // Applies to connections opened after the call.
+  export function recount(ms: number) {
+    beat = ms
+  }
+
   export function onTick(listener: (connectionID: string | undefined) => void) {
     listeners.add(listener)
     return () => listeners.delete(listener)
@@ -335,11 +347,24 @@ export const GlobalRoutes = lazy(() =>
           }
           GlobalBus.on("event", handler)
 
+          // Every active session on the server, marked complete: whatever push
+          // this client missed, a session it still shows busy that is absent
+          // here is idle.
+          const census = () =>
+            SessionBusy.live()
+              .then((sessions) =>
+                send({
+                  directory: "global",
+                  payload: { type: ServerEvent.Busy.type, properties: { sessions, complete: true } },
+                }),
+              )
+              .catch((error) => log.error("busy census failed", { connectionID, error }))
           heartbeat = setInterval(() => {
             void send({ payload: { type: "server.heartbeat", properties: {} } })
-          }, HEARTBEAT_MS)
+            void census()
+          }, BusyHeal.census())
 
-          // Busy heal tick (independent of the 30s keepalive above). Every busy
+          // Busy heal tick (independent of the heartbeat above). Every busy
           // change is pushed as it happens; this re-sends the current facts so
           // a client that missed a push heals within one tick, not only on
           // reconnect. Quiescence-gated: it sends while anything in its scope
@@ -440,6 +465,7 @@ export const GlobalRoutes = lazy(() =>
               properties: { resumed: !!missed, cursor: `${EventReplay.EPOCH}:${EventReplay.latest()}` },
             },
           })
+          await census()
 
           await new Promise<void>((resolve) => {
             finish = resolve

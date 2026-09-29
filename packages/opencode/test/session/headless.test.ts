@@ -352,7 +352,10 @@ describe("HeadlessAgent.run", () => {
           caller.signal,
         )
 
-        expect(outcome).toMatchObject({ is_error: true, errors: [`headless: build in ${dir}: the caller disconnected`] })
+        expect(outcome).toMatchObject({
+          is_error: true,
+          errors: [`headless: build in ${dir}: the caller disconnected`],
+        })
         expect(await BackgroundProcess.inspect(Number(await Bun.file(pidfile).text()))).toBeUndefined()
         const remaining = []
         for await (const session of Session.list()) remaining.push(session.id)

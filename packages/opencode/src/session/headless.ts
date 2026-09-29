@@ -129,7 +129,8 @@ export namespace HeadlessAgent {
         if (done) over.resolve()
       }
       const listener = (event: { payload: { type: string; properties: { sessions?: Record<string, unknown> } } }) => {
-        if (event.payload.type === ServerEvent.Busy.type && event.payload.properties.sessions?.[session.id]) void check()
+        if (event.payload.type === ServerEvent.Busy.type && event.payload.properties.sessions?.[session.id])
+          void check()
       }
       const expired = () => over.reject(new Error(why()))
       GlobalBus.on("event", listener)

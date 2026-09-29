@@ -23,7 +23,12 @@ test("no source file inserts computed text through a string replacement", async 
     ts.isFunctionExpression(node)
   const hits = await Promise.all(
     files.map(async (file) => {
-      const source = ts.createSourceFile(file, await Bun.file(path.join(src, file)).text(), ts.ScriptTarget.Latest, true)
+      const source = ts.createSourceFile(
+        file,
+        await Bun.file(path.join(src, file)).text(),
+        ts.ScriptTarget.Latest,
+        true,
+      )
       const found: string[] = []
       const visit = (node: ts.Node) => {
         if (

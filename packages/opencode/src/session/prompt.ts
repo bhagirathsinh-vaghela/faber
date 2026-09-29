@@ -436,7 +436,8 @@ export namespace SessionPrompt {
         return undefined
       })
       if (!last) continue
-      if (attempt >= 3 || signal?.reason === STOPPED || !(await reading).waiting(sessionID, await stopped())) return last
+      if (attempt >= 3 || signal?.reason === STOPPED || !(await reading).waiting(sessionID, await stopped()))
+        return last
       if (!(await unstopped())) return last
     }
   }

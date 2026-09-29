@@ -538,7 +538,13 @@ describe("Session.stop", () => {
           model,
           synthetic: true,
         } as MessageV2.User)
-        await Session.updatePart({ id: Identifier.ascending("part"), messageID: id, sessionID: root.id, type: "text", text: "result" })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: id,
+          sessionID: root.id,
+          type: "text",
+          text: "result",
+        })
         return id
       }
       await result(now - 40_000)

@@ -100,6 +100,14 @@ export namespace SessionBusy {
     return facts.turn || facts.subagents > 0 || facts.jobs > 0
   }
 
+  // Every active session on the server: a session is active only through its
+  // own turn or a debt owed to it, so the rest are idle and this is complete.
+  export async function live() {
+    const turning = [...self.values()].flatMap((running) => [...running])
+    const sessions = await snapshot([...new Set([...turning, ...(await Debt.callers())])])
+    return Object.fromEntries(Object.entries(sessions).filter(([, entry]) => active(entry)))
+  }
+
   // Serialized per session, so two pushes racing on one session cannot emit
   // an older reading after a newer one.
   const queue = new Map<string, Promise<void>>()

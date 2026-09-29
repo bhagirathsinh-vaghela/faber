@@ -61,6 +61,7 @@ import { Identifier } from "@/utils/id"
 import { confirmAbsent } from "@/utils/confirm-absent"
 import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { overlayActive } from "@/utils/overlay"
+import { hold, release } from "@/utils/busy"
 import { createCoarsePointer, preserveFocus } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
 import { MicIcon } from "@/components/mic-icon"
@@ -2013,10 +2014,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // becomes Stop on the press instead of waiting for the server to publish
     // session.busy over SSE (or the 5s reconcile tick). Without this the only
     // feedback for a press is the button disabling, which reads as "nothing
-    // happened" and invites a second press. The reconcile tick confirms it, and
+    // happened" and invites a second press. The server's push confirms it, and
     // the send-failure path below clears it. Only `turn` is ours to assert: a
-    // job or subagent from an earlier turn keeps its count.
+    // job or subagent from an earlier turn keeps its count. The hold keeps a
+    // complete frame computed before the turn exists from undoing the press.
     if (sessionDirectory === projectDirectory) {
+      hold(session.id)
       sync.set("session_busy", session.id, (prev) => ({ ...(prev ?? IDLE), turn: true }))
     }
 
@@ -2028,6 +2031,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       const cleanup = () => {
         if (sessionDirectory === projectDirectory) {
+          release(session.id)
           sync.set("session_busy", session.id, (prev) => ({ ...(prev ?? IDLE), turn: false }))
         }
         reapCreated()
@@ -2122,6 +2126,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (sessionDirectory === projectDirectory) {
         // Send failed before a turn began — undo the optimistic turn; the
         // reconcile tick backstops it regardless.
+        release(session.id)
         sync.set("session_busy", session.id, (prev) => ({ ...(prev ?? IDLE), turn: false }))
       }
       showToast({

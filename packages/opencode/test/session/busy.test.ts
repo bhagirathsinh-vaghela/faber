@@ -12,6 +12,7 @@ import { BackgroundSpawn } from "../../src/background/spawn"
 import { BackgroundProcess } from "../../src/background/process"
 import { Server } from "../../src/server/server"
 import { BusyHeal } from "../../src/server/routes/global"
+import { HEARTBEAT_MS } from "@opencode-ai/util/stream"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
@@ -91,7 +92,7 @@ async function live(sessionID: string) {
   return id
 }
 
-type Frame = { type: string; properties: { sessions?: Record<string, Entry> } }
+type Frame = { type: string; properties: { sessions?: Record<string, Entry>; complete?: boolean } }
 
 // A /global/event connection with its frames collected as they arrive, and
 // `ticks(n)` resolving once the connection's heal tick has completed n more
@@ -136,8 +137,21 @@ async function connect(connectionID: string, directory: string, scope: string | 
   }
 }
 
+// The heal tick's frames for `id`; the heartbeat's complete frames are the
+// census tests' subject.
 const busyFrames = (frames: Frame[], id: string) =>
-  frames.filter((frame) => frame.type === "session.busy" && frame.properties.sessions?.[id])
+  frames.filter(
+    (frame) => frame.type === "session.busy" && !frame.properties.complete && frame.properties.sessions?.[id],
+  )
+
+const censuses = (frames: Frame[]) =>
+  frames.filter((frame) => frame.type === "session.busy" && frame.properties.complete)
+
+async function until(check: () => boolean) {
+  const deadline = Date.now() + 5000
+  while (!check() && Date.now() < deadline) await Bun.sleep(10)
+  return check()
+}
 
 beforeAll(() => BusyHeal.set(50))
 afterAll(() => BusyHeal.set(5000))
@@ -554,6 +568,66 @@ describe("the /global/event heal tick", () => {
           jobs: 0,
         })
         await SessionRecent.remove(root.id)
+      },
+    })
+  }, 20_000)
+})
+
+describe("the complete busy frame", () => {
+  beforeAll(() => BusyHeal.recount(50))
+  afterAll(() => BusyHeal.recount(HEARTBEAT_MS))
+
+  test("SessionBusy.live lists a session mid-turn and a session owed a debt, and no idle one", async () => {
+    await using project = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: project.path,
+      fn: async () => {
+        const turning = await Session.create({})
+        const owed = await Session.create({})
+        const idle = await Session.create({})
+        made.push(turning.id, owed.id, idle.id)
+        const id = await job(owed.id)
+        SessionBusy.enter(turning.id)
+        const live = await SessionBusy.live()
+        SessionBusy.exit(turning.id)
+        expect(live[turning.id]).toEqual({ directory: project.path, turn: true, subagents: 0, jobs: 0 })
+        expect(live[owed.id]).toEqual({ directory: project.path, turn: false, subagents: 0, jobs: 1 })
+        expect(live[idle.id]).toBeUndefined()
+        await BackgroundJob.remove(id)
+      },
+    })
+  }, 20_000)
+
+  test("a client that missed the idle push learns it from the next complete frame", async () => {
+    await using project = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: project.path,
+      fn: async () => {
+        const root = await Session.create({})
+        made.push(root.id)
+        const id = await job(root.id)
+        const connection = await connect("conn_census", project.path, root.id)
+        const listed = await until(() =>
+          censuses(connection.frames).some((frame) => frame.properties.sessions?.[root.id]),
+        )
+        // Removing the row without a push is a missed idle push, by construction.
+        await Debt.remove(id)
+        const seen = censuses(connection.frames).length
+        const cleared = await until(() =>
+          censuses(connection.frames)
+            .slice(seen)
+            .some((frame) => !frame.properties.sessions?.[root.id]),
+        )
+        await connection.close()
+        expect(listed).toBe(true)
+        expect(censuses(connection.frames)[0].properties.sessions?.[root.id]).toEqual({
+          directory: project.path,
+          turn: false,
+          subagents: 0,
+          jobs: 1,
+        })
+        expect(cleared).toBe(true)
+        await BackgroundJob.remove(id)
       },
     })
   }, 20_000)

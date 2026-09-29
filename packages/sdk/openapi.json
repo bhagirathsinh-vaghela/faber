@@ -8542,6 +8542,9 @@
                     "jobs"
                   ]
                 }
+              },
+              "complete": {
+                "type": "boolean"
               }
             },
             "required": [
