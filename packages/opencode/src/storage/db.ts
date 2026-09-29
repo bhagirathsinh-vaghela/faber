@@ -91,8 +91,8 @@ export namespace Db {
     // against every other process — which is how a second server booting beside
     // a live one kills the live one's turn. PRAGMA optimize looks harmless and
     // is not: on a store with no stats yet it measured 26s of scanning and 8KB
-    // of WAL. Statistics are gathered in `close` instead, where the process is
-    // ending and holding the lock costs nobody.
+    // of WAL, most of it on the part table. `lift` analyzes only the tables it
+    // just indexed, once.
     connection = db
     return db
   })
@@ -150,6 +150,81 @@ export namespace Db {
     const db = await open()
     return retry(() => db.transaction(fn).immediate())
   }
+
+  // Lift fields a query filters or orders on out of a table's `json` blob into
+  // VIRTUAL generated columns, and build the indexes over them, so no hot query
+  // parses JSON per row. A VIRTUAL column is the one kind ALTER TABLE can add,
+  // and it rewrites no row. Guarded by json_valid so a torn row reads as NULL
+  // instead of throwing. Idempotent: the columns are re-checked inside the
+  // write lock, so two processes opening the file together cannot both add one.
+  //
+  // The one write `open` allows: the first open after an upgrade builds the
+  // indexes and the table's planner statistics, a few seconds on a large store
+  // under the write lock, and every later open finds them and writes nothing.
+  // Only this table is analyzed: a whole-database pass reaches the part table,
+  // which alone takes seconds more. The statistics are gathered this once and
+  // not refreshed. Retried, since that first build can meet the other server's
+  // lock. Indexes are matched by name, so rename one when its definition
+  // changes, or existing stores keep the old one.
+  //
+  // Two steps, because only the columns are load-bearing: the queries read
+  // them, so a failure to add them throws. A failed index build (a full disk)
+  // is logged and not tried again in this process; the queries still run, just
+  // unindexed, rather than the store going down with a slow retry per call.
+  export async function lift(
+    db: Database,
+    table: string,
+    columns: Record<string, [type: string, path: string]>,
+    indexes: Record<string, string>,
+  ) {
+    const has = () =>
+      new Set(
+        db
+          .query<{ name: string }, []>(`PRAGMA table_xinfo(${table})`)
+          .all()
+          .map((c) => c.name),
+      )
+    const built = () =>
+      new Set(
+        db
+          .query<{ name: string }, []>(`SELECT name FROM sqlite_master WHERE type = 'index'`)
+          .all()
+          .map((i) => i.name),
+      )
+    const absent = (known: Set<string>) => Object.entries(columns).filter(([name]) => !known.has(name))
+    const missing = (known: Set<string>) =>
+      unindexed.has(table) ? [] : Object.entries(indexes).filter(([name]) => !known.has(name))
+    // Read without the lock first: the steady state has everything and must
+    // not take the write lock at all.
+    if (absent(has()).length === 0 && missing(built()).length === 0) return
+    if (absent(has()).length > 0)
+      await retry(() =>
+        db
+          .transaction(() => {
+            for (const [name, [type, field]] of absent(has()))
+              db.run(
+                `ALTER TABLE ${table} ADD COLUMN ${name} ${type} GENERATED ALWAYS AS (CASE WHEN json_valid(json) THEN json_extract(json, '${field}') END) VIRTUAL`,
+              )
+          })
+          .immediate(),
+      )
+    if (missing(built()).length === 0) return
+    await retry(() =>
+      db
+        .transaction(() => {
+          const fresh = missing(built())
+          for (const [name, definition] of fresh) db.run(`CREATE INDEX IF NOT EXISTS ${name} ${definition}`)
+          if (fresh.length > 0) db.run(`ANALYZE ${table}`)
+        })
+        .immediate(),
+    ).catch((e) => {
+      unindexed.add(table)
+      Log.Default.warn("storage index build failed; queries run unindexed", { table, e })
+    })
+  }
+
+  // Tables whose index build failed in this process, so it is not retried.
+  const unindexed = new Set<string>()
 
   // Reap rows whose owner is gone: parts whose message is deleted, messages whose
   // session is deleted. No schema FK enforces this (the tables predate one, and

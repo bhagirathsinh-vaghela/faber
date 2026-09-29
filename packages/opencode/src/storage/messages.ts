@@ -5,7 +5,8 @@ import { Db } from "./db"
 import type { MessageV2 } from "../session/message-v2"
 
 // Messages, stored as a JSON blob keyed by id, with session_id + time_created
-// lifted into columns (the fields the reads order and scan by). A facade over
+// lifted into columns (the fields the reads order and scan by), and role,
+// parent and synthetic generated from the blob for recovery (`Db.lift`). A facade over
 // the shared Db that reproduces the `Storage` semantics the session code relies
 // on — reconcile (read-modify-write, first-write yields undefined), readSized
 // (value + byte length for the message cache budget), and a per-session ordered
@@ -25,6 +26,18 @@ export namespace Messages {
     // The list read orders a session's messages by (time_created, id); the same
     // index upstream keeps on its message table.
     db.run(`CREATE INDEX IF NOT EXISTS message_session_time_idx ON message (session_id, time_created, id)`)
+    // What recovery reads filter on. Newest reply and the probe for a user
+    // message after it: (session_id, role, id). Newest message and the scan
+    // after a reply: (session_id, id).
+    await Db.lift(
+      db,
+      "message",
+      { role: ["TEXT", "$.role"], parent: ["TEXT", "$.parentID"], synthetic: ["INTEGER", "$.synthetic"] },
+      {
+        message_session_role_idx: `ON message (session_id, role, id)`,
+        message_session_id_idx: `ON message (session_id, id)`,
+      },
+    )
     return {
       get: db.query<{ json: string; length: number }, [string]>(`SELECT json, length FROM message WHERE id = ?`),
       put: db.query<void, [string, string, number, string, number]>(
@@ -43,9 +56,7 @@ export namespace Messages {
       ),
       // The newest assistant message, the reply the session last made.
       reply: db.query<{ json: string }, [string]>(
-        `SELECT json FROM message WHERE session_id = ?
-           AND CASE WHEN json_valid(json) THEN json_extract(json, '$.role') = 'assistant' END
-         ORDER BY id DESC LIMIT 1`,
+        `SELECT json FROM message WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1`,
       ),
       after: db.query<{ json: string }, [string, string]>(
         `SELECT json FROM message WHERE session_id = ? AND id >= ? ORDER BY id`,

@@ -19,7 +19,6 @@ import { SessionRecent } from "../../session/recent"
 import { Session } from "../../session"
 import { Sessions } from "../../storage/sessions"
 import { SessionBusy } from "../../session/busy"
-import { Debt } from "../../storage/debt"
 import { Event as ServerEvent } from "../event"
 import { HEARTBEAT_MS } from "@opencode-ai/util/stream"
 import { errors } from "../error"
@@ -400,12 +399,10 @@ export const GlobalRoutes = lazy(() =>
               return
             }
             const children = await Sessions.children(scope.sessionID)
-            // A child is live while it has a turn, owes its caller, or is
-            // itself owed something (its own jobs or subagents).
-            const owing = await Promise.all(
-              children.map(async (id) => SessionBusy.busy(id) || (await Debt.has(id)) || (await Debt.owing(id))),
-            )
-            const live = children.filter((_, index) => owing[index])
+            // A child is live while it has a turn (in memory) or a debt in
+            // either direction (one read for all of them).
+            const debted = new Set(await Sessions.debted(scope.sessionID))
+            const live = children.filter((id) => SessionBusy.busy(id) || debted.has(id))
             const snapshot = await SessionBusy.snapshot([
               scope.sessionID,
               ...new Set([...live, ...children.filter((id) => owed.has(id))]),

@@ -7,7 +7,8 @@ import type { Session } from "../session"
 import { Log } from "../util/log"
 
 // Sessions, stored as a JSON blob keyed by id, with project_id + time columns
-// lifted out (sessions are listed per-project and ordered by recency). A facade
+// lifted out (sessions are listed per-project and ordered by recency), and the
+// fields the cross-project scans filter on generated from the blob (`Db.lift`). A facade
 // over the shared Db reproducing the `Storage` semantics the session code uses:
 // write (create/import), update (read-modify-write, throws if absent, like
 // Storage.update reading the file first), read, per-project list, remove.
@@ -26,6 +27,29 @@ export namespace Sessions {
       )
     `)
     db.run(`CREATE INDEX IF NOT EXISTS session_project_idx ON session (project_id)`)
+    // Every cross-project scan below filters on these, so each is an index
+    // read instead of a JSON parse of every session.
+    await Db.lift(
+      db,
+      "session",
+      {
+        parent: ["TEXT", "$.parentID"],
+        turn: ["TEXT", "$.turn"],
+        archived: ["INTEGER", "$.time.archived"],
+        stopped: ["INTEGER", "$.time.stopped"],
+        keep: ["INTEGER", "$.keepWarm"],
+        ephemeral: ["INTEGER", "$.ephemeral"],
+        request: ["INTEGER", "$.cache.lastRequestAt"],
+      },
+      {
+        session_parent_idx: `ON session (parent)`,
+        session_idle_idx: `ON session (archived, turn, stopped, id)`,
+        session_turning_idx: `ON session (id) WHERE turn IS NOT NULL`,
+        session_ephemeral_idx: `ON session (time_created) WHERE ephemeral = 1`,
+        session_warm_idx: `ON session (request) WHERE keep = 1 AND parent IS NULL AND ephemeral IS NOT 1`,
+        session_archived_idx: `ON session (archived) WHERE archived > 0 AND parent IS NULL`,
+      },
+    )
     return {
       get: db.query<{ json: string }, [string]>(`SELECT json FROM session WHERE id = ?`),
       put: db.query<void, [string, string, number, number, string]>(
@@ -37,29 +61,18 @@ export namespace Sessions {
         `INSERT OR IGNORE INTO session (id, project_id, time_created, time_updated, json) VALUES (?, ?, ?, ?, ?)`,
       ),
       listProject: db.query<{ json: string }, [string]>(`SELECT json FROM session WHERE project_id = ?`),
-      archived: db.query<{ archived: number | null }, [string]>(
-        `SELECT json_extract(json, '$.time.archived') AS archived FROM session WHERE id = ?`,
-      ),
+      archived: db.query<{ archived: number | null }, [string]>(`SELECT archived FROM session WHERE id = ?`),
       listArchived: db.query<{ json: string }, []>(
-        `SELECT json FROM session
-         WHERE json_extract(json, '$.time.archived') > 0 AND json_extract(json, '$.parentID') IS NULL
-         ORDER BY json_extract(json, '$.time.archived') DESC`,
+        `SELECT json FROM session WHERE archived > 0 AND parent IS NULL ORDER BY archived DESC`,
       ),
-      listTurning: db.query<{ id: string; json: string }, []>(
-        `SELECT id, json FROM session WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.turn') IS NOT NULL END`,
-      ),
+      listTurning: db.query<{ id: string; json: string }, []>(`SELECT id, json FROM session WHERE turn IS NOT NULL`),
       listWarm: db.query<{ id: string; json: string }, [number]>(
-        `SELECT id, json FROM session
-         WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.parentID') IS NULL AND json_extract(json, '$.keepWarm') = 1
-           AND coalesce(json_extract(json, '$.ephemeral'), 0) = 0
-           AND json_extract(json, '$.cache.lastRequestAt') > ? END`,
+        `SELECT id, json FROM session WHERE parent IS NULL AND keep = 1 AND ephemeral IS NOT 1 AND request > ?`,
       ),
       listEphemeral: db.query<{ id: string; json: string }, [number]>(
-        `SELECT id, json FROM session WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.ephemeral') = 1 AND time_created < ? END`,
+        `SELECT id, json FROM session WHERE ephemeral = 1 AND time_created < ?`,
       ),
-      children: db.query<{ id: string }, [string]>(
-        `SELECT id FROM session WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.parentID') = ? END`,
-      ),
+      children: db.query<{ id: string }, [string]>(`SELECT id FROM session WHERE parent = ?`),
       remove: db.query<void, [string]>(`DELETE FROM session WHERE id = ?`),
       db,
     }
@@ -97,10 +110,10 @@ export namespace Sessions {
   }
 
   // A cross-project scan's rows, skipping any that no longer fit the schema:
-  // one unreadable session must not fail the scan for every other one. Its
-  // queries read a row's JSON only inside `CASE WHEN json_valid(...)`, which
-  // SQLite evaluates in order (json_extract throws on a malformed blob), so a
-  // torn row is never selected and every row here parses.
+  // one unreadable session must not fail the scan for every other one. A torn
+  // row's generated columns read as NULL (`Db.lift` guards them with
+  // json_valid), and WAITING checks json_valid on what it returns, so a torn
+  // row is never selected and every row here parses.
   async function scan(rows: { id: string; json: string }[]) {
     await ready()
     return rows.flatMap((r) => {
@@ -167,27 +180,35 @@ export namespace Sessions {
     return Promise.all(rows.map((r) => normalize(r.json)))
   }
 
-  // Prepared on first use, after the message and debt tables it joins are
+  // The recovery sweep's query, exported so a test explains this exact text.
+  // MATERIALIZED evaluates each idle session's newest reply once, before the
+  // probe for a user message after it. The torn-row check sits on the outer
+  // select, so it reads only the sessions the sweep returns.
+  export const WAITING = `WITH idle AS MATERIALIZED (
+       SELECT s.id, s.stopped, coalesce((SELECT r.parent FROM message r
+         WHERE r.session_id = s.id AND r.role = 'assistant' ORDER BY r.id DESC LIMIT 1), '') AS answered
+       FROM session s WHERE s.turn IS NULL AND (s.archived IS NULL OR s.archived = 0)
+     )
+     SELECT s.id, s.json FROM idle i JOIN session s ON s.id = i.id
+     WHERE json_valid(s.json) AND EXISTS (SELECT 1 FROM message m
+       WHERE m.session_id = i.id AND m.role = 'user' AND m.id > i.answered
+         -- Unary plus keeps the time range off the index, so the probe
+         -- seeks (session_id, role, id) instead of parsing each message.
+         AND +m.time_created > coalesce(i.stopped, 0) AND +m.time_created < ?
+         AND (m.synthetic = 1 OR EXISTS (SELECT 1 FROM debt d WHERE d.responder = i.id)))`
+
+  // Prepared on first use, after the message and debt tables they join are
   // known to exist.
-  const waiting = lazy(async () => {
+  const joined = lazy(async () => {
     const [{ Messages }, { Debt }, q] = await Promise.all([import("./messages"), import("./debt"), open()])
     await Promise.all([Messages.reader(), Debt.ready()])
-    return q.db.query<{ id: string; json: string }, [number]>(
-      `SELECT s.id, s.json FROM session s
-       WHERE CASE WHEN json_valid(s.json) THEN json_extract(s.json, '$.turn') IS NULL
-         AND coalesce(json_extract(s.json, '$.time.archived'), 0) = 0
-         AND EXISTS (SELECT 1 FROM message m
-           WHERE m.session_id = s.id
-             AND m.id > coalesce((SELECT json_extract(r.json, '$.parentID') FROM message r
-               WHERE r.session_id = s.id
-                 AND CASE WHEN json_valid(r.json) THEN json_extract(r.json, '$.role') = 'assistant' END
-               ORDER BY r.id DESC LIMIT 1), '')
-             AND CASE WHEN json_valid(m.json) THEN json_extract(m.json, '$.role') = 'user'
-               AND m.time_created > coalesce(json_extract(s.json, '$.time.stopped'), 0)
-               AND m.time_created < ?
-               AND (json_extract(m.json, '$.synthetic') = 1
-                 OR EXISTS (SELECT 1 FROM debt d WHERE d.responder = s.id)) END) END`,
-    )
+    return {
+      waiting: q.db.query<{ id: string; json: string }, [number]>(WAITING),
+      debted: q.db.query<{ id: string }, [string]>(
+        `SELECT s.id FROM session s WHERE s.parent = ?
+           AND (EXISTS (SELECT 1 FROM debt d WHERE d.responder = s.id) OR EXISTS (SELECT 1 FROM debt d WHERE d.caller = s.id))`,
+      ),
+    }
   })
 
   // Sessions with a user message no reply has answered, written after the
@@ -200,12 +221,18 @@ export namespace Sessions {
   // written before `before` count, so a sweep leaves alone one whose turn
   // another process is about to mark.
   export async function listUnanswered(before = Number.MAX_SAFE_INTEGER) {
-    return scan(await waiting().then((q) => q.all(before)))
+    return scan(await joined().then((q) => q.waiting.all(before)))
   }
 
   // The ids of a session's direct children, across every project.
   export async function children(parentID: string) {
     return open().then((q) => q.children.all(parentID).map((row) => row.id))
+  }
+
+  // The ids of a session's children that have a debt in either direction:
+  // owed by the session, or owed something themselves.
+  export async function debted(parentID: string) {
+    return joined().then((q) => q.debted.all(parentID).map((row) => row.id))
   }
 
   // Sessions carrying a turn marker, across every project.
