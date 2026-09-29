@@ -54,9 +54,11 @@
      brighter step, whereas the result BOX keeps the accent above. */
   --box-indicator-job: var(--box-accent-tool-execute, #f472b6);
   --box-accent-tool: var(--ink-dark-11, #b1b7b7);
-  /* The thinking card. Thinking is the model's own voice rather than a tool
-     call, so it wears its own colour instead of the read-only tool blue. */
   --box-accent-claude: #cb7153;
+  /* The thinking card is the assistant's own voice, so its fill and washes are
+     the assistant card's; only its border and header labels wear the Claude
+     colour (transcript-card). */
+  --box-accent-thinking: var(--box-accent-assistant);
 
   /* Tool-family accents: each action type carries its own colour so the
      transcript is scannable by what each card DOES, not just who sent it.

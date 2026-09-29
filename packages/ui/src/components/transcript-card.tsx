@@ -84,7 +84,7 @@ export interface TranscriptCardProps {
 
 // Every colour a card can wear. A family owns a matching accent/border/fill set
 // in the theme, so naming the family is enough for the base to reach all three.
-export type CardAccent = "user" | "assistant" | "subagent" | "job" | "claude" | "tool"
+export type CardAccent = "user" | "assistant" | "subagent" | "job" | "thinking" | "tool"
 
 // Per-tool accent: a tool can name its own token, or fall back to its
 // family's. The family is the default so the transcript is scannable by
@@ -133,9 +133,12 @@ function accentTokens(accent: CardAccent, tone?: string, tool?: string) {
   if (tone) return { "--box-accent-tool": tone }
   const resolved = accent === "tool" ? toolAccent(tool) : undefined
   const base = resolved ?? `var(--box-accent-${accent})`
+  // A thinking card's border wears the Claude colour; its washes and fill are
+  // the assistant card's (transcript-card.css colours the header labels).
+  const line = accent === "thinking" ? "var(--box-accent-claude)" : base
   return {
     "--box-accent-tool": base,
-    "--box-border-tool": `color-mix(in srgb, ${base} 80%, var(--box-backdrop, #010409))`,
+    "--box-border-tool": `color-mix(in srgb, ${line} 80%, var(--box-backdrop, #010409))`,
     "--box-bg-tool": `color-mix(in srgb, ${base} 7%, var(--box-backdrop, #010409))`,
   }
 }

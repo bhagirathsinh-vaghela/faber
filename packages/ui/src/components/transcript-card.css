@@ -178,6 +178,17 @@
     color: var(--box-accent-tool);
   }
 
+  /* A thinking card's header labels wear the Claude colour instead. The card
+     prefix out-specifies the two rules above on purpose, so the override
+     holds whatever the source order. */
+  [data-component="collapsible"][data-accent="thinking"] & {
+    [data-slot="transcript-card-title"],
+    [data-slot="transcript-card-block-number"],
+    [data-slot="transcript-card-identity"] [data-slot="icon-svg"] {
+      color: var(--box-accent-claude);
+    }
+  }
+
   /* The left cluster: the jump control and the index/time stamp side by side, in
      ONE box so the whole thing answers to a single hover. */
   [data-slot="transcript-card-identity"] {
