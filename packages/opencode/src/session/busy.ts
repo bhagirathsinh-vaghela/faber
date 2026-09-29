@@ -24,7 +24,9 @@ import { SessionRecent } from "./recent"
 // re-sends `session.busy` facts while anything in a connection's scope is
 // active (the open session plus children with an open debt or a live turn and
 // one trailing zero for a child that just went idle, or each active root on the
-// overview), so a dropped frame heals within one tick.
+// overview), so a dropped frame heals within one tick. Every heartbeat also
+// carries `live()`, the complete set of active sessions, so a missed idle push
+// the tick never saw heals within one heartbeat.
 export namespace SessionBusy {
   export type Facts = { turn: boolean; subagents: number; jobs: number }
 
