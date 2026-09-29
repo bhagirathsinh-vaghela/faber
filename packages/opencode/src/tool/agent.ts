@@ -1,6 +1,7 @@
 import { Tool } from "./tool"
 import DESCRIPTION from "./agent.txt"
 import z from "zod"
+import { swap } from "../util/text"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Provider } from "../provider/provider"
@@ -59,18 +60,14 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
   // hashes first can be shared between them.
   const scoped = await Config.projectAgents()
   const toolsets = snapshot?.toolsets ?? (await Agent.toolsets())
-  const description = DESCRIPTION.replace(
-    "{agents}",
-    accessibleAgents
-      .filter((a) => !scoped.has(a.name))
-      .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)
-      .join("\n"),
-  ).replace(
-    "{toolsets}",
-    Object.entries(toolsets)
-      .map(([name, tools]) => `- ${name}: ${tools.join(", ")}`)
-      .join("\n"),
-  )
+  const listed = accessibleAgents
+    .filter((a) => !scoped.has(a.name))
+    .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)
+    .join("\n")
+  const sets = Object.entries(toolsets)
+    .map(([name, tools]) => `- ${name}: ${tools.join(", ")}`)
+    .join("\n")
+  const description = swap(swap(DESCRIPTION, "{agents}", listed), "{toolsets}", sets)
   return {
     description,
     parameters,

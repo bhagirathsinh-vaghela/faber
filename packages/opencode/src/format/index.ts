@@ -1,6 +1,7 @@
 import { Bus } from "../bus"
 import { File } from "../file"
 import { Log } from "../util/log"
+import { swap } from "../util/text"
 import path from "path"
 import z from "zod"
 
@@ -111,7 +112,7 @@ export namespace Format {
         log.info("running", { command: item.command })
         try {
           const proc = Bun.spawn({
-            cmd: item.command.map((x) => x.replace("$FILE", file)),
+            cmd: item.command.map((x) => swap(x, "$FILE", file)),
             cwd: Instance.directory,
             env: { ...process.env, ...item.environment },
             stdout: "ignore",

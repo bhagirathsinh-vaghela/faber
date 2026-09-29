@@ -9,6 +9,7 @@ import { FileWatcher } from "../file/watcher"
 import { Bus } from "../bus"
 import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
+import { swap } from "../util/text"
 import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
 import { assertExternalDirectory } from "./external-directory"
@@ -286,9 +287,9 @@ export function replace(content: string, oldString: string, newString: string, r
   if (newString === "") {
     if (!oldString.endsWith("\n") && content.includes(actual + "\n"))
       return replaceAll
-        ? content.replaceAll(actual + "\n", newString).replaceAll(actual, newString)
-        : content.replace(actual + "\n", newString)
+        ? swap(swap(content, actual + "\n", newString, true), actual, newString, true)
+        : swap(content, actual + "\n", newString)
   }
 
-  return replaceAll ? content.replaceAll(actual, newString) : content.replace(actual, newString)
+  return swap(content, actual, newString, replaceAll)
 }

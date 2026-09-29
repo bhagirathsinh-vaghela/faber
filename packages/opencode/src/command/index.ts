@@ -7,6 +7,7 @@ import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import { MCP } from "../mcp"
 import { Skill } from "../skill"
+import { swap } from "../util/text"
 
 export namespace Command {
   export const Event = {
@@ -65,7 +66,7 @@ export namespace Command {
         description: "create/update AGENTS.md",
         source: "command",
         get template() {
-          return PROMPT_INITIALIZE.replace("${path}", Instance.worktree)
+          return swap(PROMPT_INITIALIZE, "${path}", Instance.worktree)
         },
         hints: hints(PROMPT_INITIALIZE),
       },
@@ -74,7 +75,7 @@ export namespace Command {
         description: "review changes [commit|branch|pr], defaults to uncommitted",
         source: "command",
         get template() {
-          return PROMPT_REVIEW.replace("${path}", Instance.worktree)
+          return swap(PROMPT_REVIEW, "${path}", Instance.worktree)
         },
         subagent: true,
         hints: hints(PROMPT_REVIEW),

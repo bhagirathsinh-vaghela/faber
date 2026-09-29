@@ -3,6 +3,7 @@ import { Tool } from "./tool"
 import path from "path"
 import DESCRIPTION from "./bash.txt"
 import { Log } from "../util/log"
+import { swap } from "../util/text"
 import { Instance } from "../project/instance"
 import { lazy } from "@/util/lazy"
 import { Language } from "web-tree-sitter"
@@ -61,10 +62,12 @@ export const BashTool = Tool.define("bash", async () => {
   log.info("bash tool using shell", { shell })
 
   return {
-    description: DESCRIPTION.replaceAll("${directory}", "the current working directory")
-      .replaceAll("${maxLines}", String(Truncate.MAX_LINES))
-      .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES))
-      .replaceAll("${graceSeconds}", String(Math.round(BackgroundSpawn.GRACE_MS / 1000))),
+    description: Object.entries({
+      "${directory}": "the current working directory",
+      "${maxLines}": String(Truncate.MAX_LINES),
+      "${maxBytes}": String(Truncate.MAX_BYTES),
+      "${graceSeconds}": String(Math.round(BackgroundSpawn.GRACE_MS / 1000)),
+    }).reduce((text, [key, value]) => swap(text, key, value, true), DESCRIPTION),
     parameters: z
       .object({
         command: z.string().describe("The command to execute. Omit when killing a job.").optional(),

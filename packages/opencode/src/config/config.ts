@@ -1,4 +1,5 @@
 import { Log } from "../util/log"
+import { swap } from "../util/text"
 import path from "path"
 import { pathToFileURL } from "url"
 import os from "os"
@@ -1310,7 +1311,7 @@ export namespace Config {
             })
         ).trim()
         // escape newlines/quotes, strip outer quotes
-        text = text.replace(match, JSON.stringify(fileContent).slice(1, -1))
+        text = swap(text, match, JSON.stringify(fileContent).slice(1, -1))
       }
     }
 

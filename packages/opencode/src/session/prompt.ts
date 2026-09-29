@@ -5,6 +5,7 @@ import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
+import { swap } from "../util/text"
 import { SessionRevert } from "./revert"
 import { Session } from "."
 import { Agent } from "../agent/agent"
@@ -2072,7 +2073,7 @@ export namespace SessionPrompt {
 
   function renderTemplate(template: string, vars: Record<string, string>) {
     let result = template
-    for (const [key, value] of Object.entries(vars)) result = result.replaceAll(key, value)
+    for (const [key, value] of Object.entries(vars)) result = swap(result, key, value, true)
     return result
   }
 
@@ -2697,7 +2698,7 @@ export namespace SessionPrompt {
       return args[argIndex]
     })
     const usesArgumentsPlaceholder = templateCommand.includes("$ARGUMENTS")
-    let template = withArgs.replaceAll("$ARGUMENTS", input.arguments)
+    let template = swap(withArgs, "$ARGUMENTS", input.arguments, true)
 
     // If command doesn't explicitly handle arguments (no $N or $ARGUMENTS placeholders)
     // but user provided arguments, append them to the template
@@ -2707,7 +2708,7 @@ export namespace SessionPrompt {
 
     // Substituted ahead of the shell expansion below so a !`...` block can pass
     // the id to a command; the model has no other way to learn which session it is.
-    template = template.replaceAll("$SESSION", input.sessionID)
+    template = swap(template, "$SESSION", input.sessionID, true)
 
     const shell = ConfigMarkdown.shell(template)
     if (shell.length > 0) {

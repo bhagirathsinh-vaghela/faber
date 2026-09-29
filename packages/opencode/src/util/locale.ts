@@ -1,3 +1,5 @@
+import { swap } from "./text"
+
 export namespace Locale {
   export function time(input: number): string {
     const date = new Date(input)
@@ -72,6 +74,6 @@ export namespace Locale {
 
   export function pluralize(count: number, singular: string, plural: string): string {
     const template = count === 1 ? singular : plural
-    return template.replace("{}", count.toString())
+    return swap(template, "{}", count.toString())
   }
 }
