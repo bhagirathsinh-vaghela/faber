@@ -336,6 +336,27 @@ test.describe("reader mode on a fine pointer", () => {
     })
   })
 
+  test("dropping an image raises the overlay with the image attached", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader drop ${Date.now()}`, async (session) => {
+      await seedTurn(sdk, session.id)
+      await gotoSession(session.id)
+      await enterReader(page)
+      await expect(composer(page)).toBeHidden()
+
+      const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      const transfer = await page.evaluateHandle((base64) => {
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+        const dt = new DataTransfer()
+        dt.items.add(new File([bytes], "dot.png", { type: "image/png" }))
+        return dt
+      }, png)
+      await scroller(page).dispatchEvent("drop", { dataTransfer: transfer })
+
+      await expect(composer(page)).toBeVisible()
+      await expect(composer(page).locator('img[alt="dot.png"]')).toBeVisible()
+    })
+  })
+
   test("space raises the overlay and takes the caret", async ({ page, sdk, gotoSession }) => {
     await withSession(sdk, `reader space key ${Date.now()}`, async (session) => {
       await seedTurn(sdk, session.id)

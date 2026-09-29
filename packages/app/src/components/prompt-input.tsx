@@ -397,6 +397,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
       const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
       prompt.set([...prompt.current(), attachment], cursorPosition)
+      if (layout.reader.opened()) layout.reader.reveal()
     }
     reader.readAsDataURL(file)
   }
