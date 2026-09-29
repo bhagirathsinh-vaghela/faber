@@ -51,6 +51,7 @@ export namespace Sessions {
       listWarm: db.query<{ id: string; json: string }, [number]>(
         `SELECT id, json FROM session
          WHERE CASE WHEN json_valid(json) THEN json_extract(json, '$.parentID') IS NULL AND json_extract(json, '$.keepWarm') = 1
+           AND coalesce(json_extract(json, '$.ephemeral'), 0) = 0
            AND json_extract(json, '$.cache.lastRequestAt') > ? END`,
       ),
       listEphemeral: db.query<{ id: string; json: string }, [number]>(
@@ -227,7 +228,8 @@ export namespace Sessions {
     return scan(await open().then((q) => q.listTurning.all()))
   }
 
-  // Root sessions that asked to stay warm and whose cache anchor is after `since`.
+  // Attended (root, not ephemeral) sessions that asked to stay warm and whose
+  // cache anchor is after `since`.
   export async function listWarm(since: number) {
     return scan(await open().then((q) => q.listWarm.all(since)))
   }
