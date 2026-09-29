@@ -2,6 +2,7 @@ import { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { Log } from "@/util/log"
 import { LLM } from "./llm"
+import { SessionPrompt } from "./prompt"
 import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 
@@ -14,6 +15,10 @@ export namespace SessionJudge {
     /** The text being judged. */
     input: string
     sessionID: string
+    /** The model to judge on, or Provider.DEFAULT for the configured one. */
+    model: { providerID: string; modelID: string } | typeof Provider.DEFAULT
+    /** A variant the model offers, or Provider.DEFAULT for the model's configured one. */
+    variant: string
     abort?: AbortSignal
     /** Milliseconds before the call is abandoned. Defaults to 30s. */
     timeout?: number
@@ -57,8 +62,12 @@ export namespace SessionJudge {
       // Model resolution is inside the try so a provider/registry failure here
       // fails open like any other, rather than throwing to the caller — the
       // "enforcement never ends the turn" guarantee covers the whole call.
-      const configured = await Provider.defaultModel()
-      const model = await Provider.getModel(configured.providerID, configured.modelID)
+      const ref = input.model === Provider.DEFAULT ? (await SessionPrompt.defaults(agent)).model : input.model
+      const model = await Provider.getModel(ref.providerID, ref.modelID)
+      if (input.variant !== Provider.DEFAULT && !model.variants?.[input.variant])
+        throw new Error(`judge: model ${model.providerID}/${model.id} offers no variant "${input.variant}"`)
+      const variant =
+        input.variant === Provider.DEFAULT ? (await SessionPrompt.defaults(agent, ref)).variant : input.variant
 
       const { stream } = await LLM.stream({
         agent,
@@ -69,7 +78,7 @@ export namespace SessionJudge {
           time: { created: Date.now() },
           agent: agent.name,
           model: { providerID: model.providerID, modelID: model.id },
-          variant: model.variant,
+          variant,
         } as MessageV2.User,
         model,
         tools: {},

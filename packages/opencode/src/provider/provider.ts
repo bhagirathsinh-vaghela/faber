@@ -1303,6 +1303,15 @@ export namespace Provider {
     )
   }
 
+  // What a launcher passes for a model or a variant when it deliberately wants
+  // the configured one. Both are required on every launch, so the default is a
+  // choice a caller writes down, never what an omitted field falls to.
+  export const DEFAULT = "default"
+
+  // What an automatic write passes to keep whatever the session's last message
+  // ran (its `current`), so a result or a nudge never moves the session's pick.
+  export const INHERIT = "inherit"
+
   export async function defaultModel() {
     const cfg = await Config.get()
     if (cfg.model) return parseModel(cfg.model)

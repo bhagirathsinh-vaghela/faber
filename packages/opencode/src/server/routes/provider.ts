@@ -6,6 +6,7 @@ import { Provider } from "../../provider/provider"
 import { ModelsDev } from "../../provider/models"
 import { ProviderAuth } from "../../provider/auth"
 import { SessionPin } from "../../session/pin"
+import { SessionPrompt } from "../../session/prompt"
 import { mapValues } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
@@ -70,7 +71,7 @@ export const ProviderRoutes = lazy(() =>
       describeRoute({
         summary: "Get default model",
         description:
-          "Resolve the model a new session in this directory will use when the caller expresses no preference: the config `model` key, else a connected provider's default. Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.",
+          "Resolve what a new session in this directory runs when the caller expresses no preference: the default agent, its model (else the config `model` key, else a connected provider's default), and its variant (else that model's configured `variant`). Null when no provider is connected. This is the single source of truth clients render, so a config edit and the next turn can never disagree.",
         operationId: "provider.default",
         responses: {
           200: {
@@ -82,6 +83,8 @@ export const ProviderRoutes = lazy(() =>
                     .object({
                       providerID: z.string(),
                       modelID: z.string(),
+                      variant: z.string().optional(),
+                      agent: z.string(),
                     })
                     .nullable(),
                 ),
@@ -93,7 +96,9 @@ export const ProviderRoutes = lazy(() =>
       async (c) => {
         await SessionPin.refresh()
         // "no providers connected" is a valid resolution, not a request failure.
-        return c.json(await Provider.defaultModel().catch(() => null))
+        const resolved = await SessionPrompt.defaults().catch(() => undefined)
+        if (!resolved) return c.json(null)
+        return c.json({ ...resolved.model, variant: resolved.variant, agent: resolved.agent })
       },
     )
     .get(

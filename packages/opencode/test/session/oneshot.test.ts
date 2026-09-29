@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
 import { Oneshot } from "../../src/session/oneshot"
+import { Provider } from "../../src/provider/provider"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { Log } from "../../src/util/log"
@@ -68,7 +69,7 @@ function textReply(text: string) {
   ])
 }
 
-async function withInstance(fn: () => Promise<void>) {
+async function withInstance(fn: () => Promise<void>, models: Record<string, object> = {}) {
   const server = state.server!
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -79,7 +80,7 @@ async function withInstance(fn: () => Promise<void>) {
           enabled_providers: ["anthropic"],
           model: `anthropic/${MODEL}`,
           instructions: [],
-          provider: { anthropic: { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` } } },
+          provider: { anthropic: { options: { apiKey: "test-key", baseURL: `${server.url.origin}/v1` }, models } },
         }),
       )
       await Bun.write(path.join(dir, "AGENTS.md"), "PROJECT-RULES-MUST-NOT-LEAK")
@@ -96,7 +97,7 @@ describe("Oneshot.run", () => {
   test("sends only the caller's system prompt and prompt, no tools or cache markers, and returns the text with usage", async () => {
     await withInstance(async () => {
       const request = respond(() => textReply("Hello back"))
-      const answer = await Oneshot.run({ system: "CALLER-SYSTEM", prompt: "Hi" })
+      const answer = await Oneshot.run({ model: "default", variant: "default", system: "CALLER-SYSTEM", prompt: "Hi" })
       const capture = await request
 
       expect(systemText(capture.body)).toContain("CALLER-SYSTEM")
@@ -119,7 +120,7 @@ describe("Oneshot.run", () => {
   test("places cache markers when the caller opts in", async () => {
     await withInstance(async () => {
       const request = respond(() => textReply("ok"))
-      await Oneshot.run({ system: "S", prompt: "Hi", cache: true })
+      await Oneshot.run({ model: "default", variant: "default", system: "S", prompt: "Hi", cache: true })
       expect(JSON.stringify((await request).body)).toContain("cache_control")
     })
   }, 30_000)
@@ -133,7 +134,7 @@ describe("Oneshot.run", () => {
             headers: { "Content-Type": "application/json" },
           }),
       )
-      const answer = await Oneshot.run({ prompt: "Hi" })
+      const answer = await Oneshot.run({ model: "default", variant: "default", prompt: "Hi" })
       expect(answer.is_error).toBe(true)
       expect(answer.result).toBe("")
       expect(answer.errors).toHaveLength(1)
@@ -154,12 +155,52 @@ describe("Oneshot.run", () => {
         })
 
       respond(() => textReply("via http"))
-      const ok = await post({ prompt: "Hi" })
+      const ok = await post({ prompt: "Hi", model: "default", variant: "default" })
       expect(ok.status).toBe(200)
       expect(await ok.json()).toMatchObject({ result: "via http", is_error: false })
 
-      const bad = await post({ system: "no prompt" })
+      const bad = await post({ system: "no prompt", model: "default", variant: "default" })
       expect(bad.status).toBe(400)
+
+      const unchosen = await post({ prompt: "Hi" })
+      expect(unchosen.status).toBe(400)
     })
+  }, 30_000)
+
+  test("rejects a variant the model does not offer", async () => {
+    await withInstance(async () => {
+      const model = await Provider.defaultModel()
+      const answer = await Oneshot.run({ model: "default", variant: "nope", prompt: "Hi" })
+      expect(answer).toMatchObject({
+        is_error: true,
+        errors: [`oneshot: model ${model.providerID}/${model.modelID} offers no variant "nope"`],
+      })
+    })
+  }, 30_000)
+
+  test("default resolves the model's configured variant onto the wire", async () => {
+    await withInstance(
+      async () => {
+        const request = respond(() => textReply("ok"))
+        const answer = await Oneshot.run({ model: "default", variant: "default", prompt: "Hi" })
+        expect(answer.errors).toEqual([])
+        expect((await request).body.thinking).toEqual({ type: "enabled", budget_tokens: 4095 })
+      },
+      {
+        [MODEL]: {
+          name: "Claude",
+          family: "claude",
+          release_date: "2024-10-22",
+          attachment: false,
+          reasoning: true,
+          temperature: true,
+          tool_call: true,
+          cost: { input: 1, output: 2, cache_read: 0.1, cache_write: 1 },
+          limit: { context: 200000, output: 8192 },
+          modalities: { input: ["text"], output: ["text"] },
+          variant: "high",
+        },
+      },
+    )
   }, 30_000)
 })

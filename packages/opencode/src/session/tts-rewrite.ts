@@ -1,4 +1,5 @@
 import { SessionJudge } from "./judge"
+import { Provider } from "@/provider/provider"
 
 export namespace TtsRewrite {
   // The read-aloud rewrite runs as a one-shot judge call, so this whole prompt
@@ -144,6 +145,8 @@ Output ONLY the spoken text. Do not add anything before it or after it. No pream
       prompt: PROMPT,
       input: wrap(text),
       sessionID,
+      model: Provider.DEFAULT,
+      variant: Provider.DEFAULT,
       // The reading waits on this, so it cannot hang the way an enforcement
       // gate can afford to.
       timeout: 20_000,

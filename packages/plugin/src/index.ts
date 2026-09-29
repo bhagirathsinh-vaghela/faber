@@ -37,9 +37,16 @@ export type PluginInput = {
    *
    * Intended for enforcement checks that must weigh one instruction against
    * one artifact, where the session's own context would dilute the judgment.
-   * Runs on the configured default model and its default variant.
+   * `model` and `variant` are required: pass "default" for the configured
+   * model, and "default" for the model's configured variant.
    */
-  judge: (input: { prompt: string; input: string; sessionID: string }) => Promise<string>
+  judge: (input: {
+    prompt: string
+    input: string
+    sessionID: string
+    model: { providerID: string; modelID: string } | "default"
+    variant: string
+  }) => Promise<string>
 }
 
 export type Plugin = (input: PluginInput) => Promise<Hooks>

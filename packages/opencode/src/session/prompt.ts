@@ -1220,6 +1220,21 @@ export namespace SessionPrompt {
     return tools
   }
 
+  // What a turn runs when nothing picks a model or variant: the agent's, else
+  // the config default model and that model's configured variant. `model`
+  // fixes the model when only the variant is left to resolve.
+  export async function defaults(agent?: Agent.Info, model?: { providerID: string; modelID: string }) {
+    const chosen = agent ?? (await Agent.get(await Agent.defaultAgent()))
+    if (!chosen) throw new Error("no resolvable default agent")
+    const resolved = model ?? chosen.model ?? (await Provider.defaultModel())
+    // An agent's variant applies only to a model that offers it.
+    const variant = await Provider.getModel(resolved.providerID, resolved.modelID).then(
+      (info) => (chosen.variant && info.variants?.[chosen.variant] ? chosen.variant : info.variant),
+      () => undefined,
+    )
+    return { agent: chosen.name, model: { providerID: resolved.providerID, modelID: resolved.modelID }, variant }
+  }
+
   // Resolve a candidate agent NAME to a live agent, falling through to the
   // configured default (then the built-in "build" when the default itself is
   // misconfigured) whenever the name does not resolve. Agent.get returns

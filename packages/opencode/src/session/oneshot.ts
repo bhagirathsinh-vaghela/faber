@@ -6,6 +6,7 @@ import { Log } from "@/util/log"
 import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { LLM } from "./llm"
+import { SessionPrompt } from "./prompt"
 import { Session } from "."
 
 export namespace Oneshot {
@@ -16,7 +17,8 @@ export namespace Oneshot {
   export const Input = z.object({
     system: z.string().optional(),
     prompt: z.string().min(1),
-    model: z.string().optional().describe("provider/model; defaults to the configured model"),
+    model: z.string().describe('provider/model, or "default" for the configured model'),
+    variant: z.string().describe('A variant the model offers, or "default" for the model\'s configured one'),
     cache: z.boolean().optional().describe("Place prompt-cache markers. Off by default."),
     timeoutMs: z.number().int().positive().optional(),
   })
@@ -51,8 +53,8 @@ export namespace Oneshot {
     return error instanceof Error ? error.message : String(error)
   }
 
-  async function resolveModel(model?: string) {
-    const ref = model ? Provider.parseModel(model) : await Provider.defaultModel()
+  async function resolveModel(agent: Agent.Info, model: string) {
+    const ref = model === Provider.DEFAULT ? (await SessionPrompt.defaults(agent)).model : Provider.parseModel(model)
     return Provider.getModel(ref.providerID, ref.modelID)
   }
 
@@ -61,10 +63,26 @@ export namespace Oneshot {
    * out. No session, no tools, no instructions, nothing persisted.
    */
   export async function run(input: Input): Promise<Result> {
-    const model = await resolveModel(input.model).catch((error) => error as Error)
-    if (model instanceof Error) return failure([`oneshot: model "${input.model ?? "default"}": ${model.message}`])
 
-    const outcome = await call(input, model).catch((error) =>
+    const agent: Agent.Info = {
+      name: "oneshot",
+      mode: "primary",
+      hidden: true,
+      native: true,
+      prompt: input.system,
+      options: {},
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+    }
+    const model = await resolveModel(agent, input.model).catch((error) => error as Error)
+    if (model instanceof Error) return failure([`oneshot: model "${input.model}": ${model.message}`])
+    if (input.variant !== Provider.DEFAULT && !model.variants?.[input.variant])
+      return failure([`oneshot: model ${model.providerID}/${model.id} offers no variant "${input.variant}"`])
+
+    const variant =
+      input.variant === Provider.DEFAULT
+        ? (await SessionPrompt.defaults(agent, { providerID: model.providerID, modelID: model.id })).variant
+        : input.variant
+    const outcome = await call(input, agent, model, variant).catch((error) =>
       failure([`oneshot: ${model.providerID}/${model.id}: ${describe(error)}`]),
     )
     log.info("oneshot", {
@@ -77,17 +95,13 @@ export namespace Oneshot {
     return { ...outcome, model: `${model.providerID}/${model.id}` }
   }
 
-  async function call(input: Input, model: Provider.Model): Promise<Result> {
+  async function call(
+    input: Input,
+    agent: Agent.Info,
+    model: Provider.Model,
+    variant: string | undefined,
+  ): Promise<Result> {
     const sessionID = Identifier.ascending("session")
-    const agent: Agent.Info = {
-      name: "oneshot",
-      mode: "primary",
-      hidden: true,
-      native: true,
-      prompt: input.system,
-      options: {},
-      permission: PermissionNext.fromConfig({ "*": "deny" }),
-    }
     const { stream } = await LLM.stream({
       agent,
       user: {
@@ -97,7 +111,7 @@ export namespace Oneshot {
         time: { created: Date.now() },
         agent: agent.name,
         model: { providerID: model.providerID, modelID: model.id },
-        variant: model.variant,
+        variant,
       } as MessageV2.User,
       model,
       sessionID,
