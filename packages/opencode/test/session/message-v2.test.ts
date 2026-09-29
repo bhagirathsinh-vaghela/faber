@@ -163,6 +163,59 @@ describe("session.message-v2.filterCompacted", () => {
   })
 })
 
+describe("session.message-v2.filterCompacted orders what a reply never saw after it", () => {
+  const answered = (id: string, parentID: string, finish: string) =>
+    ({
+      info: { ...assistantInfo(id, parentID), finish, time: { created: 0, completed: 1 } } as MessageV2.Assistant,
+      parts: [{ ...basePart(id, id + "-p"), type: "text", text: id }] as MessageV2.Part[],
+    }) as MessageV2.WithParts
+
+  test("a message written while a step was starting follows that step's reply", async () => {
+    // Stored order (by id): the prompt, a job result, a continue prompt that
+    // landed before the step's reply was minted, then the reply, which links
+    // to the job result it actually read.
+    const stream = toStream(
+      [
+        plainUser("p", "count"),
+        plainUser("job", "job done"),
+        plainUser("cont", "continue"),
+        answered("reply", "job", "stop"),
+      ].reverse(),
+    )
+    const ordered = await MessageV2.filterCompacted(stream)
+    expect(ordered.map((m) => m.info.id)).toStrictEqual(["p", "job", "reply", "cont"])
+  })
+
+  test("a message the reply read stays before it, and a finished history is left alone", async () => {
+    const stream = toStream(
+      [
+        plainUser("p", "count"),
+        answered("step", "p", "tool-calls"),
+        plainUser("job", "job done"),
+        answered("reply", "job", "stop"),
+      ].reverse(),
+    )
+    const ordered = await MessageV2.filterCompacted(stream)
+    expect(ordered.map((m) => m.info.id)).toStrictEqual(["p", "step", "job", "reply"])
+  })
+
+  test("each reply takes its own late message, and one after the last reply stays put", async () => {
+    const stream = toStream(
+      [
+        plainUser("p", "count"),
+        plainUser("late1", "first late"),
+        answered("step", "p", "tool-calls"),
+        plainUser("job", "job done"),
+        plainUser("late2", "second late"),
+        answered("reply", "job", "stop"),
+        plainUser("tail", "after everything"),
+      ].reverse(),
+    )
+    const ordered = await MessageV2.filterCompacted(stream)
+    expect(ordered.map((m) => m.info.id)).toStrictEqual(["p", "step", "late1", "job", "reply", "late2", "tail"])
+  })
+})
+
 describe("session.message-v2.isHumanTyped", () => {
   test("true for a plain user message", () => {
     expect(MessageV2.isHumanTyped(plainUser("u", "hello"))).toBe(true)

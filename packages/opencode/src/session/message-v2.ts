@@ -1017,7 +1017,28 @@ export namespace MessageV2 {
       result.push(msg)
     }
     result.reverse()
-    return result
+    return unseen(result)
+  }
+
+  // A step reads the history and only then mints its reply, so a user message
+  // written in between sorts before a reply that never saw it. Each such
+  // message is moved after the first reply that links past it, so the request
+  // the next step sends ends on what the model has yet to answer. A reply saw
+  // everything up to and including the message it links to.
+  function unseen(messages: MessageV2.WithParts[]) {
+    const index = new Map(messages.map((msg, at) => [msg.info.id, at]))
+    const replies = messages.flatMap((msg, at) => {
+      const read = msg.info.role === "assistant" ? index.get(msg.info.parentID) : undefined
+      return read === undefined ? [] : [{ at, read }]
+    })
+    const late = messages.flatMap((msg, at) => {
+      const reply = msg.info.role === "user" ? replies.find((r) => r.read < at && at < r.at) : undefined
+      return reply ? [{ at, reply: reply.at }] : []
+    })
+    if (late.length === 0) return messages
+    return messages.flatMap((msg, at) =>
+      late.some((m) => m.at === at) ? [] : [msg, ...late.filter((m) => m.reply === at).map((m) => messages[m.at])],
+    )
   }
 
   const isOpenAiErrorRetryable = (e: APICallError) => {
