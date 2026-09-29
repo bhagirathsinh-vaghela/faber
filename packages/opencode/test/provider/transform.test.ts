@@ -891,6 +891,35 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
     expect(result[0].content[1]).toEqual({ type: "text", text: "Result" })
   })
 
+  test("strips only the trailing reasoning block of the last assistant message", () => {
+    const kept = { type: "reasoning" as const, text: "earlier", providerOptions: { anthropic: { signature: "s1" } } }
+    const tail = { type: "reasoning" as const, text: "tail", providerOptions: { anthropic: { signature: "s2" } } }
+    const msgs = [
+      { role: "assistant", content: [kept, { type: "text", text: "earlier answer" }] },
+      { role: "user", content: "next" },
+      { role: "assistant", content: [{ type: "text", text: "final answer" }, tail] },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, {})
+
+    expect(result[0].content).toEqual([kept, { type: "text", text: "earlier answer" }])
+    expect(result[2].content).toEqual([{ type: "text", text: "final answer" }])
+  })
+
+  test("replaces a thinking-only last assistant message with a placeholder", () => {
+    const msgs = [
+      { role: "user", content: "hi" },
+      {
+        role: "assistant",
+        content: [{ type: "reasoning", text: "only thinking", providerOptions: { anthropic: { signature: "s" } } }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, {})
+
+    expect(result[1].content).toEqual([{ type: "text", text: "[No message content]" }])
+  })
+
   test("does not filter for non-anthropic providers", () => {
     const openaiModel = {
       ...anthropicModel,

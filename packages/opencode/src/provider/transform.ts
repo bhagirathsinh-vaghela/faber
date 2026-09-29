@@ -53,9 +53,13 @@ export namespace ProviderTransform {
     // Anthropic rejects messages with empty content - filter out empty string messages
     // and remove empty text/reasoning parts from array content
     if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/google-vertex/anthropic") {
-      // Strip trailing reasoning from the last assistant message so Anthropic
-      // doesn't try to continue from a thinking block.  Done here (at send time)
-      // rather than in toModelMessages so stored messages stay immutable.
+      // A thinking block as the LAST block of the LAST assistant message is a
+      // hard 400 from Anthropic ("The final block in an assistant message
+      // cannot be `thinking`") whenever thinking is enabled, which it is by
+      // default on the adaptive-thinking models. This strips only that tail
+      // block, so earlier turns' thinking is untouched and the cached prefix is
+      // unchanged. Every send path reaches this through ProviderTransform.message,
+      // so the turn, the ping, and the compaction all shed the same tail block.
       for (let i = msgs.length - 1; i >= 0; i--) {
         const msg = msgs[i]
         if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue
