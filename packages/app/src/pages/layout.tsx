@@ -2383,8 +2383,8 @@ export default function Layout(props: ParentProps) {
             the drawer opens on that session's project; on the overview (no
             current project) it resolves to undefined, so the mobile drawer
             shows just the bare rail. */}
-        <Show when={expanded() ? previewProject() : undefined} keyed>
-          {(project) => <SidebarPanel project={project} />}
+        <Show when={expanded() ? previewProject()?.worktree : undefined} keyed>
+          {(worktree) => <SidebarPanel project={layout.projects.list().find((p) => p.worktree === worktree)} />}
         </Show>
       </div>
     )
@@ -2412,10 +2412,10 @@ export default function Layout(props: ParentProps) {
               <SidebarContent />
             </SidebarModeProvider>
           </div>
-          <Show when={flyoutProject()} keyed>
-            {(project) => (
+          <Show when={flyoutProject()?.worktree} keyed>
+            {(worktree) => (
               <div data-component="sidebar-flyout" class="absolute inset-y-0 left-16 z-50 flex">
-                <SidebarPanel project={project} />
+                <SidebarPanel project={layout.projects.list().find((p) => p.worktree === worktree)} />
               </div>
             )}
           </Show>

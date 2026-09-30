@@ -53,3 +53,28 @@ test("dialog edit project updates name and startup script", async ({ page, withP
     await expect(reopened).toHaveCount(0)
   })
 })
+
+// Every refresh of the project list rebuilds each project's object. The panel
+// belongs to the project it shows, not to one object for it, so a rename, an
+// icon change, or a child store finishing its load updates it in place.
+test("an open project menu survives a refresh of the project's data", async ({ page, sdk, withProject }) => {
+  await page.setViewportSize({ width: 1400, height: 800 })
+
+  await withProject(async ({ directory }) => {
+    await openSidebar(page)
+
+    const header = page.locator(".group\\/project").first()
+    await header.hover()
+    await header.getByRole("button", { name: "More options" }).first().click()
+    const menu = page.locator('[data-component="dropdown-menu-content"]').first()
+    await expect(menu).toBeVisible()
+
+    const project = await sdk.project.current({ directory }).then((r) => r.data)
+    if (!project) throw new Error(`no current project for ${directory}`)
+    const name = `e2e refresh ${Date.now()}`
+    await sdk.project.update({ projectID: project.id, directory, name })
+
+    await expect(header).toContainText(name)
+    await expect(menu).toBeVisible()
+  })
+})
