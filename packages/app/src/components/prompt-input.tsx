@@ -39,7 +39,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
-import { isEditable } from "@opencode-ai/ui/util/focus"
+import { isEditable, takesPaste } from "@opencode-ai/ui/util/focus"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -449,18 +449,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // handler bails on lost focus, and in reader the composer is hidden besides.
   // This catches it at the document and lands the clipboard on the composer:
   // reader raises the non-sticky composer first, interactive just fills the
-  // idle one. The clipboard is read from the same event because the browser
-  // can't replay it after the async reveal. A focused editable keeps its own
-  // paste, and nothing we'd act on means we don't claim it — so a stray paste
-  // of unusable content doesn't reveal the reader or steal focus for nothing.
+  // idle one, and a raised reader composer the user clicked away from is
+  // filled the same way. The clipboard is read from the same event because the
+  // browser can't replay it after the async reveal. Nothing we'd act on means
+  // we don't claim it — so a stray paste of unusable content doesn't reveal the
+  // reader or steal focus for nothing.
   const handleGlobalPaste = async (event: ClipboardEvent) => {
-    if (layout.reader.revealed()) return
     if (dialog.active) return
-    // A real editable with focus owns the paste — the composer itself, the
-    // question overlay's answer field, a dialog input, anything the browser
-    // will insert into. Only claim the paste when it would otherwise land
-    // nowhere; a focused composer falls through to its own onPaste handler.
-    if (isEditable(event.target)) return
+    // Whatever would insert the text keeps it: the composer itself (its own
+    // onPaste handles it), the question overlay's answer field, a dialog input,
+    // the terminal. A focused button takes keys but drops a paste, so it
+    // doesn't count.
+    if (takesPaste(event.target)) return
     const clipboardData = event.clipboardData
     if (!clipboardData) return
 

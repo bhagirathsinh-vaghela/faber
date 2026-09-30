@@ -12,6 +12,19 @@ export function isEditable(node: unknown): boolean {
   return /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(node.tagName)
 }
 
+// Whether a paste aimed at this element inserts text into it. Narrower than
+// isEditable: a focused button or select takes keys but drops a paste, so a
+// paste there belongs to the composer instead.
+export function takesPaste(node: unknown): boolean {
+  if (!(node instanceof HTMLElement)) return false
+  if (node.closest("[data-prevent-autofocus]")) return true
+  if (node.isContentEditable || node instanceof HTMLTextAreaElement) return true
+  return (
+    node instanceof HTMLInputElement &&
+    !/^(button|submit|reset|checkbox|radio|range|color|file|image)$/.test(node.type)
+  )
+}
+
 // Snapshot the element that currently holds focus and return a function that
 // restores focus to it. Used by overlays that hide the focused element (reader,
 // the question panel, terminals) and by the dialog provider so focus returns to

@@ -1,13 +1,50 @@
 import { describe, expect, test } from "bun:test"
-import { isEditable } from "@opencode-ai/ui/util/focus"
+import { isEditable, takesPaste } from "@opencode-ai/ui/util/focus"
+
+const el = (html: string) => {
+  const host = document.createElement("div")
+  host.innerHTML = html
+  return host.firstElementChild as HTMLElement
+}
+
+// A paste the focused element can't insert goes to the composer instead, so
+// only an element that inserts pasted text keeps it.
+describe("takesPaste", () => {
+  test("the composer takes a paste", () => {
+    expect(takesPaste(el('<div contenteditable="true"></div>'))).toBe(true)
+  })
+
+  test("a text input takes a paste", () => {
+    expect(takesPaste(el("<input>"))).toBe(true)
+    expect(takesPaste(el('<input type="search">'))).toBe(true)
+  })
+
+  test("a textarea takes a paste", () => {
+    expect(takesPaste(el("<textarea></textarea>"))).toBe(true)
+  })
+
+  test("the terminal subtree takes a paste, whatever holds focus in it", () => {
+    const host = document.createElement("div")
+    host.innerHTML = '<div data-prevent-autofocus><span tabindex="0"></span></div>'
+    expect(takesPaste(host.querySelector("span"))).toBe(true)
+  })
+
+  test("a button does not take a paste, though it takes typed keys", () => {
+    expect(takesPaste(el("<button></button>"))).toBe(false)
+  })
+
+  test("a select, checkbox or button-type input does not take a paste", () => {
+    expect(takesPaste(el("<select></select>"))).toBe(false)
+    expect(takesPaste(el('<input type="checkbox">'))).toBe(false)
+    expect(takesPaste(el('<input type="button">'))).toBe(false)
+  })
+
+  test("the body does not take a paste", () => {
+    expect(takesPaste(document.body)).toBe(false)
+  })
+})
 
 describe("isEditable", () => {
-  const el = (html: string) => {
-    const host = document.createElement("div")
-    host.innerHTML = html
-    return host.firstElementChild as HTMLElement
-  }
-
   test("the composer is editable, being a contenteditable rather than an input", () => {
     expect(isEditable(el('<div contenteditable="true"></div>'))).toBe(true)
   })
