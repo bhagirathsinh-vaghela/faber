@@ -210,6 +210,15 @@ const failed = (why: string): TtsRewrite.Line => ({
   type: "error",
   message: `read-aloud rewrite on ${NAME} (variant none) failed: ${why}`,
 })
+const retried = (first: string, second: string, on = `${NAME} (variant none)`) =>
+  failed(`${first}; retry on ${on}: ${second}`)
+
+const FALLBACK = "claude-3-7-sonnet-20250219"
+
+async function rewriteWith(fallback: { model: string; variant?: string }) {
+  await Bun.write(GLOBAL, JSON.stringify({ dictation: { rewrite: { model: NAME, fallback } } }))
+  Config.global.reset()
+}
 
 describe("TtsRewrite.prepare", () => {
   test("streams confirmed chunks, then done, with the prompt as the only cached block", async () => {
@@ -354,8 +363,9 @@ describe("TtsRewrite.prepare", () => {
       respond(() => hanging("Second sentence. Third sentence continues"))
       expect(await prepare("continuation deadline").finished).toEqual([
         { type: "chunk", index: 0, text: "First sentence." },
-        failed(
-          `oneshot: ${NAME}: finished with "length" instead of a normal stop; retry: oneshot: ${NAME}: no complete rewrite within 0.4s`,
+        retried(
+          `oneshot: ${NAME}: finished with "length" instead of a normal stop`,
+          `oneshot: ${NAME}: no complete rewrite within 0.4s`,
         ),
       ])
     })
@@ -370,7 +380,7 @@ describe("TtsRewrite.prepare", () => {
       }
       const expected: TtsRewrite.Line[] = [
         { type: "chunk", index: 0, text: "First sentence." },
-        failed(`oneshot: ${NAME}: finished with "length" instead of a normal stop; retry: the rewrite was empty`),
+        retried(`oneshot: ${NAME}: finished with "length" instead of a normal stop`, "the rewrite was empty"),
       ]
       expect(await run()).toEqual(expected)
       expect(await run()).toEqual(expected)
@@ -378,15 +388,16 @@ describe("TtsRewrite.prepare", () => {
     })
   }, 30_000)
 
-  test("an empty rewrite after a failed first attempt is one error and is never cached", async () => {
+  test("an empty rewrite after a failed first attempt reads the text as written, never cached", async () => {
     await withInstance(async () => {
       const run = async () => {
         respond(() => reply([], "max_tokens"))
         respond(() => reply([]))
         return prepare("empty twice").finished
       }
-      const expected = [
-        failed(`oneshot: ${NAME}: finished with "length" instead of a normal stop; retry: the rewrite was empty`),
+      const expected: TtsRewrite.Line[] = [
+        { type: "chunk", index: 0, text: "empty twice." },
+        { type: "done", total: 1, written: true },
       ]
       expect(await run()).toEqual(expected)
       expect(await run()).toEqual(expected)
@@ -394,15 +405,16 @@ describe("TtsRewrite.prepare", () => {
     })
   }, 30_000)
 
-  test("leftover markup fails both attempts, ends in one error, and is never cached", async () => {
+  test("leftover markup fails both attempts, so the text is read as written, never cached", async () => {
     await withInstance(async () => {
       const run = async () => {
         respond(() => reply(["| a | b |\n"]))
         respond(() => reply(["Done [x] here.\n"]))
         return prepare("markup").finished
       }
-      const expected = [
-        failed('the rewrite left markup "|" in its output; retry: the rewrite left markup "[" in its output'),
+      const expected: TtsRewrite.Line[] = [
+        { type: "chunk", index: 0, text: "markup." },
+        { type: "done", total: 1, written: true },
       ]
       expect(await run()).toEqual(expected)
       expect(await run()).toEqual(expected)
@@ -415,8 +427,10 @@ describe("TtsRewrite.prepare", () => {
       TtsRewrite.timing.first = 50
       respond(() => hanging())
       respond(() => hanging())
-      const why = `oneshot: ${NAME}: no spoken text within 0.05s`
-      expect(await prepare("silent").finished).toEqual([failed(`${why}; retry: ${why}`)])
+      expect(await prepare("silent").finished).toEqual([
+        { type: "chunk", index: 0, text: "silent." },
+        { type: "done", total: 1, written: true },
+      ])
       expect(state.requests).toBe(2)
     })
   }, 30_000)
@@ -427,9 +441,20 @@ describe("TtsRewrite.prepare", () => {
       TtsRewrite.timing.overall = 5_000
       respond(() => hanging("\n---\n  "))
       respond(() => hanging("\n---\n  "))
-      const why = `oneshot: ${NAME}: no spoken text within 0.05s`
-      expect(await prepare("divider only").finished).toEqual([failed(`${why}; retry: ${why}`)])
+      expect(await prepare("divider only").finished).toEqual([
+        { type: "chunk", index: 0, text: "divider only." },
+        { type: "done", total: 1, written: true },
+      ])
       expect(state.requests).toBe(2)
+    })
+  }, 30_000)
+
+  test("text with nothing to speak still ends in one error when both attempts fail", async () => {
+    await withInstance(async () => {
+      respond(() => reply([], "refusal"))
+      respond(() => reply([], "refusal"))
+      const why = `oneshot: ${NAME}: finished with "content-filter" instead of a normal stop`
+      expect(await prepare("---").finished).toEqual([retried(why, why)])
     })
   }, 30_000)
 
@@ -439,7 +464,7 @@ describe("TtsRewrite.prepare", () => {
       respond(() => hanging("Heard.\nNever fini"))
       expect(await prepare("budget").finished).toEqual([
         { type: "chunk", index: 0, text: "Heard." },
-        failed(`oneshot: ${NAME}: no complete rewrite within 0.15s; retry: no complete rewrite within 0.15s`),
+        retried(`oneshot: ${NAME}: no complete rewrite within 0.15s`, "no complete rewrite within 0.15s"),
       ])
       expect(state.requests).toBe(1)
     })
@@ -458,6 +483,40 @@ describe("TtsRewrite.prepare", () => {
       expect(body.model).toBe(MODEL)
       expect(body.thinking).toEqual({ type: "enabled", budget_tokens: 4095 })
     }, variantful)
+  }, 30_000)
+
+  test("a refused first attempt is retried on the fallback model and variant", async () => {
+    await rewriteWith({ model: `anthropic/${FALLBACK}`, variant: "high" })
+    await withInstance(async () => {
+      const first = respond(() => reply([], "refusal"))
+      const retry = respond(() => reply(["Read on the fallback.\n"]))
+      expect(await prepare("refused here").finished).toEqual([
+        { type: "chunk", index: 0, text: "Read on the fallback." },
+        { type: "done", total: 1 },
+      ])
+      expect((await first).body.model).toBe(MODEL)
+      const body = (await retry).body
+      expect(body.model).toBe(FALLBACK)
+      expect(body.thinking).toEqual({ type: "enabled", budget_tokens: 16000 })
+      expect(promptOf(await retry)).toBe(wrapped("refused here"))
+    })
+  }, 30_000)
+
+  test("both models failing after some speech is one error naming each", async () => {
+    await rewriteWith({ model: `anthropic/${FALLBACK}`, variant: "high" })
+    await withInstance(async () => {
+      respond(() => reply(["First sentence.\nSecond sen"], "max_tokens"))
+      const retry = respond(() => reply([]))
+      expect(await prepare("partial on both").finished).toEqual([
+        { type: "chunk", index: 0, text: "First sentence." },
+        retried(
+          `oneshot: ${NAME}: finished with "length" instead of a normal stop`,
+          "the rewrite was empty",
+          `anthropic/${FALLBACK} (variant high)`,
+        ),
+      ])
+      expect(promptOf(await retry)).toContain("<<<SPOKEN>>>\nFirst sentence.\n<<<END>>>")
+    })
   }, 30_000)
 
   test("the last listener leaving aborts the model call, and the next request starts fresh", async () => {

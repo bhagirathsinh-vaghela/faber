@@ -212,10 +212,7 @@ export function TranscriptCard(props: TranscriptCardProps) {
           itself (a status, a duration). It is one element with one hover, since
           split up each part would summon the others from wherever the pointer
           happened to be. */}
-      <div
-        data-slot="transcript-card-identity"
-        data-streaming={streaming() ? "true" : undefined}
-      >
+      <div data-slot="transcript-card-identity" data-streaming={streaming() ? "true" : undefined}>
         {props.jump}
         <Show when={props.blockNumber !== undefined || props.time !== undefined}>
           <div data-slot="transcript-card-stamp">

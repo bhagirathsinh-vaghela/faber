@@ -80,8 +80,7 @@ function unfaithful(source: string, chunks: string[]) {
   const bad = said.find((word, index) => {
     if (ended(said[index - 1])) skip(word)
     const src = words[walk.at] ?? ""
-    const step =
-      word === src || word === `${src}.` || (/[,;:—]$/.test(src) && word === `${src.slice(0, -1)}.`) ? 1 : 0
+    const step = word === src || word === `${src}.` || (/[,;:—]$/.test(src) && word === `${src.slice(0, -1)}.`) ? 1 : 0
     walk.at += step
     return step === 0
   })
@@ -256,8 +255,14 @@ describe("TtsChunk", () => {
     DOUBLE_DASH: ["Counting down --\nNext one.", ["Counting down.", "Next one."]],
     TRIPLE_DASH: ["Counting down ---\nNext one.", ["Counting down.", "Next one."]],
     RULE_LINE: ["Above the rule.\n\n---\n\nBelow the rule.", ["Above the rule.", "Below the rule."]],
-    TILDE_FENCE: ["Here is the code.\n~~~\nconst x = 1\n~~~\nDone.", ["Here is the code.", "~~~. const x = 1. ~~~. Done."]],
-    BARE_FENCE: ["Here is the code.\n```\nconst x = 1\n```\nDone.", ["Here is the code.", "```. const x = 1. ```. Done."]],
+    TILDE_FENCE: [
+      "Here is the code.\n~~~\nconst x = 1\n~~~\nDone.",
+      ["Here is the code.", "~~~. const x = 1. ~~~. Done."],
+    ],
+    BARE_FENCE: [
+      "Here is the code.\n```\nconst x = 1\n```\nDone.",
+      ["Here is the code.", "```. const x = 1. ```. Done."],
+    ],
     TABLE_RULE: ["Intro line.\n|---|---|\nMore.", ["Intro line.", "|---|---|. More."]],
   } as const
 

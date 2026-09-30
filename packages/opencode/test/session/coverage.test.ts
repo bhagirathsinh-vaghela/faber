@@ -294,14 +294,16 @@ describe("SessionPrompt.skillVerdict", () => {
       expect(await SessionPrompt.skillVerdict(early, session.id)).toEqual({
         accepted: false,
         reason: "no completed read-only review of the current content",
-        advice: "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.",
+        advice:
+          "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.",
         current: { ...state, reviewed: true, writers: 1 },
       })
       const messages = transcript(done)
       expect(await SessionPrompt.skillVerdict(messages, session.id)).toEqual({
         accepted: false,
         reason: "1 write-capable subagent(s) still running",
-        advice: "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.",
+        advice:
+          "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.",
         current: { ...state, reviewed: true, writers: 1 },
       })
       await Debt.drop(made.at(-1)!)

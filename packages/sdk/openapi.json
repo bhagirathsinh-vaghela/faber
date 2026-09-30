@@ -13181,6 +13181,21 @@
                   "variant": {
                     "description": "Variant of the rewrite model; the model's configured variant when unset",
                     "type": "string"
+                  },
+                  "fallback": {
+                    "description": "Where the one retry goes; the rewrite model itself when unset",
+                    "type": "object",
+                    "properties": {
+                      "model": {
+                        "description": "provider/model that retries a rewrite the rewrite model failed or refused",
+                        "type": "string"
+                      },
+                      "variant": {
+                        "description": "Variant of the fallback model; its configured variant when unset",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["model"]
                   }
                 }
               }

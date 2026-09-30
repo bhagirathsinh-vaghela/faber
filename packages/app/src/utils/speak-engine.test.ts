@@ -256,6 +256,19 @@ describe("createSpeech", () => {
     it.dispose()
   })
 
+  test("a reading the server sent as written is asked for again on the next showing", async () => {
+    const it = setup()
+    const a = key()
+    it.speech.show(a, "A")
+    it.send({ type: "chunk", index: 0, text: "A." }, { type: "done", total: 1, written: true })
+    await it.flush()
+    it.speech.close()
+    it.speech.show(a, "A")
+    await it.flush()
+    expect(it.prepares.length).toBe(2)
+    it.dispose()
+  })
+
   test("each reading sends its own session id on prepare, speak, and done", async () => {
     const it = setup()
     const a = key()

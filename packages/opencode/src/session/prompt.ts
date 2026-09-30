@@ -1984,7 +1984,10 @@ export namespace SessionPrompt {
       anchor === -1
         ? messages
         : [
-            { ...messages[anchor], parts: messages[anchor].parts.slice(messages[anchor].parts.findLastIndex(loaded) + 1) },
+            {
+              ...messages[anchor],
+              parts: messages[anchor].parts.slice(messages[anchor].parts.findLastIndex(loaded) + 1),
+            },
             ...messages.slice(anchor + 1),
           ]
     // The opener is excluded: it is the turn this reminder rides on, not a

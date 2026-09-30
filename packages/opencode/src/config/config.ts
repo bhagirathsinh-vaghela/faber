@@ -715,6 +715,13 @@ export namespace Config {
           .string()
           .optional()
           .describe("Variant of the rewrite model; the model's configured variant when unset"),
+        fallback: z
+          .object({
+            model: z.string().describe("provider/model that retries a rewrite the rewrite model failed or refused"),
+            variant: z.string().optional().describe("Variant of the fallback model; its configured variant when unset"),
+          })
+          .optional()
+          .describe("Where the one retry goes; the rewrite model itself when unset"),
       })
       .optional()
       .describe("The model that rewrites assistant text into speakable sentences before read-aloud"),

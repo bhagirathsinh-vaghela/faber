@@ -276,32 +276,38 @@ describe("the agent tool, recording what the child was asked at", () => {
     ["a caller running a reminder skill records its content fingerprint", ["review-skill"], true],
     ["a caller running none records nothing", [], false],
   ] as const) {
-    test(name, async () => {
-      await using repo = await project()
-      await Instance.provide({
-        directory: repo.path,
-        fn: async () => {
-          const parent = await root()
-          await Session.update(parent.id, (draft) => void (draft.activeSkills = [...skills]))
-          const prompt = await user(parent.id, "go")
-          const reply = await assistant(parent.id, prompt.id, "")
-          state.replies.push("0 findings", "ok", "ok")
-          const expected = recorded ? await Coverage.fingerprint(parent.id) : undefined
+    test(
+      name,
+      async () => {
+        await using repo = await project()
+        await Instance.provide({
+          directory: repo.path,
+          fn: async () => {
+            const parent = await root()
+            await Session.update(parent.id, (draft) => void (draft.activeSkills = [...skills]))
+            const prompt = await user(parent.id, "go")
+            const reply = await assistant(parent.id, prompt.id, "")
+            state.replies.push("0 findings", "ok", "ok")
+            const expected = recorded ? await Coverage.fingerprint(parent.id) : undefined
 
-          const launched = await (await tool(parent.id, reply.id))({})
+            const launched = await (await tool(parent.id, reply.id))({})
 
-          const childID = launched.metadata.sessionId as string
-          made.push(childID)
-          await until(async () => !(await Debt.has(childID)), "the child to report")
-          await until(() => !SessionBusy.busy(childID), `${childID} to go idle`)
-          expect((await Session.get(childID)).asked).toBe(expected)
-          const trees = (await Session.messages({ sessionID: parent.id })).flatMap((m) =>
-            m.parts.flatMap((p) => (p.type === "text" && p.backgroundSubagentResult ? [p.backgroundSubagentResult.tree] : [])),
-          )
-          expect(trees).toEqual([expected])
-        },
-      })
-    }, 30_000)
+            const childID = launched.metadata.sessionId as string
+            made.push(childID)
+            await until(async () => !(await Debt.has(childID)), "the child to report")
+            await until(() => !SessionBusy.busy(childID), `${childID} to go idle`)
+            expect((await Session.get(childID)).asked).toBe(expected)
+            const trees = (await Session.messages({ sessionID: parent.id })).flatMap((m) =>
+              m.parts.flatMap((p) =>
+                p.type === "text" && p.backgroundSubagentResult ? [p.backgroundSubagentResult.tree] : [],
+              ),
+            )
+            expect(trees).toEqual([expected])
+          },
+        })
+      },
+      30_000,
+    )
   }
 
   test("a child continued after the skill ended carries no stale fingerprint onto its result", async () => {
@@ -327,7 +333,9 @@ describe("the agent tool, recording what the child was asked at", () => {
         await until(() => !SessionBusy.busy(childID), `${childID} to go idle again`)
         expect((await Session.get(childID)).asked).toBeUndefined()
         const trees = (await Session.messages({ sessionID: parent.id })).flatMap((m) =>
-          m.parts.flatMap((p) => (p.type === "text" && p.backgroundSubagentResult ? [p.backgroundSubagentResult.tree] : [])),
+          m.parts.flatMap((p) =>
+            p.type === "text" && p.backgroundSubagentResult ? [p.backgroundSubagentResult.tree] : [],
+          ),
         )
         expect(trees.length).toBe(2)
         expect(trees[1]).toBeUndefined()

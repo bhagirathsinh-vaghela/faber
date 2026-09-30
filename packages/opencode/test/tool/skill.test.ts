@@ -31,7 +31,17 @@ describe("tool.skill", () => {
       init: async (dir) => {
         await Bun.write(
           path.join(dir, ".opencode", "skill", "loop-skill", "SKILL.md"),
-          ["---", "name: loop-skill", "description: Skill loop-skill.", "reminder:", "  sparse: keep going", "---", "", "# loop-skill", ""].join("\n"),
+          [
+            "---",
+            "name: loop-skill",
+            "description: Skill loop-skill.",
+            "reminder:",
+            "  sparse: keep going",
+            "---",
+            "",
+            "# loop-skill",
+            "",
+          ].join("\n"),
         )
         await Bun.write(path.join(dir, "a.ts"), "one")
       },

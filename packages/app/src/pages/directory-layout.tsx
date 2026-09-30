@@ -172,15 +172,13 @@ export default function Layout(props: ParentProps) {
                       speech={speech}
                       voice={voice()}
                       onVoiceChange={(name) =>
-                        globalSync
-                          .saveVoice(name)
-                          .catch((error) => {
-                            showToast({
-                              variant: "error",
-                              title: language.t("speech.voiceFailed"),
-                              description: errorMessage(error, language.t("speech.voiceFailed")),
-                            })
+                        globalSync.saveVoice(name).catch((error) => {
+                          showToast({
+                            variant: "error",
+                            title: language.t("speech.voiceFailed"),
+                            description: errorMessage(error, language.t("speech.voiceFailed")),
                           })
+                        })
                       }
                     />
                   </Show>

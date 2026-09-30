@@ -188,7 +188,8 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
       }
       // Cleared too, so a child continued after the skill ended carries no
       // stale fingerprint onto its result.
-      if (asked !== session.asked) await Session.update(session.id, (draft) => void (draft.asked = asked), { touch: false })
+      if (asked !== session.asked)
+        await Session.update(session.id, (draft) => void (draft.asked = asked), { touch: false })
       const mode = sent.message.debt === "joined" ? "steered" : found ? "continued" : "launched"
 
       return {

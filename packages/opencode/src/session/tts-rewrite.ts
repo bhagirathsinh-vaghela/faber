@@ -174,7 +174,7 @@ Output ONLY the spoken text, one sentence per line. Do not add anything before i
 
   export type Line =
     | { type: "chunk"; index: number; text: string }
-    | { type: "done"; total: number }
+    | { type: "done"; total: number; written?: true }
     | { type: "error"; message: string }
 
   type Listener = (line: Line) => void
@@ -293,38 +293,53 @@ Output ONLY the spoken text, one sentence per line. Do not add anything before i
     }
   }
 
+  type Target = { model: string; variant: string | undefined }
+
+  const label = (target: Target) => `${target.model} (variant ${target.variant ?? "none"})`
+
   async function produce(
     job: Job,
     key: string,
-    input: { text: string; sessionID: string; model: string; variant: string | undefined },
+    input: { text: string; sessionID: string; rewrite: Target; fallback: Target },
   ) {
-    const call = {
+    const call = (target: Target) => ({
       system: PROMPT,
       sessionID: input.sessionID,
-      model: input.model,
-      variant: input.variant ?? Provider.DEFAULT,
-    }
+      model: target.model,
+      variant: target.variant ?? Provider.DEFAULT,
+    })
     const started = Date.now()
     const deadline = started + timing.overall
-    const first = await attempt(job, { ...call, prompt: wrap(input.text) }, deadline)
+    const first = await attempt(job, { ...call(input.rewrite), prompt: wrap(input.text) }, deadline)
     if (job.abort.signal.aborted) return
-    // A choice: one retry, then an error; there is no fallback to unrewritten text.
+    // A choice: one retry, on the fallback model when one is configured, since a
+    // refused request sent to the same model again is usually refused again
+    // (platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/handle-streaming-refusals).
     const second = first
       ? await attempt(
           job,
-          { ...call, prompt: job.chunks.length > 0 ? resume(input.text, job.chunks) : wrap(input.text) },
+          {
+            ...call(input.fallback),
+            prompt: job.chunks.length > 0 ? resume(input.text, job.chunks) : wrap(input.text),
+          },
           deadline,
         )
       : undefined
     if (job.abort.signal.aborted) return
     running.delete(key)
     if (second) {
-      const message = `read-aloud rewrite on ${input.model} (variant ${input.variant ?? "none"}) failed: ${first}; retry: ${second}`
-      log.warn("rewrite failed", { message, chunks: job.chunks.length })
-      return emit(job, { type: "error", message })
+      const message = `read-aloud rewrite on ${label(input.rewrite)} failed: ${first}; retry on ${label(input.fallback)}: ${second}`
+      // The text as written cannot pick up where a rewrite stopped, so it is read
+      // only when nothing was spoken. It is not cached, so the next request tries
+      // the models again.
+      const written = job.chunks.length === 0 ? TtsChunk.all(input.text) : []
+      log.warn("rewrite failed", { message, chunks: job.chunks.length, written: written.length })
+      if (written.length === 0) return emit(job, { type: "error", message })
+      written.forEach((text) => emit(job, { type: "chunk", index: job.chunks.length, text }))
+      return emit(job, { type: "done", total: job.chunks.length, written: true })
     }
     log.info("rewrite", {
-      model: input.model,
+      model: (first ? input.fallback : input.rewrite).model,
       chunks: job.chunks.length,
       retried: Boolean(first),
       ms: Date.now() - started,
@@ -354,6 +369,15 @@ Output ONLY the spoken text, one sentence per line. Do not add anything before i
     })
     if (signal.aborted) return
     if (typeof target === "string") return send({ type: "error", message: `read-aloud rewrite failed: ${target}` })
+    const fallback = rewrite?.fallback
+      ? await Oneshot.target({
+          system: PROMPT,
+          model: rewrite.fallback.model,
+          variant: rewrite.fallback.variant ?? Provider.DEFAULT,
+        })
+      : target
+    if (signal.aborted) return
+    if (typeof fallback === "string") return send({ type: "error", message: `read-aloud rewrite failed: ${fallback}` })
     const key = createHash("sha256")
       .update(JSON.stringify([FINGERPRINT, target.model, target.variant ?? null, input.text]))
       .digest("hex")
@@ -375,7 +399,12 @@ Output ONLY the spoken text, one sentence per line. Do not add anything before i
           complete: false,
         }
         running.set(key, created)
-        void produce(created, key, { text: input.text, sessionID: input.sessionID, ...target }).catch((error) => {
+        void produce(created, key, {
+          text: input.text,
+          sessionID: input.sessionID,
+          rewrite: target,
+          fallback,
+        }).catch((error) => {
           running.delete(key)
           emit(created, {
             type: "error",

@@ -1620,6 +1620,19 @@ export type Config = {
        * Variant of the rewrite model; the model's configured variant when unset
        */
       variant?: string
+      /**
+       * Where the one retry goes; the rewrite model itself when unset
+       */
+      fallback?: {
+        /**
+         * provider/model that retries a rewrite the rewrite model failed or refused
+         */
+        model: string
+        /**
+         * Variant of the fallback model; its configured variant when unset
+         */
+        variant?: string
+      }
     }
   }
   watcher?: {

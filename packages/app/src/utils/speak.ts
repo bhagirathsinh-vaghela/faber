@@ -144,6 +144,9 @@ type Reading = {
   prepare?: AbortController
   // Set by a failed render, so the scheduler stops re-requesting a chunk the
   // sidecar keeps refusing until the listener asks again.
+  // The server read the text as written because its rewrite failed; the reading
+  // is dropped when it ends, so the next showing asks the models again.
+  written?: boolean
   halted: boolean
   // Failed background renders per chunk, which bounds their silent retries.
   failures: Map<number, number>
@@ -483,7 +486,14 @@ export function createSpeech(opts?: {
   const parse = (r: Reading, line: string) => {
     const message = (() => {
       try {
-        return JSON.parse(line) as { type?: string; index?: number; text?: string; total?: number; message?: string }
+        return JSON.parse(line) as {
+          type?: string
+          index?: number
+          text?: string
+          total?: number
+          message?: string
+          written?: boolean
+        }
       } catch {
         return undefined
       }
@@ -508,6 +518,7 @@ export function createSpeech(opts?: {
     const controller = new AbortController()
     r.prepare = controller
     const response = await request(`${base()}/tts/prepare`, {
+      r.written = message.written === true
       method: "POST",
       body: JSON.stringify({ text: r.text, sessionID: opts?.session?.() ?? "" }),
       headers: {
@@ -632,7 +643,7 @@ export function createSpeech(opts?: {
     r.prepare?.abort()
     for (const flight of r.flight.values()) flight.controller.abort()
     r.flight.clear()
-    if (!r.done) {
+    if (!r.done || r.written) {
       for (const url of r.blobs.values()) objects.revoke(url)
       readings.delete(r.key)
     }

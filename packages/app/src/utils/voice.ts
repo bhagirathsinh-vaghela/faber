@@ -13,8 +13,8 @@ export const newer = (current: VoicePreference, incoming: VoicePreference) =>
 
 // The one way a voice reaches the stores: applied only when it is not older
 // than the one held.
-export const voiceStore = (read: () => VoicePreference, write: (preference: VoicePreference) => void) =>
-  (preference: VoicePreference) => {
+export const voiceStore =
+  (read: () => VoicePreference, write: (preference: VoicePreference) => void) => (preference: VoicePreference) => {
     if (newer(read(), preference)) write(preference)
   }
 
