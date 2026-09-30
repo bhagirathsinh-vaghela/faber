@@ -371,102 +371,6 @@
   margin-bottom: 0;
 }
 
-/* Live "args still streaming" affordance (write/edit/patch/task pending state):
-   a shimmering label above a slim animated bar. Inset to align with the tool
-   trigger row above (12px left) and given vertical breathing room so it isn't
-   cramped against the box edges. */
-[data-slot="tool-streaming"] {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--border-weaker-base);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-[data-slot="tool-streaming"] .tool-streaming-label {
-  font-weight: var(--font-weight-medium);
-}
-
-/* Streaming affordance: single agent color (--syntax-type, the same color the
-   dock/message footer uses for the agent name — Build/Plan/etc), so it reads as
-   "the agent is actively working here". Track is a dim tint of that color. */
-[data-slot="tool-streaming-bar"] {
-  --stream-accent: var(--syntax-type);
-  position: relative;
-  width: 100%;
-  max-width: 240px;
-  height: 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--stream-accent) 16%, transparent);
-  overflow: hidden;
-  /* Whole bar gently breathes so it's alive even at a glance. */
-  animation: stream-bar-breathe 2.4s ease-in-out infinite;
-}
-
-/* Indeterminate pulse: a single soft highlight band that sweeps left -> right
-   then back, continuously (ping-pong via animation-direction: alternate). No
-   proportional fill (we can't know the total mid-stream); the back-and-forth
-   glide is what reads as "actively working". alternate reverses at each end so
-   there's no teleport/seam. */
-[data-slot="tool-streaming-bar-fill"] {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 55%;
-  border-radius: inherit;
-  /* Wide, soft feather on both sides so the band has no hard edge — it glides
-     rather than snaps as it sweeps. */
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--stream-accent) 50%, transparent) 30%,
-    var(--stream-accent) 50%,
-    color-mix(in srgb, var(--stream-accent) 50%, transparent) 70%,
-    transparent 100%
-  );
-  /* Slower + gentle sinusoidal easing for a calm, smooth ping-pong. */
-  animation: stream-bar-pulse 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
-}
-
-@keyframes stream-bar-pulse {
-  from {
-    transform: translateX(-25%);
-  }
-  to {
-    /* track is ~100/55 ≈ 182% of the band; leave a little inset at each end */
-    transform: translateX(107%);
-  }
-}
-
-/* Subtle brightness breathe on the whole bar. */
-@keyframes stream-bar-breathe {
-  0%,
-  100% {
-    opacity: 0.85;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-/* Honor OS "Reduce Motion": freeze the streaming bar to a filled resting state
-   (full-opacity track, band centered) instead of the breathe + ping-pong. The
-   bar still reads as "the agent is working here", just without motion. */
-@media (prefers-reduced-motion: reduce) {
-  [data-slot="tool-streaming-bar"] {
-    animation: none;
-    opacity: 1;
-  }
-
-  [data-slot="tool-streaming-bar-fill"] {
-    animation: none;
-    transform: translateX(41%);
-  }
-}
-
 [data-component="edit-content"] {
   border-top: 1px solid var(--border-weaker-base);
   max-height: 420px;
@@ -610,9 +514,9 @@ a[data-component="tool-action"]:hover {
 [data-component="tool-part-wrapper"] {
   width: 100%;
   /* paint (not just layout) confines the tool box's repaint to its own bounds:
-     the "args streaming" bar inside it animates forever, and without a paint
-     boundary its per-frame repaint fills the whole box. Nothing here overflows
-     the box, so clipping is safe. */
+     a live card's header sweep animates for as long as the part runs, and
+     without a paint boundary its per-frame repaint fills the whole box. Nothing
+     here overflows the box, so clipping is safe. */
   contain: layout paint;
 
   /* One block, one box: a tool call is its own block, so give its box the same

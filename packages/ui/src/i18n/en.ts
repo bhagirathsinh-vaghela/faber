@@ -85,10 +85,6 @@ export const dict = {
   "ui.tool.subagent.label.context": "Parent context",
   "ui.tool.subagent.context.inherited": "Included",
   "ui.tool.subagent.context.fresh": "Not included",
-  "ui.tool.subagent.preparing": "Preparing subagent\u2026",
-  "ui.tool.write.preparing": "Writing file\u2026",
-  "ui.tool.edit.preparing": "Editing file\u2026",
-  "ui.tool.patch.preparing": "Preparing patch\u2026",
   "ui.tool.skill": "Skill",
 
   "ui.common.file.one": "file",

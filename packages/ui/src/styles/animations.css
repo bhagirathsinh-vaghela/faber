@@ -34,46 +34,12 @@
   }
 }
 
-/* Sweeps a bright highlight left-to-right across text to signal live activity.
-   The text is painted with a gradient (base color -> highlight -> base) that is
-   wider than the text; animating background-position slides the highlight band
-   across the glyphs via background-clip: text. */
-@keyframes text-shimmer {
-  0% {
-    background-position: 100% center;
-  }
-  100% {
-    background-position: 0% center;
-  }
-}
-
-[data-component="text-shimmer"] {
-  display: inline-block;
-  background-image: linear-gradient(
-    90deg,
-    var(--shimmer-base) calc(50% - var(--shimmer-spread)),
-    var(--shimmer-highlight),
-    var(--shimmer-base) calc(50% + var(--shimmer-spread))
-  );
-  background-size: 250% 100%;
-  background-repeat: no-repeat;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  animation: text-shimmer var(--shimmer-duration, 2s) linear infinite;
-}
-
 /* Honor OS "Reduce Motion": freeze the continuous animations to a legible
    resting state instead of running them at full frame rate. Spinner rects set
    their animation inline (see spinner.tsx), so !important is needed to win over
-   the inline style; the shimmer text is class-driven and needs no override
-   weight. Corner squares already rest at opacity 0, so pin them there. */
+   the inline style. Corner squares already rest at opacity 0, so pin them
+   there. */
 @media (prefers-reduced-motion: reduce) {
-  [data-component="text-shimmer"] {
-    animation: none;
-  }
-
   [data-component="spinner"] rect {
     animation: none !important;
     opacity: 0.7;

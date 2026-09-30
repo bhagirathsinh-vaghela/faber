@@ -71,7 +71,11 @@ export type SpeakTarget = { key: string; text: string }
 // visible while the reading runs rather than fading out from under it.
 export type SpeakingFn = (key: string) => boolean
 
-export const { use: useData, provider: DataProvider } = createSimpleContext({
+export const {
+  use: useData,
+  useOptional: useDataOptional,
+  provider: DataProvider,
+} = createSimpleContext({
   name: "Data",
   init: (props: {
     data: Data

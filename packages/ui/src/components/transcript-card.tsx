@@ -4,6 +4,7 @@ import { Icon, IconProps } from "./icon"
 import { CopyButton } from "./copy-button"
 import { SpeakButton } from "./speak-button"
 import { createBoxOpen, useBoxDefaults } from "../context/box-defaults"
+import { useDataOptional } from "../context/data"
 import { useI18n } from "../context/i18n"
 import type { SpeakTarget } from "../context/data"
 import { messageTime } from "../util/time"
@@ -81,6 +82,13 @@ export interface TranscriptCardProps {
   // on screen. It also keeps the body's own type rather than the header's, so a
   // prompt reads the same in both states.
   summaryOnly?: boolean
+  // The part's state, in the tool-state vocabulary. While it is "pending"
+  // (arguments streaming) or "running" and its session's turn is live, the
+  // header sweeps, so a live card reads as live whether it is open or collapsed
+  // and whether or not its body has anything to show yet. The turn gate is
+  // needed because a turn killed mid-tool (a server restart) leaves its part
+  // stored as "running" for good.
+  status?: string
 }
 
 // Every colour a card can wear. A family owns a matching accent/border/fill set
@@ -147,6 +155,11 @@ function accentTokens(accent: CardAccent, tone?: string, tool?: string) {
 export function TranscriptCard(props: TranscriptCardProps) {
   const defaults = useBoxDefaults()
   const i18n = useI18n()
+  const transcript = useDataOptional()
+  const streaming = () =>
+    (props.status === "pending" || props.status === "running") &&
+    !!props.sessionID &&
+    !!transcript?.store.session_busy[props.sessionID]?.turn
 
   // The default open state for this box in the active mode, driven ENTIRELY by
   // the client's per-mode collapse checkboxes: ticked = collapsed, so
@@ -175,13 +188,16 @@ export function TranscriptCard(props: TranscriptCardProps) {
   // The children() helper keeps the inner reactivity live while still letting us
   // check whether a body exists.
   const body = children(() => props.children)
+  // A card with several children resolves to an array even when every branch
+  // rendered nothing, and an array is truthy.
+  const hasBody = () => body.toArray().some((node) => node !== undefined && node !== null && node !== false)
 
   const handleOpenChange = (value: boolean) => {
     if (props.locked && !value) return
     setOpen(value)
   }
 
-  const arrowShows = () => !!body() && !props.hideDetails && !props.locked
+  const arrowShows = () => hasBody() && !props.hideDetails && !props.locked
   // A summary stands in for the body, so it belongs to the collapsed state only.
   const summaryHidden = () => !!props.summaryOnly && open()
   // The right cluster holds the controls only, so it renders when a card has one
@@ -196,7 +212,10 @@ export function TranscriptCard(props: TranscriptCardProps) {
           itself (a status, a duration). It is one element with one hover, since
           split up each part would summon the others from wherever the pointer
           happened to be. */}
-      <div data-slot="transcript-card-identity">
+      <div
+        data-slot="transcript-card-identity"
+        data-streaming={streaming() ? "true" : undefined}
+      >
         {props.jump}
         <Show when={props.blockNumber !== undefined || props.time !== undefined}>
           <div data-slot="transcript-card-stamp">
@@ -294,7 +313,7 @@ export function TranscriptCard(props: TranscriptCardProps) {
           </div>
         </Show>
       </div>
-      <Show when={!props.hideDetails && body()}>
+      <Show when={!props.hideDetails && hasBody()}>
         <Collapsible.Content>{body()}</Collapsible.Content>
       </Show>
     </Collapsible>

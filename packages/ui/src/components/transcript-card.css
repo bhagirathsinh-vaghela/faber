@@ -198,6 +198,25 @@
     gap: 8px;
   }
 
+  /* A live part: a bright band travels left to right across the index, icon,
+     and title while the rest of the cluster dims. A mask rather than
+     background-clip: text, since the icon is an SVG that a text clip cannot
+     reach. The mask is three widths long, so at either end of the travel the
+     band sits fully off the cluster and the loop has no visible seam. */
+  [data-slot="transcript-card-identity"][data-streaming] {
+    mask-image: linear-gradient(90deg, rgb(0 0 0 / 0.45) 40%, #000 50%, rgb(0 0 0 / 0.45) 60%);
+    mask-size: 300% 100%;
+    animation: transcript-card-streaming 1.8s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot="transcript-card-identity"][data-streaming] {
+      animation: none;
+      mask-image: none;
+      opacity: 0.6;
+    }
+  }
+
   /* Index over timestamp, stacked into the height of the single row. */
   [data-slot="transcript-card-stamp"] {
     display: flex;
@@ -427,5 +446,14 @@
     [data-component="icon-button"]:focus-visible:not(:active) {
       box-shadow: var(--shadow-xs-border);
     }
+  }
+}
+
+@keyframes transcript-card-streaming {
+  from {
+    mask-position: 100% 0;
+  }
+  to {
+    mask-position: 0% 0;
   }
 }

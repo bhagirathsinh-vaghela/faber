@@ -39,7 +39,6 @@ import { Dialog } from "./dialog"
 import { useI18n } from "../context/i18n"
 import { TranscriptCard, type CardAccent } from "./transcript-card"
 import { Collapsible } from "./collapsible"
-import { TextShimmer } from "./text-shimmer"
 import { Button } from "./button"
 import { Icon } from "./icon"
 import { IconButton } from "./icon-button"
@@ -388,6 +387,7 @@ function CardBox(props: {
   // header — see the data-role rules in message-part.css. Absent on tool cards.
   role?: "user" | "assistant"
   summaryOnly?: boolean
+  status?: string
   children: JSX.Element
 }) {
   const ctx = useData()
@@ -406,6 +406,7 @@ function CardBox(props: {
         boxID={props.message.id}
         bare={props.raw}
         summaryOnly={props.summaryOnly}
+        status={props.status}
         trigger={{ title: props.title, subtitle: props.subtitle, args: props.args }}
         jump={props.jump}
         copy={props.copy}
@@ -1210,6 +1211,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
         locked
         raw
         numberKey={part.id}
+        status={finished() ? "completed" : "running"}
         copy={displayText}
         speak={() => (finished() ? { key: part.id, text: displayText() } : undefined)}
       >
@@ -1234,6 +1236,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const part = props.part as ReasoningPart
   const text = () => part.text.trim()
   const throttledText = createThrottledValue(text)
+  const finished = () => !!(part.time?.end ?? (props.message as AssistantMessage).time?.completed)
 
   return (
     <Show when={throttledText()}>
@@ -1246,6 +1249,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
         tool="reasoning"
         accent="thinking"
         numberKey={part.id}
+        status={finished() ? "completed" : "running"}
         raw
         copy={throttledText}
       >
@@ -1598,6 +1602,7 @@ ToolRegistry.register({
             <TranscriptCard
               icon="robot"
               tool="agent"
+              status={props.status}
               time={props.time}
               blockNumber={props.blockNumber}
               sessionID={props.sessionID}
@@ -1640,11 +1645,6 @@ ToolRegistry.register({
                   <div data-slot="subagent-output-dispatch">
                     <Markdown text={LaunchCard.fields(i18n.t, launch())} complete />
                   </div>
-                </Match>
-                {/* Args still streaming (prompt/description being written): show
-                      a live counter instead of an empty box. */}
-                <Match when={props.status === "pending"}>
-                  <ToolStreaming label={i18n.t("ui.tool.subagent.preparing")} />
                 </Match>
               </Switch>
             </TranscriptCard>
@@ -1738,35 +1738,12 @@ ToolRegistry.register({
               />
             </div>
           </Match>
-          {/* Args still streaming (old/new strings being written): show a live
-              streaming bar instead of an empty box. */}
-          <Match when={props.status === "pending"}>
-            <ToolStreaming label={i18n.t("ui.tool.edit.preparing")} />
-          </Match>
         </Switch>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
       </TranscriptCard>
     )
   },
 })
-
-// Live "working" affordance shown while a tool call's arguments are still
-// streaming (status === "pending", before the parsed input arrives). Replaces
-// an empty/stuck box with a shimmering label + an indeterminate progress bar: a
-// highlight band travels continuously across the track the whole time args
-// stream. We can't know the total argument size mid-stream (and providers chunk
-// tool input coarsely), so a proportional fill reads as "stuck" on small/chunky
-// payloads. A traveling band always moves, so it always reads as active.
-function ToolStreaming(props: { label: string }) {
-  return (
-    <div data-slot="tool-streaming">
-      <TextShimmer class="tool-streaming-label">{props.label}</TextShimmer>
-      <span data-slot="tool-streaming-bar" data-indeterminate>
-        <span data-slot="tool-streaming-bar-fill" />
-      </span>
-    </div>
-  )
-}
 
 ToolRegistry.register({
   name: "write",
@@ -1795,10 +1772,6 @@ ToolRegistry.register({
                 after={{ name: props.input.filePath, contents: props.input.content }}
               />
             </div>
-          </Match>
-          {/* Args still streaming: show a live streaming bar instead of an empty box. */}
-          <Match when={props.status === "pending"}>
-            <ToolStreaming label={i18n.t("ui.tool.write.preparing")} />
           </Match>
         </Switch>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
@@ -1892,11 +1865,6 @@ ToolRegistry.register({
                 )}
               </For>
             </div>
-          </Match>
-          {/* Args still streaming (patchText being written): show a live
-              streaming bar instead of an empty box. */}
-          <Match when={props.status === "pending"}>
-            <ToolStreaming label={i18n.t("ui.tool.patch.preparing")} />
           </Match>
         </Switch>
       </TranscriptCard>
