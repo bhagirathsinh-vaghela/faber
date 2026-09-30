@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test"
 import { test, expect } from "../fixtures"
-import { defocus, openSidebar, withSession } from "../actions"
-import { promptSelector, sessionItemSelector } from "../selectors"
+import { defocus, withSession } from "../actions"
+import { promptSelector } from "../selectors"
 import { modKey, type createSdk } from "../utils"
 
 // Two axes. Sticky reader (`opened`) is the persistent mode, entered by the book
@@ -66,15 +66,6 @@ async function newSession(page: Page) {
   await defocus(page)
   await page.keyboard.press(`${modKey}+Shift+S`)
   await expect(page).toHaveURL(/\/session$/)
-  await settle(page)
-}
-
-async function openSession(page: Page, sessionID: string) {
-  await openSidebar(page)
-  const item = page.locator(sessionItemSelector(sessionID)).first()
-  await expect(item).toBeVisible()
-  await item.click()
-  await expect(page).toHaveURL(new RegExp("/session/" + sessionID + "$"))
   await settle(page)
 }
 
@@ -272,9 +263,39 @@ test.describe("reader mode and a new session", () => {
       await enterReader(page)
       expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
 
-      await openSession(page, session.id)
+      // Reader hides the sidebar, so the way back to the session is history.
+      // Back to a pushState entry stays in the same document, with no reload:
+      // https://developer.mozilla.org/en-US/docs/Web/API/History_API/Working_with_the_History_API
+      await page.goBack()
+      await expect(page).toHaveURL(new RegExp("/session/" + session.id + "$"))
+      await settle(page)
       expect(await clearance(page), "the opened session keeps its composer").toBe(docked)
     })
+  })
+
+  // The other side of the same boundary: the session a submit creates from the
+  // new-session view IS that view, so its mode goes with it.
+  test("the first submit from reader on the new-session view keeps reader", async ({ page, sdk, gotoSession }) => {
+    await gotoSession()
+    await enterReader(page)
+
+    // A shell command creates the session through the same path a prompt does,
+    // without a model call.
+    await page.keyboard.press("Space")
+    await expect(page.locator(promptSelector)).toBeFocused()
+    await page.keyboard.type("!")
+    await page.keyboard.type("echo reader")
+    await page.keyboard.press("Enter")
+
+    await expect(page).toHaveURL(/\/session\/ses_[^/]+$/)
+    const created = page.url().split("/session/")[1]
+    try {
+      await expect
+        .poll(() => reclaimed(page), { message: "the created session stays in reader", timeout: 30_000 })
+        .toBe(true)
+    } finally {
+      await sdk.session.delete({ sessionID: created }).catch(() => undefined)
+    }
   })
 })
 

@@ -1668,6 +1668,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         // about to run also sets it, but only on completion; arming here closes
         // the gap so a concurrent client can't read it cold in between.
         void client.session.arm({ sessionID: session.id, directory: sessionDirectory })
+        layout.reader.carry(session.id)
         navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
       }
     }

@@ -227,16 +227,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     // Lives here because the session page unmounts on the way to the overview,
     // the trip this memory has to survive.
     createEffect(
-      on(readerSession, (session, prev) => {
+      on(readerSession, (session) => {
         // A non-sticky composer belongs to the session it was raised in, so
         // leaving drops it.
         setRevealed(false)
         if (!session) return
-        // The unsaved session getting its id on first submit is a handoff, not
-        // an arrival: the mode chosen on the "new" view carries onto the real
-        // id rather than resetting to interactive. Seed the memory so the
-        // restore below reads it back unchanged and no mode flip is seen.
-        if (prev === "new" && session !== "new") readerMemory.set(session, readerOpened())
         const next = readerMemory.get(session)
         if (next === readerOpened()) return
         if (next) enterReader()
@@ -638,6 +633,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         opened: readerActive,
         enter: enterReader,
         exit: exitReader,
+        // The unsaved session getting its id on first submit is a handoff, not
+        // an arrival: the mode chosen on the "new" view carries onto the real
+        // id. Called by the submit that creates the session, before it
+        // navigates, so the restore effect reads the mode back unchanged. The
+        // route cannot tell this apart from leaving the new view for any other
+        // session, which must not inherit the mode.
+        carry: (session: string) => readerMemory.set(session, readerOpened()),
         // The non-sticky composer overlay: raised by a tap, space, dictation, or
         // paste while sticky reader is on.
         revealed,
