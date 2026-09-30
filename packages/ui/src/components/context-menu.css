@@ -3,10 +3,12 @@
   min-width: 8rem;
   overflow: hidden;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xs-border);
   background-clip: padding-box;
-  background-color: var(--surface-raised-stronger-non-alpha);
+  background-color: var(--glass-dense);
+  -webkit-backdrop-filter: var(--glass-dense-blur);
+  backdrop-filter: var(--glass-dense-blur);
   padding: 4px;
   z-index: 100;
   transform-origin: var(--kb-menu-content-transform-origin);

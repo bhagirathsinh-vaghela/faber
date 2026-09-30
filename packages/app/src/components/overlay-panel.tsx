@@ -111,7 +111,7 @@ export function OverlayPanel(props: {
       <div class="fixed inset-x-0 bottom-[calc(var(--composer-top,20dvh)+16px)] z-[9999] flex justify-center pointer-events-none px-4">
         <div
           ref={panelRef}
-          class="pointer-events-auto w-full max-w-xl flex flex-col gap-2 rounded-[24px] border bg-surface-raised-base/65 supports-[backdrop-filter]:bg-surface-raised-base/8 supports-[backdrop-filter]:backdrop-blur-[8px] p-2 transform-gpu isolate"
+          class="pointer-events-auto w-full max-w-xl flex flex-col gap-2 rounded-[24px] border glass p-2 transform-gpu isolate"
           style={{
             "border-color": `color-mix(in srgb, ${accent()} 45%, transparent)`,
             "box-shadow": `0 0 0 0.5px color-mix(in srgb, ${accent()} 25%, transparent), 0 12px 40px rgba(0,0,0,0.45)`,

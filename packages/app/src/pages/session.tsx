@@ -2611,7 +2611,7 @@ export default function Page() {
                         }}
                       >
                         <button
-                          class="pointer-events-auto size-(--control-height) flex items-center justify-center rounded-full bg-background-base border border-border-base shadow-sm text-text-base hover:bg-background-stronger transition-colors"
+                          class="pointer-events-auto size-(--control-height) flex items-center justify-center rounded-full glass border border-border-base text-text-base hover:bg-background-stronger transition-colors"
                           onClick={resumeScroll}
                           {...preserveFocus()}
                         >
@@ -3035,7 +3035,7 @@ export default function Page() {
               <Show when={revertMessageID()}>
                 <button
                   type="button"
-                  class="mb-3 w-full rounded-md border border-border-weak-base bg-background-base/95 px-4 py-2 text-left hover:bg-background-element"
+                  class="mb-3 w-full rounded-[14px] border border-border-weak-base glass-dense px-4 py-2 text-left hover:bg-background-element"
                   onClick={() => command.trigger("session.redo")}
                 >
                   <div class="text-13-regular text-text-base">

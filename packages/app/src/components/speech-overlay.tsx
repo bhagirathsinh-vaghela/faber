@@ -157,7 +157,7 @@ export function SpeechOverlay(props: {
               when={props.speech.chunks().length}
               fallback={
                 <span
-                  class="inline-block h-4 w-2/3 animate-pulse rounded bg-text-weaker/30 align-middle"
+                  class="inline-block h-4 w-2/3 animate-pulse rounded-sm bg-text-weaker/30 align-middle"
                   aria-hidden="true"
                 />
               }

@@ -110,7 +110,7 @@ export function QuestionPanel(props: { onClose?: () => void }) {
         fallback={
           <button
             type="button"
-            class="mb-3 flex w-full flex-row items-center gap-2 rounded-md border bg-background-base/95 px-4 py-2 text-left shadow-md hover:bg-background-element"
+            class="mb-3 flex w-full flex-row items-center gap-2 rounded-[14px] border glass-dense px-4 py-2 text-left shadow-md hover:bg-background-element"
             style={{ "border-color": accent() }}
             onClick={question.expand}
             data-component="question-collapsed"
@@ -592,7 +592,7 @@ function Panel(props: {
       // The height comes from the flex chain rather than a hardcoded dock-height
       // guess: the composer's height varies with its content, so a fixed cap
       // silently overflows whenever the dock grows past the guess.
-      class="relative mb-3 flex min-h-0 flex-col overflow-hidden rounded-md border bg-background-base/95 shadow-md outline-none transition-[border-color,box-shadow]"
+      class="relative mb-3 flex min-h-0 flex-col overflow-hidden rounded-[14px] border glass-dense shadow-md outline-none transition-[border-color,box-shadow]"
       classList={{ "border-border-base cursor-default": !focused() }}
       style={
         focused()
@@ -646,7 +646,7 @@ function Panel(props: {
             <For each={props.requests}>
               {(r, index) => (
                 <button
-                  class="px-2 py-0.5 rounded text-11-regular border"
+                  class="px-2 py-0.5 rounded-sm text-11-regular border"
                   classList={{
                     "bg-surface-interactive-base text-text-strong": index() === requestIndex(),
                     "bg-surface-raised-base text-text-weak border-transparent": index() !== requestIndex(),
@@ -674,7 +674,7 @@ function Panel(props: {
             <For each={questions()}>
               {(q, index) => (
                 <button
-                  class="px-2 py-0.5 rounded text-11-regular border"
+                  class="px-2 py-0.5 rounded-sm text-11-regular border"
                   classList={{
                     "bg-surface-interactive-base text-text-strong": index() === store.tab,
                     "bg-surface-raised-base text-text-base border-transparent":
@@ -690,7 +690,7 @@ function Panel(props: {
               )}
             </For>
             <button
-              class="px-2 py-0.5 rounded text-11-regular border"
+              class="px-2 py-0.5 rounded-sm text-11-regular border"
               classList={{
                 "bg-surface-interactive-base text-text-strong": confirm(),
                 "bg-surface-raised-base text-text-weak border-transparent": !confirm(),
@@ -721,7 +721,7 @@ function Panel(props: {
                 const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
                 return (
                   <button
-                    class="flex flex-col items-start text-left px-2 py-1 rounded border-l-2 border-transparent transition-colors"
+                    class="flex flex-col items-start text-left px-2 py-1 rounded-sm border-l-2 border-transparent transition-colors"
                     classList={{ "bg-surface-interactive-base": active() }}
                     style={active() ? { "border-left-color": accent() } : undefined}
                     onMouseEnter={() => hoverSelect(i())}
@@ -759,7 +759,7 @@ function Panel(props: {
             </For>
             <Show when={custom()}>
               <div
-                class="flex flex-col items-start px-2 py-1 rounded border-l-2 border-transparent transition-colors"
+                class="flex flex-col items-start px-2 py-1 rounded-sm border-l-2 border-transparent transition-colors"
                 classList={{ "bg-surface-interactive-base": other() }}
                 style={other() ? { "border-left-color": accent() } : undefined}
               >
@@ -816,7 +816,7 @@ function Panel(props: {
                   >
                     <textarea
                       ref={(el) => (input = el)}
-                      class="flex-1 min-h-8 max-h-32 overflow-y-auto rounded border border-border-weak-base bg-background-base px-2 py-1 text-13-regular text-text-base resize-none"
+                      class="flex-1 min-h-8 max-h-32 overflow-y-auto rounded-sm border border-border-weak-base bg-background-base px-2 py-1 text-13-regular text-text-base resize-none"
                       placeholder="Type your own answer"
                       value={customText()}
                       rows={1}

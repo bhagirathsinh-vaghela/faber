@@ -137,6 +137,7 @@
   --shadow-lg-border-base: var(--shadow-lg-border-base);
 
   --animate-pulse: var(--animate-pulse);
+  --animate-ping: var(--animate-ping);
 }
 
 @import "./colors.css";

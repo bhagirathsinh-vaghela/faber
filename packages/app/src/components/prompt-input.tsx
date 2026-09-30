@@ -2162,8 +2162,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             }}
             data-scrollable
             class="min-h-0
-                 overflow-auto no-scrollbar flex flex-col p-2 rounded-md
-                 border border-border-base bg-surface-raised-stronger-non-alpha shadow-md"
+                 overflow-auto no-scrollbar flex flex-col p-2 rounded-[14px]
+                 border border-border-base glass-dense shadow-md"
             // Keep the caret in the composer when a row is pressed, on every
             // pointer type: a press that blurred the editor would close the
             // popover (the blur effect) before the tap resolved, which on touch

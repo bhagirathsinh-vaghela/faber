@@ -255,12 +255,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
               }}
               aria-label={orb.label}
               data-dictation-toggle={orb.dictation ? "" : undefined}
-              // Frosted-glass ring: a low-alpha fill plus a light backdrop blur,
-              // so the text and borders behind it read as blurred SHAPES through
-              // the glass, still recognizable rather than smeared. No saturate: it
-              // muddies the letters together. The fallback (no backdrop-filter)
-              // keeps a more opaque fill so it still reads as a surface.
-              class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing border-border-base text-icon-strong-base bg-surface-raised-base/65 supports-[backdrop-filter]:bg-surface-raised-base/8 supports-[backdrop-filter]:backdrop-blur-[8px]"
+              class="pointer-events-auto flex items-center justify-center rounded-full border touch-none select-none cursor-grab active:cursor-grabbing border-border-base text-icon-strong-base glass"
               style={{ width: `${size()}px`, height: `${size()}px` }}
             >
               <span

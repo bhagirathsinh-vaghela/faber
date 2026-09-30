@@ -2,10 +2,12 @@
 [data-component="dropdown-menu-sub-content"] {
   min-width: 8rem;
   overflow: hidden;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
   background-clip: padding-box;
-  background-color: var(--surface-raised-stronger-non-alpha);
+  background-color: var(--glass-dense);
+  -webkit-backdrop-filter: var(--glass-dense-blur);
+  backdrop-filter: var(--glass-dense-blur);
   padding: 4px;
   box-shadow: var(--shadow-md);
   z-index: 50;

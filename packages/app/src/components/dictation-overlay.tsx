@@ -144,7 +144,7 @@ export function DictationOverlay(props: {
           <Show when={props.dictation.committed() || props.dictation.interim()}>
             <div
               ref={setTranscriptScroll}
-              class="mx-2 max-h-32 overflow-y-auto rounded-2xl bg-surface-inset-base px-3.5 py-2.5 text-14-regular text-text-base leading-relaxed"
+              class="mx-2 max-h-32 overflow-y-auto rounded-xl bg-surface-inset-base px-3.5 py-2.5 text-14-regular text-text-base leading-relaxed"
             >
               {props.dictation.committed()}
               <Show when={props.dictation.interim()}>
