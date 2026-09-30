@@ -84,8 +84,8 @@ const defaultSettings: Settings = {
   sounds: {
     agent: "yup-03",
     blocking: "alert-02",
-    errors: "nope-03",
-    revision: 1,
+    errors: "nope-05",
+    revision: 2,
   },
   debug: {
     showInternal: false,
@@ -212,10 +212,9 @@ function migrate(a: Partial<Appearance> & { codeFont?: string }): Appearance {
 // choice under `permissions`; move it to `blocking` so the selection survives.
 //
 // A stored record holds every default it was merged with, so a new default
-// never reaches an existing client on its own. A record without `revision`
-// predates the current default sounds: each slot still on its old default
-// moves to the new one, once, and the merge then stamps the revision so a
-// later choice of the old sound sticks.
+// never reaches an existing client on its own. `revision` counts the default
+// changes a record has seen: each slot still on the default it replaced moves
+// to the new one, once, and the stamp keeps a later pick of an old sound.
 export function migrateSettings(value: unknown) {
   if (!value || typeof value !== "object") return value
   const settings = value as Record<string, Record<string, unknown> | undefined>
@@ -226,11 +225,16 @@ export function migrateSettings(value: unknown) {
     delete settings[group]!.permissions
   }
   const sounds = settings.sounds
-  if (!sounds || "revision" in sounds) return settings
+  const revision = typeof sounds?.revision === "number" ? sounds.revision : 0
+  if (!sounds || revision >= defaultSettings.sounds.revision) return settings
+  const moved = (slot: keyof SoundSettings, since: number, from: string) =>
+    revision < since && sounds[slot] === from ? defaultSettings.sounds[slot] : sounds[slot]
   settings.sounds = {
     ...sounds,
-    agent: sounds.agent === "staplebops-01" ? defaultSettings.sounds.agent : sounds.agent,
-    blocking: sounds.blocking === "staplebops-02" ? defaultSettings.sounds.blocking : sounds.blocking,
+    agent: moved("agent", 1, "staplebops-01"),
+    blocking: moved("blocking", 1, "staplebops-02"),
+    errors: moved("errors", 2, "nope-03"),
+    revision: defaultSettings.sounds.revision,
   }
   return settings
 }
