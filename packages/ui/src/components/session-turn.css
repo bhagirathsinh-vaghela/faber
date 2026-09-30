@@ -111,13 +111,15 @@
 
   /* The prompt is the same card as every other, so it needs no reshaping here.
      The one turn-level concern is its ceiling: an expanded long prompt would
-     otherwise cover the transcript it is pinned above. The cap reads viewport
-     vars only the turn knows, and is handed to the card as the value of the
-     card's OWN property — so the header stays pinned while the body scrolls, and
-     nothing here competes with the card over overflow. */
+     otherwise cover the transcript it is pinned above. It scrolls at the same
+     240px a shell card's output does, and a short window caps it lower still, at
+     half the room the title and composer leave. The cap is handed to the card as
+     the value of the card's OWN property — so the header stays pinned while the
+     body scrolls, and nothing here competes with the card over overflow. */
   [data-slot="session-turn-sticky"] [data-component="tool-part-wrapper"] {
-    --transcript-card-body-max-height: calc(
-      (100dvh - var(--session-title-height, 0px) - var(--prompt-height, 8rem) - 72px) / 2
+    --transcript-card-body-max-height: min(
+      240px,
+      calc((100dvh - var(--session-title-height, 0px) - var(--prompt-height, 8rem) - 72px) / 2)
     );
     --transcript-card-body-overflow: auto;
   }
