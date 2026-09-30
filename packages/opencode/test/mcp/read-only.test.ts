@@ -11,10 +11,13 @@ import { tmpdir } from "../fixture/fixture"
 
 // A minimal stdio MCP server: one tool with readOnlyHint true, one with it
 // false, one with no annotations at all. Written into the tmpdir and spawned by
-// MCP.state() so the cached tool defs carry real annotations off the wire.
+// MCP.state() so the cached tool defs carry real annotations off the wire. The
+// imports are absolute URLs into the repo's pinned SDK: from the tmpdir a bare
+// specifier resolves through Bun's auto-install, which fetches the latest SDK
+// (observed when running this test).
 const SERVER = `
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
+import { McpServer } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/mcp.js"))}
+import { StdioServerTransport } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/stdio.js"))}
 
 const server = new McpServer({ name: "annotated", version: "1.0.0" })
 const ok = async () => ({ content: [{ type: "text", text: "ok" }] })
@@ -54,6 +57,8 @@ test("readOnly is true only for a tool advertising readOnlyHint true", async () 
 test("readOnly is false for an unknown tool key (fail safe)", async () => {
   await withServer(async () => {
     await MCP.tools()
+    // The fixture connected, so the false below is the lookup's, not a dead server's.
+    expect(await MCP.readOnly("annotated_look")).toBe(true)
     expect(await MCP.readOnly("annotated_missing")).toBe(false)
   })
 }, 20_000)

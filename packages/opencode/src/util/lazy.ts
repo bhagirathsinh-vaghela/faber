@@ -18,8 +18,10 @@ export function lazy<T>(fn: () => T) {
       loaded = false
       value = undefined
     }
-    loaded = true
+    // Marked loaded only once fn returns, so an initializer that throws throws
+    // again on the next call instead of latching undefined.
     value = fn()
+    loaded = true
     return value as T
   }
 

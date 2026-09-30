@@ -29,7 +29,7 @@ import { existsSync } from "fs"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { Event } from "../server/event"
-import { PackageRegistry } from "@/bun/registry"
+import pluginPackage from "../../../plugin/package.json"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -256,9 +256,18 @@ export namespace Config {
     }
   })
 
+  // The @opencode-ai/plugin version a config dir's plugins install against
+  // (from npm, so it must be published there): the release's own, or for a
+  // local build the one the repo's packages/plugin declares (upstream's build
+  // at the fork point); npm's `latest` moves with upstream (1.18.33 when
+  // measured) and is not pinned.
+  export function pluginVersion() {
+    return Installation.isLocal() ? pluginPackage.version : Installation.VERSION
+  }
+
   export async function installDependencies(dir: string) {
     const pkg = path.join(dir, "package.json")
-    const targetVersion = Installation.isLocal() ? "latest" : Installation.VERSION
+    const targetVersion = pluginVersion()
 
     if (!(await Bun.file(pkg).exists())) {
       await Bun.write(pkg, "{}")
@@ -311,18 +320,7 @@ export namespace Config {
     const depVersion = dependencies["@opencode-ai/plugin"]
     if (!depVersion) return true
 
-    const targetVersion = Installation.isLocal() ? "latest" : Installation.VERSION
-    if (targetVersion === "latest") {
-      const isOutdated = await PackageRegistry.isOutdated("@opencode-ai/plugin", depVersion, dir)
-      if (!isOutdated) return false
-      log.info("Cached version is outdated, proceeding with install", {
-        pkg: "@opencode-ai/plugin",
-        cachedVersion: depVersion,
-      })
-      return true
-    }
-    if (depVersion === targetVersion) return false
-    return true
+    return depVersion !== pluginVersion()
   }
 
   function rel(item: string, patterns: string[]) {
@@ -705,8 +703,21 @@ export namespace Config {
   export type Skills = z.infer<typeof Skills>
 
   export const Dictation = z.object({
-    url: z.string().optional().describe("Base URL of the local transcription sidecar"),
+    url: z.string().optional().describe("Base URL of the local speech sidecar, used for transcription and read-aloud"),
     voice: z.string().optional().describe("Read-aloud voice name, e.g. af_bella or af_sarah"),
+    rewrite: z
+      .object({
+        model: z
+          .string()
+          .optional()
+          .describe("provider/model that rewrites a message for read-aloud; the default model when unset"),
+        variant: z
+          .string()
+          .optional()
+          .describe("Variant of the rewrite model; the model's configured variant when unset"),
+      })
+      .optional()
+      .describe("The model that rewrites assistant text into speakable sentences before read-aloud"),
   })
   export type Dictation = z.infer<typeof Dictation>
 
@@ -881,7 +892,9 @@ export namespace Config {
         .optional()
         .describe("Command configuration, see https://opencode.ai/docs/commands"),
       skills: Skills.optional().describe("Additional skill folder paths"),
-      dictation: Dictation.optional().describe("Speech-to-text engine for the prompt microphone"),
+      dictation: Dictation.optional().describe(
+        "Local speech sidecar: speech-to-text for the prompt microphone, and the voice and rewrite for read-aloud",
+      ),
       watcher: z
         .object({
           ignore: z.array(z.string()).optional(),

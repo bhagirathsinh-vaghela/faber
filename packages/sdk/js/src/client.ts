@@ -21,7 +21,8 @@ export function createOpencodeClient(config?: Config & { directory?: string }) {
   if (config?.directory) {
     config.headers = {
       ...config.headers,
-      "x-opencode-directory": config.directory,
+      // URI-encoded: the server decodes this header (server/directory.ts).
+      "x-opencode-directory": encodeURIComponent(config.directory),
     }
   }
 

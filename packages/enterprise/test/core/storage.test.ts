@@ -1,7 +1,8 @@
 import { describe, expect, test, afterAll } from "bun:test"
 import { Storage } from "../../src/core/storage"
 
-describe("core.storage", () => {
+// Live tests against a real bucket: they run only where a storage adapter is configured.
+describe.skipIf(!process.env.OPENCODE_STORAGE_ADAPTER)("core.storage", () => {
   test("should list files with after and before range", async () => {
     await Storage.write(["test", "users", "user1"], { name: "user1" })
     await Storage.write(["test", "users", "user2"], { name: "user2" })

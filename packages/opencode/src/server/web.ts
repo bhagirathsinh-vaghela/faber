@@ -3,7 +3,13 @@ import path from "path"
 
 type Encoded = Record<string, { type: string; body: string; br?: string; gzip?: string }>
 
-type Asset = { type: string; body: Uint8Array; br?: Uint8Array; gzip?: Uint8Array; etag: string }
+type Asset = {
+  type: string
+  body: Uint8Array<ArrayBuffer>
+  br?: Uint8Array<ArrayBuffer>
+  gzip?: Uint8Array<ArrayBuffer>
+  etag: string
+}
 
 // The embedded bundle (produced by script/pack-web.ts from packages/app/dist)
 // is what makes the binary self-contained. reload() overlays a fresh read of

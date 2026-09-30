@@ -7,6 +7,8 @@ import path from "path"
 import fs from "fs/promises"
 import { pathToFileURL } from "url"
 import { Global } from "../../src/global"
+import { Installation } from "../../src/installation"
+import pluginPackage from "../../../plugin/package.json"
 
 // Get managed config directory from environment (set in preload.ts)
 const managedConfigDir = process.env.OPENCODE_TEST_MANAGED_CONFIG_DIR!
@@ -1577,6 +1579,13 @@ describe("deduplicatePlugins", () => {
         expect(myPlugins[0].startsWith("file://")).toBe(true)
       },
     })
+  })
+})
+
+describe("Config.pluginVersion", () => {
+  test("a local build installs the repo's plugin version, never npm's latest", () => {
+    expect(Installation.isLocal()).toBe(true)
+    expect(Config.pluginVersion()).toBe(pluginPackage.version)
   })
 })
 

@@ -57,13 +57,15 @@ export namespace ShareNext {
     })
     Bus.subscribe(Session.Event.Diff, async (evt) => {
       // The event diff is bodyless; the share page renders file bodies, so
-      // read the stored full diff instead of forwarding the event payload.
-      await sync(evt.properties.sessionID, [
-        {
-          type: "session_diff",
-          data: await Session.diff(evt.properties.sessionID).catch(() => evt.properties.diff),
-        },
-      ])
+      // read the stored full diff instead of forwarding the event payload. A
+      // diff that cannot be read is skipped, since a bodyless one would replace
+      // the full diff last synced.
+      const diff = await Session.diff(evt.properties.sessionID).catch((error: unknown) => {
+        log.warn("share diff unreadable, not synced", { sessionID: evt.properties.sessionID, error })
+        return undefined
+      })
+      if (!diff) return
+      await sync(evt.properties.sessionID, [{ type: "session_diff", data: diff }])
     })
   }
 

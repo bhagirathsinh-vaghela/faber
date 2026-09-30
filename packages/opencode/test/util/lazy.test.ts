@@ -34,6 +34,17 @@ describe("util.lazy", () => {
     expect(result1).toBe(result2)
   })
 
+  test("an initializer that throws throws again on the next call instead of latching undefined", () => {
+    const calls = { count: 0 }
+    const failing = lazy((): string => {
+      calls.count++
+      throw new Error("not ready")
+    })
+    expect(() => failing()).toThrow("not ready")
+    expect(() => failing()).toThrow("not ready")
+    expect(calls.count).toBe(2)
+  })
+
   test("should work with different return types", () => {
     const lazyString = lazy(() => "string")
     const lazyNumber = lazy(() => 123)

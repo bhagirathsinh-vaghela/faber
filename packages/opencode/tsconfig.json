@@ -7,7 +7,8 @@
     "noUncheckedIndexedAccess": false,
     "customConditions": ["browser"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@opencode-ai/plugin": ["../plugin/src/index.ts"]
     }
   }
 }
