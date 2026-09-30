@@ -1252,6 +1252,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
         status={finished() ? "completed" : "running"}
         raw
         copy={throttledText}
+        speak={() => (finished() ? { key: part.id, text: text() } : undefined)}
       >
         <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
       </CardBox>

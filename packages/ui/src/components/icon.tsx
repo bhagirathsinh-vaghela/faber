@@ -88,6 +88,17 @@ const icons = {
   check: `<path d="M5 11.9657L8.37838 14.7529L15 5.83398" stroke="currentColor" stroke-linecap="square"/>`,
   pause: `<path d="M7.08333 3.75V16.25M12.9167 3.75V16.25" stroke="currentColor" stroke-linecap="square"/>`,
   play: `<path d="M5.41667 3.75L15.4167 10L5.41667 16.25V3.75Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
+  // Filled transport glyphs for a primary round button, where the outlined pair
+  // above reads as thin at 24px. Play sits 1px right of centre, which is where a
+  // triangle's visual centre lands inside a circle.
+  "play-filled": `<path d="M6.25 3.75L16.25 10L6.25 16.25V3.75Z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>`,
+  "pause-filled": `<path d="M5.83333 3.75H8.75V16.25H5.83333V3.75ZM11.25 3.75H14.1667V16.25H11.25V3.75Z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>`,
+  // Previous / next chunk: a bar with a triangle pointing at it, the shape every
+  // media player uses for "skip", so it is not read as page navigation.
+  "skip-back": `<path d="M5 4.16667V15.8333M15.8333 4.58333L7.5 10L15.8333 15.4167V4.58333Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
+  "skip-forward": `<path d="M15 4.16667V15.8333M4.16667 4.58333L12.5 10L4.16667 15.4167V4.58333Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
+  // Start over: a counter-clockwise arrow, the mirror of rotate-right.
+  "rotate-left": `<g transform="translate(20 0) scale(-0.8333 0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></g>`,
   speaker: `<path d="M9.58333 3.33333L5 7.5H2.08333V12.5H5L9.58333 16.6667V3.33333Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/><path d="M13.125 7.08333C13.9167 7.875 13.9167 12.125 13.125 12.9167M15.8333 4.58333C17.9167 6.66667 17.9167 13.3333 15.8333 15.4167" stroke="currentColor" stroke-linecap="square"/>`,
   photo: `<path d="M16.6665 16.6666L11.6665 11.6666L9.99984 13.3333L6.6665 9.99996L3.08317 13.5833M2.9165 2.91663H17.0832V17.0833H2.9165V2.91663ZM13.3332 7.49996C13.3332 8.30537 12.6803 8.95829 11.8748 8.95829C11.0694 8.95829 10.4165 8.30537 10.4165 7.49996C10.4165 6.69454 11.0694 6.04163 11.8748 6.04163C12.6803 6.04163 13.3332 6.69454 13.3332 7.49996Z" stroke="currentColor" stroke-linecap="square"/>`,
   share: `<path d="M10.0013 12.0846L10.0013 3.33464M13.7513 6.66797L10.0013 2.91797L6.2513 6.66797M17.0846 10.418V17.0846H2.91797V10.418" stroke="currentColor" stroke-linecap="square"/>`,

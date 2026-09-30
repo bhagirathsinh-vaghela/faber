@@ -59,6 +59,27 @@ test("modified keys are left to the page", () => {
   expect(press(div(), { shiftKey: true })).toBe(true)
 })
 
+test("+ is typed with shift on most layouts, so shift does not hide it", () => {
+  expect(press(document.createElement("div"), { key: "+", shiftKey: true })).toBe(false)
+})
+
+test("a key inside an open list is left to it", () => {
+  const list = document.createElement("ul")
+  list.setAttribute("role", "listbox")
+  const option = document.createElement("li")
+  option.setAttribute("role", "option")
+  list.append(option)
+  document.body.append(list)
+  expect(press(option)).toBe(true)
+  list.remove()
+})
+
+test("a key on a closed picker's button still reaches the HUD", () => {
+  const trigger = document.createElement("button")
+  trigger.setAttribute("aria-haspopup", "listbox")
+  expect(press(trigger)).toBe(false)
+})
+
 // Dispatches one keydown at a page element and reports what `handle` did.
 const dispatch = (init: KeyboardEventInit, target: Element = document.createElement("div")) => {
   const root = target.isConnected ? undefined : target

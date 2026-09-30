@@ -529,11 +529,23 @@ describe("createSpeech", () => {
     it.render("a0")
     it.render("a1")
     await it.flush()
-    expect(it.audio.playbackRate).toBe(1.5)
+    expect(it.speech.rate()).toBe(1.2)
+    expect(it.audio.playbackRate).toBe(1.2)
     it.audio.finish()
     expect(await it.holding()).toBe("a1")
-    expect(it.audio.defaultPlaybackRate).toBe(1.5)
-    expect(it.audio.playbackRate).toBe(1.5)
+    expect(it.audio.defaultPlaybackRate).toBe(1.2)
+    expect(it.audio.playbackRate).toBe(1.2)
+    it.dispose()
+  })
+
+  test("the speed steps by tenths and stops at each end of its range", () => {
+    const it = setup()
+    for (let i = 0; i < 30; i++) it.speech.faster()
+    expect(it.speech.rate()).toBe(2.5)
+    for (let i = 0; i < 7; i++) it.speech.slower()
+    expect(it.speech.rate()).toBe(1.8)
+    for (let i = 0; i < 30; i++) it.speech.slower()
+    expect(it.speech.rate()).toBe(0.5)
     it.dispose()
   })
 
@@ -851,7 +863,30 @@ describe("createSpeech", () => {
     expect(it.dones.length).toBe(1)
     expect(it.speech.open()).toBe(false)
     expect(it.speech.chunk()).toBe("")
+    expect(it.speech.chunks()).toEqual([])
     expect(it.renders.every((r) => r.signal.aborted)).toBe(true)
+    it.dispose()
+  })
+
+  test("chunks lists every chunk received so far, with the cursor's chunk at index", async () => {
+    const it = setup()
+    it.speech.show(key(), "A")
+    expect(it.speech.chunks()).toEqual([])
+    it.send({ type: "chunk", index: 0, text: "a0" })
+    await it.flush()
+    expect(it.speech.chunks()).toEqual(["a0"])
+    const first = it.speech.chunks()
+    it.send({ type: "chunk", index: 1, text: "a1" }, { type: "chunk", index: 2, text: "a2" })
+    await it.flush()
+    expect(it.speech.chunks()).toEqual(["a0", "a1", "a2"])
+    // A new array each time: the browser build of the store sees an array it
+    // already holds, pushed to in place, as no change, and the transcript
+    // would never grow.
+    expect(it.speech.chunks()).not.toBe(first)
+    it.speech.seek(2)
+    await it.flush()
+    expect(it.speech.chunks()[it.speech.index()]).toBe(it.speech.chunk())
+    expect(it.speech.chunk()).toBe("a2")
     it.dispose()
   })
 

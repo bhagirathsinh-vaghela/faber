@@ -288,9 +288,6 @@ export const dict = {
   "speech.voice": "Voice",
   "speech.defaultVoice": "Default voice",
   "speech.voiceFailed": "Could not change the voice",
-  "speech.hint.speed": "speed",
-  "speech.hint.space": "space",
-  "speech.hint.escape": "esc",
 
   "prompt.toast.pasteUnsupported.title": "Unsupported paste",
   "prompt.toast.pasteUnsupported.description": "Only images or PDFs can be pasted here.",

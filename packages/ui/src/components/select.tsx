@@ -162,6 +162,10 @@ export function Select<T>(props: SelectProps<T> & Omit<ButtonProps, "children">)
           }}
           data-component="select-content"
           data-trigger-style={local.triggerVariant}
+          // The open list takes its own keys (Space and Enter choose, a letter
+          // jumps to a match), so bare-key handlers elsewhere leave them alone
+          // instead of sending them to the composer.
+          data-prevent-autofocus
         >
           <Kobalte.Listbox data-slot="select-select-content-list" />
         </Kobalte.Content>

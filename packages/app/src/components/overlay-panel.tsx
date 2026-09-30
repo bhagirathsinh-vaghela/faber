@@ -28,6 +28,10 @@ export function OverlayPanel(props: {
   claimOverlay()
 
   const handleKey = (event: KeyboardEvent) => {
+    // A list opened from the panel (a voice picker) owns its keys, Escape
+    // included: this listener captures, so it would otherwise close the whole
+    // panel before the list could close itself.
+    if (event.target instanceof Element && event.target.closest('[role="listbox"]')) return
     if (event.key === "Escape") {
       event.preventDefault()
       event.stopPropagation()
@@ -42,6 +46,9 @@ export function OverlayPanel(props: {
     if (!target) return
     if (panelRef?.contains(target)) return
     if (props.ignore && target.closest(props.ignore)) return
+    // A list opened from the panel portals outside it and closes itself on this
+    // same pointer; like Escape, the pointer closes only the list.
+    if (document.querySelector('[data-component="select-content"]')) return
     props.onDismiss()
   }
 
@@ -89,9 +96,12 @@ export function OverlayPanel(props: {
         aria-hidden="true"
         style={{ position: "absolute", width: 0, height: 0, "background-color": accent() }}
       />
+      {/* A light scrim: the panel floats over the page the way a player bar
+          does, and the text behind it stays readable; the tap-outside dismissal
+          is what the scrim is for. */}
       <div
         class="fixed inset-0 z-[9998] overscroll-contain"
-        style={{ background: "rgba(0, 0, 0, 0.7)" }}
+        style={{ background: "rgba(0, 0, 0, 0.35)" }}
         onWheel={forwardWheel}
       />
       {/* --composer-top is published by PromptInput as the gap from the viewport
@@ -101,10 +111,10 @@ export function OverlayPanel(props: {
       <div class="fixed inset-x-0 bottom-[calc(var(--composer-top,20dvh)+16px)] z-[9999] flex justify-center pointer-events-none px-4">
         <div
           ref={panelRef}
-          class="pointer-events-auto w-full max-w-md flex flex-col gap-2 rounded-[1.75rem] border-[4.5px] bg-surface-raised-stronger-non-alpha p-2 transform-gpu isolate"
+          class="pointer-events-auto w-full max-w-xl flex flex-col gap-2 rounded-[24px] border bg-surface-raised-base/65 supports-[backdrop-filter]:bg-surface-raised-base/8 supports-[backdrop-filter]:backdrop-blur-[8px] p-2 transform-gpu isolate"
           style={{
-            "border-color": accent(),
-            "box-shadow": `0 0 0 1px color-mix(in srgb, ${accent()} 35%, transparent), 0 0 24px 4px color-mix(in srgb, ${accent()} 30%, transparent), 0 8px 24px rgba(0,0,0,0.4)`,
+            "border-color": `color-mix(in srgb, ${accent()} 45%, transparent)`,
+            "box-shadow": `0 0 0 0.5px color-mix(in srgb, ${accent()} 25%, transparent), 0 12px 40px rgba(0,0,0,0.45)`,
           }}
         >
           {props.children({ accent, text: accentText })}

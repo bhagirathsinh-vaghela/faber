@@ -4,8 +4,10 @@ import { directoryHeader } from "@opencode-ai/sdk/v2/client"
 import { HEADERS_MS } from "./fetch"
 
 // Below 0.5 the voice slurs and above 2.5 it stops being followable, so the
-// range ends there rather than wherever repeated presses would reach.
-export const RATE = { min: 0.5, max: 2.5, step: 0.25, base: 1 } as const
+// range ends there rather than wherever repeated presses would reach. Tenths,
+// a choice: listeners settle between the quarter steps (1.3×), and it is the
+// step Audible and Speechify offer.
+export const RATE = { min: 0.5, max: 2.5, step: 0.1, base: 1 } as const
 
 // The English speakers of the sidecar's kokoro-v1 model, for the read-aloud
 // picker. The names are the sidecar's contract (it maps each to a speaker id);
@@ -45,8 +47,12 @@ export const VOICES: { id: string; label: string }[] = [
 
 const RATE_KEY = "opencode-speech-rate"
 
-const clampRate = (rate: number) =>
-  Math.round(Math.min(RATE.max, Math.max(RATE.min, rate)) / RATE.step) * RATE.step
+// Counted in whole steps, so 1 + 0.1 + 0.1 lands on 1.2 rather than the
+// 1.2000000000000002 that adding tenths in binary floating point gives.
+const clampRate = (rate: number) => {
+  const steps = Math.round(Math.min(RATE.max, Math.max(RATE.min, rate)) / RATE.step)
+  return Number((steps * RATE.step).toFixed(2))
+}
 
 // Private browsing and blocked storage both throw on access rather than
 // returning null, so every read goes through here.
@@ -137,6 +143,9 @@ type Reading = {
   text: string
   chunks: string[]
   done: boolean
+  // The server read the text as written because its rewrite failed; the reading
+  // is dropped when it ends, so the next showing asks the models again.
+  written?: boolean
   blobs: Map<number, string>
   // Each request remembers the priority it was sent at, so a skip can move it
   // to the rank the new cursor gives it, up or down.
@@ -144,9 +153,6 @@ type Reading = {
   prepare?: AbortController
   // Set by a failed render, so the scheduler stops re-requesting a chunk the
   // sidecar keeps refusing until the listener asks again.
-  // The server read the text as written because its rewrite failed; the reading
-  // is dropped when it ends, so the next showing asks the models again.
-  written?: boolean
   halted: boolean
   // Failed background renders per chunk, which bounds their silent retries.
   failures: Map<number, number>
@@ -199,6 +205,9 @@ export function createSpeech(opts?: {
     // The words at the cursor, so the HUD shows what is being read rather than
     // only how far along it is.
     chunk: "",
+    // Every chunk received so far, so the HUD can show the whole text with the
+    // cursor's chunk marked.
+    chunks: [] as string[],
     // Open with nothing playing, which is what lets the HUD offer
     // resume-or-restart before anything plays.
     armed: false,
@@ -249,6 +258,9 @@ export function createSpeech(opts?: {
       // known so far.
       total: r?.chunks.length ? Math.max(r.chunks.length, cursor + 1) : 0,
       chunk: r?.chunks[cursor] ?? "",
+      // A copy: the reading's array is pushed to in place, which a store
+      // holding the same reference would never see as a change.
+      chunks: r ? [...r.chunks] : [],
       // Audio that landed while paused is held for resume, so it is ready.
       loading: !!r && (store.speaking ? loaded !== cursor && !r.blobs.has(cursor) : !r.chunks[cursor]),
     })
@@ -505,6 +517,7 @@ export function createSpeech(opts?: {
         throw new Error(`the server announced ${message.total} parts but sent ${r.chunks.length}`)
       if (!r.chunks.length) throw new Error("the rewrite produced nothing to read")
       r.done = true
+      r.written = message.written === true
       return
     }
     if (message.type !== "chunk" || typeof message.text !== "string")
@@ -518,7 +531,6 @@ export function createSpeech(opts?: {
     const controller = new AbortController()
     r.prepare = controller
     const response = await request(`${base()}/tts/prepare`, {
-      r.written = message.written === true
       method: "POST",
       body: JSON.stringify({ text: r.text, sessionID: opts?.session?.() ?? "" }),
       headers: {
@@ -618,8 +630,14 @@ export function createSpeech(opts?: {
       move()
       if (playing && cursor !== at) begin()
     }
-    session.setActionHandler("nexttrack", skip(() => next()))
-    session.setActionHandler("previoustrack", skip(() => previous()))
+    session.setActionHandler(
+      "nexttrack",
+      skip(() => next()),
+    )
+    session.setActionHandler(
+      "previoustrack",
+      skip(() => previous()),
+    )
   }
 
   const clearMedia = () => {
@@ -656,7 +674,17 @@ export function createSpeech(opts?: {
   const close = () => {
     if (!current && !store.armed && !store.speaking) return
     end()
-    setStore({ speaking: false, paused: false, loading: false, armed: false, chunk: "", key: "", total: 0, index: 0 })
+    setStore({
+      speaking: false,
+      paused: false,
+      loading: false,
+      armed: false,
+      chunk: "",
+      chunks: [],
+      key: "",
+      total: 0,
+      index: 0,
+    })
   }
 
   const advance = () => {
@@ -823,6 +851,7 @@ export function createSpeech(opts?: {
     index: () => store.index,
     total: () => store.total,
     chunk: () => store.chunk,
+    chunks: () => store.chunks,
     resuming: () => store.index > 0,
     show,
     start,
