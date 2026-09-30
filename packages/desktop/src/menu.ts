@@ -4,13 +4,11 @@ import { relaunch } from "@tauri-apps/plugin-process"
 
 import { runUpdater, UPDATER_ENABLED } from "./updater"
 import { installCli } from "./cli"
-import { initI18n, t } from "./i18n"
+import { t } from "./i18n"
 import { commands } from "./bindings"
 
 export async function createMenu() {
   if (ostype() !== "macos") return
-
-  await initI18n()
 
   const menu = await Menu.new({
     items: [

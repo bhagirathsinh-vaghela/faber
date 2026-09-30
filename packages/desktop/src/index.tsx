@@ -18,7 +18,7 @@ import { createSignal, Show, Accessor, JSX, createResource, onMount, onCleanup }
 
 import { UPDATER_ENABLED } from "./updater"
 import { createMenu } from "./menu"
-import { initI18n, t } from "./i18n"
+import { t } from "./i18n"
 import pkg from "../package.json"
 import "./styles.css"
 import { commands } from "./bindings"
@@ -27,8 +27,6 @@ const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(t("error.dev.rootNotFound"))
 }
-
-void initI18n()
 
 // Floating UI can call getComputedStyle with non-elements (e.g., null refs, virtual elements).
 // This happens on all platforms (WebView2 on Windows, WKWebView on macOS), not just Windows.

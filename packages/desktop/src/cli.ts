@@ -1,11 +1,9 @@
 import { message } from "@tauri-apps/plugin-dialog"
 
-import { initI18n, t } from "./i18n"
+import { t } from "./i18n"
 import { commands } from "./bindings"
 
 export async function installCli(): Promise<void> {
-  await initI18n()
-
   try {
     const path = await commands.installCli()
     await message(t("desktop.cli.installed.message", { path }), { title: t("desktop.cli.installed.title") })
