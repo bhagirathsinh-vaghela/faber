@@ -1026,6 +1026,13 @@ export type EventSessionError = {
   }
 }
 
+export type EventSessionStopped = {
+  type: "session.stopped"
+  properties: {
+    sessionID: string
+  }
+}
+
 export type EventDockUpdated = {
   type: "dock.updated"
   properties: {
@@ -1245,6 +1252,7 @@ export type Event =
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
+  | EventSessionStopped
   | EventDockUpdated
   | EventPtyCreated
   | EventPtyUpdated

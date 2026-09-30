@@ -10,6 +10,7 @@ import { SessionStatus } from "../../src/session/status"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
 import { Provider } from "../../src/provider/provider"
+import { Server } from "../../src/server/server"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
@@ -119,14 +120,26 @@ function listen(sessionID: string) {
   const error = Bus.subscribe(Session.Event.Error, (event) => {
     if (event.properties.sessionID === sessionID) seen.push(`error:${event.properties.error?.name}`)
   })
+  const stopped = Bus.subscribe(Session.Event.Stopped, (event) => {
+    if (event.properties.sessionID === sessionID) seen.push("stopped")
+  })
   return {
     seen,
     done() {
       idle()
       error()
+      stopped()
       return seen
     },
   }
+}
+
+function route(method: string, path: string, body?: object) {
+  return Server.App().request(`${path}?directory=${encodeURIComponent(Instance.directory)}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  })
 }
 
 // Runs one turn, lets `during` act on it while its model request is held, and
@@ -186,6 +199,50 @@ describe("turn-end events", () => {
   test("a stopped session publishes nothing", async () => {
     await withProject(async () => {
       expect(await events(0, (id) => Session.stop({ sessionID: id }))).toEqual([])
+    })
+  }, 30_000)
+
+  test("the Stop route announces the stop once, mid-turn", async () => {
+    await withProject(async () => {
+      const heard = await events(1, async (id) => {
+        expect((await route("POST", `/session/${id}/abort`)).status).toBe(200)
+      })
+      expect(heard).toEqual(["stopped"])
+    })
+  }, 30_000)
+
+  test("the Stop route announces the stop of a session with no turn", async () => {
+    await withProject(async () => {
+      const session = await Session.create({})
+      made.push(session.id)
+      const heard = listen(session.id)
+      expect((await route("POST", `/session/${session.id}/abort`)).status).toBe(200)
+      await Bun.sleep(300)
+      expect(heard.done()).toEqual(["stopped"])
+    })
+  }, 30_000)
+
+  test("archiving and deleting announce the stop once each", async () => {
+    await withProject(async () => {
+      const archived = await Session.create({})
+      const deleted = await Session.create({})
+      made.push(archived.id)
+      const heard = [listen(archived.id), listen(deleted.id)]
+      expect((await route("PATCH", `/session/${archived.id}`, { time: { archived: Date.now() } })).status).toBe(200)
+      expect((await route("DELETE", `/session/${deleted.id}`)).status).toBe(200)
+      await Bun.sleep(300)
+      expect(heard.map((h) => h.done())).toEqual([["stopped"], ["stopped"]])
+    })
+  }, 30_000)
+
+  test("renaming a session announces nothing", async () => {
+    await withProject(async () => {
+      const session = await Session.create({})
+      made.push(session.id)
+      const heard = listen(session.id)
+      expect((await route("PATCH", `/session/${session.id}`, { title: "renamed" })).status).toBe(200)
+      await Bun.sleep(300)
+      expect(heard.done()).toEqual([])
     })
   }, 30_000)
 

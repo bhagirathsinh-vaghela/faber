@@ -765,6 +765,8 @@ export const dict = {
   "settings.general.sounds.blocking.description": "Play sound when a permission or question is blocking the agent",
   "settings.general.sounds.errors.title": "Errors",
   "settings.general.sounds.errors.description": "Play sound when an error occurs",
+  "settings.general.sounds.stopped.title": "Session stopped",
+  "settings.general.sounds.stopped.description": "Play sound when a session is stopped, archived, or deleted",
 
   "settings.shortcuts.title": "Keyboard shortcuts",
   "settings.shortcuts.reset.button": "Reset to defaults",

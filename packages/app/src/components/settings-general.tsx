@@ -118,6 +118,38 @@ export const SettingsGeneral: Component = () => {
 
   const soundOptions = [...SOUND_OPTIONS]
 
+  // Highlighting an option previews it; picking one stores and plays it.
+  const SoundRow = (props: {
+    slot: "agent" | "blocking" | "errors" | "stopped"
+    current: () => string
+    set: (id: string) => void
+  }) => (
+    <SettingsRow
+      title={language.t(`settings.general.sounds.${props.slot}.title`)}
+      description={language.t(`settings.general.sounds.${props.slot}.description`)}
+    >
+      <Select
+        data-action={`settings-sounds-${props.slot}`}
+        options={soundOptions}
+        current={soundOptions.find((o) => o.id === props.current())}
+        value={(o) => o.id}
+        label={(o) => language.t(o.label)}
+        onHighlight={(option) => {
+          if (!option) return
+          playDemoSound(option.src)
+        }}
+        onSelect={(option) => {
+          if (!option) return
+          props.set(option.id)
+          playDemoSound(option.src)
+        }}
+        variant="secondary"
+        size="small"
+        triggerVariant="settings"
+      />
+    </SettingsRow>
+  )
+
   return (
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 wide:px-10 wide:pb-10">
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-raised-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
@@ -238,80 +270,10 @@ export const SettingsGeneral: Component = () => {
           <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.sounds")}</h3>
 
           <div class="bg-surface-raised-base px-4 rounded-lg">
-            <SettingsRow
-              title={language.t("settings.general.sounds.agent.title")}
-              description={language.t("settings.general.sounds.agent.description")}
-            >
-              <Select
-                data-action="settings-sounds-agent"
-                options={soundOptions}
-                current={soundOptions.find((o) => o.id === settings.sounds.agent())}
-                value={(o) => o.id}
-                label={(o) => language.t(o.label)}
-                onHighlight={(option) => {
-                  if (!option) return
-                  playDemoSound(option.src)
-                }}
-                onSelect={(option) => {
-                  if (!option) return
-                  settings.sounds.setAgent(option.id)
-                  playDemoSound(option.src)
-                }}
-                variant="secondary"
-                size="small"
-                triggerVariant="settings"
-              />
-            </SettingsRow>
-
-            <SettingsRow
-              title={language.t("settings.general.sounds.blocking.title")}
-              description={language.t("settings.general.sounds.blocking.description")}
-            >
-              <Select
-                data-action="settings-sounds-blocking"
-                options={soundOptions}
-                current={soundOptions.find((o) => o.id === settings.sounds.blocking())}
-                value={(o) => o.id}
-                label={(o) => language.t(o.label)}
-                onHighlight={(option) => {
-                  if (!option) return
-                  playDemoSound(option.src)
-                }}
-                onSelect={(option) => {
-                  if (!option) return
-                  settings.sounds.setBlocking(option.id)
-                  playDemoSound(option.src)
-                }}
-                variant="secondary"
-                size="small"
-                triggerVariant="settings"
-              />
-            </SettingsRow>
-
-            <SettingsRow
-              title={language.t("settings.general.sounds.errors.title")}
-              description={language.t("settings.general.sounds.errors.description")}
-            >
-              <Select
-                data-action="settings-sounds-errors"
-                options={soundOptions}
-                current={soundOptions.find((o) => o.id === settings.sounds.errors())}
-                value={(o) => o.id}
-                label={(o) => language.t(o.label)}
-                onHighlight={(option) => {
-                  if (!option) return
-                  playDemoSound(option.src)
-                }}
-                onSelect={(option) => {
-                  if (!option) return
-                  settings.sounds.setErrors(option.id)
-                  playDemoSound(option.src)
-                }}
-                variant="secondary"
-                size="small"
-                triggerVariant="settings"
-              />
-            </SettingsRow>
+            <SoundRow slot="agent" current={settings.sounds.agent} set={settings.sounds.setAgent} />
+            <SoundRow slot="blocking" current={settings.sounds.blocking} set={settings.sounds.setBlocking} />
+            <SoundRow slot="errors" current={settings.sounds.errors} set={settings.sounds.setErrors} />
+            <SoundRow slot="stopped" current={settings.sounds.stopped} set={settings.sounds.setStopped} />
           </div>
         </div>
 

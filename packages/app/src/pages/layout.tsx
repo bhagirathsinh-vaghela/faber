@@ -428,6 +428,11 @@ export default function Layout(props: ParentProps) {
         return
       }
 
+      if (e.details?.type === "session.stopped") {
+        playSound(soundSrc(settings.sounds.stopped()))
+        return
+      }
+
       // A finished or failed turn is announced, never listed here: the dot it
       // lights lives on the server's recent entry, which every surface reads.
       if (e.details?.type === "session.idle" || e.details?.type === "session.error") {
