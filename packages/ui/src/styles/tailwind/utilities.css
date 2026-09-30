@@ -13,6 +13,18 @@
   }
 }
 
+/* Between `glass` and `glass-dense`, for the voice overlays: they sit over a
+   dimming scrim, so they can show more of the page than a popover while their
+   own text stays readable. */
+@utility glass-medium {
+  background-color: color-mix(in oklab, var(--surface-raised-stronger-non-alpha) 65%, transparent);
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    background-color: color-mix(in oklab, var(--surface-raised-stronger-non-alpha) 30%, transparent);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+}
+
 @utility glass-dense {
   background-color: var(--glass-dense);
   -webkit-backdrop-filter: var(--glass-dense-blur);
