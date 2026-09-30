@@ -35,6 +35,13 @@ export function abortAfterAny(ms: number, ...signals: AbortSignal[]) {
 }
 
 /**
+ * The abort reason of a turn a session Stop cancelled, read by identity to tell
+ * a Stop from an Esc. An AbortError, because `throwIfAborted` throws the reason
+ * and anything else reads as the turn failing.
+ */
+export const STOPPED = new DOMException("session stopped", "AbortError")
+
+/**
  * Resolution marker for {@link settled}, distinguishable from any value a raced
  * promise could itself resolve with.
  */

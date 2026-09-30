@@ -109,17 +109,34 @@ async function withProject(fn: () => Promise<void>) {
   await Instance.provide({ directory: project.path, fn })
 }
 
+// Records the session.idle and session.error events one session publishes, in
+// order, as `idle` and `error:<name>`: the two the client plays a sound for.
+function listen(sessionID: string) {
+  const seen: string[] = []
+  const idle = Bus.subscribe(SessionStatus.Event.Idle, (event) => {
+    if (event.properties.sessionID === sessionID) seen.push("idle")
+  })
+  const error = Bus.subscribe(Session.Event.Error, (event) => {
+    if (event.properties.sessionID === sessionID) seen.push(`error:${event.properties.error?.name}`)
+  })
+  return {
+    seen,
+    done() {
+      idle()
+      error()
+      return seen
+    },
+  }
+}
+
 // Runs one turn, lets `during` act on it while its model request is held, and
-// returns how many session.idle events the session published. The event goes
-// out after the turn's last cleanup, which ends after busy clears, so the count
-// is taken once `expected` arrive and a further window shows no more follow.
-async function idles(expected: number, during?: (sessionID: string) => Promise<void>) {
+// returns the events it published. session.idle goes out after the turn's last
+// cleanup, which ends after busy clears, so the list is taken once `expected`
+// events arrive and a further window shows no more follow.
+async function events(expected: number, during?: (sessionID: string) => Promise<void>) {
   const session = await Session.create({})
   made.push(session.id)
-  const seen: string[] = []
-  const unsub = Bus.subscribe(SessionStatus.Event.Idle, (event) => {
-    if (event.properties.sessionID === session.id) seen.push(event.properties.sessionID)
-  })
+  const heard = listen(session.id)
   const release = Promise.withResolvers<void>()
   if (during) state.gate = release.promise
   const turn = SessionPrompt.prompt({
@@ -136,52 +153,50 @@ async function idles(expected: number, during?: (sessionID: string) => Promise<v
   }
   await turn
   await until(() => !SessionBusy.busy(session.id), "the turn to end")
-  await until(() => seen.length >= expected, `${expected} idle events`).catch(() => undefined)
+  await until(() => heard.seen.length >= expected, `${expected} events`).catch(() => undefined)
   await Bun.sleep(300)
-  unsub()
-  return seen.length
+  return heard.done()
 }
 
-// session.idle means "a turn ended and the user may want to know": the client
-// chimes on it. A Stop ends the session, not a turn someone waits on.
-describe("session.idle", () => {
-  test("a turn that finishes publishes it once", async () => {
+// The client plays one sound per ended turn: the done sound on session.idle,
+// the error sound on session.error. A turn that finishes sends idle; one that
+// fails or is interrupted with Esc sends its error and no idle, so it is never
+// two sounds. A Stop ends the session rather than a turn someone waits on, and
+// sends neither.
+describe("turn-end events", () => {
+  test("a turn that finishes publishes idle once", async () => {
     await withProject(async () => {
-      expect(await idles(1)).toBe(1)
+      expect(await events(1)).toEqual(["idle"])
     })
   }, 30_000)
 
-  test("a turn that ends on an error publishes it once", async () => {
+  test("a turn that fails publishes its error and no idle", async () => {
     await withProject(async () => {
       state.fail = true
-      expect(await idles(1)).toBe(1)
+      expect(await events(1)).toEqual(["error:APIError"])
     })
   }, 30_000)
 
-  test("an interrupted turn publishes it once", async () => {
+  test("an interrupted turn publishes its abort error and no idle", async () => {
     await withProject(async () => {
-      expect(await idles(1, (id) => Session.interrupt(id))).toBe(1)
+      expect(await events(1, (id) => Session.interrupt(id))).toEqual(["error:MessageAbortedError"])
     })
   }, 30_000)
 
-  test("a stopped session publishes none", async () => {
+  test("a stopped session publishes nothing", async () => {
     await withProject(async () => {
-      expect(await idles(0, (id) => Session.stop({ sessionID: id }))).toBe(0)
+      expect(await events(0, (id) => Session.stop({ sessionID: id }))).toEqual([])
     })
   }, 30_000)
 
-  test("stopping a session with no turn publishes none", async () => {
+  test("stopping a session with no turn publishes nothing", async () => {
     await withProject(async () => {
       const session = await Session.create({})
       made.push(session.id)
-      const seen: string[] = []
-      const unsub = Bus.subscribe(SessionStatus.Event.Idle, (event) => {
-        if (event.properties.sessionID === session.id) seen.push(event.properties.sessionID)
-      })
+      const heard = listen(session.id)
       await Session.stop({ sessionID: session.id })
       await Bun.sleep(300)
-      unsub()
-      expect(seen).toEqual([])
+      expect(heard.done()).toEqual([])
     })
   }, 30_000)
 })

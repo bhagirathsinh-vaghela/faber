@@ -17,6 +17,7 @@ import { Vcs } from "../project/vcs"
 import { OpenProjects } from "../project/open"
 import { Global } from "../global"
 import { Bus } from "../bus"
+import { STOPPED as Stopped } from "../util/abort"
 import { BusEvent } from "../bus/bus-event"
 import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
@@ -83,11 +84,8 @@ export namespace SessionPrompt {
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
 
   const DISPOSED = "instance disposed"
-  // The abort reason of a turn a Stop cancelled, which tools read (by
-  // identity) to tell a Stop from an Esc. Its end pays nothing: the Stop pays
-  // the session itself. An AbortError, because `throwIfAborted` throws the
-  // reason and anything else reads as the turn failing.
-  export const STOPPED = new DOMException("session stopped", "AbortError")
+  // A stopped turn's end pays nothing: the Stop pays the session itself.
+  export const STOPPED = Stopped
 
   const state = Instance.state(
     () => {
@@ -691,12 +689,22 @@ export namespace SessionPrompt {
       })
     }
 
-    // Declared first, so it runs last, once the turn is fully over. A turn
-    // this loop ran to its end, or one Esc interrupted, is announced; a Stop
-    // ends the session rather than a turn anyone waits on, and a dispose hands
-    // the turn to the next server to resume.
-    using _idle = defer(() => {
-      if (abort.reason === DISPOSED || abort.reason === STOPPED) return
+    // Each ended turn is announced once, so the client plays one sound: idle
+    // for a finish, the error for a failure or an Esc. The processor announces
+    // an error raised while it runs; an Esc that lands between steps never
+    // reaches it and is announced here. A Stop ends the session rather than a
+    // turn anyone waits on, and a dispose hands the turn to the next server to
+    // resume, so neither is announced. Declared first, so it runs last, once
+    // the turn is fully over.
+    let failed = false
+    let interrupted = false
+    using _announce = defer(() => {
+      if (abort.reason === DISPOSED || abort.reason === STOPPED || failed) return
+      if (interrupted)
+        return void Bus.publish(Session.Event.Error, {
+          sessionID,
+          error: new MessageV2.AbortedError({ message: "interrupted" }).toObject(),
+        })
       Bus.publish(SessionStatus.Event.Idle, { sessionID })
     })
     // Declared before the cancel below, so it runs after it: once the turn is
@@ -744,7 +752,10 @@ export namespace SessionPrompt {
     const snapshot = await SessionPin.get(sessionID)
     while (true) {
       log.info("loop", { step, sessionID })
-      if (abort.aborted) break
+      if (abort.aborted) {
+        interrupted = true
+        break
+      }
       const loadTimer = log.time("messages.load")
       let msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
       loadTimer.stop()
@@ -1146,6 +1157,7 @@ export namespace SessionPrompt {
         cacheProbeIndex,
         cacheProbeMessageID,
       })
+      if (processor.message.error) failed = true
       if (processor.message.finish && (await Session.get(sessionID)).turn?.resumes)
         await Session.mark(sessionID, (draft) => void (draft.turn && (draft.turn.resumes = 0)))
       if (result === "stop") break
@@ -2563,6 +2575,15 @@ export namespace SessionPrompt {
     if (!abort) {
       throw new Session.BusyError(input.sessionID)
     }
+    // Announced once, as the loop's turn is: idle for a finish, the error for a
+    // failure or an Esc, nothing for a Stop or a dispose. Declared first, so it
+    // runs last.
+    let ended: { error?: MessageV2.Assistant["error"] } | undefined
+    using _announce = defer(() => {
+      if (!ended || abort.reason === DISPOSED || abort.reason === STOPPED) return
+      if (ended.error) return void Bus.publish(Session.Event.Error, { sessionID: input.sessionID, error: ended.error })
+      Bus.publish(SessionStatus.Event.Idle, { sessionID: input.sessionID })
+    })
     // Declared before the cancel, so it runs after it, as the loop's does.
     using _collect = defer(() => {
       if (abort.reason === DISPOSED || abort.reason === STOPPED) return
@@ -2573,15 +2594,23 @@ export namespace SessionPrompt {
     using _ = defer(() => cancel(input.sessionID))
     SessionBusy.enter(input.sessionID)
     let since: number | undefined
-    return await execute(abort).catch(async (error) => {
-      if (abort.reason === STOPPED) throw error
-      log.error("shell failed", { sessionID: input.sessionID, error })
-      if (since !== undefined)
-        await Recovery.fail(input.sessionID, error instanceof Error ? error.message : String(error), since).catch(
-          (failure) => log.error("could not report a failed shell", { sessionID: input.sessionID, failure }),
-        )
-      throw error
-    })
+    return await execute(abort).then(
+      (reply) => {
+        ended = abort.aborted ? { error: new MessageV2.AbortedError({ message: "interrupted" }).toObject() } : {}
+        return reply
+      },
+      async (error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        ended = { error: new NamedError.Unknown({ message }).toObject() }
+        if (abort.reason === STOPPED) throw error
+        log.error("shell failed", { sessionID: input.sessionID, error })
+        if (since !== undefined)
+          await Recovery.fail(input.sessionID, message, since).catch((failure) =>
+            log.error("could not report a failed shell", { sessionID: input.sessionID, failure }),
+          )
+        throw error
+      },
+    )
 
     async function execute(abort: AbortSignal) {
       const written = (await createUserMessage(

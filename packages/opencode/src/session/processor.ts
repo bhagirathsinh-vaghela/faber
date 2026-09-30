@@ -19,7 +19,7 @@ import { SessionPricing } from "./pricing"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { Image } from "@/image/image"
-import { ABORTED, settled } from "@/util/abort"
+import { ABORTED, STOPPED, settled } from "@/util/abort"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -614,10 +614,14 @@ export namespace SessionProcessor {
             }
             input.assistantMessage.error = error
             void SessionRecent.setError(input.assistantMessage.sessionID, true)
-            Bus.publish(Session.Event.Error, {
-              sessionID: input.assistantMessage.sessionID,
-              error: input.assistantMessage.error,
-            })
+            // The turn's one announcement when it fails or Esc interrupts it
+            // (the loop then sends no idle). A Stop ends the session, not a turn
+            // anyone waits on, so it announces nothing.
+            if (input.abort.reason !== STOPPED)
+              Bus.publish(Session.Event.Error, {
+                sessionID: input.assistantMessage.sessionID,
+                error: input.assistantMessage.error,
+              })
             // Clear the retry LABEL only. Busy stays true (the handle is still
             // in flight) until the loop unwinds through defer(cancel).
             SessionStatus.set(input.sessionID, { type: "idle" })
