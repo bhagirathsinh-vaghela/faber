@@ -58,7 +58,7 @@ import { attention, busy as busyDot, flat, strongest } from "@/utils/attention"
 import { usePermission } from "@/context/permission"
 import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
-import { root } from "@/utils/announce"
+import { announced } from "@/utils/announce"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
@@ -435,8 +435,9 @@ export default function Layout(props: ParentProps) {
         const directory = e.name
         const sessionID = details.properties.sessionID
         const [syncStore] = globalSync.child(directory, { bootstrap: false })
+        const open = directory === decode64(params.dir) && sessionID === params.id
         const resolved = sessionID
-          ? root(syncStore.session, sessionID, (id) =>
+          ? announced(syncStore.session, sessionID, open, (id) =>
               globalSDK.client.session
                 .get({ sessionID: id, directory })
                 .then((x) => x.data)
