@@ -122,14 +122,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }),
     )
 
-    // Reader mode is intentionally ephemeral — an in-memory signal, never
-    // persisted, so it always starts off on a fresh load/reload.
     const [readerOpened, setReaderOpened] = createSignal(false)
 
-    // Which session each reader state belongs to, so leaving a session for the
-    // overview and coming back restores the toggle. Deliberately a plain Map,
-    // not persisted state: a fresh load always starts interactive.
-    const readerMemory = new Map<string, boolean>()
+    // Which sessions were left in reader, so leaving one for the overview or
+    // reloading the page restores its toggle. Per tab, like the pinned size
+    // class: each client decides its own view.
+    const readerKey = (session: string) => `opencode.reader.${session}`
+    const readerMemory = {
+      get: (session: string) => sessionStorage.getItem(readerKey(session)) === "on",
+      set: (session: string, opened: boolean) =>
+        opened ? sessionStorage.setItem(readerKey(session), "on") : sessionStorage.removeItem(readerKey(session)),
+    }
 
     // Non-sticky interactive: while sticky reader stays on, a temporary composer
     // (plus the exit orb) is overlaid so text can land and be sent without
@@ -140,7 +143,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const unreveal = () => setRevealed(false)
 
     // Manual expand/collapse of transcript boxes, session id -> box id -> open.
-    // Ephemeral for reader's reason, and lifted here for it too: the
+    // Ephemeral, and lifted here for reader's reason: the
     // session page unmounts on the way to the overview, and virtua unmounts a
     // turn scrolled far enough out of view, so state owned by a box cannot
     // outlive either trip.
@@ -234,7 +237,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         // id rather than resetting to interactive. Seed the memory so the
         // restore below reads it back unchanged and no mode flip is seen.
         if (prev === "new" && session !== "new") readerMemory.set(session, readerOpened())
-        const next = readerMemory.get(session) ?? false
+        const next = readerMemory.get(session)
         if (next === readerOpened()) return
         if (next) enterReader()
         else exitReader()
@@ -625,7 +628,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       // Reader mode: hides all chrome (titlebar, tab bar, composer), leaving the
       // scrollable message list, the busy indicator, and any pending question.
-      // Deliberately NOT persisted — it always resets to off on load/reload.
       //
       // Two independent flags. `opened` (sticky reader) is the persistent mode.
       // `revealed` (non-sticky) overlays a temporary composer + exit orb WHILE

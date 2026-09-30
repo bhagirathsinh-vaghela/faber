@@ -278,6 +278,41 @@ test.describe("reader mode and a new session", () => {
   })
 })
 
+test.describe("reader mode across a reload", () => {
+  test.use({ viewport: DESKTOP })
+
+  test("each session reloads in the mode it was left in", async ({ page, sdk, gotoSession }) => {
+    await withSession(sdk, `reader reload read ${Date.now()}`, async (read) => {
+      await withSession(sdk, `reader reload write ${Date.now()}`, async (write) => {
+        await gotoSession(write.id)
+        const docked = await clearance(page)
+
+        await gotoSession(read.id)
+        const readURL = page.url()
+        await enterReader(page)
+        expect(await reclaimed(page), "reader reclaims the composer space").toBe(true)
+
+        await page.reload()
+        await settle(page)
+        expect(await reclaimed(page), "reader survives the reload").toBe(true)
+
+        await gotoSession(write.id)
+        await settle(page)
+        expect(await clearance(page), "the other session stays interactive").toBe(docked)
+
+        await page.reload()
+        await settle(page)
+        expect(await clearance(page), "interactive survives the reload").toBe(docked)
+
+        // gotoSession waits for the composer, which reader hides.
+        await page.goto(readURL)
+        await settle(page)
+        expect(await reclaimed(page), "reader is remembered past a reload elsewhere").toBe(true)
+      })
+    })
+  })
+})
+
 test.describe("reader mode on a fine pointer", () => {
   test.use({ viewport: DESKTOP })
 
