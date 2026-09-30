@@ -18,7 +18,8 @@ const DESKTOP = { width: 1500, height: 900 }
 // the word "reader", so they are matched exactly apart.
 const enterOrb = (page: Page) => page.getByRole("button", { name: "Reader mode", exact: true })
 const exitOrb = (page: Page) => page.getByRole("button", { name: /exit reader mode/i })
-const dictateOrb = (page: Page) => page.getByRole("button", { name: /dictate/i })
+// The composer has its own "Dictate" button; the orb is the one in the cluster.
+const dictateOrb = (page: Page) => page.locator("[data-reader-cluster]").getByRole("button", { name: /dictate/i })
 
 const scroller = (page: Page) => page.locator(".session-scroller")
 const composer = (page: Page) => page.locator('[data-slot="composer"]')
@@ -116,9 +117,11 @@ test.describe("reader mode on a touch device", () => {
       await clickDeadSpace(page)
       await expect(composer(page)).toBeVisible()
 
-      const turn = page.locator('[data-component="session-turn"]').first()
-      await expect(turn).toBeVisible()
-      await turn.click({ position: { x: 5, y: 5 } })
+      // The turn's header toggle, not a corner of the turn box: on a phone the
+      // box spans the gutter beside its card, and the gutter is dead space.
+      const header = page.locator('[data-component="session-turn"]').first().getByRole("button", { name: /shell/i })
+      await expect(header).toBeVisible()
+      await header.click()
       await settle(page)
       await expect(composer(page)).toBeVisible()
     })
@@ -468,7 +471,11 @@ test.describe("reader mode on a fine pointer", () => {
 
       await page.keyboard.press("Enter")
       await expect(composer(page)).toBeHidden()
-      expect(await reclaimed(page), "the sent overlay reclaims its space").toBe(true)
+      // The busy bar stays in reader while the turn runs and holds its own row
+      // in the dock, so the reclaim is measured once the reply is in.
+      await expect
+        .poll(() => reclaimed(page), { message: "the sent overlay reclaims its space", timeout: 30_000 })
+        .toBe(true)
       // Still in sticky reader: the mic floats, no full chrome.
       await expect(dictateOrb(page)).toBeVisible()
     })
@@ -486,7 +493,7 @@ test.describe("reader mode on a fine pointer", () => {
       await page.keyboard.type("never mind")
 
       // The composer's clear (X / ctrl+c) is the "back to reading" gesture.
-      await page.getByRole("button", { name: /clear the composer/i }).click()
+      await composer(page).getByRole("button", { name: "Clear", exact: true }).click()
       await settle(page)
       await expect(composer(page)).toBeHidden()
       expect(await reclaimed(page), "the cleared overlay reclaims its space").toBe(true)

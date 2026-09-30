@@ -139,7 +139,11 @@ const result = await (async () => {
     return { error }
   } finally {
     await inst.Instance.disposeAll()
-    await server.stop()
+    // Not awaited: after the dictation spec, Bun 1.3.11 still counts a
+    // websocket whose connection is gone (pendingWebSockets 1 with nothing on
+    // the port in lsof), and the promise stop returns never settles. The
+    // process exits right after this block, so there is nothing to wait for.
+    void server.stop(true)
     // Remove the tmp sandbox so runs do not accumulate.
     await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {})
   }

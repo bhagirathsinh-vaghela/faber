@@ -60,12 +60,12 @@ test("can send a prompt and receive a reply", async ({ page, sdk, gotoSession })
 
     // Response text renders inline in the turn's steps; the summary section
     // is the changed-files list and only mounts when the turn produced diffs,
-    // which a text-only reply never does. Scoped to the assistant message box:
+    // which a text-only reply never does. Scoped to the assistant's text card:
     // the typed prompt also contains the token, so an unscoped getByText is
     // satisfied by the user bubble even when the reply never renders.
     await expect(
       page
-        .locator('[data-component="message-box"][data-role="assistant"]')
+        .locator('[data-accent="assistant"]')
         .getByText(token)
         .filter({ visible: true })
         .first(),
