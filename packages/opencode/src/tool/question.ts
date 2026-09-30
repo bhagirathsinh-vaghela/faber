@@ -1,15 +1,10 @@
-import z from "zod"
 import { Tool } from "./tool"
 import { Question } from "../question"
 import DESCRIPTION from "./question.txt"
 
 export const QuestionTool = Tool.define("question", {
   description: DESCRIPTION,
-  parameters: z
-    .object({
-      questions: z.array(Question.Info.omit({ custom: true })).describe("Questions to ask"),
-    })
-    .strict(),
+  parameters: Question.Parameters,
   async execute(params, ctx) {
     await ctx.ask({
       permission: "question",
@@ -34,7 +29,8 @@ export const QuestionTool = Tool.define("question", {
     return {
       title: `Asked ${params.questions.length} question${params.questions.length > 1 ? "s" : ""}`,
       output: `User has answered your questions: ${formatted}. You can now continue with the user's answers in mind.`,
-      metadata: { answers },
+      // Keeps the stamp the processor gave this call's running state.
+      metadata: { answers, plain: true },
     }
   },
 })

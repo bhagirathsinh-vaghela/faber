@@ -1106,3 +1106,186 @@ describe("session.message-v2.toModelMessage", () => {
     expect(result.idToIndex.get("m-user-3")).toBe(6) // +2 offset from both tool blocks
   })
 })
+
+describe("session.message-v2.toModelMessages sends a stamped question as the user's own words", () => {
+  const asked = {
+    questions: [
+      {
+        question: "Deploy where?",
+        header: "Target",
+        options: [
+          { label: "staging", description: "the test box" },
+          { label: "production", description: "the real one" },
+        ],
+      },
+    ],
+  }
+  const text = "[asked with the question tool]\nDeploy where?\nOptions: staging / production"
+
+  function history(state: MessageV2.ToolPart["state"]): MessageV2.WithParts[] {
+    return [
+      plainUser("m-user", "deploy it"),
+      {
+        info: assistantInfo("m-assistant", "m-user"),
+        parts: [
+          { ...basePart("m-assistant", "a1"), type: "text", text: "One thing first." },
+          { ...basePart("m-assistant", "a2"), type: "tool", tool: "question", callID: "q1", state },
+        ] as MessageV2.Part[],
+      },
+    ]
+  }
+  const running = {
+    status: "running",
+    input: asked,
+    time: { start: 0 },
+    metadata: { answers: [], plain: true },
+  } as const
+  const answered = {
+    status: "completed",
+    input: asked,
+    output: 'User has answered your questions: "Deploy where?"="staging".',
+    title: "Asked 1 question",
+    time: { start: 0, end: 1 },
+    metadata: { answers: [["staging"]], plain: true },
+  } as const
+
+  test("a question stamped before this existed keeps its tool call and result", () => {
+    const { plain: _, ...metadata } = answered.metadata
+    expect(MessageV2.toModelMessages(history({ ...answered, metadata }), model).messages.slice(1)).toStrictEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "One thing first." },
+          { type: "tool-call", toolCallId: "q1", toolName: "question", input: asked, providerExecuted: undefined },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "q1",
+            toolName: "question",
+            output: { type: "text", value: answered.output },
+          },
+        ],
+      },
+    ])
+  })
+
+  test("a waiting question is its text alone, and answering it only appends the answer", () => {
+    const waiting = MessageV2.toModelMessages(history(running), model).messages
+    const done = MessageV2.toModelMessages(history(answered), model).messages
+    expect(waiting.slice(1)).toStrictEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "One thing first." },
+          { type: "text", text },
+        ],
+      },
+    ])
+    expect(done.slice(1)).toStrictEqual([
+      ...waiting.slice(1),
+      { role: "user", content: [{ type: "text", text: "staging" }] },
+    ])
+  })
+
+  test("a question that was not answered says so as the user's turn", () => {
+    const failed = {
+      status: "error",
+      input: asked,
+      error: "Error: The user dismissed this question",
+      time: { start: 0, end: 1 },
+      metadata: { answers: [], plain: true },
+    } as const
+    expect(MessageV2.toModelMessages(history(failed), model).messages.at(-1)).toStrictEqual({
+      role: "user",
+      content: [{ type: "text", text: "[The question was not answered: Error: The user dismissed this question]" }],
+    })
+  })
+
+  test("several questions list each one, and each answer is named by its question", () => {
+    const two = {
+      questions: [
+        asked.questions[0],
+        { question: "Notify?", header: "Notify", options: [{ label: "yes", description: "" }] },
+      ],
+    }
+    const messages = MessageV2.toModelMessages(
+      history({ ...answered, input: two, metadata: { answers: [["staging"], []], plain: true } }),
+      model,
+    ).messages
+    expect(messages.slice(-2)).toStrictEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "One thing first." },
+          { type: "text", text: `${text}\n\nNotify?\nOptions: yes` },
+        ],
+      },
+      { role: "user", content: [{ type: "text", text: "Deploy where?: staging\nNotify?: Unanswered" }] },
+    ])
+  })
+
+  test("two question calls in one step each name their own question", () => {
+    const notify = { questions: [{ question: "Notify?", header: "Notify", options: [{ label: "yes", description: "" }] }] }
+    const messages = MessageV2.toModelMessages(
+      [
+        plainUser("m-user", "deploy it"),
+        {
+          info: assistantInfo("m-assistant", "m-user"),
+          parts: [
+            { ...basePart("m-assistant", "a1"), type: "tool", tool: "question", callID: "q1", state: answered },
+            {
+              ...basePart("m-assistant", "a2"),
+              type: "tool",
+              tool: "question",
+              callID: "q2",
+              state: { ...answered, input: notify, metadata: { answers: [["yes"]], plain: true } },
+            },
+          ] as MessageV2.Part[],
+        },
+      ],
+      model,
+    ).messages
+    expect(messages.slice(-2)).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "Deploy where?: staging" }] },
+      { role: "user", content: [{ type: "text", text: "Notify?: yes" }] },
+    ])
+  })
+})
+
+describe("session.message-v2.stampable reshapes only a question the tool will ask", () => {
+  const anthropic = { providerID: "anthropic" }
+  const option = { label: "staging", description: "the test box" }
+  const valid = { questions: [{ question: "Deploy where?", header: "Target", options: [option] }] }
+  const cases: [string, { providerID: string }, string, unknown, boolean][] = [
+    ["a valid question on Anthropic", anthropic, "question", valid, true],
+    ["several valid questions", anthropic, "question", { questions: [valid.questions[0], valid.questions[0]] }, true],
+    ["a valid question on another provider", { providerID: "openai" }, "question", valid, false],
+    ["another tool with the same input", anthropic, "bash", valid, false],
+    ["no header", anthropic, "question", { questions: [{ question: "Deploy?", options: [option] }] }, false],
+    [
+      "an option with no description",
+      anthropic,
+      "question",
+      { questions: [{ question: "Deploy?", header: "T", options: [{ label: "staging" }] }] },
+      false,
+    ],
+    ["a key the tool does not take", anthropic, "question", { ...valid, extra: true }, false],
+    // The tool strips a key it ignores inside a question and still asks it.
+    [
+      "a question key the tool ignores (custom)",
+      anthropic,
+      "question",
+      { questions: [{ ...valid.questions[0], custom: true }] },
+      true,
+    ],
+    ["questions as a string", anthropic, "question", { questions: '[{"question":"Deploy?"}]' }, false],
+    ["no questions", anthropic, "question", { questions: [] }, false],
+    ["no input", anthropic, "question", undefined, false],
+  ]
+  for (const [name, provider, tool, input, expected] of cases)
+    test(name, () => expect(MessageV2.stampable(provider, tool, input)).toBe(expected))
+})

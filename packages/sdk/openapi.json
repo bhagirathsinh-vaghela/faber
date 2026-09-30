@@ -9315,6 +9315,60 @@
               "duration"
             ]
           },
+          "question": {
+            "type": "object",
+            "properties": {
+              "callID": {
+                "type": "string"
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "question": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["label", "description"]
+                      }
+                    },
+                    "multiple": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["question", "header", "options"]
+                }
+              },
+              "answers": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["callID", "questions"]
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -14419,6 +14473,60 @@
               "log",
               "duration"
             ]
+          },
+          "question": {
+            "type": "object",
+            "properties": {
+              "callID": {
+                "type": "string"
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "question": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["label", "description"]
+                      }
+                    },
+                    "multiple": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["question", "header", "options"]
+                }
+              },
+              "answers": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["callID", "questions"]
           },
           "time": {
             "type": "object",

@@ -15,6 +15,7 @@ import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
+import { Question } from "@/question"
 
 export namespace MessageV2 {
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
@@ -105,6 +106,24 @@ export namespace MessageV2 {
   })
   export type BackgroundJobResult = z.infer<typeof BackgroundJobResult>
 
+  // A question asked with the question tool once it is answered or goes
+  // unanswered, on the text part that took the tool call's place and on the
+  // user message that answers it, so the transcript draws the question card.
+  export const QuestionRecord = z.object({
+    callID: z.string(),
+    questions: z.array(
+      z.object({
+        question: z.string(),
+        header: z.string(),
+        options: z.array(z.object({ label: z.string(), description: z.string() })),
+        multiple: z.boolean().optional(),
+      }),
+    ),
+    answers: z.array(z.array(z.string())).optional(),
+    error: z.string().optional(),
+  })
+  export type QuestionRecord = z.infer<typeof QuestionRecord>
+
   export const TextPart = PartBase.extend({
     type: z.literal("text"),
     text: z.string(),
@@ -118,6 +137,7 @@ export namespace MessageV2 {
     internal: z.boolean().optional(),
     backgroundSubagentResult: BackgroundSubagentResult.optional(),
     backgroundJobResult: BackgroundJobResult.optional(),
+    question: QuestionRecord.optional(),
     time: z
       .object({
         start: z.number(),
@@ -510,6 +530,66 @@ export namespace MessageV2 {
     idToIndex: Map<string, number>
   }
 
+  // After a tool result, Opus 5.5 can return the prose it writes before its
+  // next tool call as a summarized thinking block the user never sees; after a
+  // user message it does not. So a question goes out as the user's own words:
+  // the question as assistant text, the answer as a user message. Storage is
+  // rewritten to that shape once the question is answered or goes unanswered
+  // (SessionPrompt.transcribe). Until then a question the processor stamped `plain`
+  // is drawn here the same way, so a keep-warm ping during the wait caches the
+  // bytes the rewrite stores.
+  // Checked against the tool's own schema: a call the tool rejects keeps the
+  // tool shape, so its validation error reaches the model as a tool result.
+  export function askable(input: unknown) {
+    const parsed = Question.Parameters.safeParse(input)
+    return parsed.success && parsed.data.questions.length > 0
+  }
+
+  // Whether the processor stamps a question call to be sent as the user's own
+  // words. Anthropic only: the lost prose is its models' behaviour, and another
+  // provider may bill a request ending in a user message as user-initiated
+  // (Copilot's x-initiator).
+  export function stampable(model: { providerID: string }, tool: string, input: unknown) {
+    return model.providerID === "anthropic" && tool === "question" && askable(input)
+  }
+
+  // Whether a step asked more than one question, counting its question calls
+  // and the questions already written down; each answer then names its question.
+  export function several(parts: Part[]) {
+    return parts.filter((p) => (p.type === "tool" && p.tool === "question") || (p.type === "text" && p.question)).length > 1
+  }
+
+  export function spoken(part: ToolPart) {
+    return (
+      part.tool === "question" &&
+      part.state.status !== "pending" &&
+      part.state.metadata?.plain === true &&
+      askable(part.state.input)
+    )
+  }
+
+  export function asked(questions: { question: string; options: { label: string }[] }[]) {
+    const blocks = questions.map((q) =>
+      q.options.length ? `${q.question}\nOptions: ${q.options.map((o) => o.label).join(" / ")}` : q.question,
+    )
+    return `[asked with the question tool]\n${blocks.join("\n\n")}`
+  }
+
+  export function replied(questions: { question: string }[], answers: string[][], named = questions.length > 1) {
+    const said = questions.map((_, i) => (answers[i]?.length ? answers[i].join(", ") : "Unanswered"))
+    return named ? questions.map((q, i) => `${q.question}: ${said[i]}`).join("\n") : said[0]
+  }
+
+  export function unanswered(reason: string) {
+    return `[The question was not answered: ${reason}]`
+  }
+
+  // The user message a written-down question's answer lives in. It belongs to
+  // the turn that asked, and opens no turn of its own.
+  export function reply(message: WithParts) {
+    return message.info.role === "user" && message.parts.some((p) => p.type === "text" && !!p.question)
+  }
+
   export function toModelMessages(input: WithParts[], model: Provider.Model): ToModelMessagesResult {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
@@ -613,6 +693,7 @@ export namespace MessageV2 {
           role: "assistant",
           parts: [],
         }
+        const replies: string[] = []
         for (const part of msg.parts) {
           if (part.type === "text")
             assistantMessage.parts.push({
@@ -624,6 +705,22 @@ export namespace MessageV2 {
             assistantMessage.parts.push({
               type: "step-start",
             })
+          // A stamped question not yet rewritten in storage: waiting (a ping),
+          // or one whose rewrite never landed, drawn the way the rewrite stores it.
+          if (part.type === "tool" && spoken(part)) {
+            const questions = (part.state.input as z.infer<typeof Question.Parameters>).questions
+            assistantMessage.parts.push({ type: "text", text: asked(questions) })
+            if (part.state.status === "completed")
+              replies.push(
+                replied(
+                  questions,
+                  (part.state.metadata.answers ?? []) as string[][],
+                  questions.length > 1 || several(msg.parts),
+                ),
+              )
+            if (part.state.status === "error") replies.push(unanswered(part.state.error))
+            continue
+          }
           if (part.type === "tool") {
             toolNames.add(part.tool)
             if (part.state.status === "completed") {
@@ -683,6 +780,9 @@ export namespace MessageV2 {
         if (assistantMessage.parts.length > 0) {
           result.push(assistantMessage)
         }
+        // One user message per answer, as storage writes them.
+        for (const [at, text] of replies.entries())
+          result.push({ id: `${msg.info.id}-reply-${at}`, role: "user", parts: [{ type: "text", text }] })
       }
     }
 
@@ -797,11 +897,12 @@ export namespace MessageV2 {
   export const UNKNOWN_AGENT = "unknown"
 
   // A message the human typed, as opposed to one the loop minted (a task/job
-  // result, a compaction, a resume prompt). The single predicate for "was this
-  // the user's own voice", used by the prompt count, the title, and every
-  // "last real user message" lookup, so the definition lives in one place.
+  // result, a compaction, a resume prompt, a question's answer or note). The
+  // single predicate for "was this the user's own voice", used by the prompt
+  // count, the title, and every "last real user message" lookup, so the
+  // definition lives in one place.
   export function isHumanTyped(msg: WithParts) {
-    return msg.info.role === "user" && !msg.info.synthetic
+    return msg.info.role === "user" && !msg.info.synthetic && !reply(msg)
   }
 
   // A titleable prompt: human-typed AND carrying an ordinal. A human-typed

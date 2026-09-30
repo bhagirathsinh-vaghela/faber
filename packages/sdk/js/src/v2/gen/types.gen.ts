@@ -254,6 +254,88 @@ export type EventLspUpdated = {
   }
 }
 
+export type EventRecentUpdated = {
+  type: "recent.updated"
+  properties: {
+    entries: Array<RecentSession>
+  }
+}
+
+export type QuestionOption = {
+  /**
+   * Display text (1-5 words, concise)
+   */
+  label: string
+  /**
+   * Explanation of choice
+   */
+  description: string
+}
+
+export type QuestionInfo = {
+  /**
+   * Complete question
+   */
+  question: string
+  /**
+   * Very short label (max 30 chars)
+   */
+  header: string
+  /**
+   * Available choices
+   */
+  options: Array<QuestionOption>
+  /**
+   * Allow selecting multiple choices
+   */
+  multiple?: boolean
+  /**
+   * Allow typing a custom answer (default: true)
+   */
+  custom?: boolean
+}
+
+export type QuestionRequest = {
+  id: string
+  sessionID: string
+  /**
+   * When the question was asked (epoch millis)
+   */
+  time: number
+  /**
+   * Questions to ask
+   */
+  questions: Array<QuestionInfo>
+  tool?: {
+    messageID: string
+    callID: string
+  }
+}
+
+export type EventQuestionAsked = {
+  type: "question.asked"
+  properties: QuestionRequest
+}
+
+export type QuestionAnswer = Array<string>
+
+export type EventQuestionReplied = {
+  type: "question.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    answers: Array<QuestionAnswer>
+  }
+}
+
+export type EventQuestionRejected = {
+  type: "question.rejected"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -409,6 +491,20 @@ export type TextPart = {
     exit?: number
     log: string
     duration: number
+  }
+  question?: {
+    callID: string
+    questions: Array<{
+      question: string
+      header: string
+      options: Array<{
+        label: string
+        description: string
+      }>
+      multiple?: boolean
+    }>
+    answers?: Array<Array<string>>
+    error?: string
   }
   time?: {
     start: number
@@ -671,13 +767,6 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventRecentUpdated = {
-  type: "recent.updated"
-  properties: {
-    entries: Array<RecentSession>
-  }
-}
-
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
@@ -778,81 +867,6 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
-  }
-}
-
-export type QuestionOption = {
-  /**
-   * Display text (1-5 words, concise)
-   */
-  label: string
-  /**
-   * Explanation of choice
-   */
-  description: string
-}
-
-export type QuestionInfo = {
-  /**
-   * Complete question
-   */
-  question: string
-  /**
-   * Very short label (max 30 chars)
-   */
-  header: string
-  /**
-   * Available choices
-   */
-  options: Array<QuestionOption>
-  /**
-   * Allow selecting multiple choices
-   */
-  multiple?: boolean
-  /**
-   * Allow typing a custom answer (default: true)
-   */
-  custom?: boolean
-}
-
-export type QuestionRequest = {
-  id: string
-  sessionID: string
-  /**
-   * When the question was asked (epoch millis)
-   */
-  time: number
-  /**
-   * Questions to ask
-   */
-  questions: Array<QuestionInfo>
-  tool?: {
-    messageID: string
-    callID: string
-  }
-}
-
-export type EventQuestionAsked = {
-  type: "question.asked"
-  properties: QuestionRequest
-}
-
-export type QuestionAnswer = Array<string>
-
-export type EventQuestionReplied = {
-  type: "question.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    answers: Array<QuestionAnswer>
-  }
-}
-
-export type EventQuestionRejected = {
-  type: "question.rejected"
-  properties: {
-    sessionID: string
-    requestID: string
   }
 }
 
@@ -1200,11 +1214,14 @@ export type Event =
   | EventSessionBusy
   | EventLspClientDiagnostics
   | EventLspUpdated
+  | EventRecentUpdated
+  | EventQuestionAsked
+  | EventQuestionReplied
+  | EventQuestionRejected
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventRecentUpdated
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
   | EventPermissionAsked
@@ -1215,9 +1232,6 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
-  | EventQuestionAsked
-  | EventQuestionReplied
-  | EventQuestionRejected
   | EventJobUpdated
   | EventFileEdited
   | EventTodoUpdated
@@ -2131,6 +2145,20 @@ export type TextPartInput = {
     exit?: number
     log: string
     duration: number
+  }
+  question?: {
+    callID: string
+    questions: Array<{
+      question: string
+      header: string
+      options: Array<{
+        label: string
+        description: string
+      }>
+      multiple?: boolean
+    }>
+    answers?: Array<Array<string>>
+    error?: string
   }
   time?: {
     start: number

@@ -246,6 +246,8 @@ export namespace SessionPrompt {
     model: Choice
     variant: string
     params?: { agent?: string }
+    system?: Draft["system"]
+    tools?: Draft["tools"]
   }) {
     return run(
       {
@@ -255,6 +257,8 @@ export namespace SessionPrompt {
         agent: input.params?.agent,
         model: input.model,
         variant: input.variant,
+        system: input.system,
+        tools: input.tools,
       },
       undefined,
       {
@@ -264,6 +268,111 @@ export namespace SessionPrompt {
         detach: input.failed ?? ((error) => log.error("delivered turn failed", { sessionID: input.sessionID, error })),
       },
     )
+  }
+
+  // The one writer of a question once it is answered or goes unanswered: the
+  // tool part is
+  // replaced, under its own id, by the question as text, and the answer is
+  // written as the user's message in the same transaction. Both carry the
+  // question so the transcript still draws its card. It only appends after the
+  // question text a keep-warm ping may have cached. `halted` is a question a
+  // Stop or Esc ended: the stop is moved past its note, so nothing resumes or
+  // wakes on it. Nothing is written once a message other than an answer follows
+  // the question's step (a prompt sent after an Esc, a result that joined):
+  // the note would read as the reply to it. Returns the message, or undefined
+  // when nothing was written.
+  export async function transcribe(input: {
+    part: MessageV2.ToolPart
+    opener: MessageV2.User
+    answers?: string[][]
+    reason?: string
+    halted?: boolean
+  }) {
+    const asked = input.part.state.input.questions as (Question.Info & MessageV2.QuestionRecord["questions"][number])[]
+    const questions = asked.map((q) => ({
+      question: q.question,
+      header: q.header,
+      options: q.options.map((o) => ({ label: o.label, description: o.description })),
+      ...(q.multiple !== undefined && { multiple: q.multiple }),
+    }))
+    const reason = input.reason ?? "it was withdrawn"
+    const record: MessageV2.QuestionRecord = {
+      callID: input.part.callID,
+      questions,
+      ...(input.answers ? { answers: input.answers } : { error: reason }),
+    }
+    const replaced: MessageV2.TextPart = {
+      id: input.part.id,
+      messageID: input.part.messageID,
+      sessionID: input.part.sessionID,
+      type: "text",
+      text: MessageV2.asked(questions),
+      synthetic: true,
+      question: record,
+    }
+    const named = questions.length > 1 || MessageV2.several(await MessageV2.parts(input.part.messageID))
+    const write = await Parts.writer()
+    const read = await Messages.reader()
+    const parts = await Parts.reader()
+    const sent = await deliver({
+      sessionID: input.part.sessionID,
+      parts: [
+        {
+          type: "text",
+          text: input.answers ? MessageV2.replied(questions, input.answers, named) : MessageV2.unanswered(reason),
+          question: record,
+        },
+      ],
+      // Read from the step's parent (the opener), not the step: a message the
+      // step never saw can sort before it, its id minted before the step's.
+      claim: () => {
+        const later = read
+          .after(input.part.sessionID, input.opener.id)
+          .filter(
+            (info) =>
+              info.id !== input.opener.id &&
+              info.role === "user" &&
+              !MessageV2.reply({ info, parts: parts(info.id) }),
+          )
+        if (later.length > 0) return false
+        write(replaced)
+        return true
+      },
+      model: Provider.INHERIT,
+      variant: Provider.INHERIT,
+      params: MessageV2.inherit(input.opener),
+      // The rest of the turn reads the answer as its newest user message, so it
+      // carries the opener's own system text and tool switches.
+      system: input.opener.system,
+      tools: input.opener.tools,
+      join: true,
+      wake: false,
+    }).then(
+      (message) => ({ message }),
+      (error: unknown) => ({ error }),
+    )
+    // A throw after the write committed (a plugin hook) still wrote the note:
+    // it is read back so the part is published and the stop moved past it, and
+    // then the throw goes on to the caller.
+    const note =
+      "message" in sent
+        ? sent.message?.info
+        : read
+            .after(input.part.sessionID, input.opener.id)
+            .find(
+              (info) =>
+                info.role === "user" &&
+                parts(info.id).some((p) => p.type === "text" && p.question?.callID === record.callID),
+            )
+    if (note) Session.publishPart(replaced)
+    if (note && input.halted)
+      await Session.update(
+        input.part.sessionID,
+        (draft) => void (draft.time.stopped = Math.max(draft.time.stopped ?? 0, note.time.created)),
+        { touch: false },
+      )
+    if ("error" in sent) throw sent.error
+    return sent.message
   }
 
   // Write `input` and run its turn, resolving once the message is durable,
@@ -933,11 +1042,27 @@ export namespace SessionPrompt {
         sessionID: sessionID,
         model,
         abort,
+        // Only a person's answer, dismissal, Esc or Stop is written down. A
+        // server going away, or a turn ending on its own error, writes nothing:
+        // a note would start another turn at once, beside a step the next
+        // request leaves out, and the restart's resume says the question is gone.
+        question: async (part, outcome) => {
+          if ("withdrawn" in outcome && (abort.reason === DISPOSED || !abort.aborted)) return false
+          const written = await transcribe({
+            part,
+            opener: lastUser,
+            ...("answers" in outcome && { answers: outcome.answers }),
+            ...("dismissed" in outcome && { reason: "the user dismissed it" }),
+            ...("withdrawn" in outcome && { reason: "the turn was stopped", halted: true }),
+          })
+          return !!written
+        },
       })
       using _ = defer(() => InstructionPrompt.clear(processor.message.id))
 
-      // Check if user explicitly invoked an agent via @ in this turn
-      const lastUserMsg = MessageV2.turnOpener(msgs)
+      // Check if user explicitly invoked an agent via @ in this turn. A
+      // question's answer carries no agent part and is skipped.
+      const lastUserMsg = msgs.findLast((m) => m.info.role === "user" && !MessageV2.reply(m))
       const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
 
       const tools = await resolveTools({

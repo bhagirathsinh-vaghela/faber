@@ -33,6 +33,7 @@ import {
 import { DiffChanges } from "./diff-changes"
 import { Message, Part } from "./message-part"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "../util/busy-tint"
+import { reply, shown } from "../util/question"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
@@ -175,7 +176,7 @@ export function SessionTurn(
     const messages = allMessages() ?? emptyMessages
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      if (msg?.role === "user") return msg.id
+      if (msg?.role === "user" && !reply(data.store.part[msg.id])) return msg.id
     }
     return undefined
   })
@@ -210,12 +211,16 @@ export function SessionTurn(
       const index = messageIndex()
       if (index < 0) return emptyAssistant
 
+      // A question's answer is a user message inside this turn, and the steps
+      // after it are parented to it.
+      const turn = new Set([msg.id])
       const result: AssistantMessage[] = []
       for (let i = index + 1; i < messages.length; i++) {
         const item = messages[i]
         if (!item) continue
-        if (item.role === "user") break
-        if (item.role === "assistant" && item.parentID === msg.id) result.push(item as AssistantMessage)
+        if (item.role === "user" && !reply(data.store.part[item.id])) break
+        if (item.role === "user") turn.add(item.id)
+        if (item.role === "assistant" && turn.has(item.parentID)) result.push(item as AssistantMessage)
       }
       return result
     },
@@ -235,7 +240,7 @@ export function SessionTurn(
     for (let mi = msgs.length - 1; mi >= 0; mi--) {
       const msgParts = data.store.part[msgs[mi].id] ?? emptyParts
       for (let pi = msgParts.length - 1; pi >= 0; pi--) {
-        const part = msgParts[pi]
+        const part = msgParts[pi] && shown(msgParts[pi])
         if (part?.type === "text" || part?.type === "tool")
           return part.type === "text" ? { part: part as TextPart, message: msgs[mi] } : undefined
       }
@@ -249,7 +254,7 @@ export function SessionTurn(
       const msgParts = data.store.part[m.id]
       if (!msgParts) continue
       for (const p of msgParts) {
-        if (p?.type === "tool") return true
+        if (p && shown(p).type === "tool") return true
       }
     }
     return false
@@ -307,7 +312,8 @@ export function SessionTurn(
 
     for (const msg of assistantMessages()) {
       const parts = data.store.part[msg.id] ?? emptyParts
-      for (const part of parts) {
+      for (const raw of parts) {
+        const part = raw && shown(raw)
         if (part?.type !== "tool") continue
         const tool = part as ToolPart
         if (tool.tool !== "question") continue
@@ -349,7 +355,7 @@ export function SessionTurn(
       for (let pi = msgParts.length - 1; pi >= 0; pi--) {
         const part = msgParts[pi]
         if (!part) continue
-        if (!last) last = part
+        if (!last) last = shown(part)
 
         if (
           part.type === "tool" &&

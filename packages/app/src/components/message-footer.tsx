@@ -2,6 +2,7 @@ import { createMemo, For, Show, type JSX } from "solid-js"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
+import { opener } from "@opencode-ai/ui/util/question"
 import { useSync } from "@/context/sync"
 import { useLocal } from "@/context/local"
 import { UsageLine, statsFromMessage } from "@/components/usage-line"
@@ -60,9 +61,9 @@ export function MessageFooter(props: { message: AssistantMessage }) {
   const elapsed = createMemo(() => {
     const completed = props.message.time.completed
     if (!completed) return null
-    const user = sync.data.message[props.message.sessionID]?.find(
-      (m) => m.role === "user" && m.id === props.message.parentID,
-    )
+    // A step after a question's answer is timed from the turn's start, as the
+    // steps before it are.
+    const user = opener(sync.data.message[props.message.sessionID] ?? [], sync.data.part, props.message.parentID)
     if (!user) return null
     return duration(completed - user.time.created)
   })

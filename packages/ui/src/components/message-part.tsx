@@ -31,6 +31,7 @@ import { legacyInternal, typed } from "../util/internal"
 import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/envelope"
 import { jobAccent, jobLabel } from "../util/job-status"
 import { LaunchCard } from "../util/launch-card"
+import { shown } from "../util/question"
 import { useData } from "../context"
 import type { SpeakTarget } from "../context/data"
 import { useDiffComponent } from "../context/diff"
@@ -949,18 +950,27 @@ function HighlightedText(props: { text: string; references: FilePart[]; agents: 
   return <For each={segments()}>{(segment) => <span data-highlight={segment.type}>{segment.text}</span>}</For>
 }
 
+// Keyed on the part it draws. A question the server writes down turns its
+// stored tool part into text in place, and the card that read the tool part
+// must remount on the one drawn for it; any other part keeps its identity.
 export function Part(props: MessagePartProps) {
-  const component = createMemo(() => PART_MAPPING[props.part.type])
+  const part = createMemo(() => shown(props.part))
   return (
-    <Show when={component()}>
-      <Dynamic
-        component={component()}
-        part={props.part}
-        message={props.message}
-        hideDetails={props.hideDetails}
-        defaultOpen={props.defaultOpen}
-        footer={props.footer}
-      />
+    <Show when={part()} keyed>
+      {(drawn) => (
+        <Show when={PART_MAPPING[drawn.type]}>
+          {(component) => (
+            <Dynamic
+              component={component()}
+              part={drawn}
+              message={props.message}
+              hideDetails={props.hideDetails}
+              defaultOpen={props.defaultOpen}
+              footer={props.footer}
+            />
+          )}
+        </Show>
+      )}
     </Show>
   )
 }

@@ -112,11 +112,23 @@ export namespace SessionSummary {
     })
   }
 
+  // The turn `messageID` belongs to, opener first: the user message that opened
+  // it, every question's answer after it (MessageV2.reply), and the steps
+  // parented to any of them. The loop parents the steps after an answer to the
+  // answer, so a diff read off the opener alone would stop at the question.
+  export function turn(all: MessageV2.WithParts[], messageID: string) {
+    const users = all.filter((m) => m.info.role === "user")
+    const at = users.findIndex((m) => m.info.id === messageID)
+    if (at < 0) return []
+    const start = users.findLastIndex((m, i) => i <= at && !MessageV2.reply(m))
+    const end = users.findIndex((m, i) => i > start && !MessageV2.reply(m))
+    const ids = new Set(users.slice(Math.max(start, 0), end < 0 ? undefined : end).map((m) => m.info.id))
+    return all.filter((m) => ids.has(m.info.id) || (m.info.role === "assistant" && ids.has(m.info.parentID)))
+  }
+
   async function summarizeMessage(input: { messageID: string; messages: MessageV2.WithParts[] }) {
-    const messages = input.messages.filter(
-      (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
-    )
-    const userMsg = messages.find((m) => m.info.id === input.messageID)!.info as MessageV2.User
+    const messages = turn(input.messages, input.messageID)
+    const userMsg = messages[0]!.info as MessageV2.User
     const diffs = await computeDiff({ messages })
     userMsg.summary = {
       ...userMsg.summary,
@@ -129,11 +141,7 @@ export namespace SessionSummary {
   }
 
   async function messageDiff(input: { sessionID: string; messageID: string }) {
-    const all = await Session.messages({ sessionID: input.sessionID })
-    const messages = all.filter(
-      (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
-    )
-    return computeDiff({ messages })
+    return computeDiff({ messages: turn(await Session.messages({ sessionID: input.sessionID }), input.messageID) })
   }
 
   export const diff = fn(

@@ -135,6 +135,13 @@ export namespace Parts {
     return open().then((q) => q.removeSession)
   }
 
+  // A synchronous read of a message's parts, for use inside a caller's
+  // Db.transaction.
+  export async function reader() {
+    const q = await open()
+    return (messageID: string) => q.list.all(messageID).flatMap((row) => tryParse(row.json) ?? [])
+  }
+
   // A synchronous writer for use inside a caller's Db.transaction.
   export async function writer() {
     const q = await open()

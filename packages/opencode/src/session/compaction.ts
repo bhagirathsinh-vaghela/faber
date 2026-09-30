@@ -80,7 +80,8 @@ export namespace SessionCompaction {
 
     loop: for (let msgIndex = msgs.length - 1; msgIndex >= 0; msgIndex--) {
       const msg = msgs[msgIndex]
-      if (msg.info.role === "user") turns++
+      // A question's answer sits inside the turn that asked, so it counts no turn.
+      if (msg.info.role === "user" && !MessageV2.reply(msg)) turns++
       if (turns < 2) continue
       if (msg.info.role === "assistant" && msg.info.summary) break loop
       for (let partIndex = msg.parts.length - 1; partIndex >= 0; partIndex--) {

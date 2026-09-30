@@ -64,11 +64,7 @@ test("can send a prompt and receive a reply", async ({ page, sdk, gotoSession })
     // the typed prompt also contains the token, so an unscoped getByText is
     // satisfied by the user bubble even when the reply never renders.
     await expect(
-      page
-        .locator('[data-accent="assistant"]')
-        .getByText(token)
-        .filter({ visible: true })
-        .first(),
+      page.locator('[data-accent="assistant"]').getByText(token).filter({ visible: true }).first(),
     ).toBeVisible({ timeout: 90_000 })
   } finally {
     page.off("pageerror", onPageError)

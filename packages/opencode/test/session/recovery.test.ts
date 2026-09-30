@@ -813,6 +813,119 @@ describe("Recovery resume", () => {
     })
   }, 30_000)
 
+  // A cut turn whose last step was waiting on a question: the assistant
+  // message is unfinished and holds the question as a running tool part.
+  const questions = [
+    {
+      question: "Which one?",
+      header: "Pick",
+      options: [
+        { label: "A", description: "first" },
+        { label: "B", description: "second" },
+      ],
+    },
+  ]
+
+  async function asking(sessionID: string) {
+    const opener = await user(sessionID, "ask me")
+    const info = await assistant(sessionID, opener.id, "Let me ask.", undefined)
+    const part = await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: info.id,
+      sessionID,
+      type: "tool",
+      callID: "toolu_q",
+      tool: "question",
+      state: { status: "running", input: { questions }, time: { start: Date.now() }, metadata: { plain: true } },
+    })
+    await Session.mark(sessionID, (draft) => void (draft.turn = { at: Date.now() - 10, pid: DEAD }))
+    return part
+  }
+
+  test("a question a cut turn was waiting on is written down as unanswered before the resume", async () => {
+    await withProject(async () => {
+      const cut = await root()
+      const part = await asking(cut.id)
+      state.replies.push("Resumed.")
+
+      await settle()
+
+      expect(await texts(cut.id)).toEqual([
+        "ask me",
+        "Let me ask.",
+        MessageV2.asked(questions),
+        MessageV2.unanswered("the turn was cut off"),
+        Recovery.resumeText(0),
+        "Resumed.",
+      ])
+      const messages = await Session.messages({ sessionID: cut.id })
+      const replaced = messages.flatMap((m) => m.parts).find((p) => p.id === part.id)
+      expect(replaced).toMatchObject({
+        type: "text",
+        synthetic: true,
+        question: { callID: "toolu_q", questions, error: "the turn was cut off" },
+      })
+      const note = messages[2]
+      expect(note.info.role).toBe("user")
+      expect(note.info.role === "user" && note.info.synthetic).toBeFalsy()
+      expect(JSON.stringify(state.requests)).not.toContain("toolu_q")
+      expect(state.requests.length).toBe(1)
+    })
+  }, 30_000)
+
+  test("a stopped cut turn's question is written down, stamped past by the stop, and nothing resumes", async () => {
+    await withProject(async () => {
+      const cut = await root()
+      await asking(cut.id)
+      await Session.update(cut.id, (draft) => void (draft.time.stopped = Date.now()))
+
+      await settle({ idle: true })
+
+      expect(await texts(cut.id)).toEqual([
+        "ask me",
+        "Let me ask.",
+        MessageV2.asked(questions),
+        MessageV2.unanswered("the turn was cut off"),
+      ])
+      const note = (await Session.messages({ sessionID: cut.id })).at(-1)!
+      const session = await Session.get(cut.id)
+      expect(session.turn).toBeUndefined()
+      expect(session.time.stopped).toBeGreaterThanOrEqual(note.info.time.created)
+      expect((await Sessions.listUnanswered(Date.now())).map((s) => s.id)).not.toContain(cut.id)
+      expect(state.requests.length).toBe(0)
+    })
+  }, 30_000)
+
+  test("a cut question behind a later message is closed in place, and its note still reads before that message", async () => {
+    await withProject(async () => {
+      const cut = await root()
+      const part = await asking(cut.id)
+      await user(cut.id, "a job result arrived")
+      state.replies.push("Resumed.")
+
+      await settle()
+
+      const stored = (await Session.messages({ sessionID: cut.id })).flatMap((m) => m.parts).find((p) => p.id === part.id)
+      expect(stored).toMatchObject({
+        type: "tool",
+        state: { status: "error", error: "the turn was cut off", metadata: { plain: true } },
+      })
+      expect(await texts(cut.id)).toEqual([
+        "ask me",
+        "Let me ask.",
+        "a job result arrived",
+        Recovery.resumeText(0),
+        "Resumed.",
+      ])
+      const sent = JSON.stringify(state.requests[0])
+      const note = sent.indexOf(JSON.stringify(MessageV2.unanswered("the turn was cut off")).slice(1, -1))
+      expect(sent.indexOf(JSON.stringify(MessageV2.asked(questions)).slice(1, -1))).toBeGreaterThan(-1)
+      expect(note).toBeGreaterThan(-1)
+      expect(note).toBeLessThan(sent.indexOf("a job result arrived"))
+      expect(sent).not.toContain("toolu_q")
+    })
+  }, 30_000)
+
   // The pass opens the session's instance between reading the marker and
   // resuming, so a directory whose bootstrap waits on a plugin holds the pass
   // in that window while the test writes a fact the pass has not seen.

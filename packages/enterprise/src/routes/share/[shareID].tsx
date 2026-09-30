@@ -1,5 +1,6 @@
 import { FileDiff, Message, Model, Part, Session, SessionStatus, UserMessage } from "@opencode-ai/sdk/v2"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
+import { reply } from "@opencode-ai/ui/util/question"
 import { SessionReview } from "@opencode-ai/ui/session-review"
 import { DataProvider } from "@opencode-ai/ui/context"
 import { DiffComponentProvider } from "@opencode-ai/ui/context/diff"
@@ -240,7 +241,11 @@ export default function () {
                         })
                         const messages = createMemo(() =>
                           data().sessionID
-                            ? (data().message[data().sessionID]?.filter((m) => m.role === "user") ?? []).sort(
+                            ? (
+                                data().message[data().sessionID]?.filter(
+                                  (m): m is UserMessage => m.role === "user" && !reply(data().part[m.id]),
+                                ) ?? []
+                              ).sort(
                                 (a, b) => a.time.created - b.time.created,
                               )
                             : [],

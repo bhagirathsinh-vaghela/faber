@@ -12,6 +12,7 @@ import { createSimpleContext } from "./helper"
 import { createMemo } from "solid-js"
 import { type FileDiffPreload } from "../pierre"
 import type { BusyFacts } from "../util/busy-tint"
+import { reply } from "../util/question"
 
 type Data = {
   session: Session[]
@@ -100,7 +101,9 @@ export const {
           // step, its text, and the tool it called read as one block, not several.
           // Thinking alone does not earn a number: a step with nothing else has
           // no block to belong to.
+          // A question's answer is drawn inside the card that asked, so it takes none.
           const parts = props.data.part[message.id] ?? []
+          if (message.role === "user" && reply(parts)) continue
           const numbered = message.role === "user" || parts.some((p) => p.type === "text" || p.type === "tool")
           if (!numbered) continue
           const num = ++n

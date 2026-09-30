@@ -45,6 +45,7 @@ import { Mark } from "@opencode-ai/ui/logo"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { agentColor } from "@/utils/agent"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
+import { reply } from "@opencode-ai/ui/util/question"
 
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
@@ -577,8 +578,9 @@ export default function Page() {
     return sync.session.history.loading(id)
   })
   const emptyUserMessages: UserMessage[] = []
+  // One per turn: a question's answer is a user message inside the turn that asked.
   const userMessages = createMemo(
-    () => messages().filter((m) => m.role === "user") as UserMessage[],
+    () => messages().filter((m) => m.role === "user" && !reply(sync.data.part[m.id])) as UserMessage[],
     emptyUserMessages,
     { equals: same },
   )

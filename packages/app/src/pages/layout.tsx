@@ -37,7 +37,7 @@ import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { getFilename } from "@opencode-ai/util/path"
-import { Session, type Message, type TextPart } from "@opencode-ai/sdk/v2/client"
+import { Session, type Message, type TextPart, type UserMessage } from "@opencode-ai/sdk/v2/client"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { createStore, reconcile } from "solid-js/store"
@@ -62,6 +62,7 @@ import { playSound, soundSrc } from "@/utils/sound"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
+import { reply } from "@opencode-ai/ui/util/question"
 import { useShell } from "@/utils/mobile"
 import { SidebarModeProvider, useSidebarMode } from "@/context/sidebar-mode"
 
@@ -1713,7 +1714,9 @@ export default function Layout(props: ParentProps) {
     })
 
     const hoverMessages = createMemo(() =>
-      sessionStore.message[props.session.id]?.filter((message) => message.role === "user"),
+      sessionStore.message[props.session.id]?.filter(
+        (message): message is UserMessage => message.role === "user" && !reply(sessionStore.part[message.id]),
+      ),
     )
     const hoverReady = createMemo(() => sessionStore.message[props.session.id] !== undefined)
     const hoverAllowed = createMemo(() => !sidebarMode.overlay && sidebarExpanded())

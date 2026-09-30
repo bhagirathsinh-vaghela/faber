@@ -140,6 +140,9 @@ export namespace Messages {
     }
     return {
       newest: (sessionID: string) => parse(q.newest.get(sessionID)),
+      // `messageID` and every message after it, oldest first.
+      after: (sessionID: string, messageID: string) =>
+        q.after.all(sessionID, messageID).flatMap((row) => parse(row) ?? []),
       pending,
       waiting: (sessionID: string, since = 0) => !!pending(sessionID, since),
       // A last turn a stop or an Esc cut: its reply was aborted, or a message

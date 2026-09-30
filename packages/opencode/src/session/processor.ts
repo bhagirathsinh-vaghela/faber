@@ -28,13 +28,32 @@ export namespace SessionProcessor {
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
 
+  // How a stamped question ended, for the loop to write down
+  // (SessionPrompt.transcribe): answered, dismissed by the user, or withdrawn
+  // because the turn stopped or the server went away.
+  export type Asked = { answers: string[][] } | { dismissed: true } | { withdrawn: true }
+
   export function create(input: {
     assistantMessage: MessageV2.Assistant
     sessionID: string
     model: Provider.Model
     abort: AbortSignal
+    // Resolves whether the question was written down.
+    question?: (part: MessageV2.ToolPart, outcome: Asked) => Promise<boolean>
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
+    // Hands a stamped question to the loop to write down. One it did not write
+    // is left to the usual path, which toModelMessages still draws as the
+    // question text, so the wire keeps its shape either way. A throw after the
+    // write committed (a plugin hook, a publish) is read back from storage and
+    // counts as written, so that path never turns it back into a tool part.
+    const noted = (part: MessageV2.ToolPart, outcome: Asked) =>
+      input.question && MessageV2.spoken(part)
+        ? input.question(part, outcome).catch(async (error) => {
+            log.error("could not write the question down", { partID: part.id, error })
+            return (await MessageV2.parts(part.messageID)).some((p) => p.id === part.id && p.type === "text")
+          })
+        : Promise.resolve(false)
     // A headless run is deleted when it ends, so nobody reverts or reviews its
     // diffs: skip the git snapshots and the summary. Read once per processor.
     const ephemeral = Promise.resolve()
@@ -269,6 +288,13 @@ export namespace SessionProcessor {
                       state: {
                         status: "running",
                         input: value.input,
+                        // A question is sent as the user's own words from its
+                        // first request (MessageV2.toModelMessages). Stamped here
+                        // because the tool starts before this write lands, so a
+                        // stamp of its own would be lost or overwritten.
+                        metadata: MessageV2.stampable(input.model, value.toolName, value.input)
+                          ? { plain: true }
+                          : undefined,
                         time: {
                           start: Date.now(),
                         },
@@ -308,6 +334,11 @@ export namespace SessionProcessor {
                 }
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
+                  const answers = value.output.metadata?.answers as string[][] | undefined
+                  if (match && Array.isArray(answers) && (await noted(match, { answers }))) {
+                    delete toolcalls[value.toolCallId]
+                    break
+                  }
                   if (match && match.state.status === "running") {
                     if (value.output.attachments) await Image.clamp(value.output.attachments)
                     await Session.updatePart({
@@ -333,6 +364,18 @@ export namespace SessionProcessor {
 
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
+                  // A dismissal carries on: the model answers the note that the
+                  // question went unanswered. A withdrawal ends the turn.
+                  const withdrawn = value.error instanceof Question.WithdrawnError
+                  if (
+                    match &&
+                    value.error instanceof Question.RejectedError &&
+                    (await noted(match, withdrawn ? { withdrawn: true } : { dismissed: true }))
+                  ) {
+                    if (withdrawn) blocked = shouldBreak
+                    delete toolcalls[value.toolCallId]
+                    break
+                  }
                   if (match && match.state.status === "running") {
                     await Session.updatePart({
                       ...match,
@@ -340,6 +383,10 @@ export namespace SessionProcessor {
                         status: "error",
                         input: value.input ?? match.state.input,
                         error: (value.error as any).toString(),
+                        // Only a question's own outcome keeps the stamp. Any other
+                        // error (bad input, a refused permission) asked nothing, so
+                        // it goes back to the model as a tool result.
+                        metadata: value.error instanceof Question.RejectedError ? match.state.metadata : undefined,
                         time: {
                           start: match.state.time.start,
                           end: Date.now(),
@@ -577,7 +624,11 @@ export namespace SessionProcessor {
           }
           const postTimer = log.time("llm.post-stream")
           if (snapshot) {
-            using _tp = log.time("snapshot.patch", { phase: "post-stream" })
+            // Not `using`: after an abort, disposing a `using` block here threw
+            // the step's AbortError again (Bun 1.3.11; the trigger did not
+            // reproduce in isolation), which skipped the cleanup below and left
+            // every running part "running".
+            const patchTimer = log.time("snapshot.patch", { phase: "post-stream" })
             const patch = await Snapshot.patch(snapshot)
             if (patch.files.length) {
               await Session.updatePart({
@@ -589,10 +640,15 @@ export namespace SessionProcessor {
                 files: patch.files,
               })
             }
+            patchTimer.stop()
             snapshot = undefined
           }
           const p = await MessageV2.parts(input.assistantMessage.id)
           for (const part of p) {
+            // A question still waiting when the turn stops or the server goes
+            // away is written down as unanswered, after its text.
+            if (part.type === "tool" && part.state.status === "running" && (await noted(part, { withdrawn: true })))
+              continue
             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
               await Session.updatePart({
                 ...part,

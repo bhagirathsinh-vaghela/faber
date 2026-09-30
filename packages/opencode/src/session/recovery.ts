@@ -730,6 +730,39 @@ export namespace Recovery {
     return Instance.provide({ directory, init: InstanceBootstrap, fn })
   }
 
+  // A question the cut turn was waiting on died with its process: write it
+  // down as unanswered before anything resumes, so storage matches what the
+  // next request sends. A turn runs one step at a time and waits in it for the
+  // answer, so only its newest step can hold one; messages after it (a result
+  // that joined, a steer) are passed over. transcribe writes no note after such
+  // a message, and the question is then closed as a tool error in place, which
+  // the next request still draws as its question and note ahead of it.
+  async function unasked(sessionID: string, stopped: boolean) {
+    const reason = "the turn was cut off"
+    for (const messageID of (await Messages.listSession(sessionID)).toReversed()) {
+      const step = await MessageV2.get({ sessionID, messageID }).catch(() => undefined)
+      if (step?.info.role !== "assistant") continue
+      const opener = await MessageV2.get({ sessionID, messageID: step.info.parentID }).catch(() => undefined)
+      const waiting = step.parts.filter(
+        (p): p is MessageV2.ToolPart => p.type === "tool" && p.state.status === "running" && MessageV2.spoken(p),
+      )
+      for (const part of waiting) {
+        if (opener?.info.role === "user")
+          await SessionPrompt.transcribe({ part, opener: opener.info, reason, halted: stopped }).catch((error) =>
+            log.error("could not write down a cut question", { sessionID, partID: part.id, error }),
+          )
+        // Read back, since a throw after the write committed still wrote it.
+        const now = (await MessageV2.parts(step.info.id)).find((p) => p.id === part.id)
+        if (now?.type !== "tool" || now.state.status !== "running") continue
+        await Session.updatePart({
+          ...now,
+          state: { ...now.state, status: "error", error: reason, time: { start: now.state.time.start, end: Date.now() } },
+        })
+      }
+      return
+    }
+  }
+
   async function resume(session: Session.Info) {
     if (!(await cut(session))) return
     const turn = session.turn!
@@ -757,6 +790,9 @@ export namespace Recovery {
     await Session.reload(session.id).catch((error) =>
       log.error("could not reload a claimed cut turn", { sessionID: session.id, error }),
     )
+    // A subagent the cap gives up on was just stamped stopped; its note is
+    // stamped past too, or the sweep would wake it at the note.
+    await unasked(session.id, stopped || (quit && !!session.parentID))
     if (quit) {
       log.info("leaving a cut turn", { sessionID: session.id, stopped, resumes })
       // Reported only once nothing else will: a turn running here (a steer)

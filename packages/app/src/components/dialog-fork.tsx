@@ -6,6 +6,7 @@ import { usePrompt } from "@/context/prompt"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
+import { reply } from "@opencode-ai/ui/util/question"
 import { extractPromptFromParts } from "@/utils/prompt"
 import type { TextPart as SDKTextPart } from "@opencode-ai/sdk/v2/client"
 import { base64Encode } from "@opencode-ai/util/encode"
@@ -41,6 +42,7 @@ export const DialogFork: Component = () => {
       if (message.role !== "user") continue
 
       const parts = sync.data.part[message.id] ?? []
+      if (reply(parts)) continue
       const textPart = parts.find((x): x is SDKTextPart => x.type === "text" && !x.synthetic && !x.ignored)
       if (!textPart) continue
 

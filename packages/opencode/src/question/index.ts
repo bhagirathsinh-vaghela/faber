@@ -32,6 +32,13 @@ export namespace Question {
     })
   export type Info = z.infer<typeof Info>
 
+  // The question tool's input, and what makes a call one the tool will ask.
+  export const Parameters = z
+    .object({
+      questions: z.array(Info.omit({ custom: true })).describe("Questions to ask"),
+    })
+    .strict()
+
   export const Request = z
     .object({
       id: Identifier.schema("question"),
@@ -100,7 +107,7 @@ export namespace Question {
       for (const [id, item] of Object.entries(s.pending)) {
         delete s.pending[id]
         void SessionRecent.setQuestion(item.info.sessionID, false)
-        item.reject(new RejectedError())
+        item.reject(new WithdrawnError())
       }
     },
   )
@@ -186,7 +193,7 @@ export namespace Question {
       if (item.info.sessionID !== sessionID) continue
       delete s.pending[id]
       Bus.publish(Event.Rejected, { sessionID, requestID: item.info.id })
-      item.reject(new RejectedError())
+      item.reject(new WithdrawnError())
     }
     await settle(sessionID)
   }
@@ -205,6 +212,9 @@ export namespace Question {
       super("The user dismissed this question")
     }
   }
+
+  // Withdrawn by the turn ending or the server shutting down, not by the user.
+  export class WithdrawnError extends RejectedError {}
 
   export async function list() {
     return state().then((x) => Object.values(x.pending).map((x) => x.info))

@@ -64,6 +64,16 @@ describe("tool.question", () => {
     expect(result.output).toContain(`"What is your favorite animal?"="Dog"`)
   })
 
+  test("an answered question keeps the plain stamp on its result", async () => {
+    const tool = await QuestionTool.init()
+    askSpy.mockResolvedValueOnce([["Red"]])
+    const asked = await tool.execute(
+      { questions: [{ question: "Colour?", header: "Colour", options: [{ label: "Red", description: "" }] }] },
+      ctx,
+    )
+    expect(asked.metadata).toMatchObject({ answers: [["Red"]], plain: true })
+  })
+
   // intentionally removed the zod validation due to tool call errors, hoping prompting is gonna be good enough
   //   test("should throw an Error for header exceeding 30 characters", async () => {
   //     const tool = await QuestionTool.init()

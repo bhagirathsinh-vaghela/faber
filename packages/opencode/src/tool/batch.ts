@@ -2,7 +2,9 @@ import z from "zod"
 import { Tool } from "./tool"
 import DESCRIPTION from "./batch.txt"
 
-const DISALLOWED = new Set(["batch"])
+// A question waits on the user and is written down when answered
+// (SessionPrompt.transcribe); inside a batch the processor never sees it.
+const DISALLOWED = new Set(["batch", "question"])
 const FILTERED_FROM_SUGGESTIONS = new Set(["invalid", "patch", ...DISALLOWED])
 
 export const BatchTool = Tool.define("batch", async () => {
