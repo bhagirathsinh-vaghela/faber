@@ -124,7 +124,8 @@ const asked = {
     },
   ],
 }
-const spoken = "[asked with the question tool]\nDeploy where?\nOptions: staging / production"
+const spoken =
+  "[Record of a question tool call, stored as text. To ask a new question, call the question tool.]\nAsked: Deploy where?\nOffered: staging, production"
 
 function say(sessionID: string, words: string) {
   return SessionPrompt.prompt({
@@ -299,7 +300,7 @@ describe("a question is stored and sent as the user's own words once it is answe
       await say(session.id, "deploy it")
       answer.off()
       expect(tail(state.bodies[1])).toEqual([
-        { role: "assistant", blocks: [{ type: "text", text: `${spoken}\n\nNotify?\nOptions: yes` }] },
+        { role: "assistant", blocks: [{ type: "text", text: `${spoken}\n\nAsked: Notify?\nOffered: yes` }] },
         { role: "user", blocks: [{ type: "text", text: "Deploy where?: staging\nNotify?: yes" }] },
       ])
     })

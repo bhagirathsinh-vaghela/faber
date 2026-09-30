@@ -1120,7 +1120,8 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
       },
     ],
   }
-  const text = "[asked with the question tool]\nDeploy where?\nOptions: staging / production"
+  const text =
+    "[Record of a question tool call, stored as text. To ask a new question, call the question tool.]\nAsked: Deploy where?\nOffered: staging, production"
 
   function history(state: MessageV2.ToolPart["state"]): MessageV2.WithParts[] {
     return [
@@ -1221,7 +1222,7 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
         role: "assistant",
         content: [
           { type: "text", text: "One thing first." },
-          { type: "text", text: `${text}\n\nNotify?\nOptions: yes` },
+          { type: "text", text: `${text}\n\nAsked: Notify?\nOffered: yes` },
         ],
       },
       { role: "user", content: [{ type: "text", text: "Deploy where?: staging\nNotify?: Unanswered" }] },

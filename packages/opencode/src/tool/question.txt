@@ -4,6 +4,10 @@ Use this tool when you need to ask the user questions during execution. This all
 3. Get decisions on implementation choices as you work
 4. Offer choices to the user about what direction to take.
 
+This tool is the only way to ask the user a question with choices. Only a call renders a picker the user can click; a question written in your reply text shows them nothing to select.
+
+Once a question is answered, the conversation keeps it as a text record starting "[Record of a question tool call, stored as text", followed by the user's answer as a message. That record is how a past call is stored, not how you ask. Always ask a new question by calling this tool, however many past questions appear as text.
+
 Usage notes:
 - When `custom` is enabled (default), a "Type your own answer" option is added automatically; don't include "Other" or catch-all options
 - Answers are returned as arrays of labels; set `multiple: true` to allow selecting more than one
