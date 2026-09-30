@@ -72,8 +72,19 @@ export namespace MessageV2 {
     // pending record may not carry it.
     sessionID: z.string().optional(),
     duration: z.number(),
+    // Whether the child could edit files, from its own tool access rather than
+    // any launch's toolset (a continue never changes a child's tools). A skill
+    // run counts such a result as edits, never as a review. Absent on results
+    // written before the field existed.
+    edits: z.boolean().optional(),
+    // The parent's content fingerprint when the child was last asked
+    // (Coverage.fingerprint): a read-only result reviews exactly that content.
+    // Absent when the parent had no active skill at the time.
+    tree: z.string().optional(),
   })
   export type BackgroundSubagentResult = z.infer<typeof BackgroundSubagentResult>
+
+  export const EDIT_TOOLS = new Set(["edit", "write", "multiedit", "apply_patch"])
 
   // A shell job's result, kept apart from a subagent's. They share a shape and
   // nothing else: a subagent has an agent and a session it reasoned in, a job

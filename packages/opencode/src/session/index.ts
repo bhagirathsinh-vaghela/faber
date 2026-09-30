@@ -297,11 +297,16 @@ export namespace Session {
       // Names of loaded skills that declare a `reminder:` block and are still
       // considered active. Written by SkillTool.execute on load; cleared by
       // insertReminders once the model's SKILL-DONE-style exit line checks out
-      // against the ledger. NOT reset on compaction: filterCompacted drops the
+      // against Coverage.state. NOT reset on compaction: filterCompacted drops the
       // assistant message carrying the skill's tool part, so a history scan
       // alone goes blind across a compaction boundary, and this flag is what
       // lets the reminder survive it.
       activeSkills: z.string().array().optional(),
+      // Content fingerprints (Coverage.fingerprint): `asked` is the parent's
+      // when this child was last prompted, copied onto its result; `loaded` is
+      // this session's when a reminder skill was last loaded.
+      asked: z.string().optional(),
+      loaded: z.string().optional(),
       // A headless agent run: no parent, no human, removed when the run ends.
       // Skips everything a subagent skips (pings, title, reminders) plus the
       // diff summary, snapshots, and the recent list.

@@ -17,6 +17,7 @@ import { SessionStatus } from "@/session/status"
 import { SessionBusy } from "@/session/busy"
 import { Sessions } from "@/storage/sessions"
 import { Recovery } from "@/session/recovery"
+import { Coverage } from "@/session/coverage"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
 import { Agent } from "../../agent/agent"
@@ -181,6 +182,28 @@ export const SessionRoutes = lazy(() =>
       }),
       validator("param", z.object({ sessionID: z.string() })),
       async (c) => c.json(await Recovery.debts(c.req.valid("param").sessionID)),
+    )
+    .get(
+      "/:sessionID/loop",
+      describeRoute({
+        summary: "Get a session's review coverage",
+        description:
+          "What a skill run's rules read, by content rather than transcript order: the session's active reminder skills; whether a completed read-only subagent was asked at exactly the current content of every file an edit tool named in the session or in a child that can edit; whether that content changed since the skill loaded; how many write-capable subagents still owe a result; and whether this session can edit.",
+        operationId: "session.loop",
+        responses: {
+          200: {
+            description: "Review coverage",
+            content: {
+              "application/json": {
+                schema: resolver(Coverage.State),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string() })),
+      async (c) => c.json(await Coverage.state(c.req.valid("param").sessionID)),
     )
     .get(
       "/:sessionID",

@@ -11,6 +11,7 @@ import { Storage } from "@/storage/storage"
 import { Scheduler } from "@/scheduler"
 import { Session } from "."
 import { MessageV2 } from "./message-v2"
+import { Coverage } from "./coverage"
 import { Provider } from "../provider/provider"
 import { SessionBusy } from "./busy"
 import { SessionPrompt } from "./prompt"
@@ -326,6 +327,8 @@ export namespace Recovery {
         agent: child.current?.agent,
         sessionID: child.id,
         duration,
+        edits: Coverage.canEdit(child.allowedTools),
+        tree: child.asked,
       },
     }
   }

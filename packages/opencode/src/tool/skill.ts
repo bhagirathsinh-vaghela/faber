@@ -9,6 +9,7 @@ import { iife } from "@/util/iife"
 import { Instance } from "../project/instance"
 import { Global } from "@/global"
 import { Session } from "@/session"
+import { Coverage } from "@/session/coverage"
 
 // This text is part of the skill tool's description, so it lands in tools[] —
 // the front of Anthropic's cumulative prefix hash. A location that renders
@@ -114,12 +115,17 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
         metadata: {},
       })
 
-      if (skill.reminder)
+      if (skill.reminder) {
+        const loaded = await Coverage.fingerprint(execCtx.sessionID)
         await Session.update(
           execCtx.sessionID,
-          (draft) => void (draft.activeSkills = [...new Set([...(draft.activeSkills ?? []), skill.name])]),
+          (draft) => {
+            draft.activeSkills = [...new Set([...(draft.activeSkills ?? []), skill.name])]
+            draft.loaded = loaded
+          },
           { touch: false },
         )
+      }
 
       const dir = path.dirname(skill.location)
       const base = pathToFileURL(dir).href

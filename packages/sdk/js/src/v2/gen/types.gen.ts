@@ -148,6 +148,8 @@ export type Session = {
   contextDate?: string
   contextBranch?: string
   activeSkills?: Array<string>
+  asked?: string
+  loaded?: string
   ephemeral?: boolean
   bare?: boolean
 }
@@ -396,6 +398,8 @@ export type TextPart = {
     agent?: string
     sessionID?: string
     duration: number
+    edits?: boolean
+    tree?: string
   }
   backgroundJobResult?: {
     jobId: string
@@ -1090,11 +1094,11 @@ export type EventModelPreferenceUpdated = {
 
 export type VoicePreference = {
   name: string | null
+  version?: number
 }
 
 export type EventVoicePreferenceUpdated = {
   type: "voice.preference.updated"
-  version?: number
   properties: VoicePreference
 }
 
@@ -1604,10 +1608,6 @@ export type Config = {
      * Read-aloud voice name, e.g. af_bella or af_sarah
      */
     voice?: string
-  }
-  watcher?: {
-    ignore?: Array<string>
-  }
     /**
      * The model that rewrites assistant text into speakable sentences before read-aloud
      */
@@ -1621,6 +1621,10 @@ export type Config = {
        */
       variant?: string
     }
+  }
+  watcher?: {
+    ignore?: Array<string>
+  }
   plugin?: Array<string>
   snapshot?: boolean
   /**
@@ -2081,6 +2085,14 @@ export type Debt = {
   elapsed: number
 }
 
+export type LoopCoverage = {
+  skills: Array<string>
+  reviewed: boolean
+  changed: boolean
+  writers: number
+  edits: boolean
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -2095,6 +2107,8 @@ export type TextPartInput = {
     agent?: string
     sessionID?: string
     duration: number
+    edits?: boolean
+    tree?: string
   }
   backgroundJobResult?: {
     jobId: string
@@ -3383,6 +3397,39 @@ export type SessionDebtsResponses = {
 }
 
 export type SessionDebtsResponse = SessionDebtsResponses[keyof SessionDebtsResponses]
+
+export type SessionLoopData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/loop"
+}
+
+export type SessionLoopErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionLoopError = SessionLoopErrors[keyof SessionLoopErrors]
+
+export type SessionLoopResponses = {
+  /**
+   * Review coverage
+   */
+  200: LoopCoverage
+}
+
+export type SessionLoopResponse = SessionLoopResponses[keyof SessionLoopResponses]
 
 export type SessionDeleteData = {
   body?: never
@@ -4732,7 +4779,7 @@ export type PreferenceVoiceSetResponses = {
   /**
    * The stored voice preference, with its new version
    */
-  200: boolean
+  200: VoicePreference
 }
 
 export type PreferenceVoiceSetResponse = PreferenceVoiceSetResponses[keyof PreferenceVoiceSetResponses]
@@ -4777,7 +4824,7 @@ export type PreferenceAppearanceSetResponses = {
   /**
    * Appearance preferences updated
    */
-  200: VoicePreference
+  200: boolean
 }
 
 export type PreferenceAppearanceSetResponse = PreferenceAppearanceSetResponses[keyof PreferenceAppearanceSetResponses]

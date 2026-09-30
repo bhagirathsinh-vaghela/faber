@@ -7,6 +7,7 @@ import { MessageV2 } from "../session/message-v2"
 import { Provider } from "../provider/provider"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
+import { Coverage } from "../session/coverage"
 import { iife } from "@/util/iife"
 import { PermissionNext } from "@/permission/next"
 import { Config } from "@/config/config"
@@ -142,6 +143,13 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
           throw error
         },
       )
+      // Taken before the prompt goes out and recorded after it: an edit landing
+      // in between leaves the recorded content older than what the child reads,
+      // and a result paid in between carries the previous value, so the race
+      // under-credits a review (Coverage). The skills are re-read here, since
+      // a load in the same batch lands while the permission above waits.
+      const active = (await Session.get(ctx.sessionID)).activeSkills?.length
+      const asked = active ? await Coverage.fingerprint(ctx.sessionID) : undefined
 
       // Checked again after the awaits above, before anything is written into
       // the child: a child this call made goes with nothing owed.
@@ -178,6 +186,9 @@ export const AgentTool = Tool.define("agent", async (ctx) => {
         await Session.remove(session.id)
         throw stopped()
       }
+      // Cleared too, so a child continued after the skill ended carries no
+      // stale fingerprint onto its result.
+      if (asked !== session.asked) await Session.update(session.id, (draft) => void (draft.asked = asked), { touch: false })
       const mode = sent.message.debt === "joined" ? "steered" : found ? "continued" : "launched"
 
       return {

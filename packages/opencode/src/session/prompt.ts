@@ -37,6 +37,7 @@ import { McpCatalog } from "../mcp/catalog"
 import { AgentCatalog } from "../agent/catalog"
 import { Skill } from "../skill"
 import { current as currentSkillBody } from "../tool/skill"
+import { Coverage } from "./coverage"
 import { Config } from "../config/config"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
@@ -1969,57 +1970,39 @@ export namespace SessionPrompt {
   }
 
   const EXIT_LINE = /^SKILL-DONE:/m
-  const EDIT_TOOLS = new Set(["edit", "write", "multiedit"])
 
-  // Computed state for a skill's per-turn reminder: everything since the
-  // ANCHOR, the newest assistant message carrying a completed `skill` tool
-  // part for `name`. Absent (dropped by compaction's filterCompacted, which
-  // keeps only the compaction request forward) -> anchor at the start of the
-  // list, scope reads "since compaction" rather than "since load".
+  // Turns and commits for a skill's per-turn reminder: every part after the
+  // ANCHOR, the newest completed `skill` tool part for `name` (later parts of
+  // its own message included). Absent (dropped by compaction's filterCompacted,
+  // which keeps only the compaction request forward) -> the whole list, scope
+  // "since compaction". Whether the content is reviewed is Coverage's to say.
   export function skillLedger(messages: MessageV2.WithParts[], name: string) {
-    const anchor = messages.findIndex(
-      (msg) =>
-        msg.info.role === "assistant" &&
-        msg.parts.some(
-          (p) =>
-            p.type === "tool" && p.tool === "skill" && p.state.status === "completed" && p.state.input?.name === name,
-        ),
-    )
-    const since = anchor === -1 ? messages : messages.slice(anchor + 1)
-    let turns = 0
-    let edits = 0
-    let reviews = 0
-    let commits = 0
-    let editsSinceReview = 0
-    for (const msg of since) {
-      if (msg.info.role === "user") {
-        turns++
-        if (msg.parts.some((p) => p.type === "text" && p.backgroundSubagentResult?.status === "completed")) {
-          reviews++
-          editsSinceReview = 0
-        }
-        continue
-      }
-      for (const part of msg.parts) {
-        if (part.type !== "tool" || part.state.status !== "completed") continue
-        if (EDIT_TOOLS.has(part.tool)) {
-          edits++
-          editsSinceReview++
-        } else if (part.tool === "bash" && /\bgit commit\b/.test(String(part.state.input?.command ?? ""))) {
-          commits++
-        }
-      }
-    }
-    // The opener itself is excluded: it is the turn this reminder rides on,
-    // not a completed turn to count.
-    if (since.length > 0 && since.at(-1)?.info.role === "user") turns--
+    const loaded = (p: MessageV2.Part) =>
+      p.type === "tool" && p.tool === "skill" && p.state.status === "completed" && p.state.input?.name === name
+    const anchor = messages.findLastIndex((msg) => msg.info.role === "assistant" && msg.parts.some(loaded))
+    const since =
+      anchor === -1
+        ? messages
+        : [
+            { ...messages[anchor], parts: messages[anchor].parts.slice(messages[anchor].parts.findLastIndex(loaded) + 1) },
+            ...messages.slice(anchor + 1),
+          ]
+    // The opener is excluded: it is the turn this reminder rides on, not a
+    // completed turn to count.
+    const opener = since.at(-1)?.info.role === "user" ? 1 : 0
+    const commits = since
+      .flatMap((msg) => (msg.info.role === "assistant" ? msg.parts : []))
+      .filter(
+        (part) =>
+          part.type === "tool" &&
+          part.tool === "bash" &&
+          part.state.status === "completed" &&
+          /\bgit commit\b/.test(String(part.state.input?.command ?? "")),
+      ).length
     return {
       scope: anchor === -1 ? "since compaction" : "since load",
-      turns,
-      edits,
-      reviews,
+      turns: since.filter((msg) => msg.info.role === "user").length - opener,
       commits,
-      editsSinceReview,
     }
   }
 
@@ -2034,6 +2017,31 @@ export namespace SessionPrompt {
       .map((p) => p.text)
       .join("\n")
     return EXIT_LINE.test(text)
+  }
+
+  // Judges a SKILL-DONE line by content, counting only results written up to
+  // the line's own message, so one delivered after it cannot vouch for it. The
+  // advice reads `current`, the state now: a review that landed after the line
+  // needs only a restatement, and no review can vouch while a writer runs.
+  // `reviewed` is the only field `until` scopes, so a line judged reviewed was
+  // judged at the current state. Undefined when no exit was requested.
+  export async function skillVerdict(messages: MessageV2.WithParts[], sessionID: string) {
+    const exit = messages.findLast((msg) => msg.info.role === "assistant")
+    if (!exit || !skillExitRequested(messages)) return undefined
+    const judged = await Coverage.state(sessionID, exit.info.id)
+    if (judged.reviewed && judged.writers === 0)
+      return { accepted: true, reason: "the current content reviewed", advice: "", current: judged }
+    const current = judged.reviewed ? judged : await Coverage.state(sessionID)
+    const reason = judged.reviewed
+      ? `${judged.writers} write-capable subagent(s) still running`
+      : "no completed read-only review of the current content"
+    const advice =
+      current.writers > 0
+        ? `Wait for the ${current.writers} write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.`
+        : current.reviewed
+          ? "A review of the current content arrived after the line: restate SKILL-DONE."
+          : "Run a fresh review round, then restate SKILL-DONE."
+    return { accepted: false, reason, advice, current }
   }
 
   // The `## Checklist` section of a skill body, by heading, for the one-time
@@ -2255,17 +2263,16 @@ export namespace SessionPrompt {
       if (hasReminder(opener, marker)) continue
 
       const led = skillLedger(input.messages, name)
+      const verdict = await skillVerdict(input.messages, input.session.id)
 
-      if (skillExitRequested(input.messages)) {
-        if (led.editsSinceReview === 0) {
-          await Session.update(
-            input.session.id,
-            (draft) => void (draft.activeSkills = (draft.activeSkills ?? []).filter((n) => n !== name)),
-            { touch: false },
-          )
-          input.session.activeSkills = (input.session.activeSkills ?? []).filter((n) => n !== name)
-          continue
-        }
+      if (verdict?.accepted) {
+        await Session.update(
+          input.session.id,
+          (draft) => void (draft.activeSkills = (draft.activeSkills ?? []).filter((n) => n !== name)),
+          { touch: false },
+        )
+        input.session.activeSkills = (input.session.activeSkills ?? []).filter((n) => n !== name)
+        continue
       }
 
       const skill = await Skill.get(name)
@@ -2276,12 +2283,12 @@ export namespace SessionPrompt {
         if (section) await persistReminder(input.messages, section, `<!-- skill-checklist:${name} -->`)
       }
 
-      const refusal = skillExitRequested(input.messages)
-        ? `\n\nExit refused: SKILL-DONE was written with ${led.editsSinceReview} edit(s) after the last completed review. Run a fresh review round, then restate SKILL-DONE.`
-        : ""
+      const refusal = verdict ? `\n\nExit refused: SKILL-DONE was written with ${verdict.reason}. ${verdict.advice}` : ""
+      const coverage = verdict?.current ?? (await Coverage.state(input.session.id))
       const text =
-        `${name} active. ${led.scope}: ${led.turns} turns \u00b7 ${led.edits} edits \u00b7 ${led.reviews} reviews \u00b7 ` +
-        `${led.commits} commits \u00b7 edits since last review: ${led.editsSinceReview}.\n\n${skill.reminder.sparse}${refusal}`
+        `${name} active. ${led.scope}: ${led.turns} turns \u00b7 ${led.commits} commits \u00b7 ` +
+        `current content reviewed: ${coverage.reviewed ? "yes" : "no"} \u00b7 ` +
+        `write-capable subagents running: ${coverage.writers}.\n\n${skill.reminder.sparse}${refusal}`
       await persistReminder(input.messages, text, marker)
     }
   }

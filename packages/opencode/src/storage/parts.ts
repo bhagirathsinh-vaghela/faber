@@ -52,6 +52,13 @@ export namespace Parts {
       remove: db.query<void, [string, string]>(`DELETE FROM part WHERE message_id = ? AND id = ?`),
       removeMessage: db.query<void, [string]>(`DELETE FROM part WHERE message_id = ?`),
       removeSession: db.query<void, [string]>(`DELETE FROM part WHERE session_id = ?`),
+      tools: db.query<{ json: string }, [string, string]>(
+        `SELECT json FROM part WHERE session_id = ? AND json_extract(json, '$.type') = 'tool'
+           AND json_extract(json, '$.tool') IN (SELECT value FROM json_each(?))`,
+      ),
+      results: db.query<{ json: string }, [string]>(
+        `SELECT json FROM part WHERE session_id = ? AND json_extract(json, '$.backgroundSubagentResult') IS NOT NULL`,
+      ),
     }
   })
 
@@ -86,6 +93,25 @@ export namespace Parts {
     const parsed = tryParse(row.json)
     if (!parsed) throw new Storage.NotFoundError({ message: `Part not readable: ${messageID}/${partID}` })
     return parsed
+  }
+
+  // Every part of a session that calls one of `names`, and every subagent
+  // result part: a query, since loading each message would parse the whole
+  // transcript (9.9 MB for a 3,673-part session, measured) to find a few.
+  export async function tools(sessionID: string, names: string[]) {
+    const rows = await open().then((q) => q.tools.all(sessionID, JSON.stringify(names)))
+    return rows.flatMap((row) => {
+      const part = tryParse(row.json)
+      return part?.type === "tool" ? [part] : []
+    })
+  }
+
+  export async function results(sessionID: string) {
+    const rows = await open().then((q) => q.results.all(sessionID))
+    return rows.flatMap((row) => {
+      const part = tryParse(row.json)
+      return part?.type === "text" && part.backgroundSubagentResult ? [part] : []
+    })
   }
 
   export async function remove(messageID: string, partID: string) {

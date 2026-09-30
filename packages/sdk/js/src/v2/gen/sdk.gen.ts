@@ -182,6 +182,8 @@ import type {
   SessionListResponses,
   SessionLiveErrors,
   SessionLiveResponses,
+  SessionLoopErrors,
+  SessionLoopResponses,
   SessionMessageErrors,
   SessionMessageResponses,
   SessionMessagesErrors,
@@ -1345,6 +1347,36 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionDebtsResponses, SessionDebtsErrors, ThrowOnError>({
       url: "/session/{sessionID}/debts",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get a session's review coverage
+   *
+   * What a skill run's rules read, by content rather than transcript order: the session's active reminder skills; whether a completed read-only subagent was asked at exactly the current content of every file an edit tool named in the session or in a child that can edit; whether that content changed since the skill loaded; how many write-capable subagents still owe a result; and whether this session can edit.
+   */
+  public loop<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionLoopResponses, SessionLoopErrors, ThrowOnError>({
+      url: "/session/{sessionID}/loop",
       ...options,
       ...params,
     })

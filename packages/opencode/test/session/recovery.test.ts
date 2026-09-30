@@ -213,11 +213,14 @@ async function root() {
   return created
 }
 
-async function child(parentID: string) {
+async function child(parentID: string, allowedTools?: Session.AllowedTool[]) {
   const created = await Session.create({ parentID, title: "count files (@general subagent)" })
   made.push(created.id)
   await Debt.add(created.id, "subagent", parentID)
-  return Session.update(created.id, (draft) => void (draft.current = { agent: "build", model }))
+  return Session.update(created.id, (draft) => {
+    draft.current = { agent: "build", model }
+    if (allowedTools) draft.allowedTools = allowedTools
+  })
 }
 
 async function tick() {
@@ -323,10 +326,56 @@ describe("Recovery delivery", () => {
         status: "completed",
         agent: "build",
         sessionID: sub.id,
+        edits: true,
       })
       expect(part.type === "text" && part.text).toContain("There are 7 files.")
       expect(await Debt.has(sub.id)).toBe(false)
       expect(state.requests.length).toBe(1)
+    })
+  }, 30_000)
+
+  // A child's tool access, not any launch's toolset, decides whether its result
+  // is edits to review or a review; the entries may be ids or path-scoped objects.
+  for (const [name, tools, edits] of [
+    ["read-only ids and objects", ["read", "grep", { id: "read", paths: ["/x"] }], false],
+    ["a path-scoped edit object", ["read", { id: "edit", paths: ["/x/*"] }], true],
+    ["an apply_patch id", ["read", "apply_patch"], true],
+  ] as const) {
+    test(`a delivered result records edits=${edits} for ${name}`, async () => {
+      await withProject(async () => {
+        const parent = await root()
+        const sub = await child(parent.id, [...tools] as Session.AllowedTool[])
+        const prompt = await user(sub.id, "count the files")
+        await tick()
+        await assistant(sub.id, prompt.id, "There are 7 files.")
+        state.replies.push("Noted.")
+
+        await settle()
+        await settle()
+
+        expect((await results(parent.id)).map((r) => [r.subagentId, r.status, r.edits])).toEqual([
+          [sub.id, "completed", edits],
+        ])
+      })
+    }, 30_000)
+  }
+
+  test("a delivered result carries the fingerprint its child was last asked at", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id, ["read"])
+      await Session.update(sub.id, (draft) => void (draft.asked = "fingerprint-at-ask"))
+      const prompt = await user(sub.id, "review the diff")
+      await tick()
+      await assistant(sub.id, prompt.id, "0 findings")
+      state.replies.push("Noted.")
+
+      await settle()
+      await settle()
+
+      expect((await results(parent.id)).map((r) => [r.subagentId, r.edits, r.tree])).toEqual([
+        [sub.id, false, "fingerprint-at-ask"],
+      ])
     })
   }, 30_000)
 

@@ -8219,6 +8219,68 @@
           }
         ]
       }
+    },
+    "/session/{sessionID}/loop": {
+      "get": {
+        "operationId": "session.loop",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get a session's review coverage",
+        "description": "What a skill run's rules read, by content rather than transcript order: the session's active reminder skills; whether a completed read-only subagent was asked at exactly the current content of every file an edit tool named in the session or in a child that can edit; whether that content changed since the skill loaded; how many write-capable subagents still owe a result; and whether this session can edit.",
+        "responses": {
+          "200": {
+            "description": "Review coverage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoopCoverage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.loop({\n  ...\n})"
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -9196,6 +9258,12 @@
               },
               "duration": {
                 "type": "number"
+              },
+              "edits": {
+                "type": "boolean"
+              },
+              "tree": {
+                "type": "string"
               }
             },
             "required": [
@@ -11305,6 +11373,12 @@
               "at",
               "pid"
             ]
+          },
+          "loaded": {
+            "type": "string"
+          },
+          "asked": {
+            "type": "string"
           }
         },
         "required": [
@@ -14274,6 +14348,12 @@
               },
               "duration": {
                 "type": "number"
+              },
+              "edits": {
+                "type": "boolean"
+              },
+              "tree": {
+                "type": "string"
               }
             },
             "required": [
@@ -15348,6 +15428,36 @@
           "state",
           "description",
           "elapsed"
+        ]
+      },
+      "LoopCoverage": {
+        "type": "object",
+        "properties": {
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reviewed": {
+            "type": "boolean"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "writers": {
+            "type": "number"
+          },
+          "edits": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "skills",
+          "reviewed",
+          "changed",
+          "writers",
+          "edits"
         ]
       }
     }

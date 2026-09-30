@@ -7,6 +7,8 @@ import type { PermissionNext } from "../../src/permission/next"
 import type { Tool } from "../../src/tool/tool"
 import { Instance } from "../../src/project/instance"
 import { SkillTool } from "../../src/tool/skill"
+import { Session } from "../../src/session"
+import { Coverage } from "../../src/session/coverage"
 import { tmpdir } from "../fixture/fixture"
 
 const baseCtx: Omit<Tool.Context, "ask"> = {
@@ -23,6 +25,37 @@ const SKILL_MD = (name: string) =>
   ["---", `name: ${name}`, `description: Skill ${name}.`, "---", "", `# ${name}`, ""].join("\n")
 
 describe("tool.skill", () => {
+  test("loading a reminder skill makes it active and records the content fingerprint", async () => {
+    await using repo = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, ".opencode", "skill", "loop-skill", "SKILL.md"),
+          ["---", "name: loop-skill", "description: Skill loop-skill.", "reminder:", "  sparse: keep going", "---", "", "# loop-skill", ""].join("\n"),
+        )
+        await Bun.write(path.join(dir, "a.ts"), "one")
+      },
+    })
+    const home = process.env.OPENCODE_TEST_HOME
+    process.env.OPENCODE_TEST_HOME = repo.path
+    try {
+      await Instance.provide({
+        directory: repo.path,
+        fn: async () => {
+          const session = await Session.create({})
+          const tool = await SkillTool.init()
+          await tool.execute({ name: "loop-skill" }, { ...baseCtx, sessionID: session.id, ask: async () => {} })
+          const stored = await Session.get(session.id)
+          expect(stored.activeSkills).toEqual(["loop-skill"])
+          expect(stored.loaded).toBe(await Coverage.fingerprint(session.id))
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      process.env.OPENCODE_TEST_HOME = home
+    }
+  })
+
   test("description renders a home skill location home-relative", async () => {
     await using tmp = await tmpdir({
       git: true,

@@ -10,6 +10,7 @@ import { Debt } from "../../src/storage/debt"
 import { Bus } from "../../src/bus"
 import { MessageV2 } from "../../src/session/message-v2"
 import { AgentTool } from "../../src/tool/agent"
+import { Coverage } from "../../src/session/coverage"
 import { Agent } from "../../src/agent/agent"
 import type { Tool } from "../../src/tool/tool"
 import { Log } from "../../src/util/log"
@@ -265,6 +266,71 @@ describe("the agent tool, launching", () => {
         expect((await Session.get(childID)).current?.variant).toBe("effort-low")
         await until(async () => !(await Debt.has(childID)), "the child to report")
         await until(() => !SessionBusy.busy(childID), `${childID} to go idle`)
+      },
+    })
+  }, 30_000)
+})
+
+describe("the agent tool, recording what the child was asked at", () => {
+  for (const [name, skills, recorded] of [
+    ["a caller running a reminder skill records its content fingerprint", ["review-skill"], true],
+    ["a caller running none records nothing", [], false],
+  ] as const) {
+    test(name, async () => {
+      await using repo = await project()
+      await Instance.provide({
+        directory: repo.path,
+        fn: async () => {
+          const parent = await root()
+          await Session.update(parent.id, (draft) => void (draft.activeSkills = [...skills]))
+          const prompt = await user(parent.id, "go")
+          const reply = await assistant(parent.id, prompt.id, "")
+          state.replies.push("0 findings", "ok", "ok")
+          const expected = recorded ? await Coverage.fingerprint(parent.id) : undefined
+
+          const launched = await (await tool(parent.id, reply.id))({})
+
+          const childID = launched.metadata.sessionId as string
+          made.push(childID)
+          await until(async () => !(await Debt.has(childID)), "the child to report")
+          await until(() => !SessionBusy.busy(childID), `${childID} to go idle`)
+          expect((await Session.get(childID)).asked).toBe(expected)
+          const trees = (await Session.messages({ sessionID: parent.id })).flatMap((m) =>
+            m.parts.flatMap((p) => (p.type === "text" && p.backgroundSubagentResult ? [p.backgroundSubagentResult.tree] : [])),
+          )
+          expect(trees).toEqual([expected])
+        },
+      })
+    }, 30_000)
+  }
+
+  test("a child continued after the skill ended carries no stale fingerprint onto its result", async () => {
+    await using repo = await project()
+    await Instance.provide({
+      directory: repo.path,
+      fn: async () => {
+        const parent = await root()
+        await Session.update(parent.id, (draft) => void (draft.activeSkills = ["review-skill"]))
+        const prompt = await user(parent.id, "go")
+        const reply = await assistant(parent.id, prompt.id, "")
+        state.replies.push("0 findings", "ok", "ok", "still 0", "ok", "ok")
+        const run = await tool(parent.id, reply.id)
+        const childID = (await run({})).metadata.sessionId as string
+        made.push(childID)
+        await until(async () => !(await Debt.has(childID)), "the child to report")
+        await until(() => !SessionBusy.busy(childID), `${childID} to go idle`)
+        expect((await Session.get(childID)).asked).toBeDefined()
+
+        await Session.update(parent.id, (draft) => void (draft.activeSkills = []))
+        await run({ session_id: childID, prompt: "again" })
+        await until(async () => !(await Debt.has(childID)), "the child to report again")
+        await until(() => !SessionBusy.busy(childID), `${childID} to go idle again`)
+        expect((await Session.get(childID)).asked).toBeUndefined()
+        const trees = (await Session.messages({ sessionID: parent.id })).flatMap((m) =>
+          m.parts.flatMap((p) => (p.type === "text" && p.backgroundSubagentResult ? [p.backgroundSubagentResult.tree] : [])),
+        )
+        expect(trees.length).toBe(2)
+        expect(trees[1]).toBeUndefined()
       },
     })
   }, 30_000)
