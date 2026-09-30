@@ -61,11 +61,15 @@ export type FetchMessageDiffFn = (input: { sessionID: string; messageID: string 
 
 // Reads a block of assistant prose aloud. Supplied by the host rather than
 // implemented here, since the speech engine and its HUD live in the app.
-export type SpeakTextFn = (text: string) => void
+// `key` is the text part's id: a reading's place and audio belong to the part,
+// since two parts can say the same thing.
+export type SpeakTextFn = (key: string, text: string) => void
 
-// Whether a given block of text is the one currently being read, so its button
-// can stay visible while the reading runs rather than fading out from under it.
-export type SpeakingFn = (text: string) => boolean
+export type SpeakTarget = { key: string; text: string }
+
+// Whether a given part is the one currently being read, so its button can stay
+// visible while the reading runs rather than fading out from under it.
+export type SpeakingFn = (key: string) => boolean
 
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",

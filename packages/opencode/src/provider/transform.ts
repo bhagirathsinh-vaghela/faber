@@ -205,8 +205,11 @@ export namespace ProviderTransform {
    * - Last message (N): moves with each API call for incremental caching
    *
    * "system" scope is for a single call whose messages are never re-sent: one
-   * 1h marker on the last system block, and none on the messages, which would
-   * pay a write that is never read.
+   * 1h marker on the last system block (a marker caches the whole prefix before
+   * it: tools, system, messages;
+   * platform.claude.com/docs/en/build-with-claude/prompt-caching), and none on
+   * the messages, which would pay a write that is never read (writes cost 1.25x
+   * base input for 5m, 2x for 1h; same page).
    */
   function selectCacheMarkers(
     msgs: ModelMessage[],

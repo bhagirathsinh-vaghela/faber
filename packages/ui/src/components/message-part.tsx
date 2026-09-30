@@ -32,6 +32,7 @@ import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/
 import { jobAccent, jobLabel } from "../util/job-status"
 import { LaunchCard } from "../util/launch-card"
 import { useData } from "../context"
+import type { SpeakTarget } from "../context/data"
 import { useDiffComponent } from "../context/diff"
 import { useDialog } from "../context/dialog"
 import { Dialog } from "./dialog"
@@ -374,7 +375,7 @@ function CardBox(props: {
   // Title-bar controls, threaded to TranscriptCard's actions cluster. copy/speak
   // are the assistant's; revert is the user's.
   copy?: () => string
-  speak?: () => string
+  speak?: () => SpeakTarget | undefined
   revert?: JSX.Element
   // The block index key. Defaults to the message id; the assistant card passes
   // its part id so each text step numbers independently.
@@ -1189,6 +1190,9 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   const part = props.part as TextPart
   const displayText = () => (part.text ?? "").trim()
   const throttledText = createThrottledValue(displayText)
+  // A part from before parts carried their own end time is finished once its
+  // message is.
+  const finished = () => !!(part.time?.end ?? (props.message as AssistantMessage).time?.completed)
 
   // Render an assistant text step as an ASSISTANT card (#N header, copy + speak).
   // A text block that is the current response and one that has demoted into the
@@ -1207,7 +1211,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
         raw
         numberKey={part.id}
         copy={displayText}
-        speak={displayText}
+        speak={() => (finished() ? { key: part.id, text: displayText() } : undefined)}
       >
         <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
         {/* Snapshot line under every assistant text box, matching the Response

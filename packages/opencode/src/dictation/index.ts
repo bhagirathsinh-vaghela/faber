@@ -9,7 +9,8 @@ import type { Engine, Host } from "./engine"
 export namespace Dictation {
   const log = Log.create({ service: "dictation" })
 
-  const DEFAULT_LOCAL_URL = "http://127.0.0.1:4100"
+  // The local speech sidecar's default address; it serves /transcribe and /speak.
+  export const DEFAULT_URL = "http://127.0.0.1:4111"
 
   export function connect(client: WSContext, id?: string) {
     let engine: Engine | undefined
@@ -55,7 +56,7 @@ export namespace Dictation {
     // global config rather than Config.get().
     Config.getGlobal()
       .then(async (config) => {
-        const url = config.dictation?.url ?? DEFAULT_LOCAL_URL
+        const url = config.dictation?.url ?? DEFAULT_URL
         // The browser is told the rate to sample at rather than assuming one, so
         // a model whose rate differs from the default is fed correctly.
         const rate = await DictationRate.get(url)

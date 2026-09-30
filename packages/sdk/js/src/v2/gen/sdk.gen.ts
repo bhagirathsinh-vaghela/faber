@@ -223,7 +223,6 @@ import type {
   ToolListResponses,
   UserTheme,
   VcsGetResponses,
-  VoicePreference,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -2608,7 +2607,7 @@ export class Voice extends HeyApiClient {
   public set<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
-      voicePreference?: VoicePreference
+      name?: string | null
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2618,7 +2617,7 @@ export class Voice extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
-            { key: "voicePreference", map: "body" },
+            { in: "body", key: "name" },
           ],
         },
       ],

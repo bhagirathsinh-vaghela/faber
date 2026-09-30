@@ -21,7 +21,8 @@ function files(dir: string): string[] {
   })
 }
 
-const CONTROL_SIZED = /\bsize-\((?:length:)?--control-(?:height|icon)\)|\bh-\(--control-height\)/
+// `h-` must start the class: a min-h-/max-h- floor sizes a row, not a fixed box.
+const CONTROL_SIZED = /\bsize-\((?:length:)?--control-(?:height|icon)\)|(?<![\w-])h-\(--control-height\)/
 const HAS_PRESERVE = /preserveFocus\(\)/
 
 // Each raw <button ...> opening tag, from `<button` to the `>` that ends it.
@@ -45,6 +46,19 @@ function openingTags(source: string) {
   }
   return tags
 }
+
+test("the control-size pattern matches a control box and nothing that only floors a row", () => {
+  const matches = [
+    'class="h-(--control-height) p-1"',
+    'class="shrink h-(--control-height) p-1"',
+    'class="md:h-(--control-height)"',
+    'class="size-(--control-height)"',
+    'class="size-(length:--control-icon)"',
+  ]
+  const misses = ['class="min-h-(--control-height)"', 'class="max-h-(--control-height)"', 'class="h-8"']
+  expect(matches.map((tag) => CONTROL_SIZED.test(tag))).toEqual(matches.map(() => true))
+  expect(misses.map((tag) => CONTROL_SIZED.test(tag))).toEqual(misses.map(() => false))
+})
 
 describe("control-shaped raw buttons keep single-tap on touch", () => {
   for (const file of files(SRC)) {

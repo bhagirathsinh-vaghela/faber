@@ -7659,11 +7659,11 @@
         "description": "Set the server-owned read-aloud voice (null clears it).",
         "responses": {
           "200": {
-            "description": "Voice preference updated",
+            "description": "The stored voice preference, with its new version",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "boolean"
+                  "$ref": "#/components/schemas/VoicePreference"
                 }
               }
             }
@@ -7683,7 +7683,22 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VoicePreference"
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ]
               }
             }
           }
@@ -13070,16 +13085,30 @@
             }
           },
           "dictation": {
-            "description": "Speech-to-text engine for the prompt microphone",
+            "description": "Local speech sidecar: speech-to-text for the prompt microphone, and the voice and rewrite for read-aloud",
             "type": "object",
             "properties": {
               "url": {
-                "description": "Base URL of the local transcription sidecar",
+                "description": "Base URL of the local speech sidecar, used for transcription and read-aloud",
                 "type": "string"
               },
               "voice": {
                 "description": "Read-aloud voice name, e.g. af_bella or af_sarah",
                 "type": "string"
+              },
+              "rewrite": {
+                "description": "The model that rewrites assistant text into speakable sentences before read-aloud",
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "description": "provider/model that rewrites a message for read-aloud; the default model when unset",
+                    "type": "string"
+                  },
+                  "variant": {
+                    "description": "Variant of the rewrite model; the model's configured variant when unset",
+                    "type": "string"
+                  }
+                }
               }
             }
           },
@@ -15183,6 +15212,11 @@
                 "type": "null"
               }
             ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "required": [

@@ -1,7 +1,8 @@
-import { createEffect, createMemo, onCleanup, Show, type ParentProps } from "solid-js"
+import { createEffect, createMemo, onCleanup, Show, untrack, type ParentProps } from "solid-js"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
+import { useGlobalSync } from "@/context/global-sync"
 import { LocalProvider } from "@/context/local"
 import { QuestionProvider } from "@/context/question"
 
@@ -13,14 +14,18 @@ import { Snapshot } from "@/utils/snapshot"
 import { createSpeech } from "@/utils/speak"
 import { SpeechOverlay } from "@/components/speech-overlay"
 import { Visibility } from "@/utils/visibility"
+import { spokenVoice, voiceApplier } from "@/utils/voice"
+import { errorMessage } from "@/utils/error-message"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { RevertHostProvider, useRevertHost } from "@/context/revert"
 
 export default function Layout(props: ParentProps) {
   const params = useParams()
   const navigate = useNavigate()
   const language = useLanguage()
+  const globalSync = useGlobalSync()
   const directory = createMemo(() => {
     return decode64(params.dir) ?? ""
   })
@@ -43,6 +48,7 @@ export default function Layout(props: ParentProps) {
             {iife(() => {
               const sync = useSync()
               const sdk = useSDK()
+              const platform = usePlatform()
               const location = useLocation()
 
               // Paint from cache, then reconcile: hydrate the on-device
@@ -121,6 +127,8 @@ export default function Layout(props: ParentProps) {
               // instance here serves every message box rather than each owning one.
               const speech = createSpeech({
                 url: () => sdk.url,
+                fetch: platform.fetch,
+                title: () => language.t("speech.speak"),
                 // The rewrite pass runs under the current session; the reading
                 // always happens inside an open session, so the route's id is it.
                 session: () => params.id ?? "",
@@ -130,7 +138,16 @@ export default function Layout(props: ParentProps) {
                 onError: (message) =>
                   showToast({ variant: "error", title: language.t("speech.failed"), description: message }),
               })
-              const speakText = (text: string) => speech.show(text)
+
+              // Audio already rendered is in the old voice, so a change re-voices the rest
+              // of the reading; the chunk playing finishes in its own. Every change, from
+              // any client or this one's own save, lands in the store this memo reads, and
+              // a change to the config default re-voices too while the picker still shows
+              // "Default voice".
+              const voice = createMemo(() => sync.data.voice_preference?.name ?? "")
+              const spoken = createMemo(() => spokenVoice(voice(), globalSync.data.config.dictation?.voice))
+              const apply = voiceApplier(untrack(spoken), speech.revoice)
+              createEffect(() => apply(spoken()))
 
               const revertHost = useRevertHost()
 
@@ -144,8 +161,8 @@ export default function Layout(props: ParentProps) {
                   onNavigateToSession={navigateToSession}
                   onRevertMessage={revertHost.revert}
                   onFetchMessageDiff={fetchMessageDiff}
-                  onSpeakText={speakText}
-                  onSpeaking={(text: string) => speech.reading(text)}
+                  onSpeakText={speech.show}
+                  onSpeaking={speech.reading}
                 >
                   <LocalProvider>
                     <QuestionProvider>{props.children}</QuestionProvider>
@@ -153,10 +170,17 @@ export default function Layout(props: ParentProps) {
                   <Show when={speech.open()}>
                     <SpeechOverlay
                       speech={speech}
-                      onClose={() => speech.close()}
-                      voice={sync.data.voice_preference?.name ?? undefined}
+                      voice={voice()}
                       onVoiceChange={(name) =>
-                        sdk.client.preference.voice?.set?.({ voicePreference: { name } })?.catch(() => undefined)
+                        globalSync
+                          .saveVoice(name)
+                          .catch((error) => {
+                            showToast({
+                              variant: "error",
+                              title: language.t("speech.voiceFailed"),
+                              description: errorMessage(error, language.t("speech.voiceFailed")),
+                            })
+                          })
                       }
                     />
                   </Show>

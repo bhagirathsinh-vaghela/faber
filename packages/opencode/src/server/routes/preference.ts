@@ -86,20 +86,19 @@ export const PreferenceRoutes = lazy(() =>
         operationId: "preference.voice.set",
         responses: {
           200: {
-            description: "Voice preference updated",
+            description: "The stored voice preference, with its new version",
             content: {
               "application/json": {
-                schema: resolver(z.boolean()),
+                schema: resolver(VoicePreference.Info),
               },
             },
           },
           ...errors(400),
         },
       }),
-      validator("json", VoicePreference.Info),
+      validator("json", VoicePreference.Input),
       async (c) => {
-        await VoicePreference.set(c.req.valid("json"))
-        return c.json(true)
+        return c.json(await VoicePreference.set(c.req.valid("json")))
       },
     )
     .get(

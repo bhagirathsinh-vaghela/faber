@@ -33,6 +33,7 @@ import { IDLE, type BusyFacts } from "@opencode-ai/ui/util/busy-tint"
 import { release, stale } from "@/utils/busy"
 import { Snapshot } from "@/utils/snapshot"
 import { retry } from "@opencode-ai/util/retry"
+import { seedVoice, serial, voiceStore } from "@/utils/voice"
 import { useGlobalSDK } from "./global-sdk"
 import type { InitError } from "../pages/error"
 import {
@@ -447,6 +448,26 @@ function createGlobalSync() {
   })
 
   const children: Record<string, [Store<State>, SetStoreFunction<State>]> = {}
+  // A voice preference reaches the global store and every directory store at
+  // once, so a directory created before the preference loaded is not left on none.
+  const setVoice = voiceStore(
+    () => globalStore.voice_preference,
+    (preference) => {
+      setGlobalStore("voice_preference", reconcile(preference))
+      for (const [, set] of Object.values(children)) set("voice_preference", reconcile(preference))
+    },
+  )
+  const loadVoice = (request: PromiseLike<{ data?: VoicePreference }>) =>
+    Promise.resolve(request).then((x) => {
+      if (x.data) setVoice(x.data)
+    })
+  const saving = serial()
+  const saveVoice = (name: string) =>
+    saving(() =>
+      globalSDK.client.preference.voice.set({ name: name || null }).then((x) => {
+        if (x.data) setVoice(x.data)
+      }),
+    )
   const booting = new Map<string, Promise<void>>()
   const sessionLoads = new Map<string, Promise<void>>()
   const sessionMeta = new Map<string, { limit: number }>()
@@ -552,7 +573,7 @@ function createGlobalSync() {
           default_model: null,
           path: { state: "", config: "", worktree: "", directory: "", home: "" },
           model_preference: { user: [], recent: [] },
-          voice_preference: { name: null },
+          voice_preference: seedVoice(globalStore.voice_preference),
           stash: [],
           status: "loading" as const,
           agent: [],
@@ -763,12 +784,7 @@ function createGlobalSync() {
         sdk.preference.model.get().then((x) => {
           if (x.data) setStore("model_preference", reconcile(x.data))
         }),
-        // Guarded so a client bundle predating this preference (a tab loaded
-        // before the deploy) degrades to no voice rather than rejecting the
-        // whole bootstrap: a missing method leaves the element a resolved noop.
-        Promise.resolve(sdk.preference.voice?.get?.()).then((x) => {
-          if (x?.data) setStore("voice_preference", reconcile(x.data))
-        }),
+        loadVoice(sdk.preference.voice.get()),
         sdk.preference.stash.list().then((x) => {
           setStore("stash", reconcile(x.data ?? [], { key: "timestamp" }))
         }),
@@ -1003,8 +1019,7 @@ function createGlobalSync() {
           return
         }
         case "voice.preference.updated": {
-          setGlobalStore("voice_preference", reconcile(event.properties))
-          for (const [, set] of Object.values(children)) set("voice_preference", reconcile(event.properties))
+          setVoice(event.properties)
           return
         }
         case "stash.updated": {
@@ -1604,8 +1619,9 @@ function createGlobalSync() {
       return
     }
 
-    // Critical boot: path + config only. Mounting providers read these
-    // synchronously, and `ready` (which unblocks the app tree) must not wait on
+    // Critical boot: path, config, and the voice preference. Mounting providers read
+    // path and config synchronously, and directory stores are seeded from the
+    // voice, so all three land before `ready`; `ready` (which unblocks the app tree) must not wait on
     // the sidebar/overview fetches. Everything else is below-the-fold for a
     // deep-linked session open — deferred behind first paint so it stops
     // saturating the 6-connection pool ahead of the target transcript's tail
@@ -1618,9 +1634,15 @@ function createGlobalSync() {
       ),
       retry(() =>
         globalSDK.client.global.config.get().then((x) => {
-          setGlobalStore("config", x.data!)
+          // reconcile, since a path write merges (solid-js 1.9.10 store
+          // updatePath -> mergeStoreNode) and would keep a key the config no
+          // longer has (a removed dictation block, say).
+          setGlobalStore("config", reconcile(x.data!))
         }),
       ),
+      // Directory stores are seeded from this, and setVoice also updates any the
+      // event stream created earlier.
+      retry(() => loadVoice(globalSDK.client.preference.voice.get())),
     ]
 
     const deferred = () => [
@@ -1653,11 +1675,6 @@ function createGlobalSync() {
       retry(() =>
         globalSDK.client.preference.model.get().then((x) => {
           if (x.data) setGlobalStore("model_preference", x.data)
-        }),
-      ),
-      retry(() =>
-        Promise.resolve(globalSDK.client.preference.voice?.get?.()).then((x) => {
-          if (x?.data) setGlobalStore("voice_preference", x.data)
         }),
       ),
       retry(() =>
@@ -1789,6 +1806,7 @@ function createGlobalSync() {
     setOpenSession,
     ensureInterest,
     bootstrap,
+    saveVoice,
     updateConfig: (config: Config) => {
       setGlobalStore("reload", "pending")
       return globalSDK.client.global.config.update({ config }).finally(() => {

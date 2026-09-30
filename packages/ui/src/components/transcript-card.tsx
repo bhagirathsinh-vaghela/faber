@@ -5,6 +5,7 @@ import { CopyButton } from "./copy-button"
 import { SpeakButton } from "./speak-button"
 import { createBoxOpen, useBoxDefaults } from "../context/box-defaults"
 import { useI18n } from "../context/i18n"
+import type { SpeakTarget } from "../context/data"
 import { messageTime } from "../util/time"
 
 export type TriggerTitle = {
@@ -57,8 +58,8 @@ export interface TranscriptCardProps {
   // kept for the user/assistant cards, which have no separate body copy.
   copy?: () => string
   // Title-bar read-aloud button, rendered in the actions cluster. The SpeakButton
-  // hides itself when the host has no speech support or the text is empty.
-  speak?: () => string
+  // hides itself when the host has no speech support or nothing is ready to read.
+  speak?: () => SpeakTarget | undefined
   // Undo control rendered first in the actions cluster (leftmost). The caller
   // owns its confirm dialog; this slot only positions it in the card chrome.
   revert?: JSX.Element

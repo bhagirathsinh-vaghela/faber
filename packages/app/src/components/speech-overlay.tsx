@@ -1,26 +1,38 @@
-import { For, Show, createEffect } from "solid-js"
+import { For, Show } from "solid-js"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
 import { RATE, VOICES, type createSpeech } from "@/utils/speak"
+import { picker } from "@/utils/voice"
 import { OverlayPanel } from "./overlay-panel"
+import { handle } from "./speech-keys"
 
-// Playback HUD for an assistant message being read aloud: pause/resume, a speed
-// cycle, a voice picker, and a stop, over the shared overlay shell.
+// Playback HUD for an assistant message being read aloud: pause/resume, speed
+// buttons, a voice picker, and a stop, over the shared overlay shell.
 export function SpeechOverlay(props: {
   speech: ReturnType<typeof createSpeech>
-  onClose: () => void
   accent?: string
-  // The voice picker reflects and sets the server-owned preference. Empty means
-  // no preference set, so the sidecar's default speaker is used.
+  // The saved voice preference, empty when none is saved, shown as it is so a
+  // saved choice can be cleared back to "Default voice".
   voice?: string
-  onVoiceChange?: (id: string) => void
+  // Settles once the save has; the store then holds the voice in effect.
+  onVoiceChange?: (id: string) => Promise<unknown>
 }) {
   const language = useLanguage()
 
-  const close = () => {
-    props.speech.close()
-    props.onClose()
+  const close = () => props.speech.close()
+
+  const choice = picker((id) => props.onVoiceChange?.(id) ?? Promise.resolve())
+  const shown = () => choice.pending() ?? props.voice ?? ""
+
+  // "Default voice" always leads, so a saved preference can be cleared again. A
+  // shown voice outside the list is offered by its id, so the picker never
+  // shows blank.
+  const voices = () => {
+    const voice = shown()
+    const unset = { id: "", label: language.t("speech.defaultVoice") }
+    if (!voice || VOICES.some((v) => v.id === voice)) return [unset, ...VOICES]
+    return [unset, { id: voice, label: voice }, ...VOICES]
   }
 
   const toggle = () => {
@@ -29,22 +41,12 @@ export function SpeechOverlay(props: {
     else props.speech.pause()
   }
 
-  const handleKey = (event: KeyboardEvent) => {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault()
-      event.stopPropagation()
-      return props.speech.previous()
-    }
-    if (event.key === "ArrowRight") {
-      event.preventDefault()
-      event.stopPropagation()
-      return props.speech.next()
-    }
-    if (event.key !== " ") return
-    event.preventDefault()
-    event.stopPropagation()
-    toggle()
-  }
+  const handleKey = (event: KeyboardEvent) =>
+    handle(event, {
+      ArrowLeft: () => props.speech.previous(),
+      ArrowRight: () => props.speech.next(),
+      " ": toggle,
+    })
 
   const transport = () => {
     if (!props.speech.speaking()) return language.t("speech.play")
@@ -71,11 +73,20 @@ export function SpeechOverlay(props: {
               <Show when={props.onVoiceChange}>
                 <select
                   aria-label={language.t("speech.voice")}
-                  value={props.voice ?? ""}
-                  onChange={(e) => props.onVoiceChange?.(e.currentTarget.value)}
+                  value={shown()}
+                  onChange={(e) => choice.pick(e.currentTarget.value)}
                   class="rounded-lg border border-border-base bg-surface-inset-base px-2 h-7 text-11-medium text-text-base hover:text-text-base focus:outline-none"
                 >
-                  <For each={VOICES}>{(v) => <option value={v.id}>{v.label}</option>}</For>
+                  <For each={voices()}>
+                    {(v) => (
+                      // Both set, so the shown voice ends up selected whether its option or the value
+                      // lands first: the value setter selects nothing while no option matches
+                      // (html.spec.whatwg.org/multipage/form-elements.html#dom-select-value).
+                      <option value={v.id} selected={v.id === shown()}>
+                        {v.label}
+                      </option>
+                    )}
+                  </For>
                 </select>
               </Show>
               <span class="flex size-2.5 shrink-0">
@@ -144,7 +155,9 @@ export function SpeechOverlay(props: {
                   +
                 </button>
               </div>
-              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">speed</kbd>
+              <span class="hidden any-pointer-fine:block text-11-regular text-text-weaker">
+                {language.t("speech.hint.speed")}
+              </span>
             </div>
             <div class="flex items-center gap-1.5">
               <IconButton
@@ -183,7 +196,9 @@ export function SpeechOverlay(props: {
                   </span>
                   {transport()}
                 </button>
-                <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">space</kbd>
+                <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">
+                  {language.t("speech.hint.space")}
+                </kbd>
               </div>
               <IconButton
                 type="button"
@@ -197,7 +212,9 @@ export function SpeechOverlay(props: {
               />
             </div>
             <div class="flex flex-col items-center gap-0.5">
-              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">esc</kbd>
+              <kbd class="hidden any-pointer-fine:block text-11-regular text-text-weaker">
+                {language.t("speech.hint.escape")}
+              </kbd>
               <IconButton
                 type="button"
                 variant="secondary"

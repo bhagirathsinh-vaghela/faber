@@ -222,16 +222,17 @@ export namespace Oneshot {
         model: string
         usage: z.infer<typeof Usage>
         cost: number
-        /** Reasoning parts the model produced; dropped from the text. */
+        /** Reasoning parts the model produced; dropped from the text (ai 5.0.124 fullStream: reasoning-* parts are separate from text-delta). */
         thoughts: number
       }
     | { type: "error"; message: string }
 
   /**
    * One model call streamed: only the model's answer text arrives as "text",
-   * then exactly one "done" or "error". Any finish other than a normal stop
-   * (length, content filter, refusal, abort) is an error, so a truncated
-   * answer is never mistaken for a complete one.
+   * then exactly one "done" or "error". Any finish other than stop is an error
+   * (AI SDK v5 finishReason: stop, length, content-filter, tool-calls, error,
+   * other, unknown; @ai-sdk/provider 2.0.1), so a truncated answer is never
+   * mistaken for a complete one.
    */
   export async function* stream(input: StreamInput): AsyncGenerator<Event> {
     const agent = persona(input.system)

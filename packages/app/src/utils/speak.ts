@@ -1,6 +1,7 @@
 import { createStore } from "solid-js/store"
 import { onCleanup } from "solid-js"
-import { convertMarkdown } from "speakable-text"
+import { directoryHeader } from "@opencode-ai/sdk/v2/client"
+import { HEADERS_MS } from "./fetch"
 
 // Below 0.5 the voice slurs and above 2.5 it stops being followable, so the
 // range ends there rather than wherever repeated presses would reach.
@@ -64,348 +65,127 @@ export function storedRate(store: Pick<Storage, "getItem"> | undefined = safeSto
   return held >= RATE.min && held <= RATE.max ? clampRate(held) : RATE.base
 }
 
-const SYMBOLS: [RegExp, string][] = [
-  [/[→⟶]/g, " to "],
-  [/[←⟵]/g, " from "],
-  [/[↔⟷]/g, " both ways "],
-  [/[⇒⟹]/g, " gives "],
-  [/[✓✅☑]/g, " yes "],
-  [/[✗❌✕✘]/g, " no "],
-  [/⚠️?/g, " warning "],
-  [/[•·]/g, " "],
-  [/…/g, " "],
-  [/(\d)\s*[–—]\s*(\d)/g, "$1 to $2"],
-  [/[–—]/g, ", "],
-  [/≈/g, " about "],
-  [/≥/g, " at least "],
-  [/≤/g, " at most "],
-]
+// The sidecar queues renders by this, strictly one at a time: the chunk under
+// the cursor jumps everything, the one after it is next, and the rest of the
+// reading fills in behind them one request at a time.
+export type Priority = "now" | "next" | "background"
 
-function speakable(markdown: string) {
-  // A bare URL is otherwise spelled out character by character, which is
-  // unlistenable and carries nothing the surrounding words do not.
-  const spoken = convertMarkdown(markdown.replace(/(?<![(<\]])https?:\/\/\S+/g, "a link")).text
-  return SYMBOLS.reduce((text, [pattern, word]) => text.replace(pattern, word), spoken)
-    .replace(/[ \t]+/g, " ")
-    .replace(/ ([,.])/g, "$1")
-    .trim()
-}
-
-// A table and a code block are the two things a listener skips rather than
-// hears, so each is forced into a chunk of its own. Packing them in with the
-// prose around them would make one press skip the sentences either side.
-// The library brackets both with an opening and closing phrase, which is what
-// makes the boundaries findable.
-const REGIONS = /(Table\.\s.*?End table\.|Code block\.\s.*?End code block\.)/gs
-
-// A single capture group makes split alternate prose, region, prose, so the odd
-// positions are the regions themselves. Carrying that as a flag is what lets the
-// pacing below leave them whole.
-function regions(text: string) {
-  return text
-    .split(REGIONS)
-    .map((value, at) => ({ value: value.trim(), atomic: at % 2 === 1 }))
-    .filter((part) => part.value)
-}
-
-// A chunk boundary is heard as a pause, so chunks end at sentence ends where a
-// pause belongs. The cap only bounds a runaway paragraph: it is set well above
-// a normal sentence so that reaching it — and cutting mid-sentence, which is
-// heard as the speech stopping short — takes prose that never ends a sentence.
-const CHUNK = 600
-
-// Chunk sizes for the rewrite path, in characters, following the streaming-TTS
-// field (ElevenLabs' [120,160,250,290] escalating schedule, Deepgram's 50-100
-// voice / 200-400 long-form, LiveKit's min/max buffer). Read-aloud of prose is
-// long-form, so these sit at the larger end. Only the FIRST chunk gates when
-// audio starts (the next is prefetched while it plays), so it alone is kept
-// small for a fast start; the rest group larger for better prosody and fewer
-// round-trips.
-const FIRST_CHUNK = 90
-const MIN_CHUNK = 180
-const MAX_CHUNK = 500
-
-// A segment ending in one of these is not a sentence end: Intl.Segmenter's one
-// real weakness is splitting after a title abbreviation ("Dr. Chen"), which the
-// field repairs with a merge pass over the output rather than a different
-// splitter. Decimals and "e.g."/"i.e." it already handles.
-const TITLE = /\b(?:mr|mrs|ms|dr|prof|sr|jr|st|rev|gen|sen|rep|gov|lt|col|sgt|capt|vs|fig|no|vol|pp)\.$/i
-
-const segmenter =
-  typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter("en", { granularity: "sentence" }) : undefined
-
-// Sentence boundaries via Intl.Segmenter (ICU-backed, decimal-safe), with the
-// merge pass that rejoins a title abbreviation to the sentence it wrongly split
-// from. Falls back to the coarse SENTENCE regex where Intl.Segmenter is absent.
-function segment(text: string) {
-  if (!segmenter) return sentences(text)
-  const out: string[] = []
-  for (const { segment } of segmenter.segment(text)) {
-    const prev = out[out.length - 1]
-    if (prev && TITLE.test(prev.trimEnd())) out[out.length - 1] = prev + segment
-    else out.push(segment)
-  }
-  return out
-}
-
-// The rewrite path uses this instead of chunks(): the LLM already produced clean
-// paragraph-structured prose (blank line between paragraphs, no atomic Table./
-// Code block. regions), so it needs neither region-splitting nor the per-newline
-// flush that fragmented list-shaped text into a chunk per line. This is the
-// established streaming-TTS design: split into sentences, MERGE short ones up to
-// a floor, never split a sentence (only an over-long one, at clauses then
-// words), force a break at every blank-line paragraph, and keep the first chunk
-// small for a fast start.
-function proseChunks(text: string) {
-  const out: string[] = []
-  let held = ""
-  // The first chunk aims small (fast first audio); every chunk after it aims
-  // larger, since it is prefetched while the previous one plays.
-  const target = () => (out.length ? MIN_CHUNK : FIRST_CHUNK)
-  const flush = () => {
-    const clean = held.replace(/\s+/g, " ").trim()
-    held = ""
-    if (clean) out.push(clean)
-  }
-  const add = (piece: string) => {
-    const s = piece.trim()
-    if (!s) return
-    // An over-long sentence is the only thing split below the sentence level:
-    // at clause punctuation first, then at word boundaries, never mid-word.
-    if (s.length > MAX_CHUNK) {
-      flush()
-      for (const clause of splitLong(s)) out.push(clause)
-      return
-    }
-    if (held && held.length + 1 + s.length > MAX_CHUNK) flush()
-    held = held ? `${held} ${s}` : s
-    if (held.length >= target()) flush()
-  }
-  for (const paragraph of text.split(/\n\s*\n/)) {
-    for (const sentence of segment(paragraph)) add(sentence)
-    // A blank-line paragraph break is a real pause the rewrite placed on
-    // purpose, so it always ends the current chunk.
-    flush()
-  }
-  return out
-}
-
-// An over-long sentence, broken at clause punctuation and then at word
-// boundaries so no piece exceeds the cap. A monster is never sent whole and a
-// word is never cut.
-function splitLong(sentence: string) {
-  const out: string[] = []
-  let held = ""
-  const flush = () => {
-    if (held.trim()) out.push(held.trim())
-    held = ""
-  }
-  for (const clause of sentence.split(/(?<=[,;:])\s+/)) {
-    if (held && held.length + 1 + clause.length > MAX_CHUNK) flush()
-    if (clause.length > MAX_CHUNK) {
-      flush()
-      for (const word of clause.split(/\s+/)) {
-        if (held && held.length + 1 + word.length > MAX_CHUNK) flush()
-        held = held ? `${held} ${word}` : word
-      }
-      continue
-    }
-    held = held ? `${held} ${clause}` : clause
-  }
-  flush()
-  return out
-}
-
-// How much the cap rises per chunk. Synthesis is linear in length and the
-// sidecar renders one chunk at a time, so a chunk arrives in time only when the
-// chunk playing now lasts longer than the next takes to render. The slowest
-// machine measured renders at half of realtime, making 2.0 the break-even
-// multiple; below that leaves margin for a listener who has raised the playback
-// rate, which shortens the cover without changing the cost.
-//
-// It multiplies the previous BUDGET rather than the previous chunk's length.
-// Chunks end on sentence boundaries, so a length is quantized and usually well
-// under the cap that admitted it; ramping on the length reaches a fixed point
-// where the cap can never admit a second sentence, and every chunk in a long
-// reading stays a single sentence.
-const GROWTH = 1.5
-
-// The same bound applied to what a chunk actually says rather than to the cap
-// it was given, since that is the time the chunk after it has to render in.
-//
-// Slightly above two because chunk lengths are quantized to whole sentences: a
-// one-sentence chunk can only be followed by one or two, and two is a shade over
-// double once the separator is counted. At exactly two the budget settles one
-// character below what a second sentence needs and every chunk in the reading
-// stays a single sentence.
-const COVER = 2.05
-
-// A period followed by a digit is a decimal point rather than a sentence end,
-// so the terminator does not match there: splitting reads "39.5s" as two
-// sentences and the voice stops in the middle of a figure.
-const SENTENCE = /(?:[^.!?\n]|\.(?=\d))*(?:[.!?]+|\n+|$)/g
-
-export const sentences = (text: string) => text.match(SENTENCE)?.filter(Boolean) ?? []
-
-function chunks(text: string, budget: number) {
-  const parts = sentences(text)
-  const out: string[] = []
-  // A chunk is handed to a speech engine, where a line break carries nothing a
-  // space does not. Collapsing here keeps the boundary decision below free to
-  // use newlines without them surviving into what is spoken.
-  // Two bounds, and the tighter one wins. The ramp lets the cap climb toward
-  // CHUNK across a reading, while the emitted length holds it to what this
-  // chunk will really cover: a chunk that lands well under its cap buys less
-  // time than the cap implies, and only the second bound sees that.
-  const push = (value: string) => {
-    const clean = value.replace(/\s+/g, " ").trim()
-    if (!clean) return
-    out.push(clean)
-    budget = Math.min(CHUNK, Math.round(budget * GROWTH), Math.round(clean.length * COVER))
-  }
-  let held = ""
-  const flush = () => {
-    push(held)
-    held = ""
-  }
-  for (const sentence of parts) {
-    if (sentence.length > budget) {
-      flush()
-      // Filling each piece to the budget would leave whatever is left over as
-      // the last one, and a remainder far shorter than its predecessors is over
-      // before the chunk after it has rendered. Spreading the sentence evenly
-      // across the pieces it needs keeps every one of them able to cover the
-      // next.
-      const pieces = Math.ceil(sentence.length / budget)
-      const even = Math.ceil(sentence.length / pieces)
-      let run = ""
-      for (const word of sentence.split(/\s+/)) {
-        if (run && (run + " " + word).length > even) {
-          push(run)
-          run = word
-          continue
-        }
-        run = (run + " " + word).trim()
-      }
-      held = run
-      continue
-    }
-    if ((held + sentence).length > budget) flush()
-    held += sentence
-    // A line break ends a heading, a bullet, or a list item — none of which
-    // run on into the next. Ending the chunk here is what puts a spoken pause
-    // between them instead of reading a list as one breathless sentence.
-    if (sentence.endsWith("\n")) flush()
-  }
-  flush()
-  return { out, budget }
-}
-
-const OPENING = 90
-
-// `skipSpeakable` is set when the text is already rewritten prose from the
-// server: the LLM pass owns cleansing, so running the deterministic speakable()
-// over it would be a second, competing cleaner.
-export function toSpeech(markdown: string, skipSpeakable = false) {
-  // The rewrite path is clean paragraph prose, chunked by the streaming-TTS
-  // aggregation design; the fallback path is deterministic speakable() output
-  // with atomic Table./Code block. regions, chunked by the region+ramp path.
-  if (skipSpeakable) return proseChunks(markdown)
-  const out: string[] = []
-  let budget = OPENING
-  for (const part of regions(speakable(markdown))) {
-    // A table or code block is one utterance by design, since splitting it
-    // would make a single skip land inside it rather than past it. It still
-    // advances the ramp, because the time spent speaking it is cover like any
-    // other chunk's.
-    if (part.atomic) {
-      out.push(part.value.replace(/\s+/g, " "))
-      budget = Math.min(CHUNK, Math.round(budget * GROWTH))
-      continue
-    }
-    const chunked = chunks(part.value, budget)
-    out.push(...chunked.out)
-    budget = chunked.budget
-  }
-  return out
-}
-
-// One reading at a time across the whole app: a second speak button starts a
-// new reading rather than two voices overlapping.
-let active: (() => void) | undefined
-
-// fetch() sends Accept: */* and would take whatever the server defaults to, so
-// the container this browser can actually decode is declared rather than left
-// to a default. WAV is the fallback because it needs no encoder on either end,
-// which is what makes it the one format every client is guaranteed to play.
-export function accept(probe = document.createElement("audio")) {
-  if (probe.canPlayType('audio/ogg; codecs="opus"')) return "audio/ogg"
-  return "audio/wav"
-}
-
-// Identifies this listener's reading to the sidecar, which holds its rendered
-// audio under this key and frees it when the reading ends.
-const LISTENER = Math.random().toString(36).slice(2)
-
-// Server-side synthesis means every client hears the same voice, which the
-// platform speech engines cannot offer: their quality ranges from good on Apple
-// to absent on Linux. The cost is a round trip, which the prefetch below keeps
-// off the critical path. `next` rides along so the sidecar renders the chunk
-// after this one while this one plays.
-async function fetchAudio(base: string, text: string, next: string | undefined, signal: AbortSignal) {
-  const response = await fetch(`${base}/tts/speak`, {
-    method: "POST",
-    body: JSON.stringify({ text, next }),
-    headers: { "content-type": "application/json", accept: accept(), "x-speech-session": LISTENER },
-    signal,
-  })
-  if (!response.ok) throw new Error(`speech failed: ${response.status}`)
-  return URL.createObjectURL(await response.blob())
-}
-
-// Chunks are fetched one at a time, each while the one before it plays, so a
-// reading only ever downloads what it is about to say: stopping early wastes a
-// single chunk rather than a whole message's audio. The extra requests cost
-// nothing in radio wake-ups, since the app already holds an SSE stream open for
-// the whole session.
-//
-// Fetching further ahead than this makes stalls WORSE rather than better: the
-// sidecar renders strictly one chunk at a time, so a request for a later chunk
-// queues in front of the one that is due next. Measured at 3.4s of total
-// silence one ahead, 7.6s at two, 9.0s at three. What keeps the pipeline fed is
-// the size ramp in the chunker, not depth here.
-
-// One silent PCM sample, inline so that unlocking costs no request. Playing it
-// is what converts the gesture into a lasting permission on the element.
+// One silent 16-bit mono PCM sample at 8 kHz, inline so that unlocking costs no
+// request. Setting it as src inside the gesture lifts the element's gesture
+// restriction in WebKit (HTMLMediaElement prepareForLoad calls
+// removeBehaviorRestrictionsAfterFirstUserGesture; WebKit c37c8fb33b).
 const SILENCE = "data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAAAAAA=="
 
-// How far into each message the listener got, keyed by the message's own text.
-// Kept outside any one reading so returning to a message read earlier still
-// offers to resume it, not only the most recent one. Deliberately in memory
-// only: where someone stopped listening is worth nothing after a reload, and
-// persisting it would mean writing a store and pruning it forever.
-const progress = new Map<string, number>()
+// Identifies this tab to the sidecar. Each showing of a reading extends it with
+// a counter, so /tts/done, which releases this id's queued renders, can only
+// ever reach the reading that sent it, never the one that replaced it.
+const LISTENER = Math.random().toString(36).slice(2)
+let showings = 0
 
-// A bound on remembered positions: the map would otherwise hold every message
-// read for the life of the tab.
+// A render the sidecar never answers would otherwise hold its chunk in flight
+// forever, since the scheduler re-requests an index in flight only when its
+// priority changes. The clock starts at send, so time queued behind other
+// renders counts. Fetch defines no request timeout (fetch.spec.whatwg.org). A
+// render unanswered this long means the sidecar is stuck: a warm 289 to 341
+// character chunk renders in 861 to 1087 ms (sidecar log). The ceiling is the
+// app fetch guard's headers deadline for either priority, since /tts/speak
+// sends its headers only once the render is done, so no longer one could apply.
+const TIMEOUT_MS = { foreground: HEADERS_MS, background: HEADERS_MS }
+
+// A choice: silent re-requests a failed background render gets before it is
+// left for the cursor to reach, where it is requested at now or next and fails
+// loudly. Two cover a passing refusal without re-asking a sidecar that keeps
+// failing.
+const RETRIES = 2
+
+// A choice (not measured): spaces those retries so a refusing sidecar is not
+// asked again at once.
+const BACKOFF_MS = 2_000
+
+// Where the listener stopped in each text part, keyed by part id. Module-level
+// so it survives the directory layout remounting; in memory only, since a place
+// in a reading is worth nothing after a reload.
+const positions = new Map<string, number>()
+// A choice: bounds the map, which would otherwise hold every part read for the
+// life of the tab; far more parts than a person returns to in one sitting, at
+// one number each.
 const REMEMBERED = 50
 
-function remember(text: string, at: number) {
-  progress.delete(text)
-  progress.set(text, at)
-  for (const key of progress.keys()) {
-    if (progress.size <= REMEMBERED) break
-    progress.delete(key)
+// A choice: rewritten chunk lists are small text, kept for this many parts so
+// returning to one skips the rewrite. Audio is held for far fewer, since it is
+// the heavy part.
+const PREPARED = 20
+const VOICED = 3
+
+// A choice (not measured): long enough that a quick run of skip presses
+// settles before any request moves.
+const SETTLE_MS = 300
+
+function remember(key: string, at: number) {
+  positions.delete(key)
+  positions.set(key, at)
+  for (const old of positions.keys()) {
+    if (positions.size <= REMEMBERED) break
+    positions.delete(old)
   }
 }
+
+type Reading = {
+  key: string
+  // The x-speech-session this showing sends, fresh each time it is shown.
+  id: string
+  text: string
+  chunks: string[]
+  done: boolean
+  blobs: Map<number, string>
+  // Each request remembers the priority it was sent at, so a skip can move it
+  // to the rank the new cursor gives it, up or down.
+  flight: Map<number, { controller: AbortController; priority: Priority }>
+  prepare?: AbortController
+  // Set by a failed render, so the scheduler stops re-requesting a chunk the
+  // sidecar keeps refusing until the listener asks again.
+  halted: boolean
+  // Failed background renders per chunk, which bounds their silent retries.
+  failures: Map<number, number>
+  // Failed background chunks waiting out their backoff, each with the timer that
+  // ends its wait and schedules again. The timer owns the wait rather than a
+  // Date.now() deadline: under the test runtime a timer fired a millisecond
+  // before Date.now() reached its deadline, and a pass that skips the chunk
+  // then leaves nothing to re-arm.
+  waits: Map<number, ReturnType<typeof setTimeout>>
+}
+
+// A new src or a pause rejects a pending play() with an "AbortError" DOMException:
+// html.spec.whatwg.org/multipage/media.html#reject-pending-play-promises
+const aborted = (error: unknown) => error instanceof Error && error.name === "AbortError"
+
+const describe = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 export function createSpeech(opts?: {
   url?: () => string
   session?: () => string
   directory?: () => string
-  onDone?: () => void
+  title?: () => string
+  fetch?: typeof fetch
+  audio?: () => HTMLAudioElement
+  // Object URL minting for rendered audio; a test swaps it to see what the
+  // element holds without patching the global.
+  objects?: { create: (blob: Blob) => string; revoke: (url: string) => void }
+  // How long skip presses must pause before requests move.
+  debounce?: number
+  // How long a render may go unanswered, by whether it is for the cursor or the
+  // one after it (foreground) or filling in behind them (background).
+  timeout?: { foreground: number; background: number }
+  // How long after a failed background render the scheduler looks again.
+  backoff?: number
   onError?: (message: string) => void
 }) {
+  const timeouts = opts?.timeout ?? TIMEOUT_MS
+  const backoff = opts?.backoff ?? BACKOFF_MS
+  const objects = opts?.objects ?? {
+    create: (blob: Blob) => URL.createObjectURL(blob),
+    revoke: (url: string) => URL.revokeObjectURL(url),
+  }
   const [store, setStore] = createStore({
     speaking: false,
     paused: false,
@@ -413,287 +193,611 @@ export function createSpeech(opts?: {
     rate: storedRate(),
     index: 0,
     total: 0,
-    // The words currently being voiced, so the HUD shows what is being read
-    // rather than only how far along it is.
+    // The words at the cursor, so the HUD shows what is being read rather than
+    // only how far along it is.
     chunk: "",
-    // Set while the overlay is open with nothing playing, which is what lets it
-    // offer resume-or-restart before any audio is fetched.
+    // Open with nothing playing, which is what lets the HUD offer
+    // resume-or-restart before anything plays.
     armed: false,
     // Reactive because a message box reads it during render to tell whether the
     // reading on screen is its own.
-    source: "",
+    key: "",
   })
 
-  const supported = () => typeof window !== "undefined" && typeof Audio !== "undefined"
+  const supported = () => typeof window !== "undefined" && (!!opts?.audio || typeof Audio !== "undefined")
+  const request = opts?.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init))
+  const base = () => opts?.url?.() ?? ""
 
-  let queue: string[] = []
-  // Holds the object URL of every chunk this reading fetched, keyed by chunk
-  // index, so they can all be revoked when the reading ends.
-  let cache = new Map<number, string>()
-  // The chunk to play next. It OUTLIVES a stop, so pressing speak again on the
-  // same message continues where the listener left off rather than restarting a
-  // long reading they had already heard most of.
+  const readings = new Map<string, Reading>()
+  let current: Reading | undefined
   let cursor = 0
-  // ONE element for the whole reading, reused by swapping src. iOS grants
-  // playback to the element that a user gesture touched, and only that one, so
-  // a second element created later for the next segment is refused with
-  // NotAllowedError. Reusing this one carries the grant across the whole queue.
+  // The chunk whose audio the element holds, undefined while it holds nothing
+  // or only the unlock sample, so that sample's end is never taken for a chunk's.
+  let loaded: number | undefined
+  let settle: ReturnType<typeof setTimeout> | undefined
+  const unsettle = () => {
+    clearTimeout(settle)
+    settle = undefined
+  }
+  const unwait = (r: Reading) => {
+    for (const timer of r.waits.values()) clearTimeout(timer)
+    r.waits.clear()
+  }
+  // ONE element for every reading, reused by swapping src. iOS grants playback
+  // to the element a user gesture touched, and only that one.
+  // WebKit keeps these restrictions per element: github.com/WebKit/WebKit/blob/c37c8fb33b880e5d66f25e80ba0a1d22006fd044/Source/WebCore/html/MediaElementSession.cpp
   let player: HTMLAudioElement | undefined
-  let abort: AbortController | undefined
-  // A reading stopped mid-fetch must not start playing when its audio lands; a
-  // resumed continuation compares this to know it was superseded.
-  let epoch = 0
+  // Audio dropped by a voice change while the element was still playing it, so
+  // it can only be revoked once the element has moved off it.
+  let orphans: string[] = []
 
   const release = () => {
-    for (const url of cache.values()) URL.revokeObjectURL(url)
-    cache = new Map()
-    const base = opts?.url?.() ?? ""
-    // The sidecar holds rendered audio per listener until told the reading is
-    // over, so a reading that never says so occupies it until eviction.
-    fetch(`${base}/tts/done`, { method: "POST", headers: { "x-speech-session": LISTENER } }).catch(() => {})
+    for (const url of orphans) objects.revoke(url)
+    orphans = []
   }
 
-  // Whatever the device was already playing is interrupted for the reading and
-  // resumes after it, which the OS only does when the session is handed back.
-  // Holding "playback" past the last chunk leaves music paused indefinitely.
+  const sync = () => {
+    const r = current
+    setStore({
+      key: r?.key ?? "",
+      // A remembered place shows once the reading has a first chunk.
+      index: r?.chunks.length ? cursor : 0,
+      // At least the cursor's chunk, since playback can wait past the last one
+      // known so far.
+      total: r?.chunks.length ? Math.max(r.chunks.length, cursor + 1) : 0,
+      chunk: r?.chunks[cursor] ?? "",
+      // Audio that landed while paused is held for resume, so it is ready.
+      loading: !!r && (store.speaking ? loaded !== cursor && !r.blobs.has(cursor) : !r.chunks[cursor]),
+    })
+  }
+
+  const fail = (what: string, error: unknown) => {
+    opts?.onError?.(`${what}: ${describe(error)}`)
+  }
+
+  // Setting src runs the load algorithm, which resets playbackRate to
+  // defaultPlaybackRate (html.spec.whatwg.org/multipage/media.html#media-element-load-algorithm),
+  // so defaultPlaybackRate is set too and that reset lands on the chosen rate.
+  // Re-applying at loadedmetadata as well is a choice: it costs nothing.
+  const applyRate = () => {
+    if (!player) return
+    player.defaultPlaybackRate = store.rate
+    player.playbackRate = store.rate
+  }
+
+  const media = () => (typeof navigator !== "undefined" ? navigator.mediaSession : undefined)
+
+  const element = () => {
+    if (player) return player
+    const audio = opts?.audio?.() ?? new Audio()
+    audio.preservesPitch = true
+    audio.onloadedmetadata = applyRate
+    audio.onended = () => advance()
+    audio.onerror = () => {
+      if (loaded === undefined || !current) return
+      const at = loaded
+      halt()
+      fail("Playback failed", new Error(`chunk ${at + 1}`))
+      setStore({ speaking: false, paused: false, armed: true })
+      sync()
+    }
+    // An OS interruption (a call, another app's audio) can pause the element
+    // without going through the HUD
+    // (w3c.github.io/audio-session/#audio-session-element-suspend-steps).
+    // The end of a chunk also fires pause, which is not the listener pausing
+    // (html.spec.whatwg.org/multipage/media.html#reaches-the-end: pause fires
+    // before ended).
+    audio.onpause = () => {
+      if (audio.ended || loaded === undefined || !store.speaking || store.paused) return
+      setStore("paused", true)
+    }
+    audio.onplay = () => {
+      if (loaded === undefined || !store.speaking || !store.paused) return
+      setStore("paused", false)
+    }
+    player = audio
+    return audio
+  }
+
+  // Playback permission comes from a user gesture, and the first chunk only
+  // arrives after the rewrite streams in through reader.read() calls, which
+  // WebKit does not carry the gesture across (bugs.webkit.org/show_bug.cgi?id=214722,
+  // "Propagating media only user gesture through Fetch ReadableStream"). So the
+  // element is started on a silent source while the click is still on the
+  // stack; every chunk after that only swaps src.
+  const unlock = () => {
+    const audio = element()
+    loaded = undefined
+    audio.src = SILENCE
+    applyRate()
+    audio.play().catch(() => {})
+  }
+
+  const halt = () => {
+    loaded = undefined
+    if (!player) return
+    player.pause()
+    player.removeAttribute("src")
+    player.load()
+    release()
+  }
+
+  // w3c.github.io/audio-session/#enumdef-audiosessiontype
   const session = (type: "playback" | "auto") => {
     const audio = (navigator as { audioSession?: { type: string } }).audioSession
     if (audio) audio.type = type
   }
 
-  // `reached` distinguishes a reading that ran out of chunks from one the
-  // listener stopped: the first rewinds so the next press starts over, the
-  // second leaves the cursor where it was so the next press resumes.
-  const finish = (reached = false) => {
-    if (store.source) remember(store.source, reached ? 0 : cursor)
-    if (active === stop) active = undefined
-    epoch++
-    abort?.abort()
-    abort = undefined
-    if (player) {
-      player.pause()
-      player.onended = null
-      player.onerror = null
-      // The element is kept, not discarded: its playback permission was granted
-      // by a gesture that will not happen again, and a fresh element for the
-      // next reading would have to earn it from scratch.
-      player.removeAttribute("src")
-      player.load()
-    }
-    if (reached) release()
-    session("auto")
-    if (reached) cursor = 0
-    // The HUD stays up when a reading is stopped rather than finished, so its
-    // buttons remain available to resume or move to another chunk.
-    setStore({ speaking: false, paused: false, loading: false, armed: !reached, chunk: reached ? "" : store.chunk })
-    if (reached) opts?.onDone?.()
-  }
-
-  const stop = () => finish()
-
-  // Playback permission is granted to an element inside a user gesture and is
-  // lost across an await, so the element is created and started on a silent
-  // source while the click is still on the stack. Every later segment then only
-  // swaps src on this already-permitted element.
-  const unlock = () => {
-    const audio = player ?? new Audio()
-    player = audio
-    audio.preservesPitch = true
-    audio.src = SILENCE
-    audio.play().catch(() => {})
-    return audio
-  }
-
-  // Plays one audio URL and resolves when it ends, so the caller sequences the
-  // reading rather than each segment knowing what follows it.
-  const play = (url: string, label: string, at: number) =>
-    new Promise<void>((resolve, reject) => {
-      const audio = player
-      if (!audio) return reject(new Error("no audio element"))
-      // Rate is a property of playback here rather than of synthesis, so a
-      // speed change applies to audio already in flight.
-      audio.playbackRate = store.rate
-      audio.onended = () => resolve()
-      audio.onerror = () => reject(new Error("audio playback failed"))
-      audio.src = url
-      setStore({ index: at, chunk: label, loading: false })
-      audio.play().catch(reject)
+  const swap = (at: number) => {
+    const url = current?.blobs.get(at)
+    if (!url) return false
+    const audio = element()
+    loaded = at
+    applyRate()
+    audio.src = url
+    applyRate()
+    release()
+    audio.play().catch((error) => {
+      if (aborted(error) || loaded !== at) return
+      halt()
+      fail("Playback failed", error)
+      setStore({ speaking: false, paused: false, armed: true })
+      sync()
     })
+    sync()
+    return true
+  }
 
-  // The whole raw message rewritten into speakable chunks. The server rewrites
-  // the markdown into natural prose (owning cleansing, so speakable() is
-  // skipped), and only the FALLBACK — an empty/failed rewrite that comes back
-  // as the original text — runs the deterministic speakable() path. The result
-  // is memoized per raw text so a resume or restart of the same message does not
-  // pay for the rewrite twice within this reading.
-  const built = new Map<string, string[]>()
-  const queueFor = async (raw: string) => {
-    const cached = built.get(raw)
-    if (cached) return cached
-    const base = opts?.url?.() ?? ""
-    const sessionID = opts?.session?.() ?? ""
-    const prose = await fetch(`${base}/tts/prepare`, {
+  // `readings` is oldest-first: `reading` moves each one it touches to the end.
+  const retain = () => {
+    const recent = [...readings.values()].reverse()
+    for (const r of recent.slice(VOICED)) {
+      for (const url of r.blobs.values()) objects.revoke(url)
+      r.blobs.clear()
+    }
+    for (const r of recent.slice(PREPARED)) readings.delete(r.key)
+  }
+
+  const plan = (r: Reading) => {
+    const wanted = new Map<number, Priority>()
+    // The chunk the element is playing counts as held even once a voice change
+    // has dropped its blob: it finishes in the old voice, and fetching it again
+    // would only queue it ahead of the chunk that plays next.
+    const missing = (at: number) => at < r.chunks.length && !r.blobs.has(at) && at !== loaded
+    if (missing(cursor)) wanted.set(cursor, "now")
+    if (missing(cursor + 1)) wanted.set(cursor + 1, "next")
+    const order = [
+      ...Array.from({ length: Math.max(0, r.chunks.length - cursor - 2) }, (_, i) => cursor + 2 + i),
+      ...Array.from({ length: Math.min(cursor, r.chunks.length) }, (_, i) => i),
+    ]
+    const behind = order.find((at) => missing(at) && (r.failures.get(at) ?? 0) <= RETRIES && !r.waits.has(at))
+    if (behind !== undefined) wanted.set(behind, "background")
+    return wanted
+  }
+
+  // The sidecar ranks a job by the highest priority any live request for it
+  // carries, so a request is moved by sending its replacement before dropping
+  // it: the sidecar joins the new one to the queued job rather than starting
+  // over, and the job's rank follows whichever request is still live.
+  const move = (r: Reading, at: number, priority: Priority) => {
+    const flight = r.flight.get(at)
+    render(r, at, priority)
+    flight?.controller.abort()
+  }
+
+  // While skip presses are settling, a landing blob or a retry timer must not
+  // plan against a chunk the listener is only passing through.
+  const schedule = () => {
+    const r = current
+    if (!r || r.halted || settle) return
+    const wanted = plan(r)
+    for (const [at, priority] of wanted) {
+      if (r.flight.get(at)?.priority !== priority) move(r, at, priority)
+    }
+    // A render the plan no longer ranks is still audio the reading will need,
+    // so it carries on, but behind everything the plan does rank. Only the
+    // newest such render is kept: each seek strands the old window, and every
+    // one kept is a render the sidecar works through before the rest.
+    const unwanted = [...r.flight].filter(([at]) => !wanted.has(at))
+    for (const [at, flight] of unwanted.slice(0, -1)) {
+      r.flight.delete(at)
+      flight.controller.abort()
+    }
+    const kept = unwanted.at(-1)
+    if (kept && kept[1].priority !== "background") move(r, kept[0], "background")
+  }
+
+  const render = (r: Reading, at: number, priority: Priority) => {
+    const controller = new AbortController()
+    const background = priority === "background"
+    const limit = background ? timeouts.background : timeouts.foreground
+    let expired = false
+    const timer = setTimeout(() => {
+      expired = true
+      controller.abort()
+    }, limit)
+    // Re-inserted rather than overwritten, so the map's order is the order the
+    // live requests were sent, which is what the scheduler's cap keeps by (set
+    // keeps an existing key's position: tc39.es/ecma262/#sec-map.prototype.set).
+    r.flight.delete(at)
+    r.flight.set(at, { controller, priority })
+    // Moving, ending, or revoicing the reading replaces or clears this entry,
+    // which is what tells an abort by them from one by the timer.
+    const superseded = () => r.flight.get(at)?.controller !== controller
+    request(`${base()}/tts/speak`, {
       method: "POST",
-      body: JSON.stringify({ text: raw, sessionID }),
-      // The directory scopes the rewrite's instance context server-side, the
-      // same header the SDK client sends on every other request.
-      headers: { "content-type": "application/json", "x-opencode-directory": opts?.directory?.() ?? "" },
+      body: JSON.stringify({ text: r.chunks[at], priority }),
+      headers: { "content-type": "application/json", "x-speech-session": r.id },
+      signal: controller.signal,
     })
-      .then((r) => (r.ok ? r.json() : undefined))
-      .then((body) => body?.text as string | undefined)
-      .catch(() => undefined)
-    // No rewrite (or it returned the input unchanged) means the deterministic
-    // path; a real rewrite skips speakable() since the model already cleansed it.
-    const out = prose && prose !== raw ? toSpeech(prose, true) : toSpeech(raw)
-    built.set(raw, out)
-    return out
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`${response.status} ${await response.text().catch(() => "")}`.trim())
+        return response.blob()
+      })
+      .then((blob) => {
+        if (superseded()) return
+        r.flight.delete(at)
+        r.failures.delete(at)
+        clearTimeout(r.waits.get(at))
+        r.waits.delete(at)
+        r.blobs.set(at, objects.create(blob))
+        if (r !== current) return
+        if (store.speaking && !store.paused && at === cursor && loaded !== cursor) swap(at)
+        sync()
+        schedule()
+      })
+      .catch((error) => {
+        if (superseded()) return
+        r.flight.delete(at)
+        // Nobody is waiting on a background render yet, nor on a foreground one
+        // that is no longer the cursor's chunk or the next, so either failure
+        // is left for a later scheduling pass to retry rather than stopping the
+        // reading.
+        if (background || (r === current && at !== cursor && at !== cursor + 1)) {
+          r.failures.set(at, (r.failures.get(at) ?? 0) + 1)
+          if (r !== current) return
+          clearTimeout(r.waits.get(at))
+          r.waits.set(
+            at,
+            setTimeout(() => {
+              r.waits.delete(at)
+              if (r === current) schedule()
+            }, backoff),
+          )
+          return
+        }
+        if (r !== current) return
+        r.halted = true
+        for (const other of r.flight.values()) other.controller.abort()
+        r.flight.clear()
+        fail(
+          `Speech for part ${at + 1} of ${r.chunks.length} failed`,
+          expired ? new Error(`no audio for part ${at + 1} after ${limit / 1000}s`) : error,
+        )
+        if (loaded !== cursor) setStore({ speaking: false, paused: false, armed: true })
+        sync()
+      })
+      .finally(() => clearTimeout(timer))
   }
 
-  // The speaker button on a message calls this. A message never heard before
-  // has one obvious action, so it just plays; one with a remembered position
-  // has two, so the HUD opens on that chunk and waits rather than guessing
-  // between resuming and starting over.
-  const show = async (text: string) => {
-    if (!supported()) return
-    const held = progress.get(text)
-    active?.()
-    active = stop
-    // source stays the RAW text so resume-progress keys are stable regardless of
-    // how the message was rewritten.
-    setStore("source", text)
-    if (held === undefined) return start()
-    setStore({ armed: true, speaking: false, paused: false, loading: true, chunk: "" })
-    queue = await queueFor(text)
-    if (store.source !== text) return
-    cursor = Math.min(held, Math.max(queue.length - 1, 0))
-    setStore({
-      armed: true,
-      loading: false,
-      total: queue.length,
-      index: cursor,
-      chunk: queue[cursor] ?? "",
-    })
-  }
-
-  const start = async (text?: string) => {
-    if (!supported()) return
-    const reading = text ?? store.source
-    active?.()
-    active = stop
-    const generation = ++epoch
-    abort = new AbortController()
-    const signal = abort.signal
-    const base = opts?.url?.() ?? ""
-
-    setStore({ armed: false, speaking: true, paused: false, loading: true, chunk: "" })
-    // Unlock BEFORE the rewrite await: playback permission is granted to the
-    // element inside the user gesture and lost across an await, so the silent
-    // sample must play while the click is still on the stack — before the
-    // rewrite round-trip, not after it.
-    session("playback")
-    unlock()
-
-    // A different message restarts; the same one continues from where it
-    // stopped. Building the queue is async now (the server rewrite), so it is
-    // awaited here rather than computed synchronously.
-    if (reading !== store.source || !queue.length) {
-      setStore("source", reading)
-      queue = await queueFor(reading)
-      if (generation !== epoch) return
-      cursor = progress.get(reading) ?? 0
-    }
-    if (!queue.length) return finish(true)
-    if (cursor >= queue.length) cursor = 0
-    setStore({ total: queue.length, index: cursor })
-
-    // Nothing awaits a prefetch until its chunk is due, so it carries its own
-    // catch: stopping mid-flight aborts it, and an unhandled rejection would
-    // surface as a console error.
-    const prefetch = (at: number) => {
-      if (at >= queue.length) return undefined
-      return fetchAudio(base, queue[at]!, queue[at + 1], signal)
-        .then((url) => {
-          cache.set(at, url)
-          return url
-        })
-        .catch(() => "")
-    }
-
-    try {
-      let pending = prefetch(cursor)
-      let at = cursor
-      while (at < queue.length) {
-        const url = await pending
-        if (generation !== epoch) return
-        if (!url) return finish()
-        // Queued before this chunk plays, so the next one is generated and
-        // downloaded during audio the user is already hearing.
-        pending = prefetch(at + 1)
-        await play(url, queue[at]!, at)
-        if (generation !== epoch) return
-        at++
-        cursor = at
-        remember(store.source, at)
-        setStore("loading", true)
+  const parse = (r: Reading, line: string) => {
+    const message = (() => {
+      try {
+        return JSON.parse(line) as { type?: string; index?: number; text?: string; total?: number; message?: string }
+      } catch {
+        return undefined
       }
-      finish(true)
-    } catch (error) {
-      if (generation !== epoch) return
-      if (signal.aborted) return
-      opts?.onError?.(error instanceof Error ? error.message : String(error))
-      finish()
+    })()
+    if (!message) throw new Error(`unreadable line from the server: ${line.slice(0, 80)}`)
+    if (message.type === "error") throw new Error(message.message ?? "the server reported an error")
+    if (message.type === "done") {
+      if (message.total !== r.chunks.length)
+        throw new Error(`the server announced ${message.total} parts but sent ${r.chunks.length}`)
+      if (!r.chunks.length) throw new Error("the rewrite produced nothing to read")
+      r.done = true
+      return
     }
+    if (message.type !== "chunk" || typeof message.text !== "string")
+      throw new Error(`unexpected line from the server: ${line.slice(0, 80)}`)
+    if (message.index !== r.chunks.length)
+      throw new Error(`part ${message.index} arrived where part ${r.chunks.length} was due`)
+    r.chunks.push(message.text)
+  }
+
+  const prepare = async (r: Reading) => {
+    const controller = new AbortController()
+    r.prepare = controller
+    const response = await request(`${base()}/tts/prepare`, {
+      method: "POST",
+      body: JSON.stringify({ text: r.text, sessionID: opts?.session?.() ?? "" }),
+      headers: {
+        "content-type": "application/json",
+        "x-opencode-directory": directoryHeader(opts?.directory?.() ?? ""),
+        "x-speech-session": r.id,
+      },
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(`${response.status} ${await response.text().catch(() => "")}`.trim())
+    if (!response.body) throw new Error("the server sent no body")
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let held = ""
+    const take = (lines: string[]) => {
+      const before = r.chunks.length
+      for (const line of lines.filter((line) => line.trim())) parse(r, line)
+      if (r !== current) return
+      // Playback can run past the last chunk known so far, waiting on the next;
+      // if `done` then says there is none, the listener has heard it all. A
+      // remembered place past the end of a shorter rewrite lands on its last
+      // chunk instead.
+      if (r.done && cursor >= r.chunks.length && store.speaking && loaded === cursor - 1) {
+        cursor = 0
+        return close()
+      }
+      if (r.done) cursor = Math.min(cursor, r.chunks.length - 1)
+      if (r.chunks.length !== before || r.done) {
+        sync()
+        schedule()
+      }
+    }
+    while (!r.done) {
+      const read = await reader.read()
+      if (read.done) break
+      const lines = (held + decoder.decode(read.value, { stream: true })).split("\n")
+      held = lines.pop() ?? ""
+      take(lines)
+    }
+    if (!r.done) take([held + decoder.decode()])
+    if (!r.done) throw new Error("the stream ended before the server finished")
+    r.prepare = undefined
+    reader.cancel().catch(() => {})
+  }
+
+  const reading = (key: string, text: string) => {
+    const held = readings.get(key)
+    // Deleted and set again below, so this reading moves to the newest end (set
+    // keeps an existing key's position: tc39.es/ecma262/#sec-map.prototype.set).
+    readings.delete(key)
+    if (held && held.text !== text) {
+      for (const url of held.blobs.values()) objects.revoke(url)
+      for (const flight of held.flight.values()) flight.controller.abort()
+      held.flight.clear()
+      held.prepare?.abort()
+      positions.delete(key)
+    }
+    const r: Reading =
+      held && held.text === text
+        ? held
+        : {
+            key,
+            id: "",
+            text,
+            chunks: [],
+            done: false,
+            blobs: new Map(),
+            flight: new Map(),
+            halted: false,
+            failures: new Map(),
+            waits: new Map(),
+          }
+    // A new showing is the listener asking again, so whatever stopped the last
+    // one gets another try.
+    r.id = `${LISTENER}:${++showings}`
+    r.halted = false
+    r.failures.clear()
+    unwait(r)
+    readings.set(key, r)
+    retain()
+    return r
+  }
+
+  const setMedia = () => {
+    const session = media()
+    if (!session) return
+    if (typeof MediaMetadata !== "undefined")
+      session.metadata = new MediaMetadata({ title: opts?.title?.() ?? "", artist: "OpenCode" })
+    session.setActionHandler("play", () => (store.speaking ? resume() : start()))
+    session.setActionHandler("pause", () => pause())
+    // A skip from the lock screen or a headset keeps playing: unlike one made
+    // in the HUD, nobody is looking at the screen to choose what comes next. A
+    // paused reading moves without playing, ready at the chunk it lands on.
+    const skip = (move: () => void) => () => {
+      const at = cursor
+      const playing = store.speaking && !store.paused
+      move()
+      if (playing && cursor !== at) begin()
+    }
+    session.setActionHandler("nexttrack", skip(() => next()))
+    session.setActionHandler("previoustrack", skip(() => previous()))
+  }
+
+  const clearMedia = () => {
+    const session = media()
+    if (!session) return
+    session.metadata = null
+    for (const action of ["play", "pause", "nexttrack", "previoustrack"] as const)
+      session.setActionHandler(action, null)
+  }
+
+  // Ends the current reading entirely: every request it has in flight is
+  // aborted and the sidecar is told to drop anything still queued for it.
+  const end = () => {
+    const r = current
+    if (!r) return
+    if (active === end) active = undefined
+    current = undefined
+    unsettle()
+    unwait(r)
+    remember(r.key, cursor)
+    r.prepare?.abort()
+    for (const flight of r.flight.values()) flight.controller.abort()
+    r.flight.clear()
+    if (!r.done) {
+      for (const url of r.blobs.values()) objects.revoke(url)
+      readings.delete(r.key)
+    }
+    halt()
+    session("auto")
+    clearMedia()
+    request(`${base()}/tts/done`, { method: "POST", headers: { "x-speech-session": r.id } }).catch(() => {})
+  }
+
+  const close = () => {
+    if (!current && !store.armed && !store.speaking) return
+    end()
+    setStore({ speaking: false, paused: false, loading: false, armed: false, chunk: "", key: "", total: 0, index: 0 })
+  }
+
+  const advance = () => {
+    const r = current
+    if (!r || loaded === undefined || loaded !== cursor) return
+    if (r.done && cursor + 1 >= r.chunks.length) {
+      cursor = 0
+      return close()
+    }
+    cursor++
+    remember(r.key, cursor)
+    const playing = !store.paused && swap(cursor)
+    if (!playing && r.halted) setStore({ speaking: false, paused: false, armed: true })
+    sync()
+    schedule()
+  }
+
+  // Playing mode: the HUD shows the reading as live, and whatever lands for the
+  // cursor starts at once.
+  const begin = () => {
+    const r = current
+    if (!r) return
+    r.halted = false
+    setStore({ armed: false, speaking: true, paused: false })
+    session("playback")
+    setMedia()
+    unlock()
+    swap(cursor)
+    sync()
+    unsettle()
+    schedule()
+  }
+
+  // The speaker button on a text part calls this. A part never heard, or heard
+  // to the end, has one obvious action, so it plays; one left partway has two,
+  // so the HUD opens on that chunk and waits rather than guessing.
+  const show = (key: string, text: string) => {
+    if (!supported()) return
+    active?.()
+    end()
+    const r = reading(key, text)
+    current = r
+    active = end
+    const held = positions.get(key) ?? 0
+    cursor = r.done ? Math.min(held, Math.max(r.chunks.length - 1, 0)) : held
+    if (!r.done && !r.prepare)
+      prepare(r).catch((error) => {
+        if (r.prepare?.signal.aborted) return
+        r.prepare?.abort()
+        r.prepare = undefined
+        readings.delete(r.key)
+        if (r !== current) return
+        fail("Preparing the speech failed", error)
+        close()
+      })
+    if (held > 0) {
+      setStore({ armed: true, speaking: false, paused: false })
+      sync()
+      return schedule()
+    }
+    begin()
+  }
+
+  const start = () => {
+    if (!supported() || !current) return
+    begin()
   }
 
   const pause = () => {
     if (!store.speaking || store.paused) return
-    player?.pause()
     setStore("paused", true)
+    player?.pause()
   }
 
   const resume = () => {
     if (!store.speaking || !store.paused) return
-    player?.play().catch(() => {})
     setStore("paused", false)
+    if (loaded === cursor) {
+      player?.play().catch((error) => {
+        if (aborted(error)) return
+        fail("Playback failed", error)
+        if (store.speaking) setStore("paused", true)
+      })
+      return
+    }
+    swap(cursor)
+    sync()
   }
 
-  // Real audio has a playback rate, so a speed change is applied to the element
-  // in flight and never re-fetches or restarts what is already playing.
   const setRate = (rate: number) => {
-    const next = clampRate(rate)
-    setStore("rate", next)
-    if (player) player.playbackRate = next
+    setStore("rate", clampRate(rate))
+    applyRate()
     try {
-      window.localStorage.setItem(RATE_KEY, String(next))
+      window.localStorage.setItem(RATE_KEY, String(store.rate))
     } catch {}
   }
 
   const faster = () => setRate(store.rate + RATE.step)
   const slower = () => setRate(store.rate - RATE.step)
 
-  // Moving to another chunk always stops the audio: the listener navigated to
-  // look, and speaking over that would carry them past what they were reaching
-  // for. Play is theirs to press once the HUD is on the chunk they wanted.
+  // Moving to another chunk stops the audio: the listener navigated to look,
+  // and speaking over that would carry them past what they were reaching for.
+  // The HUD moves at once; requests move only once the presses settle.
   const seek = (to: number) => {
-    if (!queue.length) return
-    if (store.speaking) finish()
-    cursor = Math.max(0, Math.min(to, queue.length - 1))
-    remember(store.source, cursor)
-    setStore({ armed: true, index: cursor, chunk: queue[cursor] ?? "" })
+    const r = current
+    if (!r || !r.chunks.length) return
+    // Waiting past the last chunk known so far, `next` stays put: clamping to
+    // that chunk would move backwards and replay it. `previous` may step back
+    // onto a chunk not yet known, and the cursor waits there for it.
+    const target = Math.max(0, Math.min(to, Math.max(r.chunks.length - 1, cursor)))
+    if (target === cursor) return
+    if (store.speaking) {
+      halt()
+      setStore({ speaking: false, paused: false })
+    }
+    cursor = target
+    remember(r.key, cursor)
+    setStore("armed", true)
+    sync()
+    unsettle()
+    settle = setTimeout(() => {
+      settle = undefined
+      schedule()
+    }, opts?.debounce ?? SETTLE_MS)
   }
 
   const next = () => seek(cursor + 1)
   const previous = () => seek(cursor - 1)
   const restart = () => seek(0)
 
-  const close = () => {
-    finish()
-    setStore({ armed: false, chunk: "" })
-    opts?.onDone?.()
+  // The voice changed server-side, so every rendered chunk is in the old one.
+  // The chunk playing now finishes in the voice it started in.
+  const revoice = () => {
+    for (const r of readings.values()) {
+      for (const [at, url] of r.blobs) {
+        if (r === current && at === loaded) orphans.push(url)
+        else objects.revoke(url)
+        r.blobs.delete(at)
+      }
+      if (r !== current) continue
+      for (const flight of r.flight.values()) flight.controller.abort()
+      r.flight.clear()
+      r.failures.clear()
+      unwait(r)
+    }
+    schedule()
   }
 
   onCleanup(() => {
-    if (active === stop) finish()
+    close()
+    for (const r of readings.values()) for (const url of r.blobs.values()) objects.revoke(url)
+    readings.clear()
   })
 
   return {
@@ -703,7 +807,7 @@ export function createSpeech(opts?: {
     loading: () => store.loading,
     armed: () => store.armed,
     open: () => store.armed || store.speaking,
-    reading: (text: string) => (store.armed || store.speaking) && text === store.source,
+    reading: (key: string) => (store.armed || store.speaking) && key === store.key,
     rate: () => store.rate,
     index: () => store.index,
     total: () => store.total,
@@ -711,7 +815,6 @@ export function createSpeech(opts?: {
     resuming: () => store.index > 0,
     show,
     start,
-    stop,
     close,
     pause,
     resume,
@@ -721,5 +824,10 @@ export function createSpeech(opts?: {
     restart,
     faster,
     slower,
+    revoice,
   }
 }
+
+// One reading at a time across the whole app: a second speak button ends the
+// reading in progress rather than two voices overlapping.
+let active: (() => void) | undefined

@@ -1094,6 +1094,7 @@ export type VoicePreference = {
 
 export type EventVoicePreferenceUpdated = {
   type: "voice.preference.updated"
+  version?: number
   properties: VoicePreference
 }
 
@@ -1592,11 +1593,11 @@ export type Config = {
     paths?: Array<string>
   }
   /**
-   * Speech-to-text engine for the prompt microphone
+   * Local speech sidecar: speech-to-text for the prompt microphone, and the voice and rewrite for read-aloud
    */
   dictation?: {
     /**
-     * Base URL of the local transcription sidecar
+     * Base URL of the local speech sidecar, used for transcription and read-aloud
      */
     url?: string
     /**
@@ -1607,6 +1608,19 @@ export type Config = {
   watcher?: {
     ignore?: Array<string>
   }
+    /**
+     * The model that rewrites assistant text into speakable sentences before read-aloud
+     */
+    rewrite?: {
+      /**
+       * provider/model that rewrites a message for read-aloud; the default model when unset
+       */
+      model?: string
+      /**
+       * Variant of the rewrite model; the model's configured variant when unset
+       */
+      variant?: string
+    }
   plugin?: Array<string>
   snapshot?: boolean
   /**
@@ -4695,7 +4709,9 @@ export type PreferenceVoiceGetResponses = {
 export type PreferenceVoiceGetResponse = PreferenceVoiceGetResponses[keyof PreferenceVoiceGetResponses]
 
 export type PreferenceVoiceSetData = {
-  body?: VoicePreference
+  body?: {
+    name: string | null
+  }
   path?: never
   query?: {
     directory?: string
@@ -4714,7 +4730,7 @@ export type PreferenceVoiceSetError = PreferenceVoiceSetErrors[keyof PreferenceV
 
 export type PreferenceVoiceSetResponses = {
   /**
-   * Voice preference updated
+   * The stored voice preference, with its new version
    */
   200: boolean
 }
@@ -4761,7 +4777,7 @@ export type PreferenceAppearanceSetResponses = {
   /**
    * Appearance preferences updated
    */
-  200: boolean
+  200: VoicePreference
 }
 
 export type PreferenceAppearanceSetResponse = PreferenceAppearanceSetResponses[keyof PreferenceAppearanceSetResponses]
