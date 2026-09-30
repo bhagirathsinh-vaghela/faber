@@ -56,9 +56,9 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useRecent } from "@/context/recent"
 import { attention, busy as busyDot, flat, strongest } from "@/utils/attention"
 import { usePermission } from "@/context/permission"
-import { Binary } from "@opencode-ai/util/binary"
 import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
+import { root } from "@/utils/announce"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
@@ -431,33 +431,42 @@ export default function Layout(props: ParentProps) {
       // A finished or failed turn is announced, never listed here: the dot it
       // lights lives on the server's recent entry, which every surface reads.
       if (e.details?.type === "session.idle" || e.details?.type === "session.error") {
-        const sessionID = e.details.properties.sessionID
-        const [syncStore] = globalSync.child(e.name, { bootstrap: false })
-        const found = sessionID ? Binary.search(syncStore.session, sessionID, (s) => s.id) : undefined
-        const session = sessionID && found?.found ? syncStore.session[found.index] : undefined
-        if (session?.parentID) return
+        const details = e.details
+        const directory = e.name
+        const sessionID = details.properties.sessionID
+        const [syncStore] = globalSync.child(directory, { bootstrap: false })
+        const resolved = sessionID
+          ? root(syncStore.session, sessionID, (id) =>
+              globalSDK.client.session
+                .get({ sessionID: id, directory })
+                .then((x) => x.data)
+                .catch(() => undefined),
+            )
+          : Promise.resolve(undefined)
+        void resolved.then((session) => {
+          if (sessionID && !session) return
+          const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
+          if (details.type === "session.idle") {
+            playSound(soundSrc(settings.sounds.agent()))
+            if (settings.notifications.agent())
+              void platform.notify(
+                language.t("notification.session.responseReady.title"),
+                session?.title ?? sessionID,
+                href,
+              )
+            return
+          }
 
-        const href = sessionID ? `/${base64Encode(e.name)}/session/${sessionID}` : `/${base64Encode(e.name)}`
-        if (e.details.type === "session.idle") {
-          playSound(soundSrc(settings.sounds.agent()))
-          if (settings.notifications.agent())
+          playSound(soundSrc(settings.sounds.errors()))
+          const error = "error" in details.properties ? details.properties.error : undefined
+          if (settings.notifications.errors())
             void platform.notify(
-              language.t("notification.session.responseReady.title"),
-              session?.title ?? sessionID,
+              language.t("notification.session.error.title"),
+              session?.title ??
+                (typeof error === "string" ? error : language.t("notification.session.error.fallbackDescription")),
               href,
             )
-          return
-        }
-
-        playSound(soundSrc(settings.sounds.errors()))
-        const error = "error" in e.details.properties ? e.details.properties.error : undefined
-        if (settings.notifications.errors())
-          void platform.notify(
-            language.t("notification.session.error.title"),
-            session?.title ??
-              (typeof error === "string" ? error : language.t("notification.session.error.fallbackDescription")),
-            href,
-          )
+        })
         return
       }
 

@@ -18,6 +18,9 @@ export interface SoundSettings {
   agent: string
   blocking: string
   errors: string
+  // Marks a record that has had the default-sound change applied; see
+  // migrateSettings.
+  revision: number
 }
 
 export interface Settings {
@@ -79,9 +82,10 @@ const defaultSettings: Settings = {
     errors: false,
   },
   sounds: {
-    agent: "staplebops-01",
-    blocking: "staplebops-02",
+    agent: "yup-03",
+    blocking: "alert-02",
     errors: "nope-03",
+    revision: 1,
   },
   debug: {
     showInternal: false,
@@ -206,7 +210,13 @@ function migrate(a: Partial<Appearance> & { codeFont?: string }): Appearance {
 
 // Records saved before permissions and questions were unified carry the alert
 // choice under `permissions`; move it to `blocking` so the selection survives.
-function migrateSettings(value: unknown) {
+//
+// A stored record holds every default it was merged with, so a new default
+// never reaches an existing client on its own. A record without `revision`
+// predates the current default sounds: each slot still on its old default
+// moves to the new one, once, and the merge then stamps the revision so a
+// later choice of the old sound sticks.
+export function migrateSettings(value: unknown) {
   if (!value || typeof value !== "object") return value
   const settings = value as Record<string, Record<string, unknown> | undefined>
   for (const group of ["notifications", "sounds"]) {
@@ -214,6 +224,13 @@ function migrateSettings(value: unknown) {
     if (!section || !("permissions" in section)) continue
     settings[group] = { ...section, blocking: section.blocking ?? section.permissions }
     delete settings[group]!.permissions
+  }
+  const sounds = settings.sounds
+  if (!sounds || "revision" in sounds) return settings
+  settings.sounds = {
+    ...sounds,
+    agent: sounds.agent === "staplebops-01" ? defaultSettings.sounds.agent : sounds.agent,
+    blocking: sounds.blocking === "staplebops-02" ? defaultSettings.sounds.blocking : sounds.blocking,
   }
   return settings
 }
