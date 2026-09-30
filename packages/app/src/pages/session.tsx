@@ -2611,7 +2611,7 @@ export default function Page() {
                         }}
                       >
                         <button
-                          class="pointer-events-auto size-(--control-height) flex items-center justify-center rounded-full glass border border-border-base text-text-base hover:bg-background-stronger transition-colors"
+                          class="pointer-events-auto size-(--control-height) flex items-center justify-center rounded-full glass-medium border border-border-base text-text-base hover:bg-background-stronger transition-colors"
                           onClick={resumeScroll}
                           {...preserveFocus()}
                         >
@@ -2978,11 +2978,6 @@ export default function Page() {
               "absolute inset-x-0 bottom-0 max-h-[calc(100%-var(--titlebar-height))] min-h-0 py-2 gap-2 flex flex-col justify-end items-center z-50 px-4 panel-wide:px-0 pointer-events-none": true,
               // The mobile Changes tab hides the dock outright.
               hidden: reviewReplacesTranscript(),
-              // Opaque under the content so the transcript cannot read through
-              // it, with a 6px ramp above that the padding clears by a pixel.
-              // A progress line is thin enough that nothing reads through it.
-              "bg-[linear-gradient(to_top,var(--background-stronger)_0%,var(--background-stronger)_calc(100%-6px),transparent_100%)]":
-                !titleWorking(),
             }}
           >
             {/* The busy cue outlives the composer: reader hides the one below

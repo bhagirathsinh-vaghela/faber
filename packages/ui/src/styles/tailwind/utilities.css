@@ -1,21 +1,20 @@
-/* Frosted glass for the small floating pills (the reader orbs, scroll to
-   bottom), small enough that the page behind reads as depth: a low-alpha
-   fill plus a light blur, so text and borders behind read as blurred shapes,
-   still recognizable rather than smeared. No saturate: it muddies the letters
-   together. Without backdrop-filter the fill stays mostly opaque, so it still
-   reads as a surface. */
+/* See-through frosted glass for the reader pills: a low-alpha fill plus a light
+   blur, so text and borders behind read as blurred shapes, still recognizable
+   rather than smeared. No saturate: it muddies the letters together. Without
+   backdrop-filter the fill stays mostly opaque, so it still reads as a
+   surface. */
 @utility glass {
   background-color: color-mix(in oklab, var(--surface-raised-base) 65%, transparent);
   @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-    background-color: color-mix(in oklab, var(--surface-raised-base) 8%, transparent);
+    background-color: color-mix(in oklab, var(--surface-raised-base) 10%, transparent);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
   }
 }
 
-/* Between `glass` and `glass-dense`, for the voice overlays: they sit over a
-   dimming scrim, so they can show more of the page than a popover while their
-   own text stays readable. */
+/* Between `glass` and `glass-dense`, for the voice overlays and the
+   scroll-to-bottom button: the overlays sit over a dimming scrim and the button
+   carries only an icon, so they can show more of the page than a popover. */
 @utility glass-medium {
   background-color: color-mix(in oklab, var(--surface-raised-stronger-non-alpha) 65%, transparent);
   @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
@@ -29,6 +28,17 @@
   background-color: var(--glass-dense);
   -webkit-backdrop-filter: var(--glass-dense-blur);
   backdrop-filter: var(--glass-dense-blur);
+}
+
+/* The `glass-dense` surface, denser, for the composer: text is typed into it,
+   so what scrolls behind has to stay further out of the way. */
+@utility glass-heavy {
+  background-color: color-mix(in oklab, var(--surface-raised-stronger-non-alpha) 95%, transparent);
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    background-color: color-mix(in oklab, var(--surface-raised-stronger-non-alpha) 75%, transparent);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+  }
 }
 
 @utility no-scrollbar {

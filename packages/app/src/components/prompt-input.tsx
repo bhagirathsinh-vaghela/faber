@@ -2279,7 +2279,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           ref={(el) => trackComposer(el)}
           classList={{
             "group/prompt-input": true,
-            "bg-surface-raised-stronger-non-alpha shadow-xs-border relative": true,
+            "glass-heavy shadow-xs-border relative": true,
             "rounded-[14px] overflow-clip focus-within:shadow-xs-border": true,
             "border-icon-info-active border-dashed": store.dragging,
             [props.class ?? ""]: !!props.class,
