@@ -100,8 +100,8 @@ export interface MessageProps {
   // box with a "◈ ROLE" header.
   boxed?: boolean
   defaultOpen?: boolean
-  // Completed-turn snapshot line, threaded from the page down to each
-  // assistant text box. Absent while the turn is streaming.
+  // The per-API-call chip row, threaded from the page down to each text and
+  // thinking box.
   footer?: (message: AssistantMessage) => JSX.Element
   // When set, the box header's identity (◈ #N ROLE time) becomes a button that
   // scrolls this message into view. Used by the sticky user-message header.
@@ -116,8 +116,8 @@ export interface MessagePartProps {
   message: MessageType
   hideDetails?: boolean
   defaultOpen?: boolean
-  // Completed-turn snapshot line; only TextPartDisplay renders it (under its
-  // own box). Every other part ignores it.
+  // The chip row for the part's own API call. Text and thinking parts render it
+  // (StepFooter); every other part ignores it.
   footer?: (message: AssistantMessage) => JSX.Element
 }
 
@@ -1216,17 +1216,21 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
         speak={() => (finished() ? { key: part.id, text: displayText() } : undefined)}
       >
         <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
-        {/* Snapshot line under every assistant text box, matching the Response
-            box. Gate on this block's OWN completion, not the whole turn: an
-            intermediate step gets its chips as soon as it finishes, while the
-            still-streaming last block stays footer-less until it completes. The
-            footer sits in its own slot so the markdown flow's line leading and
-            block margins cannot bleed into the gap above it; the spacing is owned
-            by data-slot="assistant-footer" in message-part.css. */}
-        <Show when={props.footer && (props.message as AssistantMessage).time.completed}>
-          <div data-slot="assistant-footer">{props.footer!(props.message as AssistantMessage)}</div>
-        </Show>
+        <StepFooter message={props.message} footer={props.footer} />
       </CardBox>
+    </Show>
+  )
+}
+
+// The chip row for the API call that owns the part. It waits on the message,
+// not the part: the call's usage lands only when the call finishes, which the
+// SDK holds until every tool in it has returned (ai 5.0.124,
+// runToolsTransformation), so a part can end well before its chips exist.
+function StepFooter(props: { message: MessageType; footer?: (message: AssistantMessage) => JSX.Element }) {
+  const message = () => props.message as AssistantMessage
+  return (
+    <Show when={props.footer && message().time.completed}>
+      <div data-slot="assistant-footer">{props.footer!(message())}</div>
     </Show>
   )
 }
@@ -1255,6 +1259,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
         speak={() => (finished() ? { key: part.id, text: text() } : undefined)}
       >
         <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
+        <StepFooter message={props.message} footer={props.footer} />
       </CardBox>
     </Show>
   )
