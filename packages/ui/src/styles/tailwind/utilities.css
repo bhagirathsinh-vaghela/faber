@@ -1,5 +1,5 @@
-/* Frosted glass for the reader pills and the overlay panel, which float over a
-   scrim or are small enough that the page behind reads as depth: a low-alpha
+/* Frosted glass for the small floating pills (the reader orbs, scroll to
+   bottom), small enough that the page behind reads as depth: a low-alpha
    fill plus a light blur, so text and borders behind read as blurred shapes,
    still recognizable rather than smeared. No saturate: it muddies the letters
    together. Without backdrop-filter the fill stays mostly opaque, so it still

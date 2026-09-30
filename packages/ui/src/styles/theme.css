@@ -133,10 +133,10 @@
   --radius-lg: 0.5rem;
   --radius-xl: 0.625rem;
 
-  /* Frosted surface for panels and popovers over content with nothing dimming
-     it: dense enough that text behind stays out of the way. */
-  --glass-dense: color-mix(in oklab, var(--surface-raised-stronger-non-alpha) 80%, transparent);
-  --glass-dense-blur: blur(20px);
+  /* Frosted surface for panels and popovers that hold text of their own: dense
+     enough that text behind stays out of the way. */
+  --glass-dense: color-mix(in oklab, var(--surface-raised-stronger-non-alpha) 55%, transparent);
+  --glass-dense-blur: blur(24px);
 
   --shadow-xs:
     0 1px 2px -0.5px light-dark(hsl(0 0% 0% / 0.04), hsl(0 0% 0% / 0.06)),
