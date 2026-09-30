@@ -1237,6 +1237,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       category: language.t("command.category.session"),
       onSelect: () => {
         editorRef.focus({ preventScroll: true })
+        // Placed with the focus as well as a frame later: a key typed in that
+        // frame (reader's type-to-reveal lands one, then the user keeps typing)
+        // goes wherever the caret is, and focus alone leaves it at the start
+        // (offset 0 in Chromium, measured by the reader space-key e2e case).
+        setCursorPosition(editorRef, promptLength(prompt.current()))
         requestAnimationFrame(() => setCursorPosition(editorRef, promptLength(prompt.current())))
       },
     },

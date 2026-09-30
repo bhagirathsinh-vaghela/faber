@@ -422,11 +422,30 @@ test.describe("reader mode on a fine pointer", () => {
       const editor = page.locator(promptSelector)
       await expect(composer(page)).toBeHidden()
 
+      // A key typed right after the reveal lands wherever the caret is, so the
+      // caret must already be past the landed space when focus arrives.
+      await editor.evaluate((el) => {
+        el.addEventListener(
+          "focus",
+          () =>
+            queueMicrotask(() => {
+              const selection = window.getSelection()
+              if (!selection?.rangeCount) return
+              const before = document.createRange()
+              before.selectNodeContents(el)
+              before.setEnd(selection.getRangeAt(0).endContainer, selection.getRangeAt(0).endOffset)
+              el.dataset.caretAtFocus = String(before.toString().length)
+            }),
+          { once: true },
+        )
+      })
+
       // While hidden, space raises the overlay — the keyboard twin of a tap.
       await page.keyboard.press("Space")
       await expect(composer(page)).toBeVisible()
       await expect(editor).toBeFocused()
       await expect(editor).toHaveText("")
+      await expect(editor).toHaveAttribute("data-caret-at-focus", "1")
 
       // Once the overlay is up and holding the caret, space is a character again.
       await page.keyboard.type("hi there")
