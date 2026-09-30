@@ -35,7 +35,9 @@ export namespace SessionStatus {
         status: Info,
       }),
     ),
-    // deprecated
+    // A turn ended: finished, failed, or interrupted. Published once per turn,
+    // by the prompt loop's exit, never for a session Stop. Clients chime on it,
+    // so it is not a status edge: clearing the retry label never sends it.
     Idle: BusEvent.define(
       "session.idle",
       z.object({
@@ -70,10 +72,6 @@ export namespace SessionStatus {
       status,
     })
     if (status.type === "idle") {
-      // deprecated
-      Bus.publish(Event.Idle, {
-        sessionID,
-      })
       delete state()[sessionID]
       return
     }

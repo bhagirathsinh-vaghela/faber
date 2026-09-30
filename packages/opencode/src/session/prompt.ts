@@ -691,6 +691,14 @@ export namespace SessionPrompt {
       })
     }
 
+    // Declared first, so it runs last, once the turn is fully over. A turn
+    // this loop ran to its end, or one Esc interrupted, is announced; a Stop
+    // ends the session rather than a turn anyone waits on, and a dispose hands
+    // the turn to the next server to resume.
+    using _idle = defer(() => {
+      if (abort.reason === DISPOSED || abort.reason === STOPPED) return
+      Bus.publish(SessionStatus.Event.Idle, { sessionID })
+    })
     // Declared before the cancel below, so it runs after it: once the turn is
     // over here, whatever the session is owed is paid by this process, even
     // one that never holds the lease. A turn its instance's dispose cut is the
