@@ -1,5 +1,8 @@
 import embedded from "./web-assets.json" with { type: "json" }
 import path from "path"
+import os from "os"
+import { lazy } from "../util/lazy"
+import { Icon } from "./icon"
 
 type Encoded = Record<string, { type: string; body: string; br?: string; gzip?: string }>
 
@@ -17,20 +20,45 @@ type Asset = {
 // without restarting the process. Same serving path in both cases.
 const decoded = new Map<string, Asset>()
 
+function asset(type: string, body: Uint8Array<ArrayBuffer>, br?: Uint8Array<ArrayBuffer>, gzip?: Uint8Array<ArrayBuffer>) {
+  // Hash the canonical (uncompressed) body so the validator is stable across
+  // the br/gzip/identity variants of the same resource. Bun.hash is a fast
+  // non-crypto hash; an ETag only needs to change when the bytes change.
+  return { type, body, br, gzip, etag: `"${Bun.hash(body).toString(36)}"` }
+}
+
+// Each host labels its install icons with its hostname, so PWAs saved from
+// different servers are told apart in the Dock. The manifest's
+// icon URLs carry the icon's hash because Chrome refreshes an installed app's
+// icon only when the URL changes, never for new bytes at the same URL
+// (https://www.w3.org/2025/11/TPAC/demo-app-updating.html).
+const branded = lazy(() => {
+  const label = os.hostname().split(".")[0] ?? ""
+  const manifest = decoded.get("/site.webmanifest")
+  if (!label || !manifest) return new Map<string, Asset>()
+  const icons = new Map(Object.entries(Icon.files).map(([name, size]) => [name, asset("image/png", Icon.png(size, label))]))
+  const parsed = JSON.parse(new TextDecoder().decode(manifest.body)) as { icons: { src: string }[] }
+  const versioned = parsed.icons.map((icon) => {
+    const generated = icons.get(icon.src)
+    return generated ? { ...icon, src: `${icon.src}?v=${generated.etag.slice(1, -1)}` } : icon
+  })
+  const body = Buffer.from(JSON.stringify({ ...parsed, icons: versioned }))
+  return new Map([...icons, ["/site.webmanifest", asset(manifest.type, body)]])
+})
+
 function fill(assets: Encoded) {
   decoded.clear()
-  for (const [file, asset] of Object.entries(assets)) {
-    const body = Buffer.from(asset.body, "base64")
-    decoded.set(file, {
-      type: asset.type,
-      body,
-      br: asset.br ? Buffer.from(asset.br, "base64") : undefined,
-      gzip: asset.gzip ? Buffer.from(asset.gzip, "base64") : undefined,
-      // Hash the canonical (uncompressed) body so the validator is stable across
-      // the br/gzip/identity variants of the same resource. Bun.hash is a fast
-      // non-crypto hash; an ETag only needs to change when the bytes change.
-      etag: `"${Bun.hash(body).toString(36)}"`,
-    })
+  branded.reset()
+  for (const [file, encoded] of Object.entries(assets)) {
+    decoded.set(
+      file,
+      asset(
+        encoded.type,
+        Buffer.from(encoded.body, "base64"),
+        encoded.br ? Buffer.from(encoded.br, "base64") : undefined,
+        encoded.gzip ? Buffer.from(encoded.gzip, "base64") : undefined,
+      ),
+    )
   }
 }
 
@@ -53,7 +81,7 @@ export namespace Web {
   export function serve(file: string, accept?: string, inm?: string): Response | null {
     const index = decoded.get("/index.html")
     if (!index) return null
-    const exact = decoded.get(file === "/" ? "/index.html" : file)
+    const exact = branded().get(file) ?? decoded.get(file === "/" ? "/index.html" : file)
     // A missing /assets/* is a real 404: those URLs are content-hashed, so an
     // absent one is a stale reference, not a client route. Serving index.html
     // there would hand back text/html under a .js/.css URL.
