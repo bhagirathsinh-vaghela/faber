@@ -58,7 +58,7 @@ import { attention, busy as busyDot, flat, strongest } from "@/utils/attention"
 import { usePermission } from "@/context/permission"
 import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
-import { announced } from "@/utils/announce"
+import { announced, audible } from "@/utils/announce"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
@@ -414,6 +414,8 @@ export default function Layout(props: ParentProps) {
     const toastBySession = new Map<string, number>()
     const alertedAtBySession = new Map<string, number>()
     const cooldownMs = 5000
+    const viewing = (directory: string, sessionID: string | undefined) =>
+      directory === decode64(params.dir) && sessionID === params.id
 
     const unsub = globalSDK.event.listen((e) => {
       if (e.details?.type === "worktree.ready") {
@@ -429,7 +431,7 @@ export default function Layout(props: ParentProps) {
       }
 
       if (e.details?.type === "session.stopped") {
-        playSound(soundSrc(settings.sounds.stopped()))
+        if (audible(viewing(e.name, e.details.properties.sessionID))) playSound(soundSrc(settings.sounds.stopped()))
         return
       }
 
@@ -440,7 +442,7 @@ export default function Layout(props: ParentProps) {
         const directory = e.name
         const sessionID = details.properties.sessionID
         const [syncStore] = globalSync.child(directory, { bootstrap: false })
-        const open = directory === decode64(params.dir) && sessionID === params.id
+        const open = viewing(directory, sessionID)
         const resolved = sessionID
           ? announced(syncStore.session, sessionID, open, (id) =>
               globalSDK.client.session
@@ -452,8 +454,9 @@ export default function Layout(props: ParentProps) {
         void resolved.then((session) => {
           if (sessionID && !session) return
           const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
+          const sound = audible(viewing(directory, sessionID))
           if (details.type === "session.idle") {
-            playSound(soundSrc(settings.sounds.agent()))
+            if (sound) playSound(soundSrc(settings.sounds.agent()))
             if (settings.notifications.agent())
               void platform.notify(
                 language.t("notification.session.responseReady.title"),
@@ -463,7 +466,7 @@ export default function Layout(props: ParentProps) {
             return
           }
 
-          playSound(soundSrc(settings.sounds.errors()))
+          if (sound) playSound(soundSrc(settings.sounds.errors()))
           const error = "error" in details.properties ? details.properties.error : undefined
           if (settings.notifications.errors())
             void platform.notify(
@@ -503,7 +506,7 @@ export default function Layout(props: ParentProps) {
       if (now - lastAlerted < cooldownMs) return
       alertedAtBySession.set(sessionKey, now)
 
-      playSound(soundSrc(settings.sounds.blocking()))
+      if (audible(viewing(directory, props.sessionID))) playSound(soundSrc(settings.sounds.blocking()))
       if (settings.notifications.blocking()) void platform.notify(title, description, href)
 
       const currentDir = decode64(params.dir)

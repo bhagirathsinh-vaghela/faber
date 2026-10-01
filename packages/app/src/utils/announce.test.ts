@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Session } from "@opencode-ai/sdk/v2/client"
-import { announced } from "./announce"
+import { announced, audible } from "./announce"
 
 const session = (id: string, parentID?: string) => ({ id, parentID, title: id }) as Session
 
@@ -40,5 +40,23 @@ describe("announced — which finished turns are announced", () => {
 
   test("a session the server no longer has resolves undefined, even when open", async () => {
     expect(await announced(listed, "ses_gone", true, lookup)).toBeUndefined()
+  })
+})
+
+// Silent only for the session on screen in a tab the person is in; a hidden or
+// unfocused tab, or any other session, still sounds.
+describe("audible — when a session's sound plays", () => {
+  const page = (visibilityState: DocumentVisibilityState, focused: boolean) => ({
+    visibilityState,
+    hasFocus: () => focused,
+  })
+
+  test.each([
+    ["open, visible and focused", true, page("visible", true), false],
+    ["open, visible but unfocused", true, page("visible", false), true],
+    ["open in a hidden tab", true, page("hidden", false), true],
+    ["another session, focused", false, page("visible", true), true],
+  ] as const)("%s", (_, open, state, expected) => {
+    expect(audible(open, state)).toBe(expected)
   })
 })
