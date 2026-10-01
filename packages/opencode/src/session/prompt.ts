@@ -417,10 +417,12 @@ export namespace SessionPrompt {
     const slot = Promise.withResolvers<ReturnType<typeof MessageV2.inherit> | undefined>()
     if (claimed) turnParams().set(input.sessionID, slot.promise)
     const joinedParams = !claimed ? turnParams().get(input.sessionID) : undefined
+    const unclaim = input.noReply ? () => {} : SessionBusy.claim(input.sessionID)
     // An opener that ends without a message (a lost claim, a throw) settles the
     // slot empty and frees it, so a prompt that joined meanwhile resolves its
     // own parameters instead of waiting forever.
     const release = () => {
+      unclaim()
       if (!claimed) return
       slot.resolve(undefined)
       if (turnParams().get(input.sessionID) === slot.promise) turnParams().delete(input.sessionID)
@@ -504,7 +506,7 @@ export namespace SessionPrompt {
       // Started before the caller hears the message is written: `answer`
       // claims the turn synchronously, so a cancel issued once `send` resolves
       // reaches the turn instead of landing before it exists.
-      const turn = answer(input.sessionID, message.info as MessageV2.User)
+      const turn = answer(input.sessionID, message.info as MessageV2.User).finally(unclaim)
       await onPersisted?.(message)
       if (internal?.detach) {
         void turn.catch(internal.detach)
@@ -691,20 +693,23 @@ export namespace SessionPrompt {
     // Each ended turn is announced once, so the client plays one sound: idle
     // for a finish, the error for a failure or an Esc. The processor announces
     // an error raised while it runs; an Esc that lands between steps never
-    // reaches it and is announced here. A Stop ends the session rather than a
+    // reaches it and is announced here. A finish is announced by SessionBusy
+    // once no subagent or job is still owed, so it is the session going quiet
+    // rather than this turn ending. A Stop ends the session rather than a
     // turn anyone waits on, and a dispose hands the turn to the next server to
     // resume, so neither is announced. Declared first, so it runs last, once
     // the turn is fully over.
     let failed = false
     let interrupted = false
     using _announce = defer(() => {
+      SessionBusy.forget(sessionID)
       if (abort.reason === DISPOSED || abort.reason === STOPPED || failed) return
       if (interrupted)
         return void Bus.publish(Session.Event.Error, {
           sessionID,
           error: new MessageV2.AbortedError({ message: "interrupted" }).toObject(),
         })
-      Bus.publish(SessionStatus.Event.Idle, { sessionID })
+      SessionBusy.finish(sessionID)
     })
     // Declared before the cancel below, so it runs after it: once the turn is
     // over here, whatever the session is owed is paid by this process, even
@@ -2592,9 +2597,10 @@ export namespace SessionPrompt {
     // runs last.
     let ended: { error?: MessageV2.Assistant["error"] } | undefined
     using _announce = defer(() => {
+      SessionBusy.forget(input.sessionID)
       if (!ended || abort.reason === DISPOSED || abort.reason === STOPPED) return
       if (ended.error) return void Bus.publish(Session.Event.Error, { sessionID: input.sessionID, error: ended.error })
-      Bus.publish(SessionStatus.Event.Idle, { sessionID: input.sessionID })
+      SessionBusy.finish(input.sessionID)
     })
     // Declared before the cancel, so it runs after it, as the loop's does.
     using _collect = defer(() => {

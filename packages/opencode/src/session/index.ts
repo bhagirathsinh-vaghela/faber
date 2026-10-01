@@ -889,6 +889,7 @@ export namespace Session {
         )
         await attempt(() => SessionPing.stop(s.id), undefined)
         await attempt(() => SessionPin.drop(s.id), undefined)
+        SessionBusy.forget(s.id)
         // The only step that reads instance-scoped state: the turn's abort
         // handle lives in the child's directory, so cancelling a cross-directory
         // turn must enter it.

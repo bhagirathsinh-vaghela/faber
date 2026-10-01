@@ -598,6 +598,28 @@ describe("the complete busy frame", () => {
     })
   }, 20_000)
 
+  test("a claimed prompt reads as the session's turn until every claim is released", async () => {
+    await using project = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: project.path,
+      fn: async () => {
+        const session = await Session.create({})
+        made.push(session.id)
+        const first = SessionBusy.claim(session.id)
+        const second = SessionBusy.claim(session.id)
+        const both = (await SessionBusy.snapshot([session.id]))[session.id]
+        first()
+        first()
+        const one = (await SessionBusy.snapshot([session.id]))[session.id]
+        const listed = await SessionBusy.live()
+        second()
+        const none = (await SessionBusy.snapshot([session.id]))[session.id]
+        expect([both.turn, one.turn, none.turn]).toEqual([true, true, false])
+        expect(listed[session.id]).toEqual({ directory: project.path, turn: true, subagents: 0, jobs: 0 })
+      },
+    })
+  }, 20_000)
+
   test("a client that missed the idle push learns it from the next complete frame", async () => {
     await using project = await tmpdir({ git: true })
     await Instance.provide({

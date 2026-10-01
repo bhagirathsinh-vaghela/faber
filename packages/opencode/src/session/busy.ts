@@ -1,6 +1,8 @@
 import { Liveness } from "@/project/liveness"
 import { Instance } from "@/project/instance"
 import { GlobalBus } from "@/bus/global"
+import { Bus } from "@/bus"
+import { SessionStatus } from "./status"
 import { Event as ServerEvent } from "@/server/event"
 import { Debt } from "@/storage/debt"
 import { Jobs } from "@/storage/jobs"
@@ -12,7 +14,8 @@ import { SessionRecent } from "./recent"
 // clear:
 //   - turn:      this session's OWN turn is in flight. SessionPrompt holds an
 //                AbortController per running turn; `enter`/`exit` mirror its
-//                membership, so the flag dies with the handle.
+//                membership, so the flag dies with the handle. A prompt's
+//                `claim` counts too, from before its message is written.
 //   - subagents: open debts a child session owes this session.
 //   - jobs:      open debts a background job owes this session.
 // A parent lights for its subagents through its own children's debts, never
@@ -59,6 +62,37 @@ export namespace SessionBusy {
     return () => idle.delete(listener)
   }
 
+  // Prompts written for a turn that has not finished answering them: claimed
+  // before the prompt's message is written (and so before a delivered result
+  // removes its debt row) and released once its turn settles. Counted as the
+  // session's turn, so the facts never read all-clear while a woken turn is
+  // still on its way to `enter`.
+  const claims = new Map<string, number>()
+  export function claim(sessionID: string) {
+    claims.set(sessionID, (claims.get(sessionID) ?? 0) + 1)
+    let held = true
+    return () => {
+      if (!held) return
+      held = false
+      const left = (claims.get(sessionID) ?? 1) - 1
+      if (left > 0) claims.set(sessionID, left)
+      else claims.delete(sessionID)
+      void push(sessionID)
+    }
+  }
+
+  // Sessions whose last turn finished, owed the done sound once every fact
+  // reaches zero. A failed, interrupted or stopped turn announces for itself
+  // and forgets it.
+  const finished = new Set<string>()
+  export function finish(sessionID: string) {
+    finished.add(sessionID)
+    void push(sessionID)
+  }
+  export function forget(sessionID: string) {
+    finished.delete(sessionID)
+  }
+
   // Whether this session's own turn is in flight. A session id is unique
   // across directories, and a turn is keyed by the directory its prompt
   // request named, so every directory is consulted; reading the ambient
@@ -91,7 +125,10 @@ export namespace SessionBusy {
       ids.map(async (id) => {
         const session = await Sessions.read(id).catch(() => undefined)
         if (!session) return undefined
-        const facts: Facts = { turn: busy(id), ...(await debts(id, session)) }
+        // Debts first: a result's claim is taken before its debt row goes, so
+        // a debt read as paid is never followed by a turn read as absent.
+        const owed = await debts(id, session)
+        const facts: Facts = { turn: busy(id) || claims.has(id), ...owed }
         return [id, { directory: session.directory, ...facts }] as const
       }),
     )
@@ -105,7 +142,7 @@ export namespace SessionBusy {
   // Every active session on the server: a session is active only through its
   // own turn or a debt owed to it, so the rest are idle and this is complete.
   export async function live() {
-    const turning = [...self.values()].flatMap((running) => [...running])
+    const turning = [...self.values()].flatMap((running) => [...running]).concat([...claims.keys()])
     const sessions = await snapshot([...new Set([...turning, ...(await Debt.callers())])])
     return Object.fromEntries(Object.entries(sessions).filter(([, entry]) => active(entry)))
   }
@@ -136,6 +173,14 @@ export namespace SessionBusy {
       directory: "global",
       payload: { type: ServerEvent.Busy.type, properties: { sessions } },
     })
+    // The done sound rides the same reading as the dot going dark. Published
+    // through the session's own instance, since a push can run outside one,
+    // and only an open one: a push must never open an unbootstrapped instance.
+    if (!active(entry) && finished.delete(sessionID) && Instance.cached(entry.directory))
+      await Instance.provide({
+        directory: entry.directory,
+        fn: () => Bus.publish(SessionStatus.Event.Idle, { sessionID }),
+      })
     // The hub holds roots; re-reading the caller's root there means a missed
     // or out-of-order root update is corrected by any change below it.
     const root = await rootOf(sessionID)
