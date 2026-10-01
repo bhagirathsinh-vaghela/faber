@@ -270,10 +270,10 @@ export namespace SessionPrompt {
 
   // The one writer of a question once it is answered or goes unanswered: the
   // tool part is
-  // replaced, under its own id, by the question as text, and the answer is
-  // written as the user's message in the same transaction. Both carry the
-  // question so the transcript still draws its card. It only appends after the
-  // question text a keep-warm ping may have cached. `halted` is a question a
+  // replaced, under its own id, by an empty text record, and the question with
+  // its answer is written as the user's message in the same transaction. Both
+  // carry the question so the transcript still draws its card. It only appends
+  // after what a keep-warm ping may have cached. `halted` is a question a
   // Stop or Esc ended: the stop is moved past its note, so nothing resumes or
   // wakes on it. Nothing is written once a message other than an answer follows
   // the question's step (a prompt sent after an Esc, a result that joined):
@@ -304,11 +304,10 @@ export namespace SessionPrompt {
       messageID: input.part.messageID,
       sessionID: input.part.sessionID,
       type: "text",
-      text: MessageV2.asked(questions),
+      text: "",
       synthetic: true,
       question: record,
     }
-    const named = questions.length > 1 || MessageV2.several(await MessageV2.parts(input.part.messageID))
     const write = await Parts.writer()
     const read = await Messages.reader()
     const parts = await Parts.reader()
@@ -317,7 +316,7 @@ export namespace SessionPrompt {
       parts: [
         {
           type: "text",
-          text: input.answers ? MessageV2.replied(questions, input.answers, named) : MessageV2.unanswered(reason),
+          text: MessageV2.record(questions, input.answers ? { answers: input.answers } : { reason }),
           question: record,
         },
       ],
@@ -2076,6 +2075,9 @@ export namespace SessionPrompt {
   const CONCISE =
     "Keep replies concise: lead with the answer, no preamble, no recap. " +
     "This governs user-facing text only, not how much you read, investigate, or think before acting."
+  const QUESTION_MARKER = "<!-- question-tool -->"
+  const QUESTION =
+    "Ask any question with a fixed set of answers by calling the question tool; a question written as text shows the user no picker."
   const TURNS_BETWEEN_REMINDERS = 5
   const FULL_REMINDER_EVERY_N = 5
 
@@ -2209,11 +2211,11 @@ export namespace SessionPrompt {
   // whole tool loop), mutating a sent block and re-hashing the prefix behind the
   // rolling marker every call. Freezing the reminder to the opener keeps every
   // sent block byte-identical for the life of the turn. Synthetic-blind: a
-  // result that opens an idle turn gets it too.
-  export function conciseDue(messages: MessageV2.WithParts[]) {
+  // result that opens an idle turn gets it too, and so does a question's answer.
+  export function reminderDue(messages: MessageV2.WithParts[], marker: string) {
     const last = messages[messages.length - 1]
     if (!last || !MessageV2.isTurnOpener(messages, last)) return false
-    return !hasConciseReminder(last)
+    return !hasReminder(last, marker)
   }
 
   function planFileInfo(planPath: string, exists: boolean) {
@@ -2460,10 +2462,20 @@ export namespace SessionPrompt {
     // behind it stays byte-identical. A subagent's output is read by its parent
     // model, not the user, so terseness tuned for a human reader would cost the
     // parent detail — hence the parentID guard.
-    if (Session.attended(input.session) && conciseDue(input.messages)) {
+    if (Session.attended(input.session) && reminderDue(input.messages, CONCISE_MARKER)) {
       const concise = (await Config.get()).concise?.[`${input.model.providerID}/${input.model.id}`]
       if (concise) await persistReminder(input.messages, CONCISE, CONCISE_MARKER)
     }
+
+    // The system prompt's question rule sits far behind a long conversation,
+    // and the model drifts to typing questions late in one. Restated where it
+    // writes next, including on every answer, since an answer is a turn opener.
+    if (
+      Session.attended(input.session) &&
+      reminderDue(input.messages, QUESTION_MARKER) &&
+      (await ToolRegistry.ids()).includes("question")
+    )
+      await persistReminder(input.messages, QUESTION, QUESTION_MARKER)
 
     // Subagents run for their parent's benefit, not the user's — the loop's
     // exit checklist and ledger are meaningless without a human deciding

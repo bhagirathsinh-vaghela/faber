@@ -268,7 +268,7 @@ async function settle(options: { idle?: boolean } = {}) {
 
 async function texts(sessionID: string) {
   return (await Session.messages({ sessionID })).flatMap((m) =>
-    m.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])),
+    m.parts.flatMap((p) => (p.type === "text" && !p.internal ? [p.text] : [])),
   )
 }
 
@@ -825,6 +825,8 @@ describe("Recovery resume", () => {
       ],
     },
   ]
+  const cutOff =
+    "[Your question tool call, not answered: the turn was cut off. That was the right way to ask.]\nYou asked: Which one?\nOptions: A, B"
 
   async function asking(sessionID: string) {
     const opener = await user(sessionID, "ask me")
@@ -853,8 +855,8 @@ describe("Recovery resume", () => {
       expect(await texts(cut.id)).toEqual([
         "ask me",
         "Let me ask.",
-        MessageV2.asked(questions),
-        MessageV2.unanswered("the turn was cut off"),
+        "",
+        cutOff,
         Recovery.resumeText(0),
         "Resumed.",
       ])
@@ -881,12 +883,7 @@ describe("Recovery resume", () => {
 
       await settle({ idle: true })
 
-      expect(await texts(cut.id)).toEqual([
-        "ask me",
-        "Let me ask.",
-        MessageV2.asked(questions),
-        MessageV2.unanswered("the turn was cut off"),
-      ])
+      expect(await texts(cut.id)).toEqual(["ask me", "Let me ask.", "", cutOff])
       const note = (await Session.messages({ sessionID: cut.id })).at(-1)!
       const session = await Session.get(cut.id)
       expect(session.turn).toBeUndefined()
@@ -918,8 +915,7 @@ describe("Recovery resume", () => {
         "Resumed.",
       ])
       const sent = JSON.stringify(state.requests[0])
-      const note = sent.indexOf(JSON.stringify(MessageV2.unanswered("the turn was cut off")).slice(1, -1))
-      expect(sent.indexOf(JSON.stringify(MessageV2.asked(questions)).slice(1, -1))).toBeGreaterThan(-1)
+      const note = sent.indexOf(JSON.stringify(cutOff).slice(1, -1))
       expect(note).toBeGreaterThan(-1)
       expect(note).toBeLessThan(sent.indexOf("a job result arrived"))
       expect(sent).not.toContain("toolu_q")

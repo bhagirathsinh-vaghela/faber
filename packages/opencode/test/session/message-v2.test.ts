@@ -1120,8 +1120,8 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
       },
     ],
   }
-  const text =
-    "[Record of a question tool call: you called the question tool here and the user answered. Only the stored form is text.]\nAsked: Deploy where?\nOffered: staging, production"
+  const chose =
+    "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production\nI chose: staging"
 
   function history(state: MessageV2.ToolPart["state"]): MessageV2.WithParts[] {
     return [
@@ -1174,22 +1174,11 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
     ])
   })
 
-  test("a waiting question is its text alone, and answering it only appends the answer", () => {
+  test("a waiting question leaves the model's turn as it was, and answering it only appends the answer", () => {
     const waiting = MessageV2.toModelMessages(history(running), model).messages
     const done = MessageV2.toModelMessages(history(answered), model).messages
-    expect(waiting.slice(1)).toStrictEqual([
-      {
-        role: "assistant",
-        content: [
-          { type: "text", text: "One thing first." },
-          { type: "text", text },
-        ],
-      },
-    ])
-    expect(done.slice(1)).toStrictEqual([
-      ...waiting.slice(1),
-      { role: "user", content: [{ type: "text", text: "staging" }] },
-    ])
+    expect(waiting.slice(1)).toStrictEqual([{ role: "assistant", content: [{ type: "text", text: "One thing first." }] }])
+    expect(done.slice(1)).toStrictEqual([...waiting.slice(1), { role: "user", content: [{ type: "text", text: chose }] }])
   })
 
   test("a question that was not answered says so as the user's turn", () => {
@@ -1202,11 +1191,53 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
     } as const
     expect(MessageV2.toModelMessages(history(failed), model).messages.at(-1)).toStrictEqual({
       role: "user",
-      content: [{ type: "text", text: "[The question was not answered: Error: The user dismissed this question]" }],
+      content: [
+        {
+          type: "text",
+          text: "[Your question tool call, not answered: Error: The user dismissed this question. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production",
+        },
+      ],
     })
   })
 
-  test("several questions list each one, and each answer is named by its question", () => {
+  // A record is sent with the text it was stored with, so a session's cached
+  // history never moves.
+  const written = (text: string): MessageV2.WithParts[] => [
+    plainUser("m-user", "deploy it"),
+    {
+      info: assistantInfo("m-assistant", "m-user"),
+      parts: [
+        { ...basePart("m-assistant", "a1"), type: "text", text: "One thing first." },
+        {
+          ...basePart("m-assistant", "a2"),
+          type: "text",
+          text,
+          synthetic: true,
+          question: { callID: "q1", questions: [{ ...asked.questions[0] }], answers: [["staging"]] },
+        },
+      ] as MessageV2.Part[],
+    },
+  ]
+
+  test("a record stored with text sends that text in the model's turn", () => {
+    const old = "[asked with the question tool] Deploy where?\nOptions: staging / production"
+    expect(MessageV2.toModelMessages(written(old), model).messages.at(-1)).toStrictEqual({
+      role: "assistant",
+      content: [
+        { type: "text", text: "One thing first." },
+        { type: "text", text: old },
+      ],
+    })
+  })
+
+  test("a record stored without text sends nothing in the model's turn", () => {
+    expect(MessageV2.toModelMessages(written(""), model).messages.at(-1)).toStrictEqual({
+      role: "assistant",
+      content: [{ type: "text", text: "One thing first." }],
+    })
+  })
+
+  test("several questions list each one with its answer", () => {
     const two = {
       questions: [
         asked.questions[0],
@@ -1218,18 +1249,12 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
       model,
     ).messages
     expect(messages.slice(-2)).toStrictEqual([
-      {
-        role: "assistant",
-        content: [
-          { type: "text", text: "One thing first." },
-          { type: "text", text: `${text}\n\nAsked: Notify?\nOffered: yes` },
-        ],
-      },
-      { role: "user", content: [{ type: "text", text: "Deploy where?: staging\nNotify?: Unanswered" }] },
+      { role: "assistant", content: [{ type: "text", text: "One thing first." }] },
+      { role: "user", content: [{ type: "text", text: `${chose}\n\nYou asked: Notify?\nOptions: yes\nI chose: nothing` }] },
     ])
   })
 
-  test("two question calls in one step each name their own question", () => {
+  test("two question calls in one step each carry their own question", () => {
     const notify = { questions: [{ question: "Notify?", header: "Notify", options: [{ label: "yes", description: "" }] }] }
     const messages = MessageV2.toModelMessages(
       [
@@ -1251,8 +1276,16 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
       model,
     ).messages
     expect(messages.slice(-2)).toStrictEqual([
-      { role: "user", content: [{ type: "text", text: "Deploy where?: staging" }] },
-      { role: "user", content: [{ type: "text", text: "Notify?: yes" }] },
+      { role: "user", content: [{ type: "text", text: chose }] },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Notify?\nOptions: yes\nI chose: yes",
+          },
+        ],
+      },
     ])
   })
 })

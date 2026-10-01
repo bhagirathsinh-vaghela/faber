@@ -533,7 +533,7 @@ export namespace MessageV2 {
   // After a tool result, Opus 5.5 can return the prose it writes before its
   // next tool call as a summarized thinking block the user never sees; after a
   // user message it does not. So a question goes out as the user's own words:
-  // the question as assistant text, the answer as a user message. Storage is
+  // the question and its answer as a user message (`record`). Storage is
   // rewritten to that shape once the question is answered or goes unanswered
   // (SessionPrompt.transcribe). Until then a question the processor stamped `plain`
   // is drawn here the same way, so a keep-warm ping during the wait caches the
@@ -553,12 +553,6 @@ export namespace MessageV2 {
     return model.providerID === "anthropic" && tool === "question" && askable(input)
   }
 
-  // Whether a step asked more than one question, counting its question calls
-  // and the questions already written down; each answer then names its question.
-  export function several(parts: Part[]) {
-    return parts.filter((p) => (p.type === "tool" && p.tool === "question") || (p.type === "text" && p.question)).length > 1
-  }
-
   export function spoken(part: ToolPart) {
     return (
       part.tool === "question" &&
@@ -568,31 +562,28 @@ export namespace MessageV2 {
     )
   }
 
-  // A question the model asked, as the model reads it back once the call is
-  // written down as text. The model copies the shape of its own past turns, so
-  // this reads as a past-tense record, never as a question in the shape one
-  // would ask: a history of "Question? / Options: A / B" text taught the model
-  // to ask that way instead of calling the tool
-  // (https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons).
-  // It states that the call happened and gives no order: an order in the
-  // model's own turn reads as a correction, and the model then doubts calls it
-  // made.
-  export function asked(questions: { question: string; options: { label: string }[] }[]) {
-    const blocks = questions.map((q) =>
-      q.options.length
-        ? `Asked: ${q.question}\nOffered: ${q.options.map((o) => o.label).join(", ")}`
-        : `Asked: ${q.question}`,
+  // A question the model asked, as the user's message that answers it. Nothing
+  // of the question stays in the model's own turn: the model copies the shape
+  // of its past turns, and any question-shaped text there, even a record saying
+  // the tool was called, was copied as typed text in place of a call. On the
+  // user's side the record tells the model the call was real, so it neither
+  // copies the record nor doubts the call.
+  export function record(
+    questions: { question: string; options: { label: string }[] }[],
+    outcome: { answers: string[][] } | { reason: string },
+  ) {
+    const header =
+      "answers" in outcome
+        ? "[Your question tool call, answered in the picker. That was the right way to ask.]"
+        : `[Your question tool call, not answered: ${outcome.reason}. That was the right way to ask.]`
+    const blocks = questions.map((q, i) =>
+      [
+        `You asked: ${q.question}`,
+        ...(q.options.length ? [`Options: ${q.options.map((o) => o.label).join(", ")}`] : []),
+        ...("answers" in outcome ? [`I chose: ${outcome.answers[i]?.length ? outcome.answers[i].join(", ") : "nothing"}`] : []),
+      ].join("\n"),
     )
-    return `[Record of a question tool call: you called the question tool here and the user answered. Only the stored form is text.]\n${blocks.join("\n\n")}`
-  }
-
-  export function replied(questions: { question: string }[], answers: string[][], named = questions.length > 1) {
-    const said = questions.map((_, i) => (answers[i]?.length ? answers[i].join(", ") : "Unanswered"))
-    return named ? questions.map((q, i) => `${q.question}: ${said[i]}`).join("\n") : said[0]
-  }
-
-  export function unanswered(reason: string) {
-    return `[The question was not answered: ${reason}]`
+    return `${header}\n${blocks.join("\n\n")}`
   }
 
   // The user message a written-down question's answer lives in. It belongs to
@@ -706,7 +697,8 @@ export namespace MessageV2 {
         }
         const replies: string[] = []
         for (const part of msg.parts) {
-          if (part.type === "text")
+          // A record stored without text belongs to the answer's message alone.
+          if (part.type === "text" && !(part.question && part.text === ""))
             assistantMessage.parts.push({
               type: "text",
               text: part.text,
@@ -720,16 +712,9 @@ export namespace MessageV2 {
           // or one whose rewrite never landed, drawn the way the rewrite stores it.
           if (part.type === "tool" && spoken(part)) {
             const questions = (part.state.input as z.infer<typeof Question.Parameters>).questions
-            assistantMessage.parts.push({ type: "text", text: asked(questions) })
             if (part.state.status === "completed")
-              replies.push(
-                replied(
-                  questions,
-                  (part.state.metadata.answers ?? []) as string[][],
-                  questions.length > 1 || several(msg.parts),
-                ),
-              )
-            if (part.state.status === "error") replies.push(unanswered(part.state.error))
+              replies.push(record(questions, { answers: (part.state.metadata.answers ?? []) as string[][] }))
+            if (part.state.status === "error") replies.push(record(questions, { reason: part.state.error }))
             continue
           }
           if (part.type === "tool") {

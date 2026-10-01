@@ -124,8 +124,12 @@ const asked = {
     },
   ],
 }
-const spoken =
-  "[Record of a question tool call: you called the question tool here and the user answered. Only the stored form is text.]\nAsked: Deploy where?\nOffered: staging, production"
+const chose =
+  "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production\nI chose: staging"
+const unasked = (reason: string) =>
+  `[Your question tool call, not answered: ${reason}. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production`
+const nudge =
+  "<!-- question-tool -->\n<system-reminder>\nAsk any question with a fixed set of answers by calling the question tool; a question written as text shows the user no picker.\n</system-reminder>"
 
 function say(sessionID: string, words: string) {
   return SessionPrompt.prompt({
@@ -178,7 +182,7 @@ async function stored(sessionID: string, partID: string) {
 }
 
 describe("a question is stored and sent as the user's own words once it is answered", () => {
-  test("an answer replaces the tool part with the question text and adds the user's message", async () => {
+  test("an answer replaces the tool part with an empty record and adds the user's message carrying the question", async () => {
     await withProject(async () => {
       const session = await Session.create({})
       state.queue.push(
@@ -194,25 +198,37 @@ describe("a question is stored and sent as the user's own words once it is answe
       const { part, after } = await stored(session.id, waiting.id)
       expect(part).toMatchObject({
         type: "text",
-        text: spoken,
+        text: "",
         synthetic: true,
         question: { callID: "toolu_q", answers: [["staging"]] },
       })
       expect(part.question.questions[0].options[1]).toEqual({ label: "production", description: "the real one" })
       expect(after.info.role).toBe("user")
-      expect(after.parts.map((p: any) => [p.text, p.synthetic])).toEqual([["staging", undefined]])
+      expect(after.parts.map((p: any) => [p.text, p.synthetic])).toEqual([
+        [chose, undefined],
+        [nudge, true],
+      ])
       expect(await question(session.id)).toBeUndefined()
 
       expect(state.bodies).toHaveLength(2)
-      expect(tail(state.bodies[1])).toEqual([
+      expect(tail(state.bodies[0])).toEqual([
         {
-          role: "assistant",
+          role: "user",
           blocks: [
-            { type: "text", text: "One thing first." },
-            { type: "text", text: spoken },
+            { type: "text", text: nudge },
+            { type: "text", text: "deploy it" },
           ],
         },
-        { role: "user", blocks: [{ type: "text", text: "staging" }] },
+      ])
+      expect(tail(state.bodies[1])).toEqual([
+        { role: "assistant", blocks: [{ type: "text", text: "One thing first." }] },
+        {
+          role: "user",
+          blocks: [
+            { type: "text", text: nudge },
+            { type: "text", text: chose },
+          ],
+        },
       ])
       expect(JSON.stringify(state.bodies[1].messages)).not.toContain("toolu_q")
     })
@@ -228,15 +244,24 @@ describe("a question is stored and sent as the user's own words once it is answe
       const dismiss = when(session.id, (id) => Question.reject(id))
       await say(session.id, "deploy it")
       dismiss.off()
-      const note = "[The question was not answered: the user dismissed it]"
+      const note = unasked("the user dismissed it")
 
       const { part, after } = await stored(session.id, (await dismiss.seen).id)
-      expect(part).toMatchObject({ type: "text", text: spoken, question: { error: "the user dismissed it" } })
-      expect(after.parts.map((p: any) => p.text)).toEqual([note])
+      expect(part).toMatchObject({ type: "text", text: "", question: { error: "the user dismissed it" } })
+      expect(after.parts.map((p: any) => p.text)).toEqual([note, nudge])
       expect(state.bodies).toHaveLength(2)
+      // The step held only the question, so nothing of the model's turn is
+      // left and the answer joins the prompt as one user message.
       expect(tail(state.bodies[1])).toEqual([
-        { role: "assistant", blocks: [{ type: "text", text: spoken }] },
-        { role: "user", blocks: [{ type: "text", text: note }] },
+        {
+          role: "user",
+          blocks: [
+            { type: "text", text: nudge },
+            { type: "text", text: "deploy it" },
+            { type: "text", text: nudge },
+            { type: "text", text: note },
+          ],
+        },
       ])
     })
   }, 60_000)
@@ -254,8 +279,8 @@ describe("a question is stored and sent as the user's own words once it is answe
       while ((await stored(session.id, id)).part?.type !== "text" && Date.now() < deadline) await Bun.sleep(20)
 
       const { part, after } = await stored(session.id, id)
-      expect(part).toMatchObject({ type: "text", text: spoken, question: { error: "the turn was stopped" } })
-      expect(after.parts.map((p: any) => p.text)).toEqual(["[The question was not answered: the turn was stopped]"])
+      expect(part).toMatchObject({ type: "text", text: "", question: { error: "the turn was stopped" } })
+      expect(after.parts.map((p: any) => p.text)).toEqual([unasked("the turn was stopped")])
       expect((await Session.get(session.id)).time.stopped).toBeGreaterThanOrEqual(after.info.time.created)
       expect(state.bodies).toHaveLength(1)
     })
@@ -273,8 +298,8 @@ describe("a question is stored and sent as the user's own words once it is answe
       while ((await stored(session.id, id)).part?.type !== "text" && Date.now() < deadline) await Bun.sleep(20)
 
       const { part, after } = await stored(session.id, id)
-      expect(part).toMatchObject({ type: "text", text: spoken, question: { error: "the turn was stopped" } })
-      expect(after.parts.map((p: any) => p.text)).toEqual(["[The question was not answered: the turn was stopped]"])
+      expect(part).toMatchObject({ type: "text", text: "", question: { error: "the turn was stopped" } })
+      expect(after.parts.map((p: any) => p.text)).toEqual([unasked("the turn was stopped")])
       expect((await Session.get(session.id)).time.stopped).toBeGreaterThanOrEqual(after.info.time.created)
       expect(await Sessions.listUnanswered(Date.now() + 1)).not.toContainEqual(
         expect.objectContaining({ id: session.id }),
@@ -283,7 +308,7 @@ describe("a question is stored and sent as the user's own words once it is answe
     })
   }, 60_000)
 
-  test("several questions list each one, and the answer names each question", async () => {
+  test("several questions list each one with its answer", async () => {
     await withProject(async () => {
       const session = await Session.create({})
       const two = {
@@ -300,8 +325,15 @@ describe("a question is stored and sent as the user's own words once it is answe
       await say(session.id, "deploy it")
       answer.off()
       expect(tail(state.bodies[1])).toEqual([
-        { role: "assistant", blocks: [{ type: "text", text: `${spoken}\n\nAsked: Notify?\nOffered: yes` }] },
-        { role: "user", blocks: [{ type: "text", text: "Deploy where?: staging\nNotify?: yes" }] },
+        {
+          role: "user",
+          blocks: [
+            { type: "text", text: nudge },
+            { type: "text", text: "deploy it" },
+            { type: "text", text: nudge },
+            { type: "text", text: `${chose}\n\nYou asked: Notify?\nOptions: yes\nI chose: yes` },
+          ],
+        },
       ])
     })
   }, 60_000)
@@ -354,6 +386,7 @@ describe("only a question that was asked is written down", () => {
       expect(part.state.metadata?.plain).toBeUndefined()
       expect(shape(state.bodies[1])).toEqual([
         ["user", "text"],
+        ["user", "text"],
         ["assistant", "tool_use:toolu_q"],
         ["user", "tool_result:toolu_q"],
       ])
@@ -378,12 +411,13 @@ describe("only a question that was asked is written down", () => {
         expect(part.state.status).toBe("error")
         expect(part.state.metadata?.plain).toBeUndefined()
         const last = state.bodies.at(-1)!
-        expect(shape(last).slice(0, 3)).toEqual([
+        expect(shape(last).slice(0, 4)).toEqual([
+          ["user", "text"],
           ["user", "text"],
           ["assistant", "tool_use:toolu_q"],
           ["user", "tool_result:toolu_q"],
         ])
-        expect(JSON.stringify(last.messages)).not.toContain("[The question was not answered")
+        expect(JSON.stringify(last.messages)).not.toContain("[Your question tool call")
       },
       { permission: { question: "ask" } },
     )
@@ -618,7 +652,11 @@ describe("a written-down question keeps its place in the transcript", () => {
       await Question.reply({ requestID: byQuestion("Deploy where?"), answers: [["staging"]] })
       await turn
       const users = tail(state.bodies[1]).filter((m) => m.role === "user")
-      expect(users.flatMap((m) => m.blocks.map((b) => b.text))).toEqual(["Notify?: yes", "Deploy where?: staging"])
+      expect(users.flatMap((m) => m.blocks.map((b) => b.text)).filter((t) => t !== nudge)).toEqual([
+        "deploy it",
+        "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Notify?\nOptions: yes\nI chose: yes",
+        chose,
+      ])
     })
   }, 60_000)
 
@@ -641,7 +679,7 @@ describe("a written-down question keeps its place in the transcript", () => {
         const { part } = await stored(session.id, (await answer.seen).id)
         expect(part.type).toBe("text")
         const sent = JSON.stringify(state.bodies[1].messages)
-        expect(sent.split('"staging"').length - 1).toBe(1)
+        expect(sent.split("I chose: staging").length - 1).toBe(1)
       },
       { plugin: (dir: string) => [`file://${path.join(dir, "hook.ts")}`] },
       { "hook.ts": plugin },

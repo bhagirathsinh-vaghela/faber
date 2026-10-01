@@ -6,7 +6,7 @@ Use this tool when you need to ask the user questions during execution. This all
 
 This tool is the only way to ask the user a question with choices. Only a call renders a picker the user can click; a question written in your reply text shows them nothing to select.
 
-Once a question is answered, the conversation keeps it as a text record starting "[Record of a question tool call", followed by the user's answer as a message. That record is how a past call is stored, not how you ask. A record is proof the tool was called, never a sign it was skipped: do not re-check past questions, just call this tool for the next one, however many past questions appear as text.
+Once a question is answered, it comes back as the user's message starting "[Your question tool call", holding the question and the choice (older sessions also show "[Record of a question tool call" text in your own turn). That is how a past call is stored, not how you ask. It is proof the tool was called, never a sign it was skipped: do not re-check past questions, just call this tool for the next one.
 
 Usage notes:
 - When `custom` is enabled (default), a "Type your own answer" option is added automatically; don't include "Other" or catch-all options

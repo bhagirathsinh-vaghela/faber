@@ -76,43 +76,50 @@ describe("hasConciseReminder", () => {
 // reminder yet, so it attaches once, to a message not yet on the wire. It never
 // fires mid-turn, which would append to a message already sent and re-hash the
 // prefix.
-describe("conciseDue", () => {
+describe("reminderDue", () => {
+  const due = (messages: MessageV2.WithParts[]) => SessionPrompt.reminderDue(messages, CONCISE_MARKER)
+
   test("a fresh typed prompt with no reminder is due", () => {
     const prompt = user({ texts: [{ text: "start" }] })
-    expect(SessionPrompt.conciseDue([prompt])).toBe(true)
+    expect(due([prompt])).toBe(true)
   })
 
   test("the same prompt is not due once it carries the reminder", () => {
     const prompt = user({ texts: [{ text: "start" }, reminder] })
-    expect(SessionPrompt.conciseDue([prompt])).toBe(false)
+    expect(due([prompt])).toBe(false)
+  })
+
+  test("another reminder on the prompt does not count as this one", () => {
+    const prompt = user({ texts: [{ text: "start" }, reminder] })
+    expect(SessionPrompt.reminderDue([prompt], "<!-- question-tool -->")).toBe(true)
   })
 
   test("mid-turn, behind an assistant message, is never due", () => {
     const prompt = user({ texts: [{ text: "start" }, reminder] })
     const msgs = [prompt, assistant(), assistant(), assistant(), assistant(), assistant()]
-    expect(SessionPrompt.conciseDue(msgs)).toBe(false)
+    expect(due(msgs)).toBe(false)
   })
 
   test("a new typed prompt after a reminded turn is due again", () => {
     const first = user({ texts: [{ text: "turn one" }, reminder] })
     const second = user({ texts: [{ text: "turn two" }] })
-    expect(SessionPrompt.conciseDue([first, assistant(), second])).toBe(true)
+    expect(due([first, assistant(), second])).toBe(true)
   })
 
   test("a synthetic result that opens a turn is due (synthetic-blind)", () => {
     const prompt = user({ texts: [{ text: "start" }, reminder] })
     const delivered = user({ synthetic: true, texts: [{ text: "job result", synthetic: true }] })
-    expect(SessionPrompt.conciseDue([prompt, assistant(), delivered])).toBe(true)
+    expect(due([prompt, assistant(), delivered])).toBe(true)
   })
 
   test("a synthetic opener already carrying the reminder is not due", () => {
     const delivered = user({ synthetic: true, texts: [{ text: "job result", synthetic: true }, reminder] })
-    expect(SessionPrompt.conciseDue([delivered])).toBe(false)
+    expect(due([delivered])).toBe(false)
   })
 
   test("a fresh typed prompt is due even after a reminded prior turn", () => {
     const prompt = user({ texts: [{ text: "subtask work" }] })
-    expect(SessionPrompt.conciseDue([prompt])).toBe(true)
+    expect(due([prompt])).toBe(true)
   })
 })
 
