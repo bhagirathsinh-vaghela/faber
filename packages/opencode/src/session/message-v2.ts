@@ -570,17 +570,20 @@ export namespace MessageV2 {
 
   // A question the model asked, as the model reads it back once the call is
   // written down as text. The model copies the shape of its own past turns, so
-  // this reads as a past-tense record that carries the instruction, never as a
-  // question in the shape one would ask: a history of "Question? / Options: A /
-  // B" text taught the model to ask that way instead of calling the tool
+  // this reads as a past-tense record, never as a question in the shape one
+  // would ask: a history of "Question? / Options: A / B" text taught the model
+  // to ask that way instead of calling the tool
   // (https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons).
+  // It states that the call happened and gives no order: an order in the
+  // model's own turn reads as a correction, and the model then doubts calls it
+  // made.
   export function asked(questions: { question: string; options: { label: string }[] }[]) {
     const blocks = questions.map((q) =>
       q.options.length
         ? `Asked: ${q.question}\nOffered: ${q.options.map((o) => o.label).join(", ")}`
         : `Asked: ${q.question}`,
     )
-    return `[Record of a question tool call, stored as text. To ask a new question, call the question tool.]\n${blocks.join("\n\n")}`
+    return `[Record of a question tool call: you called the question tool here and the user answered. Only the stored form is text.]\n${blocks.join("\n\n")}`
   }
 
   export function replied(questions: { question: string }[], answers: string[][], named = questions.length > 1) {

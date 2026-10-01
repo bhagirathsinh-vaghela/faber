@@ -10,7 +10,7 @@ function written(record: Partial<NonNullable<TextPart["question"]>>): TextPart {
     sessionID: "s1",
     messageID: "m1",
     type: "text",
-    text: "[Record of a question tool call, stored as text. To ask a new question, call the question tool.]\nAsked: Which one?\nOffered: A",
+    text: "[Record of a question tool call: you called the question tool here and the user answered. Only the stored form is text.]\nAsked: Which one?\nOffered: A",
     synthetic: true,
     question: { callID: "toolu_q", questions, ...record },
   }
