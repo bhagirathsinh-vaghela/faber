@@ -3599,7 +3599,6 @@
                   }
                 },
                 "required": [
-                  "agent",
                   "command"
                 ]
               }
@@ -9344,14 +9343,21 @@
                             "type": "string"
                           }
                         },
-                        "required": ["label", "description"]
+                        "required": [
+                          "label",
+                          "description"
+                        ]
                       }
                     },
                     "multiple": {
                       "type": "boolean"
                     }
                   },
-                  "required": ["question", "header", "options"]
+                  "required": [
+                    "question",
+                    "header",
+                    "options"
+                  ]
                 }
               },
               "answers": {
@@ -9367,7 +9373,10 @@
                 "type": "string"
               }
             },
-            "required": ["callID", "questions"]
+            "required": [
+              "callID",
+              "questions"
+            ]
           },
           "time": {
             "type": "object",
@@ -12463,6 +12472,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.voice.preference.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.stopped"
           }
         ]
       },
@@ -13249,7 +13261,9 @@
                         "type": "string"
                       }
                     },
-                    "required": ["model"]
+                    "required": [
+                      "model"
+                    ]
                   }
                 }
               }
@@ -14503,14 +14517,21 @@
                             "type": "string"
                           }
                         },
-                        "required": ["label", "description"]
+                        "required": [
+                          "label",
+                          "description"
+                        ]
                       }
                     },
                     "multiple": {
                       "type": "boolean"
                     }
                   },
-                  "required": ["question", "header", "options"]
+                  "required": [
+                    "question",
+                    "header",
+                    "options"
+                  ]
                 }
               },
               "answers": {
@@ -14526,7 +14547,10 @@
                 "type": "string"
               }
             },
-            "required": ["callID", "questions"]
+            "required": [
+              "callID",
+              "questions"
+            ]
           },
           "time": {
             "type": "object",
@@ -15581,6 +15605,30 @@
           "changed",
           "writers",
           "edits"
+        ]
+      },
+      "Event.session.stopped": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.stopped"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sessionID"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
         ]
       }
     }

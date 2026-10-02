@@ -39,7 +39,9 @@ export function shown(part: Part): Part {
           status: "error",
           input,
           error:
-            record.error === "the user dismissed it" ? "Error: The user dismissed this question" : "Tool execution aborted",
+            record.error === "the user dismissed it"
+              ? "Error: The user dismissed this question"
+              : "Tool execution aborted",
           time,
         },
   }

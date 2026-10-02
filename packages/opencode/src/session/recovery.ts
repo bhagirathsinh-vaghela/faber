@@ -756,7 +756,12 @@ export namespace Recovery {
         if (now?.type !== "tool" || now.state.status !== "running") continue
         await Session.updatePart({
           ...now,
-          state: { ...now.state, status: "error", error: reason, time: { start: now.state.time.start, end: Date.now() } },
+          state: {
+            ...now.state,
+            status: "error",
+            error: reason,
+            time: { start: now.state.time.start, end: Date.now() },
+          },
         })
       }
       return

@@ -20,7 +20,12 @@ type Asset = {
 // without restarting the process. Same serving path in both cases.
 const decoded = new Map<string, Asset>()
 
-function asset(type: string, body: Uint8Array<ArrayBuffer>, br?: Uint8Array<ArrayBuffer>, gzip?: Uint8Array<ArrayBuffer>) {
+function asset(
+  type: string,
+  body: Uint8Array<ArrayBuffer>,
+  br?: Uint8Array<ArrayBuffer>,
+  gzip?: Uint8Array<ArrayBuffer>,
+) {
   // Hash the canonical (uncompressed) body so the validator is stable across
   // the br/gzip/identity variants of the same resource. Bun.hash is a fast
   // non-crypto hash; an ETag only needs to change when the bytes change.
@@ -36,7 +41,9 @@ const branded = lazy(() => {
   const label = os.hostname().split(".")[0] ?? ""
   const manifest = decoded.get("/site.webmanifest")
   if (!label || !manifest) return new Map<string, Asset>()
-  const icons = new Map(Object.entries(Icon.files).map(([name, size]) => [name, asset("image/png", Icon.png(size, label))]))
+  const icons = new Map(
+    Object.entries(Icon.files).map(([name, size]) => [name, asset("image/png", Icon.png(size, label))]),
+  )
   const parsed = JSON.parse(new TextDecoder().decode(manifest.body)) as { icons: { src: string }[] }
   const versioned = parsed.icons.map((icon) => {
     const generated = icons.get(icon.src)

@@ -13,7 +13,7 @@ import { SessionCompaction } from "../../src/session/compaction"
 import { SessionPing } from "../../src/session/ping"
 import { MessageV2 } from "../../src/session/message-v2"
 import { AgentTool } from "../../src/tool/agent"
-import { PlanEnterTool } from "../../src/tool/plan"
+import { PlanEnterTool, PlanExitTool } from "../../src/tool/plan"
 import { Agent } from "../../src/agent/agent"
 import { Question } from "../../src/question"
 import { Bus } from "../../src/bus"
@@ -670,6 +670,515 @@ describe("a message joining a running turn", () => {
       expect(texts).toContain(JSON.stringify(notice?.type === "text" ? notice.text : undefined))
       expect(texts).not.toContain("has finished while you were working")
       expect(texts).not.toContain("The user sent the following message")
+    })
+  }, 30_000)
+
+  test("a result that joins after a plan switch runs as the switched-to agent", async () => {
+    await withProject(
+      async () => {
+        const session = await root()
+        const release = Promise.withResolvers<void>()
+        state.gate = release.promise
+        state.replies.push(toolCall, "done")
+        const turn = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "plan",
+          parts: [{ type: "text", text: "plan it" }],
+        })
+        await until(() => state.requests.some((body) => body.tools), "the first step's request")
+        const step = (await Session.messages({ sessionID: session.id })).findLast((m) => m.info.role === "assistant")!
+        const switched = Bus.subscribe(Question.Event.Asked, (event) =>
+          Question.reply({ requestID: event.properties.id, answers: [["Yes"]] }),
+        )
+        const exit = await PlanExitTool.init()
+        await exit.execute(
+          {},
+          {
+            sessionID: session.id,
+            messageID: step.info.id,
+            agent: "plan",
+            abort: new AbortController().signal,
+            callID: "call_plan_exit",
+            extra: {},
+            messages: [],
+            metadata: () => {},
+            ask: async () => {},
+          },
+        )
+        switched()
+        await job("job_after_switch", session.id)
+        await Recovery.collect(session.id, { fresh: true })
+        release.resolve()
+        await turn
+
+        const notice = (await users(session.id)).find((m) =>
+          m.parts.some((p) => p.type === "text" && p.backgroundJobResult?.jobId === "job_after_switch"),
+        )
+        expect(notice?.info.role === "user" && notice.info.agent).toBe("build")
+        expect((await Sessions.read(session.id)).current?.agent).toBe("build")
+
+        // The switch changes only what is appended: the step after it sends the
+        // first step's tools, system and every content block unchanged. Needs
+        // plan_enter and plan_exit allowed for both agents, as the "*": "allow"
+        // permission here does; the built-in defaults deny each to one agent,
+        // which strips it from that agent's tools[].
+        const steps = state.requests.filter((body) => body.tools)
+        expect(steps.length).toBe(2)
+        expect(JSON.stringify(steps[1].tools)).toBe(JSON.stringify(steps[0].tools))
+        expect(JSON.stringify(steps[1].system)).toBe(JSON.stringify(steps[0].system))
+        // The rolling 5m marker moves to the newest block each step; it is not
+        // part of the hashed content, so it is left out of the comparison.
+        const blocks = (body: (typeof steps)[number]) =>
+          (body.messages as { role: string; content: Record<string, unknown>[] }[]).flatMap((m) =>
+            m.content.map((block) => JSON.stringify([m.role, { ...block, cache_control: undefined }])),
+          )
+        const sent = blocks(steps[0])
+        expect(blocks(steps[1]).slice(0, sent.length)).toEqual(sent)
+      },
+      undefined,
+      { config: { permission: { "*": "allow" } } },
+    )
+  }, 30_000)
+})
+
+describe("the agent and model a person last sent", () => {
+  const haiku = { providerID: "anthropic", modelID: "claude-3-5-haiku-20241022" }
+
+  async function sent(sessionID: string, agent: string, pick: typeof model) {
+    state.replies.push("ok")
+    await SessionPrompt.prompt({
+      variant: Provider.INHERIT,
+      sessionID,
+      model: pick,
+      agent,
+      parts: [{ type: "text", text: "go" }],
+    })
+  }
+
+  async function landed(sessionID: string, id: string) {
+    const message = (await users(sessionID)).find((m) =>
+      m.parts.some((p) => p.type === "text" && p.backgroundJobResult?.jobId === id),
+    )
+    return message?.info.role === "user" ? { agent: message.info.agent, model: message.info.model } : undefined
+  }
+
+  test("run a result that starts a turn after that send went idle", async () => {
+    await withProject(async () => {
+      const session = await root()
+      await sent(session.id, "build", model)
+      await sent(session.id, "plan", haiku)
+      state.replies.push("ok")
+      await job("job_after_idle", session.id)
+      await Recovery.collect(session.id, { fresh: true })
+      await until(() => !SessionBusy.busy(session.id), "the result's turn to end")
+      expect(await landed(session.id, "job_after_idle")).toEqual({ agent: "plan", model: haiku })
+    })
+  }, 30_000)
+
+  test("run a result that joins the turn that send opened", async () => {
+    await withProject(async () => {
+      const session = await root()
+      await sent(session.id, "build", model)
+      const release = Promise.withResolvers<void>()
+      state.gate = release.promise
+      state.replies.push(toolCall, "done")
+      const turn = SessionPrompt.prompt({
+        variant: Provider.INHERIT,
+        sessionID: session.id,
+        model: haiku,
+        agent: "plan",
+        parts: [{ type: "text", text: "continue" }],
+      })
+      await until(() => state.requests.filter((body) => body.tools).length === 2, "the second turn's first step")
+      await job("job_joins_sent", session.id)
+      await Recovery.collect(session.id, { fresh: true })
+      release.resolve()
+      await turn
+      expect(await landed(session.id, "job_joins_sent")).toEqual({ agent: "plan", model: haiku })
+    })
+  }, 30_000)
+
+  test("run a command that names no agent", async () => {
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "plan", model)
+        state.replies.push("ok", "ok")
+        await SessionPrompt.command({
+          sessionID: session.id,
+          command: "hi",
+          arguments: "",
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+        })
+        const written = await users(session.id)
+        const last = written[written.length - 1].info
+        expect(last.role === "user" && last.agent).toBe("plan")
+      },
+      undefined,
+      { command: { hi: { template: "say hi" } } },
+    )
+  }, 30_000)
+
+  test("run a subagent command that names no agent", async () => {
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "plan", model)
+        state.replies.push("ok", "ok", "ok", "ok")
+        await SessionPrompt.command({
+          sessionID: session.id,
+          command: "sub",
+          arguments: "",
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+        })
+        const written = await users(session.id)
+        const last = written[written.length - 1].info
+        expect(last.role === "user" && last.agent).toBe("plan")
+        expect((await Sessions.read(session.id)).current?.agent).toBe("plan")
+      },
+      undefined,
+      { command: { sub: { template: "do sub", agent: "general", subagent: true } } },
+    )
+  }, 30_000)
+
+  test("run a command on the default agent when the session's agent is gone", async () => {
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "build", model)
+        await Session.update(session.id, (draft) => void (draft.current!.agent = "ghost"))
+        state.replies.push("ok")
+        await SessionPrompt.command({
+          sessionID: session.id,
+          command: "hi",
+          arguments: "",
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+        })
+        const written = await users(session.id)
+        const last = written[written.length - 1].info
+        expect(last.role === "user" && last.agent).toBe("build")
+      },
+      undefined,
+      { command: { hi: { template: "say hi" } } },
+    )
+  }, 30_000)
+
+  test("refuse a command that names an agent that does not exist", async () => {
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "build", model)
+        const refused = SessionPrompt.command({
+          sessionID: session.id,
+          command: "hi",
+          arguments: "",
+          agent: "ghost",
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+        })
+        await expect(refused).rejects.toMatchObject({
+          data: { message: expect.stringContaining('Agent not found: "ghost".') },
+        })
+      },
+      undefined,
+      { command: { hi: { template: "say hi" } } },
+    )
+  }, 30_000)
+
+  // A plan switch still writing when its turn is cancelled and a new prompt
+  // claims the next turn: the switch must not take over that turn's
+  // parameters, or a later prompt that finds them left behind joins as if
+  // that turn still ran.
+  test("a switch that lands after its turn ended leaves the next turn's parameters alone", async () => {
+    const gates = globalThis as unknown as {
+      __gates: Record<string, PromiseWithResolvers<void>>
+      __entered: string[]
+    }
+    gates.__gates = { SWITCH: Promise.withResolvers<void>(), P: Promise.withResolvers<void>() }
+    gates.__entered = []
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "plan", model)
+        const switching = SessionPrompt.deliver({
+          sessionID: session.id,
+          parts: [{ type: "text", text: "SWITCH", synthetic: true, internal: true }],
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+          params: { agent: "build" },
+          join: true,
+          wake: false,
+        })
+        await until(() => gates.__entered.includes("SWITCH"), "the switch to reach its write")
+        const failing = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "plan",
+          parts: [{ type: "text", text: "P" }],
+        }).catch((error: unknown) => String(error))
+        await until(() => gates.__entered.includes("P"), "the next prompt to claim its turn")
+        gates.__gates.SWITCH.resolve()
+        await switching
+        gates.__gates.P.resolve()
+        expect(await failing).toBe("Error: P fails after its write")
+        state.replies.push("ok")
+        await SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "plan",
+          parts: [{ type: "text", text: "Q" }],
+        })
+        const next = (await users(session.id)).find((m) => m.parts.some((p) => p.type === "text" && p.text === "Q"))
+        expect(next?.info.role === "user" && next.info.agent).toBe("plan")
+        await until(() => !SessionBusy.busy(session.id), "the session to go idle")
+      },
+      `export default async () => ({
+        "chat.message": async (_input, output) => {
+          const text = output.parts.find((p) => p.type === "text")?.text
+          const gate = globalThis.__gates?.[text]
+          if (!gate) return
+          globalThis.__entered.push(text)
+          await gate.promise
+          if (text === "P") throw new Error("P fails after its write")
+        },
+      })`,
+    )
+  }, 30_000)
+
+  // An Esc ends a turn before its loop has unwound. A prompt sent in that gap
+  // starts the next turn; the old loop's end must not cancel it or drop its
+  // parameters.
+  test("an interrupted turn's unwind leaves the next turn running", async () => {
+    const hooks = globalThis as unknown as { __hold?: PromiseWithResolvers<void>; __held?: boolean }
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "build", model)
+        const hold = Promise.withResolvers<void>()
+        hooks.__hold = hold
+        hooks.__held = false
+        const old = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "build",
+          parts: [{ type: "text", text: "old" }],
+        })
+        await until(() => hooks.__held === true, "the old turn to reach its hook")
+        await Session.interrupt(session.id)
+
+        const release = Promise.withResolvers<void>()
+        state.gate = release.promise
+        state.replies.push("NEW-REPLY", "JOIN-REPLY")
+        const before = state.requests.filter((body) => body.tools).length
+        const fresh = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "build",
+          parts: [{ type: "text", text: "new" }],
+        })
+        await until(() => state.requests.filter((body) => body.tools).length > before, "the new turn's request")
+        hold.resolve()
+        await old
+        expect(SessionBusy.busy(session.id)).toBe(true)
+
+        const joined = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "plan",
+          parts: [{ type: "text", text: "join" }],
+        })
+        await until(
+          async () =>
+            (await users(session.id)).some((m) => m.parts.some((p) => p.type === "text" && p.text === "join")),
+          "the joined message",
+        )
+        release.resolve()
+        await Promise.all([fresh, joined])
+
+        const messages = await Session.messages({ sessionID: session.id })
+        const opener = messages.find((m) => m.parts.some((p) => p.type === "text" && p.text === "new"))!
+        const reply = messages.find((m) => m.info.role === "assistant" && m.info.parentID === opener.info.id)!
+        expect(reply.info.role === "assistant" && reply.info.error).toBeUndefined()
+        expect(reply.parts.flatMap((p) => (p.type === "text" ? [p.text] : []))).toEqual(["NEW-REPLY"])
+        const join = messages.find((m) => m.parts.some((p) => p.type === "text" && p.text === "join"))!
+        expect(join.info.role === "user" && join.info.agent).toBe("build")
+      },
+      `export default async () => ({
+        "experimental.chat.messages.transform": async () => {
+          const hold = globalThis.__hold
+          if (!hold) return
+          globalThis.__hold = undefined
+          globalThis.__held = true
+          await hold.promise
+        },
+      })`,
+    )
+  }, 30_000)
+
+  // The same gap, with the next prompt still being written (its turn claimed,
+  // its loop not yet started) when the old loop unwinds.
+  test("an interrupted turn's unwind leaves a prompt still being written its turn", async () => {
+    const hooks = globalThis as unknown as {
+      __hold?: PromiseWithResolvers<void>
+      __held?: boolean
+      __pgate?: PromiseWithResolvers<void>
+      __pentered?: boolean
+    }
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "build", model)
+        const hold = Promise.withResolvers<void>()
+        hooks.__hold = hold
+        hooks.__held = false
+        const old = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "build",
+          parts: [{ type: "text", text: "old" }],
+        })
+        await until(() => hooks.__held === true, "the old turn to reach its hook")
+        await Session.interrupt(session.id)
+
+        const writing = Promise.withResolvers<void>()
+        hooks.__pgate = writing
+        hooks.__pentered = false
+        const release = Promise.withResolvers<void>()
+        state.gate = release.promise
+        state.replies.push("NEW-REPLY", "JOIN-REPLY")
+        const before = state.requests.filter((body) => body.tools).length
+        const fresh = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "build",
+          parts: [{ type: "text", text: "new" }],
+        })
+        await until(() => hooks.__pentered === true, "the new prompt to be mid-write")
+        hold.resolve()
+        await old
+        writing.resolve()
+        await until(() => state.requests.filter((body) => body.tools).length > before, "the new turn's request")
+
+        const joined = SessionPrompt.prompt({
+          variant: Provider.INHERIT,
+          sessionID: session.id,
+          model,
+          agent: "plan",
+          parts: [{ type: "text", text: "join" }],
+        })
+        await until(
+          async () => (await users(session.id)).some((m) => m.parts.some((p) => p.type === "text" && p.text === "join")),
+          "the joined message",
+        )
+        release.resolve()
+        await Promise.all([fresh, joined])
+
+        const join = (await users(session.id)).find((m) =>
+          m.parts.some((p) => p.type === "text" && p.text === "join"),
+        )!
+        expect(join.info.role === "user" && join.info.agent).toBe("build")
+        expect((await Sessions.read(session.id)).current?.agent).toBe("build")
+      },
+      `export default async () => ({
+        "chat.message": async (_input, output) => {
+          const text = output.parts.find((p) => p.type === "text")?.text
+          if (text !== "new" || !globalThis.__pgate) return
+          const gate = globalThis.__pgate
+          globalThis.__pgate = undefined
+          globalThis.__pentered = true
+          await gate.promise
+        },
+        "experimental.chat.messages.transform": async () => {
+          const hold = globalThis.__hold
+          if (!hold) return
+          globalThis.__hold = undefined
+          globalThis.__held = true
+          await hold.promise
+        },
+      })`,
+    )
+  }, 30_000)
+
+  test("dispatch a command whose own agent is a subagent", async () => {
+    await withProject(
+      async () => {
+        const session = await root()
+        await sent(session.id, "build", model)
+        state.replies.push("ok", "ok", "ok", "ok")
+        await SessionPrompt.command({
+          sessionID: session.id,
+          command: "sub",
+          arguments: "",
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+        })
+        // The child's result comes back as a later user message, so the
+        // dispatch is found by its part rather than by position.
+        const dispatches = (await users(session.id)).filter((m) => m.parts.some((p) => p.type === "subagent"))
+        expect(dispatches.map((m) => m.info.role === "user" && m.info.agent)).toEqual(["build"])
+        expect(dispatches[0].parts.flatMap((p) => (p.type === "subagent" ? [p.agent] : []))).toEqual(["general"])
+      },
+      undefined,
+      { command: { sub: { template: "do sub", agent: "general" } } },
+    )
+  }, 30_000)
+
+  // A child runs its subagent, so a command typed into it with no agent of its
+  // own runs inline as that agent, never as a nested subagent dispatch.
+  test("run a command typed into a child inline as the child's agent", async () => {
+    await withProject(
+      async () => {
+        const parent = await root()
+        const created = await Session.create({ parentID: parent.id, title: "count files (@general subagent)" })
+        made.push(created.id)
+        await Session.update(created.id, (draft) => void (draft.current = { agent: "general", model }))
+        state.replies.push("ok")
+        await SessionPrompt.command({
+          sessionID: created.id,
+          command: "hi",
+          arguments: "",
+          model: Provider.INHERIT,
+          variant: Provider.INHERIT,
+        })
+        const written = await users(created.id)
+        const last = written[written.length - 1]
+        expect(last.info.role === "user" && last.info.agent).toBe("general")
+        expect(last.parts.some((p) => p.type === "subagent")).toBe(false)
+        expect(last.parts.flatMap((p) => (p.type === "text" && !p.synthetic ? [p.text] : []))).toEqual(["say hi"])
+      },
+      undefined,
+      { command: { hi: { template: "say hi" } } },
+    )
+  }, 30_000)
+
+  test("run a shell command that names no agent", async () => {
+    await withProject(async () => {
+      const session = await root()
+      await sent(session.id, "plan", model)
+      await SessionPrompt.shell({
+        sessionID: session.id,
+        command: "echo hi",
+        model: Provider.INHERIT,
+        variant: Provider.INHERIT,
+      })
+      const messages = await Session.messages({ sessionID: session.id })
+      expect(messages.slice(-2).map((m) => [m.info.role, m.info.agent])).toEqual([
+        ["user", "plan"],
+        ["assistant", "plan"],
+      ])
+      expect((await Sessions.read(session.id)).current?.agent).toBe("plan")
     })
   }, 30_000)
 })

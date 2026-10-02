@@ -327,9 +327,7 @@ export namespace SessionPrompt {
           .after(input.part.sessionID, input.opener.id)
           .filter(
             (info) =>
-              info.id !== input.opener.id &&
-              info.role === "user" &&
-              !MessageV2.reply({ info, parts: parts(info.id) }),
+              info.id !== input.opener.id && info.role === "user" && !MessageV2.reply({ info, parts: parts(info.id) }),
           )
         if (later.length > 0) return false
         write(replaced)
@@ -456,7 +454,14 @@ export namespace SessionPrompt {
 
       const message = await createUserMessage(input, { ...internal, joined: joinedParams })
       if (!message) return undefined
-      slot.resolve(MessageV2.inherit(message.info as MessageV2.User))
+      const params = MessageV2.inherit(message.info as MessageV2.User)
+      slot.resolve(params)
+      // Parameters that win over the running turn's (a plan switch) become the
+      // turn's own, or the next result to join would adopt the agent switched
+      // from. Only the turn this message joined: if that turn ended while it was
+      // written, the slot is gone or a newer turn's.
+      if (!claimed && internal?.params && joinedParams && turnParams().get(input.sessionID) === joinedParams)
+        turnParams().set(input.sessionID, Promise.resolve(params))
       // Arm the daemon at turn START, not just the tail. Sending a prompt is the
       // intended "keep this session" action, so it arms now — one lever (start()
       // arms and sets keepWarm as its shadow). This costs no ping: a busy turn
@@ -646,14 +651,20 @@ export namespace SessionPrompt {
     return controller.signal
   }
 
-  export function cancel(sessionID: string, reason?: typeof STOPPED) {
+  // `own` is the handle of the turn ending itself. An Esc cancels that turn
+  // before its loop unwinds, and a prompt sent in between may hold the session
+  // by the time it does: a newer handle, or a claimed turn whose loop has not
+  // started. Neither is this turn's to drop.
+  export function cancel(sessionID: string, reason?: typeof STOPPED, own?: AbortController) {
     log.info("cancel", { sessionID, stopped: reason === STOPPED })
     const s = state()
     const match = s[sessionID]
+    if (own && match && match.abort !== own) return
     // The turn is over, so its parameter claim must go too — otherwise the next
     // fresh turn on this session would adopt the finished turn's parameters as a
-    // phantom join.
-    turnParams().delete(sessionID)
+    // phantom join. A turn whose handle is already gone had its claim dropped
+    // with it; any claim now is a newer turn's.
+    if (!own || match) turnParams().delete(sessionID)
     // Both branches drop the session's open prompts. A prompt outlives the tool
     // call that raised it only as a dot nobody can answer, and the no-match
     // branch is reached with one still open: a session waiting on a permission
@@ -722,7 +733,8 @@ export namespace SessionPrompt {
         log.error("could not collect", { sessionID, error }),
       )
     })
-    using _ = defer(() => cancel(sessionID))
+    const own = state()[sessionID].abort
+    using _ = defer(() => cancel(sessionID, undefined, own))
 
     let step = 0
     const session = await Session.get(sessionID)
@@ -2574,7 +2586,7 @@ export namespace SessionPrompt {
   export const ShellInput = z.object({
     messageID: Identifier.schema("message").optional(),
     sessionID: Identifier.schema("session"),
-    agent: z.string(),
+    agent: z.string().optional(),
     model: z
       .object({
         providerID: z.string(),
@@ -2609,7 +2621,8 @@ export namespace SessionPrompt {
         log.error("could not collect", { sessionID: input.sessionID, error }),
       )
     })
-    using _ = defer(() => cancel(input.sessionID))
+    const own = state()[input.sessionID].abort
+    using _ = defer(() => cancel(input.sessionID, undefined, own))
     SessionBusy.enter(input.sessionID)
     let since: number | undefined
     return await execute(abort).then(
@@ -2653,8 +2666,8 @@ export namespace SessionPrompt {
         id: Identifier.ascending("message"),
         sessionID: input.sessionID,
         parentID: userMsg.id,
-        mode: input.agent,
-        agent: input.agent,
+        mode: userMsg.agent,
+        agent: userMsg.agent,
         cost: 0,
         path: {
           cwd: Instance.directory,
@@ -2866,7 +2879,12 @@ export namespace SessionPrompt {
     log.info("command", input)
     const snapshot = await SessionPin.get(input.sessionID)
     const command = snapshot.commands[input.command] ?? (await Command.get(input.command))
-    const agentName = command.agent ?? input.agent ?? snapshot.defaultAgent ?? (await Agent.defaultAgent())
+    // What the session runs when the request names no agent, through the one
+    // resolver, so an agent the config has since dropped falls to the default.
+    const runs = (
+      await resolveAgent((await Session.get(input.sessionID)).current?.agent ?? snapshot.defaultAgent, snapshot)
+    ).name
+    const agentName = command.agent ?? input.agent ?? runs
 
     const raw = input.arguments.match(argsRegex) ?? []
     const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
@@ -2950,7 +2968,10 @@ export namespace SessionPrompt {
     }
 
     const templateParts = await resolvePromptParts(template)
-    const isSubagent = (agent.mode === "subagent" && command.subagent !== false) || command.subagent === true
+    // Only a named agent dispatches as a subagent: inside a child the session's
+    // own agent is a subagent, and the command runs inline as that agent.
+    const named = (command.agent ?? input.agent) !== undefined
+    const isSubagent = (named && agent.mode === "subagent" && command.subagent !== false) || command.subagent === true
     const parts = isSubagent
       ? [
           {
@@ -2969,7 +2990,7 @@ export namespace SessionPrompt {
         ]
       : [...templateParts, ...(input.parts ?? [])]
 
-    const userAgent = isSubagent ? (input.agent ?? snapshot.defaultAgent ?? (await Agent.defaultAgent())) : agentName
+    const userAgent = isSubagent ? (input.agent ?? runs) : agentName
     const userModel = isSubagent ? input.model : subagentModel
 
     await Plugin.trigger(

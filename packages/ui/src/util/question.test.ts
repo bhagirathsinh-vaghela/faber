@@ -79,7 +79,14 @@ describe("reply", () => {
 
 describe("opener: the user message a step's turn began with", () => {
   const user = (id: string) =>
-    ({ id, sessionID: "s1", role: "user", time: { created: 1 }, agent: "build", model: { providerID: "p", modelID: "m" } }) as Message
+    ({
+      id,
+      sessionID: "s1",
+      role: "user",
+      time: { created: 1 },
+      agent: "build",
+      model: { providerID: "p", modelID: "m" },
+    }) as Message
   const step = (id: string, parentID: string) => ({ id, sessionID: "s1", role: "assistant", parentID }) as Message
   const typed = (id: string): Part[] => [{ id: `${id}-p`, sessionID: "s1", messageID: id, type: "text", text: "go" }]
   const messages = [user("u1"), step("a1", "u1"), user("r1"), step("a2", "r1"), user("u2"), step("a3", "u2")]

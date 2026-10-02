@@ -852,14 +852,7 @@ describe("Recovery resume", () => {
 
       await settle()
 
-      expect(await texts(cut.id)).toEqual([
-        "ask me",
-        "Let me ask.",
-        "",
-        cutOff,
-        Recovery.resumeText(0),
-        "Resumed.",
-      ])
+      expect(await texts(cut.id)).toEqual(["ask me", "Let me ask.", "", cutOff, Recovery.resumeText(0), "Resumed."])
       const messages = await Session.messages({ sessionID: cut.id })
       const replaced = messages.flatMap((m) => m.parts).find((p) => p.id === part.id)
       expect(replaced).toMatchObject({
@@ -902,7 +895,9 @@ describe("Recovery resume", () => {
 
       await settle()
 
-      const stored = (await Session.messages({ sessionID: cut.id })).flatMap((m) => m.parts).find((p) => p.id === part.id)
+      const stored = (await Session.messages({ sessionID: cut.id }))
+        .flatMap((m) => m.parts)
+        .find((p) => p.id === part.id)
       expect(stored).toMatchObject({
         type: "tool",
         state: { status: "error", error: "the turn was cut off", metadata: { plain: true } },

@@ -580,7 +580,9 @@ export namespace MessageV2 {
       [
         `You asked: ${q.question}`,
         ...(q.options.length ? [`Options: ${q.options.map((o) => o.label).join(", ")}`] : []),
-        ...("answers" in outcome ? [`I chose: ${outcome.answers[i]?.length ? outcome.answers[i].join(", ") : "nothing"}`] : []),
+        ...("answers" in outcome
+          ? [`I chose: ${outcome.answers[i]?.length ? outcome.answers[i].join(", ") : "nothing"}`]
+          : []),
       ].join("\n"),
     )
     return `${header}\n${blocks.join("\n\n")}`

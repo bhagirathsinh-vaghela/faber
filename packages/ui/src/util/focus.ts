@@ -20,8 +20,7 @@ export function takesPaste(node: unknown): boolean {
   if (node.closest("[data-prevent-autofocus]")) return true
   if (node.isContentEditable || node instanceof HTMLTextAreaElement) return true
   return (
-    node instanceof HTMLInputElement &&
-    !/^(button|submit|reset|checkbox|radio|range|color|file|image)$/.test(node.type)
+    node instanceof HTMLInputElement && !/^(button|submit|reset|checkbox|radio|range|color|file|image)$/.test(node.type)
   )
 }
 

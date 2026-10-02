@@ -1177,8 +1177,13 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
   test("a waiting question leaves the model's turn as it was, and answering it only appends the answer", () => {
     const waiting = MessageV2.toModelMessages(history(running), model).messages
     const done = MessageV2.toModelMessages(history(answered), model).messages
-    expect(waiting.slice(1)).toStrictEqual([{ role: "assistant", content: [{ type: "text", text: "One thing first." }] }])
-    expect(done.slice(1)).toStrictEqual([...waiting.slice(1), { role: "user", content: [{ type: "text", text: chose }] }])
+    expect(waiting.slice(1)).toStrictEqual([
+      { role: "assistant", content: [{ type: "text", text: "One thing first." }] },
+    ])
+    expect(done.slice(1)).toStrictEqual([
+      ...waiting.slice(1),
+      { role: "user", content: [{ type: "text", text: chose }] },
+    ])
   })
 
   test("a question that was not answered says so as the user's turn", () => {
@@ -1250,12 +1255,17 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
     ).messages
     expect(messages.slice(-2)).toStrictEqual([
       { role: "assistant", content: [{ type: "text", text: "One thing first." }] },
-      { role: "user", content: [{ type: "text", text: `${chose}\n\nYou asked: Notify?\nOptions: yes\nI chose: nothing` }] },
+      {
+        role: "user",
+        content: [{ type: "text", text: `${chose}\n\nYou asked: Notify?\nOptions: yes\nI chose: nothing` }],
+      },
     ])
   })
 
   test("two question calls in one step each carry their own question", () => {
-    const notify = { questions: [{ question: "Notify?", header: "Notify", options: [{ label: "yes", description: "" }] }] }
+    const notify = {
+      questions: [{ question: "Notify?", header: "Notify", options: [{ label: "yes", description: "" }] }],
+    }
     const messages = MessageV2.toModelMessages(
       [
         plainUser("m-user", "deploy it"),

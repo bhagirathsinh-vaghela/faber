@@ -584,9 +584,7 @@ describe("a written-down question keeps its place in the transcript", () => {
         const written = await SessionPrompt.transcribe({
           part,
           opener: opener as any,
-          ...(outcome === "answered"
-            ? { answers: [["staging"]] }
-            : { reason: "the turn was stopped", halted: true }),
+          ...(outcome === "answered" ? { answers: [["staging"]] } : { reason: "the turn was stopped", halted: true }),
         })
 
         expect(written).toBeUndefined()
@@ -639,7 +637,9 @@ describe("a written-down question keeps its place in the transcript", () => {
     await withProject(async () => {
       const session = await Session.create({})
       const notify = {
-        questions: [{ question: "Notify?", header: "Notify", options: [{ label: "yes", description: "tell the team" }] }],
+        questions: [
+          { question: "Notify?", header: "Notify", options: [{ label: "yes", description: "tell the team" }] },
+        ],
       }
       state.queue.push(
         () => reply([toolUse("question", asked, "toolu_q"), toolUse("question", notify, "toolu_r")], "tool_use"),
@@ -691,8 +691,17 @@ describe("an answer is not read as the user's prompt", () => {
   test("the title reads the typed prompts, not answers or notes", () => {
     const user = (id: string, text: string, record?: MessageV2.QuestionRecord) =>
       ({
-        info: { id, sessionID: "s", role: "user", time: { created: 1 }, agent: "build", model: { providerID: "anthropic", modelID: MODEL } },
-        parts: [{ id: `${id}-p`, sessionID: "s", messageID: id, type: "text", text, ...(record && { question: record }) }],
+        info: {
+          id,
+          sessionID: "s",
+          role: "user",
+          time: { created: 1 },
+          agent: "build",
+          model: { providerID: "anthropic", modelID: MODEL },
+        },
+        parts: [
+          { id: `${id}-p`, sessionID: "s", messageID: id, type: "text", text, ...(record && { question: record }) },
+        ],
       }) as MessageV2.WithParts
     const record = { callID: "toolu_q", questions: asked.questions, error: "the user dismissed it" }
     expect(
