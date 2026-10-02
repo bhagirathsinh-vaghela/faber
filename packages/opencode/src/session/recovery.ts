@@ -251,7 +251,7 @@ export namespace Recovery {
       const waiting = read.pending(sessionID, session.time.stopped)?.id ?? ""
       const prior = wakes.get(sessionID)
       if (prior?.message === waiting && prior.count >= STRIKES) return
-      const failure = await SessionPrompt.loop(sessionID).then(
+      const failure = await SessionPrompt.wake(sessionID).then(
         () => undefined,
         (error: unknown) => error ?? new Error(`the wake of session ${sessionID} was aborted`),
       )

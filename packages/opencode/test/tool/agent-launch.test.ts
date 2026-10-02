@@ -480,7 +480,7 @@ describe("the agent tool, steering a busy child", () => {
         await user(sub.id, "count")
         const release = Promise.withResolvers<void>()
         state.hold = release.promise
-        void SessionPrompt.loop(sub.id).catch(() => {})
+        void SessionPrompt.wake(sub.id).catch(() => {})
         await until(() => SessionBusy.busy(sub.id), `${sub.id} to run`)
         const prompt = await user(parent.id, "go")
         const reply = await assistant(parent.id, prompt.id, "")

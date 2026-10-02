@@ -1088,7 +1088,7 @@ describe("Recovery resume", () => {
       await assistant(session.id, landed.id, "7 files")
       state.replies.push("carrying on")
 
-      await SessionPrompt.loop(session.id)
+      await SessionPrompt.wake(session.id)
 
       expect(prompt.id < landed.id).toBe(true)
       const sent = state.requests as { messages: { role: string; content: unknown }[] }[]

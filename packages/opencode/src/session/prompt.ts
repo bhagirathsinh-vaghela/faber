@@ -537,8 +537,8 @@ export namespace SessionPrompt {
       )
     const unstopped = async () => (await stopped()) < sent.time.created
     for (let attempt = 1; ; attempt++) {
-      const running = loop(sessionID)
-      // Read after `loop` claims or joins: the controller of the turn this
+      const running = wake(sessionID)
+      // Read after `wake` claims or joins: the controller of the turn this
       // attempt waits on.
       const signal = state()[sessionID]?.abort.signal
       // A stopped turn ends however it ends (a turn cut before its first step
@@ -692,7 +692,27 @@ export namespace SessionPrompt {
     return
   }
 
-  export const loop = fn(Identifier.schema("session"), async (sessionID) => {
+  // The one way to start a turn on what is already written (a recovery wake, a
+  // summarize, a send asking again). Like a prompt, it claims the turn's
+  // parameters before the turn starts: the newest user message's, which the
+  // loop runs on, so a prompt that joins adopts them instead of its own picks.
+  // `loop` itself is private, so nothing starts a turn without a claim.
+  export function wake(sessionID: string) {
+    if (!state()[sessionID] && !turnParams().has(sessionID))
+      turnParams().set(
+        sessionID,
+        Session.messages({ sessionID }).then(
+          (msgs) => {
+            const opener = MessageV2.turnOpener(msgs)?.info
+            return opener?.role === "user" ? MessageV2.inherit(opener) : undefined
+          },
+          () => undefined,
+        ),
+      )
+    return loop(sessionID)
+  }
+
+  const loop = fn(Identifier.schema("session"), async (sessionID) => {
     const abort = start(sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {

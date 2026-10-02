@@ -737,7 +737,7 @@ export const SessionRoutes = lazy(() =>
           agent: currentAgent,
           auto: body.auto,
         })
-        await SessionPrompt.loop(sessionID)
+        await SessionPrompt.wake(sessionID)
         return c.json(true)
       },
     )

@@ -1111,6 +1111,51 @@ describe("the agent and model a person last sent", () => {
     )
   }, 30_000)
 
+  // Every turn starts through a claim: a prompt or delivery through `run`, a
+  // turn on what is already written through `wake`. The loop is not reachable
+  // on its own.
+  test("nothing outside prompt.ts can start a turn without a claim", () => {
+    expect(Object.keys(SessionPrompt).filter((key) => key === "loop" || key === "wake")).toEqual(["wake"])
+  })
+
+  // A turn recovery wakes has no prompt of its own; a prompt joining it still
+  // runs on the turn's values, not its own picks.
+  test("a prompt joining a woken turn runs on that turn's agent", async () => {
+    await withProject(async () => {
+      const session = await root()
+      await SessionPrompt.prompt({
+        variant: Provider.INHERIT,
+        sessionID: session.id,
+        model,
+        agent: "plan",
+        noReply: true,
+        parts: [{ type: "text", text: "unanswered" }],
+      })
+      const release = Promise.withResolvers<void>()
+      state.gate = release.promise
+      state.replies.push(toolCall, "done", "joined")
+      const woken = SessionPrompt.wake(session.id)
+      await until(() => state.requests.some((body) => body.tools), "the woken turn's request")
+      const joined = SessionPrompt.prompt({
+        variant: Provider.INHERIT,
+        sessionID: session.id,
+        model,
+        agent: "build",
+        parts: [{ type: "text", text: "join" }],
+      })
+      await until(
+        async () => (await users(session.id)).some((m) => m.parts.some((p) => p.type === "text" && p.text === "join")),
+        "the joined message",
+      )
+      release.resolve()
+      await Promise.all([woken, joined])
+
+      const join = (await users(session.id)).find((m) => m.parts.some((p) => p.type === "text" && p.text === "join"))!
+      expect(join.info.role === "user" && join.info.agent).toBe("plan")
+      expect((await Sessions.read(session.id)).current?.agent).toBe("plan")
+    })
+  }, 30_000)
+
   test("dispatch a command whose own agent is a subagent", async () => {
     await withProject(
       async () => {
