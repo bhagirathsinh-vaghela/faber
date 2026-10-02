@@ -21,6 +21,8 @@ export interface SoundSettings {
   stopped: string
   archived: string
   deleted: string
+  // The titlebar bell: true silences every alert sound on this client.
+  muted: boolean
   // Marks a record that has had the default-sound change applied; see
   // migrateSettings.
   revision: number
@@ -91,6 +93,7 @@ const defaultSettings: Settings = {
     stopped: "bip-bop-02",
     archived: "bip-bop-05",
     deleted: "bip-bop-08",
+    muted: false,
     revision: 2,
   },
   debug: {
@@ -690,6 +693,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         deleted: createMemo(() => store.sounds?.deleted ?? defaultSettings.sounds.deleted),
         setDeleted(value: string) {
           setStore("sounds", "deleted", value)
+        },
+        muted: createMemo(() => store.sounds?.muted ?? defaultSettings.sounds.muted),
+        setMuted(value: boolean) {
+          setStore("sounds", "muted", value)
         },
       },
     }

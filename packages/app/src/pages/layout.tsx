@@ -414,6 +414,10 @@ export default function Layout(props: ParentProps) {
     const toastBySession = new Map<string, number>()
     const alertedAtBySession = new Map<string, number>()
     const cooldownMs = 5000
+    const chime = (sound: string) => {
+      if (settings.sounds.muted()) return
+      playSound(soundSrc(sound))
+    }
 
     const unsub = globalSDK.event.listen((e) => {
       if (e.details?.type === "worktree.ready") {
@@ -434,7 +438,7 @@ export default function Layout(props: ParentProps) {
           archive: settings.sounds.archived,
           delete: settings.sounds.deleted,
         }[e.details.properties.action]
-        playSound(soundSrc(sound()))
+        chime(sound())
         return
       }
 
@@ -458,7 +462,7 @@ export default function Layout(props: ParentProps) {
           if (sessionID && !session) return
           const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
           if (details.type === "session.idle") {
-            playSound(soundSrc(settings.sounds.agent()))
+            chime(settings.sounds.agent())
             if (settings.notifications.agent())
               void platform.notify(
                 language.t("notification.session.responseReady.title"),
@@ -468,7 +472,7 @@ export default function Layout(props: ParentProps) {
             return
           }
 
-          playSound(soundSrc(settings.sounds.errors()))
+          chime(settings.sounds.errors())
           const error = "error" in details.properties ? details.properties.error : undefined
           if (settings.notifications.errors())
             void platform.notify(
@@ -508,7 +512,7 @@ export default function Layout(props: ParentProps) {
       if (now - lastAlerted < cooldownMs) return
       alertedAtBySession.set(sessionKey, now)
 
-      playSound(soundSrc(settings.sounds.blocking()))
+      chime(settings.sounds.blocking())
       if (settings.notifications.blocking()) void platform.notify(title, description, href)
 
       const currentDir = decode64(params.dir)

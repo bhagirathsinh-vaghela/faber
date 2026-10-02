@@ -13,6 +13,7 @@ import { usePlatform } from "@/context/platform"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLocalOptional } from "@/context/local"
+import { useSettings } from "@/context/settings"
 import { StatusPopover } from "@/components/status-popover"
 import { JobsButton } from "@/components/jobs-button"
 import { createStandalone, useShell } from "@/utils/mobile"
@@ -30,6 +31,10 @@ export function Titlebar() {
   const fieldShown = (surface: "desktop" | "mobile", id: string) => (local ? local.dock.isVisibleOn(surface, id) : true)
   const navigate = useNavigate()
   const location = useLocation()
+  const settings = useSettings()
+  const muteLabel = () => (settings.sounds.muted() ? language.t("sound.unmute") : language.t("sound.mute"))
+  const muteIcon = () => (settings.sounds.muted() ? ("bell-off" as const) : ("bell" as const))
+  const toggleMute = () => settings.sounds.setMuted(!settings.sounds.muted())
 
   const goHome = () => {
     if (dialog.active) dialog.close()
@@ -241,6 +246,17 @@ export function Titlebar() {
             show on every route, including home. The session-only controls
             (stop, review) still portal into the mount below. */}
         <StatusPopover />
+        <Tooltip value={muteLabel()} placement="bottom" gutter={8}>
+          <IconButton
+            icon={muteIcon()}
+            iconSize="medium"
+            variant="ghost"
+            class="shrink-0 p-0"
+            onClick={toggleMute}
+            aria-label={muteLabel()}
+            aria-pressed={settings.sounds.muted()}
+          />
+        </Tooltip>
         <Tooltip value={language.t("session.header.searchFiles")} placement="bottom" gutter={8}>
           <IconButton
             icon="magnifying-glass"
@@ -375,6 +391,16 @@ export function Titlebar() {
             neighbours rather than floating above them and covering controls. */}
         <div class="min-w-0 flex items-center justify-center gap-2 px-2">
           <StatusPopover />
+          <Tooltip placement="bottom" value={muteLabel()} openDelay={2000}>
+            <Button
+              variant="ghost"
+              icon={muteIcon()}
+              class="p-0 shrink-0"
+              onClick={toggleMute}
+              aria-label={muteLabel()}
+              aria-pressed={settings.sounds.muted()}
+            />
+          </Tooltip>
           <div id="opencode-titlebar-center" class="min-w-0 flex flex-1 justify-center" />
           <Show when={!inSession()}>
             <Tooltip placement="bottom" value={language.t("common.jobs")} openDelay={2000}>
