@@ -411,9 +411,18 @@ export default function Layout(props: ParentProps) {
   })
 
   onMount(() => {
-    const toastBySession = new Map<string, number>()
+    // A session's banner, with the request it announces so a settle of that
+    // request on any client can take it down here.
+    const toastBySession = new Map<string, { toast: number; request: string }>()
     const alertedAtBySession = new Map<string, number>()
     const cooldownMs = 5000
+    const clearToast = (sessionKey: string) => {
+      const shown = toastBySession.get(sessionKey)
+      if (!shown) return
+      toaster.dismiss(shown.toast)
+      toastBySession.delete(sessionKey)
+      alertedAtBySession.delete(sessionKey)
+    }
     const chime = (sound: string) => {
       if (settings.sounds.muted()) return
       playSound(soundSrc(sound))
@@ -485,6 +494,18 @@ export default function Layout(props: ParentProps) {
         return
       }
 
+      // Answered, dismissed or withdrawn on any client: every client hears the
+      // settle, and the banner that announced that request comes down.
+      if (
+        e.details?.type === "question.replied" ||
+        e.details?.type === "question.rejected" ||
+        e.details?.type === "permission.replied"
+      ) {
+        const sessionKey = `${e.name}:${e.details.properties.sessionID}`
+        if (toastBySession.get(sessionKey)?.request === e.details.properties.requestID) clearToast(sessionKey)
+        return
+      }
+
       if (e.details?.type !== "permission.asked" && e.details?.type !== "question.asked") return
       const title =
         e.details.type === "permission.asked"
@@ -520,8 +541,8 @@ export default function Layout(props: ParentProps) {
       if (directory === currentDir && props.sessionID === currentSession) return
       if (directory === currentDir && session?.parentID === currentSession) return
 
-      const existingToastId = toastBySession.get(sessionKey)
-      if (existingToastId !== undefined) toaster.dismiss(existingToastId)
+      clearToast(sessionKey)
+      alertedAtBySession.set(sessionKey, now)
 
       const toastId = showToast({
         persistent: true,
@@ -539,7 +560,7 @@ export default function Layout(props: ParentProps) {
           },
         ],
       })
-      toastBySession.set(sessionKey, toastId)
+      toastBySession.set(sessionKey, { toast: toastId, request: props.id })
     })
     onCleanup(unsub)
 
@@ -547,24 +568,10 @@ export default function Layout(props: ParentProps) {
       const currentDir = decode64(params.dir)
       const currentSession = params.id
       if (!currentDir || !currentSession) return
-      const sessionKey = `${currentDir}:${currentSession}`
-      const toastId = toastBySession.get(sessionKey)
-      if (toastId !== undefined) {
-        toaster.dismiss(toastId)
-        toastBySession.delete(sessionKey)
-        alertedAtBySession.delete(sessionKey)
-      }
+      clearToast(`${currentDir}:${currentSession}`)
       const [store] = globalSync.child(currentDir, { bootstrap: false })
-      const childSessions = store.session.filter((s) => s.parentID === currentSession)
-      for (const child of childSessions) {
-        const childKey = `${currentDir}:${child.id}`
-        const childToastId = toastBySession.get(childKey)
-        if (childToastId !== undefined) {
-          toaster.dismiss(childToastId)
-          toastBySession.delete(childKey)
-          alertedAtBySession.delete(childKey)
-        }
-      }
+      for (const child of store.session.filter((s) => s.parentID === currentSession))
+        clearToast(`${currentDir}:${child.id}`)
     })
   })
 
