@@ -415,7 +415,11 @@ export default function Layout(props: ParentProps) {
     // request on any client can take it down here.
     const toastBySession = new Map<string, { toast: number; request: string }>()
     const alertedAtBySession = new Map<string, number>()
-    const cooldownMs = 5000
+    // Per session: a burst of asks (parallel tool calls each wanting a
+    // permission, a looping turn) alerts once, while a separate ask a moment
+    // later still does. The length is a choice: long enough to fold a burst,
+    // short enough not to swallow a real second ask.
+    const cooldownMs = 1000
     const clearToast = (sessionKey: string) => {
       const shown = toastBySession.get(sessionKey)
       if (!shown) return
