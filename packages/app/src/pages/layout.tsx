@@ -58,7 +58,7 @@ import { attention, busy as busyDot, flat, strongest } from "@/utils/attention"
 import { usePermission } from "@/context/permission"
 import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
-import { announced, audible } from "@/utils/announce"
+import { announced } from "@/utils/announce"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import { agentColor } from "@/utils/agent"
 import { IDLE, busyBase, busyDelay, busyOverlays, busyShown } from "@opencode-ai/ui/util/busy-tint"
@@ -458,7 +458,7 @@ export default function Layout(props: ParentProps) {
           if (sessionID && !session) return
           const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
           if (details.type === "session.idle") {
-            if (audible(open)) playSound(soundSrc(settings.sounds.agent()))
+            playSound(soundSrc(settings.sounds.agent()))
             if (settings.notifications.agent())
               void platform.notify(
                 language.t("notification.session.responseReady.title"),
