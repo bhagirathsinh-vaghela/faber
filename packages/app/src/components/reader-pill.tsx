@@ -100,17 +100,38 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // How far the stack rises above its bottom orb.
   const above = () => stack() - size()
 
+  const [viewport, setViewport] = createSignal({ w: window.innerWidth, h: window.innerHeight })
+  onMount(() => {
+    const track = () => setViewport({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener("resize", track)
+    onCleanup(() => window.removeEventListener("resize", track))
+  })
+
   // x/y address the BOTTOM orb, and the rest hang off it upward. That orb is the
   // one constant across modes and where a parked position was aimed, so it must
   // not move when a sibling appears above it. The upper bound stays the stack's,
   // since a legal bottom orb can still push a sibling off the top.
   const clamp = (x: number, y: number) => ({
-    x: Math.max(MARGIN + inset("--sal"), Math.min(x, window.innerWidth - size() - MARGIN - inset("--sar"))),
-    y: Math.max(MARGIN + inset("--sat") + above(), Math.min(y, window.innerHeight - size() - MARGIN - inset("--sab"))),
+    x: Math.max(MARGIN + inset("--sal"), Math.min(x, viewport().w - size() - MARGIN - inset("--sar"))),
+    y: Math.max(MARGIN + inset("--sat") + above(), Math.min(y, viewport().h - size() - MARGIN - inset("--sab"))),
+  })
+
+  // A held position is a gap to one horizontal and one vertical edge, so a
+  // resized window keeps the pill beside the edges it was left beside. The
+  // same reflection turns a coordinate into its far-edge gap and back.
+  type Parked = { x: number; y: number; right: boolean; bottom: boolean }
+  const place = (p: Parked) => ({
+    x: p.right ? viewport().w - size() - p.x : p.x,
+    y: p.bottom ? viewport().h - size() - p.y : p.y,
+  })
+  const park = (at: { x: number; y: number }, right: boolean, bottom: boolean): Parked => ({
+    ...place({ ...at, right, bottom }),
+    right,
+    bottom,
   })
 
   const [drag, setDrag] = createSignal<{ x: number; y: number } | null>(null)
-  const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null)
+  const [pos, setPos] = createSignal<Parked | null>(null)
   // A press reshapes the dock under the pointer, which would otherwise slide the
   // pill away mid-press and land the release elsewhere.
   const [pressing, setPressing] = createSignal(false)
@@ -119,43 +140,24 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
     const rect = props.anchor?.()
     if (!rect) return null
     return {
-      x: Math.min(rect.right - size() + NUDGE, window.innerWidth - size() - MARGIN),
+      x: Math.min(rect.right - size() + NUDGE, viewport().w - size() - MARGIN),
       y: rect.top - size() - GAP,
     }
   })
 
-  const [resting, setResting] = createSignal<{ x: number; y: number } | null>(null)
+  // Held by its gaps to the right and bottom edges, the dock's own corner, so in
+  // sticky reader (no dock to measure) a resized window still carries the pill
+  // where the dock would be.
+  const [resting, setResting] = createSignal<Parked | null>(null)
   createEffect(() => {
     const live = anchored()
     if (!live || pressing()) return
-    setResting(live)
+    setResting(park(live, true, true))
   })
-
-  // A narrower window changes what an x MEANS, so a parked pill keeps its gap
-  // to the NEARER horizontal edge rather than its absolute value. Holding x
-  // across a narrowing pulls a right-parked pill toward the middle, and the
-  // window widening back leaves it there.
-  //
-  // Measured against the width the pill was last placed in, since by the time a
-  // resize fires window.innerWidth is already the new one.
-  //
-  // A shorter window still means the same y, so height needs no equivalent: the
-  // soft keyboard borrows that room for as long as it is up and then returns it.
-  let placedIn = window.innerWidth
-  const remap = () => {
-    const was = placedIn
-    placedIn = window.innerWidth
-    setPos((p) => {
-      if (!p) return p
-      const right = was - (p.x + size())
-      if (right > p.x) return p
-      return { x: window.innerWidth - size() - right, y: p.y }
-    })
+  const rest = () => {
+    const held = resting()
+    return held && place(held)
   }
-  onMount(() => {
-    window.addEventListener("resize", remap)
-    onCleanup(() => window.removeEventListener("resize", remap))
-  })
 
   // Anchor priority: a live drag wins, then a parked position, then the live
   // anchor, then the last one the anchor offered. Null until the first
@@ -166,7 +168,8 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // is drawn above the keyboard and returns to its own spot when the room
   // comes back.
   const coords = createMemo(() => {
-    const at = drag() ?? pos() ?? (pressing() ? resting() : anchored()) ?? resting()
+    const parked = pos()
+    const at = drag() ?? (parked && place(parked)) ?? (pressing() ? rest() : anchored()) ?? rest()
     return at && clamp(at.x, at.y)
   })
 
@@ -206,7 +209,11 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
       document.removeEventListener("pointercancel", end)
       const final = drag()
       setDrag(null)
-      if (final) setPos(final)
+      if (final) {
+        const right = viewport().w - size() - final.x < final.x
+        const bottom = viewport().h - size() - final.y < final.y - above()
+        setPos(park(final, right, bottom))
+      }
       // A canceled pointer delivers no click, so the suppression flag would
       // outlive the gesture and swallow the next genuine tap.
       if (ev.type === "pointercancel") dragged = false
