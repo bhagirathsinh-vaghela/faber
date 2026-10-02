@@ -17,6 +17,7 @@ type Held = {
   model?: ModelKey
   variant?: { value: string | undefined; sent?: boolean }
   pick?: ModelKey
+  agent?: string
 }
 
 // A store merges the next object written to a path into the node already there,
@@ -63,44 +64,81 @@ export const {
       }
     }
 
+    // The agent picker works like the model's: an open session shows what it
+    // runs (its record's `current`, synced to every client) unless this tab
+    // picked another for it, and only that pick rides on the next prompt. The
+    // new-session surface keeps a tab-wide pick over the first listed agent.
     const agent = (() => {
       const list = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
-      const [store, setStore] = createStore<{
-        current?: string
-      }>({
-        current: list()[0]?.name,
+      const [store, setStore] = createStore<{ fresh?: string; bySession: Record<string, string> }>({ bySession: {} })
+      const valid = (name: string | undefined) => list().find((x) => x.name === name)
+      // The last user message stands in only for a record that predates `current`.
+      const baseline = (id: string) =>
+        sync.session.get(id)?.current?.agent ??
+        sync.data.message[id]?.findLast((m) => m.role === "user" && !!m.agent)?.agent
+      const pick = () => {
+        const id = activeSessionID()
+        return id ? store.bySession[id] : store.fresh
+      }
+      const current = createMemo(() => {
+        const id = activeSessionID()
+        return valid(pick()) ?? (id ? valid(baseline(id)) : undefined) ?? list()[0]
       })
+      const pending = createMemo(() => {
+        const id = activeSessionID()
+        const name = valid(pick())?.name
+        return !!name && name !== (id ? baseline(id) : list()[0]?.name)
+      })
+      // The agent the open session runs, pick or not: what its turn is tinted by.
+      const running = createMemo(() => {
+        const id = activeSessionID()
+        return (id ? valid(baseline(id)) : undefined) ?? current()
+      })
+      // Choosing what the session already runs drops the pick, so the chip goes
+      // on following the session when a plan switch or another client moves it.
+      const set = (name: string | undefined) => {
+        const id = activeSessionID()
+        const value = valid(name)?.name
+        if (!value) return
+        if (!id) return setStore("fresh", value)
+        if (value === baseline(id))
+          return setStore(
+            "bySession",
+            produce((picks) => void delete picks[id]),
+          )
+        setStore("bySession", id, value)
+      }
       return {
         list,
-        current() {
-          const available = list()
-          if (available.length === 0) return undefined
-          return available.find((x) => x.name === store.current) ?? available[0]
+        current,
+        pending,
+        running,
+        // The agent a prompt carries. An open session sends only a pick that
+        // differs from what it runs, so a tab showing a stale agent can never
+        // switch a session back. The new-session surface always names one.
+        request() {
+          return activeSessionID() ? (pending() ? pick() : undefined) : current()?.name
         },
-        set(name: string | undefined) {
-          const available = list()
-          if (available.length === 0) {
-            setStore("current", undefined)
-            return
-          }
-          if (name && available.some((x) => x.name === name)) {
-            setStore("current", name)
-            return
-          }
-          setStore("current", available[0].name)
+        held() {
+          return pick()
         },
+        // Called by the model's spend, which owns when a send's picks are spent.
+        spend(sessionID: string, sent: string | undefined, fresh: boolean | undefined) {
+          if (!sent) return
+          if (fresh && store.fresh === sent) setStore("fresh", undefined)
+          if (!fresh && store.bySession[sessionID] === sent)
+            setStore(
+              "bySession",
+              produce((picks) => void delete picks[sessionID]),
+            )
+        },
+        set,
         move(direction: 1 | -1) {
           const available = list()
-          if (available.length === 0) {
-            setStore("current", undefined)
-            return
-          }
-          let next = available.findIndex((x) => x.name === store.current) + direction
-          if (next < 0) next = available.length - 1
-          if (next >= available.length) next = 0
-          const value = available[next]
-          if (!value) return
-          setStore("current", value.name)
+          if (available.length === 0) return
+          const at = available.findIndex((x) => x.name === current()?.name) + direction
+          const value = available[(at + available.length) % available.length]
+          set(value.name)
           model.follow(value.model)
         },
       }
@@ -118,7 +156,9 @@ export const {
         variant?: string
         variantSet: boolean
         bySession: Record<string, ModelKey>
-        variantBySession: Record<string, string | undefined>
+        // Wrapped: the store deletes a key set to undefined, which would lose an
+        // explicit "Default" pick (stored as an undefined value).
+        variantBySession: Record<string, { value: string | undefined }>
         handed: Record<string, { model?: ModelKey; variant?: { value: string | undefined } }>
         spent: number
       }>({
@@ -181,7 +221,7 @@ export const {
             synced.forEach((id) => {
               const handed = s.handed[id]
               if (sameModel(s.bySession[id], handed.model)) delete s.bySession[id]
-              if (handed.variant && id in s.variantBySession && s.variantBySession[id] === handed.variant.value)
+              if (handed.variant && id in s.variantBySession && s.variantBySession[id].value === handed.variant.value)
                 delete s.variantBySession[id]
               delete s.handed[id]
             })
@@ -266,8 +306,8 @@ export const {
             : named?.role === "user" && sameModel(named.model, key)
               ? named.variant
               : base
-          if (id in ephemeral.variantBySession && offered(ephemeral.variantBySession[id]))
-            return { value: ephemeral.variantBySession[id], baseline, base }
+          if (id in ephemeral.variantBySession && offered(ephemeral.variantBySession[id].value))
+            return { value: ephemeral.variantBySession[id].value, baseline, base }
           return { value: baseline, baseline, base }
         }
         if (ephemeral.variantSet && offered(ephemeral.variant))
@@ -359,10 +399,12 @@ export const {
               model: picked(),
               pick: snapshot(ephemeral.model),
               variant: ephemeral.variantSet ? { value: ephemeral.variant, sent: changed(resolveVariant()) } : undefined,
+              agent: agent.held(),
             }
           return {
             model: snapshot(ephemeral.bySession[id]),
-            variant: id in ephemeral.variantBySession ? { value: ephemeral.variantBySession[id] } : undefined,
+            variant: id in ephemeral.variantBySession ? { value: ephemeral.variantBySession[id].value } : undefined,
+            agent: agent.held(),
           }
         },
         // A send that reached the server carried the picks it captured, so the
@@ -375,6 +417,7 @@ export const {
         // over, and nothing is handed to a session created in another directory
         // (a worktree), whose record never syncs into this store.
         spend(sessionID: string, sent: Held, directory = sdk.directory) {
+          agent.spend(sessionID, sent.agent, sent.fresh)
           setEphemeral(
             produce((s) => {
               s.spent += 1
@@ -383,7 +426,8 @@ export const {
                 const model = here ? snapshot(sent.model) : undefined
                 const variant = here && sent.variant?.sent ? sent.variant : undefined
                 if (model && !s.bySession[sessionID]) s.bySession[sessionID] = model
-                if (variant && !(sessionID in s.variantBySession)) s.variantBySession[sessionID] = variant.value
+                if (variant && !(sessionID in s.variantBySession))
+                  s.variantBySession[sessionID] = { value: variant.value }
                 if (model || variant)
                   s.handed[sessionID] = { model: snapshot(model), variant: variant && { value: variant.value } }
                 // Cleared by what stood, not by what was sent: a pick reset to
@@ -400,7 +444,7 @@ export const {
               if (
                 sent.variant &&
                 sessionID in s.variantBySession &&
-                s.variantBySession[sessionID] === sent.variant.value
+                s.variantBySession[sessionID].value === sent.variant.value
               )
                 delete s.variantBySession[sessionID]
             }),
@@ -415,7 +459,14 @@ export const {
           const id = activeSessionID()
           if (id && model) {
             models.setVisibility(model, true)
-            setEphemeral("bySession", id, model)
+            // Choosing what the session already runs is no pick, so the chip
+            // goes on following the session when its record moves.
+            if (sameModel(model, lastMessageModel(id)))
+              setEphemeral(
+                "bySession",
+                produce((picks) => void delete picks[id]),
+              )
+            if (!sameModel(model, lastMessageModel(id))) setEphemeral("bySession", id, model)
             // Variant is model-scoped; a new model invalidates a prior per-session
             // variant pick. Drop the key so variant.current() falls back to the
             // newly picked model's default.
@@ -469,7 +520,14 @@ export const {
             if (!m) return
             const id = activeSessionID()
             if (id) {
-              setEphemeral("variantBySession", id, value)
+              const resolved = resolveVariant()
+              const runs = (value ?? resolved.base) === (resolved.baseline ?? resolved.base)
+              if (runs)
+                setEphemeral(
+                  "variantBySession",
+                  produce((picks) => void delete picks[id]),
+                )
+              if (!runs) setEphemeral("variantBySession", id, { value })
               return
             }
             // New-session surface: a per-tab pending pick.

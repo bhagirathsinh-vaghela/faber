@@ -48,6 +48,13 @@ test("a prompt carries a model or variant only after the picker changed it", asy
     const bodies = await capture(page, "**/prompt_async**")
     await gotoSession(session.id)
 
+    // A captured send never reaches the server, but this tab holds the session
+    // busy until the server says otherwise, and a send while busy joins the
+    // turn and keeps its picks. Reloading reads the server's idle state.
+    const idle = async () => {
+      await page.reload()
+      await expect(page.locator(promptSelector)).toBeVisible()
+    }
     const send = async (text: string) => {
       const spent = await spentCount(page)
       await page.locator(promptSelector).click()
@@ -62,6 +69,7 @@ test("a prompt carries a model or variant only after the picker changed it", asy
     const plain = await send("no pick")
     expect(plain.model).toBeUndefined()
     expect(plain.variant).toBeUndefined()
+    await idle()
 
     const dock = page.locator(modelVariantSelector)
     test.skip((await dock.count()) === 0, "current model has no variants")
@@ -86,6 +94,12 @@ test("a prompt carries a model or variant only after the picker changed it", asy
     const named = await send("after a named pick")
     expect(named.variant).toBe(name)
 
+    // The idle send spent the pick, so the dock is back on what the session
+    // runs; pick the named variant again, then Default over it.
+    await expect.poll(label).toBe(before)
+    await idle()
+    await choose(new RegExp(`^${escape(name)}$`))
+    await expect.poll(label).toBe(name)
     await choose(/^default$/i)
     await expect.poll(label).toMatch(/^default$/i)
     const reset = await send("after picking default")
@@ -95,6 +109,49 @@ test("a prompt carries a model or variant only after the picker changed it", asy
     const runs = (await sdk.session.get({ sessionID: session.id }).then((r) => r.data))?.current?.variant
     const base = (await sdk.provider.default()).data?.variant
     expect(reset.variant).toBe((runs ?? base) === base ? undefined : "default")
+  })
+})
+
+// "Default" over a session that runs a named variant is a real pick: it shows
+// the dot and rides on the next prompt as "default".
+test("choosing Default over a session's named variant is a pick", async ({ page, sdk, gotoSession }) => {
+  await withSession(sdk, `e2e request default variant ${Date.now()}`, async (session) => {
+    await seeded(sdk, session.id)
+    const runs = async () => (await sdk.session.get({ sessionID: session.id })).data?.current
+    await expect.poll(async () => !!(await runs())?.model).toBe(true)
+    const key = (await runs())!.model!
+    const providers = (await sdk.provider.list().then((r) => r.data))!
+    const info = providers.all.find((p) => p.id === key.providerID)?.models[key.modelID]
+    const named = Object.keys(info?.variants ?? {}).find((name) => name !== info?.variant)
+    test.skip(!named, "the seeded model offers no named variant other than its default")
+    await sdk.session.promptAsync({
+      sessionID: session.id,
+      noReply: true,
+      variant: named,
+      parts: [{ type: "text", text: "on a named variant" }],
+    })
+    await expect.poll(async () => (await runs())?.variant).toBe(named)
+    const bodies = await capture(page, "**/prompt_async**")
+    await gotoSession(session.id)
+
+    const dock = page.locator(modelVariantSelector)
+    test.skip((await dock.count()) === 0, "the variant dock is hidden")
+    await expect.poll(async () => (await dock.textContent())?.trim()).toBe(named)
+    await chooseOption(
+      page,
+      dock.getByRole("button").first(),
+      page
+        .getByRole("option")
+        .filter({ hasText: /^default$/i })
+        .first(),
+    )
+    await expect(dock.locator('[data-slot="pending"]')).toHaveCount(1)
+
+    await page.locator(promptSelector).click()
+    await page.keyboard.type("after picking default")
+    await page.keyboard.press("Enter")
+    await expect.poll(() => bodies.length).toBe(1)
+    expect(bodies[0].variant).toBe("default")
   })
 })
 

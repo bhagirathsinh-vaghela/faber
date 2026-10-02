@@ -43,7 +43,7 @@ export function QuestionPanel(props: { onClose?: () => void }) {
   // collapsed bar keeps this thin accent even while unfocused so it stays
   // attention-seeking (a live question is still blocking in the background).
   const accent = createMemo(() => {
-    const a = local.agent.current()
+    const a = local.agent.running()
     return (a && agentColor(a.name, a.color)) ?? "var(--icon-interactive-base)"
   })
 
@@ -170,7 +170,7 @@ function Panel(props: {
   // dock/agent indicator uses), so the panel's focus cue matches whoever's
   // driving. Falls back to the interactive accent when no agent is resolved.
   const accent = createMemo(() => {
-    const a = local.agent.current()
+    const a = local.agent.running()
     return (a && agentColor(a.name, a.color)) ?? "var(--icon-interactive-base)"
   })
 

@@ -602,22 +602,6 @@ export default function Page() {
   })
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
 
-  createEffect(
-    on(
-      () => lastUserMessage()?.id,
-      () => {
-        const msg = lastUserMessage()
-        if (!msg) return
-        if (msg.agent) local.agent.set(msg.agent)
-        // Model/variant are NOT mirrored here. The switcher is forward-looking
-        // and per-tab: current() already falls back to the last message's model
-        // when this tab has no pending pick, so no mirror is needed. Calling
-        // local.model.set here would create a spurious pending pick and defeat
-        // the pending indicator.
-      },
-    ),
-  )
-
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,
     activeTerminalDraggable: undefined as string | undefined,
@@ -876,7 +860,7 @@ export default function Page() {
   const subagentBusy = createMemo(() => busy().subagents > 0)
   const titleWorking = createMemo(() => busyShown(busy()))
   const workingTint = createMemo(() => {
-    const agent = local.agent.current()
+    const agent = local.agent.running()
     return agent ? agentColor(agent.name, agent.color) : undefined
   })
   const baseTint = createMemo(() => busyBase(busy(), workingTint()))

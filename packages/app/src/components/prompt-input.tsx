@@ -245,7 +245,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // Something is in the box worth sending — text draft or pending comments.
   const submittable = createMemo(() => prompt.dirty() || commentCount() > 0)
   const workingTint = createMemo(() => {
-    const agent = local.agent.current()
+    const agent = local.agent.running()
     return agent ? agentColor(agent.name, agent.color) : undefined
   })
   const baseTint = createMemo(() => busyBase(busy(), workingTint()))
@@ -1538,7 +1538,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // would see the new session's empty picks.
     const requestModel = local.model.picked()
     const variant = local.model.variant.request()
-    const held = local.model.held()
+    const requestAgent = local.agent.request()
+    // A send into a running turn joins it, and the server runs it on that
+    // turn's values, so the picks it carried stay pending for the next send.
+    const joining = !!params.id && busy().turn
+    const held: ReturnType<typeof local.model.held> = joining ? {} : local.model.held()
 
     const errorMessage = (err: unknown) => describeError(err, language.t("common.requestFailed"))
 
@@ -1707,6 +1711,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         model: held.model,
         pick: held.pick,
         variant: held.fresh && held.variant ? { value: held.variant.value, sent: false } : undefined,
+        agent: held.agent,
       }
       clearInput()
       props.onSubmit?.()
@@ -1714,7 +1719,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         .shell({
           sessionID: session.id,
           messageID,
-          agent,
+          agent: requestAgent,
           model: requestModel,
           command: text,
         })
@@ -1739,13 +1744,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (customCommand) {
         clearInput()
         props.onSubmit?.()
+        // The server runs a command on the sent agent unless the command names
+        // its own and runs inline; only then is the agent pick applied, and spent.
+        const applied =
+          !customCommand.agent ||
+          customCommand.subagent === true ||
+          (customCommand.subagent !== false &&
+            sync.data.agent.find((x) => x.name === customCommand.agent)?.mode === "subagent")
+        const spend = () => applied && local.agent.spend(session.id, held.agent, held.fresh)
         client.session
           .command({
             sessionID: session.id,
             messageID,
             command: commandName,
             arguments: args.join(" "),
-            agent,
+            agent: requestAgent,
             model: requestModel && `${requestModel.providerID}/${requestModel.modelID}`,
             variant,
             parts: images.map((attachment) => ({
@@ -1756,11 +1769,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               filename: attachment.filename,
             })),
           })
-          // A command never spends a pick: the server may run it on the
-          // command's own model and drop the pick, and a pick it did apply
-          // equals the session's record afterwards, so it is not sent again.
+          // A command never spends a model or variant pick: the server may run
+          // it on the command's own model and drop the pick.
+          .then(spend)
           .catch(async (err) => {
-            if (err instanceof Error && (await wasReceived())) return
+            if (err instanceof Error && (await wasReceived())) return spend()
             showToast({
               title: language.t("prompt.toast.commandSendFailed.title"),
               description: errorMessage(err),
@@ -2099,7 +2112,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // Results stream over SSE regardless, so the response body is unused.
       await client.session.promptAsync({
         sessionID: session.id,
-        agent,
+        agent: requestAgent,
         model: requestModel,
         messageID,
         parts: requestParts,
@@ -2294,7 +2307,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <Show when={store.dictating}>
             <DictationOverlay
               dictation={dictation}
-              accent={workingTint()}
+              accent={(() => {
+                const agent = local.agent.current()
+                return agent ? agentColor(agent.name, agent.color) : undefined
+              })()}
               onAccept={insertDictation}
               onClose={() => setStore("dictating", false)}
             />
@@ -2573,14 +2589,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         title={language.t("command.agent.cycle")}
                         keybind={command.keybind("agent.cycle")}
                       >
-                        <Select
-                          options={local.agent.list().map((agent) => agent.name)}
-                          current={local.agent.current()?.name ?? ""}
-                          onSelect={local.agent.set}
-                          class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
-                          valueClass="truncate text-syntax-type"
-                          variant="ghost"
-                        />
+                        <span class="inline-flex items-center" data-action="agent-picker">
+                          <Select
+                            options={local.agent.list().map((agent) => agent.name)}
+                            current={local.agent.current()?.name ?? ""}
+                            onSelect={local.agent.set}
+                            class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-[80px]" : "max-w-[120px]"}`}
+                            valueClass="truncate text-syntax-type"
+                            variant="ghost"
+                          />
+                          <Show when={local.agent.pending()}>
+                            <span
+                              data-slot="pending"
+                              class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
+                              title={language.t("model.pending")}
+                            />
+                          </Show>
+                        </span>
                       </TooltipKeybind>
                     </Show>
                     <Show when={local.dock.isVisible("model")}>
@@ -2670,6 +2695,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           />
                           <Show when={local.model.pendingVariant()}>
                             <span
+                              data-slot="pending"
                               class="ml-1 size-1.5 shrink-0 rounded-full bg-icon-interactive-base"
                               title={language.t("model.pending")}
                             />
