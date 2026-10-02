@@ -238,7 +238,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     return paths
   })
-  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   // The single busy read for this session, from the one operative store.
   const busy = createMemo(() => sync.data.session_busy[params.id ?? ""] ?? IDLE)
   const working = createMemo(() => busyShown(busy()))
@@ -1493,7 +1492,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // The latch spans the whole session-less window, not just the create round
   // trip. navigate() commits params.id on a later tick (solid-router routes it
   // through startTransition), so releasing the moment the POST resolves leaves a
-  // gap where the latch is down and info() is still undefined — a submit landing
+  // gap where the latch is down and params.id is still unset — a submit landing
   // there sees a session-less view again and mints a duplicate. Releasing is
   // therefore driven by the view returning to session-less (below) or by a failed
   // create, never by the create resolving. The route keeps one component instance
@@ -1632,7 +1631,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       props.onNewSessionWorktreeReset?.()
     }
 
-    let session = info()
+    // The route id, not the cached record: an open session can drop out of
+    // the trimmed session list while its transcript is still on screen.
+    let session: { id: string } | undefined = params.id ? { id: params.id } : undefined
     // A root session minted by this submit exists only to carry the prompt that
     // follows. If that prompt never lands, the record is an orphan: zero
     // messages, nothing to resume, but it still lists and still counts as needing
@@ -1655,7 +1656,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         return
       }
       creating = true
-      session = await client.session
+      const made = await client.session
         .create()
         .then((x) => x.data ?? undefined)
         .catch((err) => {
@@ -1666,20 +1667,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           creating = false
           return undefined
         })
-      if (session) {
-        created = session.id
+      if (made) {
+        created = made.id
         // Seed BEFORE navigating: the session page reads the store on mount, so
         // arriving already-hydrated is what removes the two blocking fetches
         // from the first paint. Seeding after would lose the race it exists to win.
-        sync.session.seed(session, sessionDirectory)
+        sync.session.seed(made, sessionDirectory)
         // Creating a session is an explicit open — declare keep-warm intent up
         // front (same client + directory used to create it). The organic turn
         // about to run also sets it, but only on completion; arming here closes
         // the gap so a concurrent client can't read it cold in between.
-        void client.session.arm({ sessionID: session.id, directory: sessionDirectory })
-        layout.reader.carry(session.id)
-        navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+        void client.session.arm({ sessionID: made.id, directory: sessionDirectory })
+        layout.reader.carry(made.id)
+        navigate(`/${base64Encode(sessionDirectory)}/session/${made.id}`)
       }
+      session = made
     }
     if (!session) {
       if (isNewSession) restoreInput()
