@@ -1,9 +1,10 @@
 import type { Session } from "@opencode-ai/sdk/v2/client"
 import { Binary } from "@opencode-ai/util/binary"
 
-// A session's sound plays unless the person is looking at it: open here, in a
-// tab that is visible and focused, where the screen already shows what the
-// sound would say. The same test the OS notification uses to stay quiet.
+// Whether the done sound plays: not for the session open here in a tab that is
+// visible and focused, where the screen already shows the turn ended. The same
+// test the OS notification uses to stay quiet. Only the done sound asks it: an
+// error, a question or a stop sounds even on screen, since each needs acting on.
 export function audible(open: boolean, page: Pick<Document, "visibilityState" | "hasFocus"> = document) {
   return !(open && page.visibilityState === "visible" && page.hasFocus())
 }

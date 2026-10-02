@@ -163,8 +163,8 @@ async function live(sessionID: string) {
   await Debt.add(id, "job", sessionID)
 }
 
-// Records the session.idle and session.error events one session publishes, in
-// order, as `idle` and `error:<name>`: the two the client plays a sound for.
+// Records the events one session publishes that the client plays a sound for,
+// in order, as `idle`, `error:<name>` and `stopped:<action>`.
 function listen(sessionID: string) {
   const seen: string[] = []
   const idle = Bus.subscribe(SessionStatus.Event.Idle, (event) => {
@@ -174,7 +174,7 @@ function listen(sessionID: string) {
     if (event.properties.sessionID === sessionID) seen.push(`error:${event.properties.error?.name}`)
   })
   const stopped = Bus.subscribe(Session.Event.Stopped, (event) => {
-    if (event.properties.sessionID === sessionID) seen.push("stopped")
+    if (event.properties.sessionID === sessionID) seen.push(`stopped:${event.properties.action}`)
   })
   return {
     seen,
@@ -335,7 +335,7 @@ describe("turn-end events", () => {
       const heard = await events(1, async (id) => {
         expect((await route("POST", `/session/${id}/abort`)).status).toBe(200)
       })
-      expect(heard).toEqual(["stopped"])
+      expect(heard).toEqual(["stopped:stop"])
     })
   }, 30_000)
 
@@ -346,7 +346,7 @@ describe("turn-end events", () => {
       const heard = listen(session.id)
       expect((await route("POST", `/session/${session.id}/abort`)).status).toBe(200)
       await Bun.sleep(QUIET_MS)
-      expect(heard.done()).toEqual(["stopped"])
+      expect(heard.done()).toEqual(["stopped:stop"])
     })
   }, 30_000)
 
@@ -359,7 +359,7 @@ describe("turn-end events", () => {
       expect((await route("PATCH", `/session/${archived.id}`, { time: { archived: Date.now() } })).status).toBe(200)
       expect((await route("DELETE", `/session/${deleted.id}`)).status).toBe(200)
       await Bun.sleep(QUIET_MS)
-      expect(heard.map((h) => h.done())).toEqual([["stopped"], ["stopped"]])
+      expect(heard.map((h) => h.done())).toEqual([["stopped:archive"], ["stopped:delete"]])
     })
   }, 30_000)
 

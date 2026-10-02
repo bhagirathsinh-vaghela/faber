@@ -401,13 +401,14 @@ export namespace Session {
         error: MessageV2.Assistant.shape.error,
       }),
     ),
-    // A person stopped, archived, or deleted the session; clients play the stop
-    // sound on it. A stop the server makes for itself (a headless run ending)
-    // is not announced.
+    // A person stopped, archived, or deleted the session; clients play that
+    // action's sound on it. A stop the server makes for itself (a headless run
+    // ending) is not announced.
     Stopped: BusEvent.define(
       "session.stopped",
       z.object({
         sessionID: z.string(),
+        action: z.enum(["stop", "archive", "delete"]),
       }),
     ),
   }
@@ -828,7 +829,7 @@ export namespace Session {
       sessionID: Identifier.schema("session"),
       // Set by the routes a person drives (Stop, archive, delete) to publish
       // `Event.Stopped` once for the session they named, not its subtree.
-      announce: z.boolean().optional(),
+      announce: z.enum(["stop", "archive", "delete"]).optional(),
     }),
     async (input) => {
       const { SessionPing } = await import("./ping")
@@ -920,7 +921,7 @@ export namespace Session {
           for (const level of levels.toReversed()) await Promise.all(level.map(settle))
         })
         .finally(() => Recovery.release(subtree.map((s) => s.id)))
-      if (input.announce) Bus.publish(Event.Stopped, { sessionID: input.sessionID })
+      if (input.announce) Bus.publish(Event.Stopped, { sessionID: input.sessionID, action: input.announce })
       if (failures.length > 0) throw failures[0]
     },
   )

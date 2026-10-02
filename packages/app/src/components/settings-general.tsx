@@ -120,7 +120,7 @@ export const SettingsGeneral: Component = () => {
 
   // Highlighting an option previews it; picking one stores and plays it.
   const SoundRow = (props: {
-    slot: "agent" | "blocking" | "errors" | "stopped"
+    slot: "agent" | "blocking" | "errors" | "stopped" | "archived" | "deleted"
     current: () => string
     set: (id: string) => void
   }) => (
@@ -274,6 +274,8 @@ export const SettingsGeneral: Component = () => {
             <SoundRow slot="blocking" current={settings.sounds.blocking} set={settings.sounds.setBlocking} />
             <SoundRow slot="errors" current={settings.sounds.errors} set={settings.sounds.setErrors} />
             <SoundRow slot="stopped" current={settings.sounds.stopped} set={settings.sounds.setStopped} />
+            <SoundRow slot="archived" current={settings.sounds.archived} set={settings.sounds.setArchived} />
+            <SoundRow slot="deleted" current={settings.sounds.deleted} set={settings.sounds.setDeleted} />
           </div>
         </div>
 

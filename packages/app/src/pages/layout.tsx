@@ -414,8 +414,6 @@ export default function Layout(props: ParentProps) {
     const toastBySession = new Map<string, number>()
     const alertedAtBySession = new Map<string, number>()
     const cooldownMs = 5000
-    const viewing = (directory: string, sessionID: string | undefined) =>
-      directory === decode64(params.dir) && sessionID === params.id
 
     const unsub = globalSDK.event.listen((e) => {
       if (e.details?.type === "worktree.ready") {
@@ -431,7 +429,12 @@ export default function Layout(props: ParentProps) {
       }
 
       if (e.details?.type === "session.stopped") {
-        if (audible(viewing(e.name, e.details.properties.sessionID))) playSound(soundSrc(settings.sounds.stopped()))
+        const sound = {
+          stop: settings.sounds.stopped,
+          archive: settings.sounds.archived,
+          delete: settings.sounds.deleted,
+        }[e.details.properties.action]
+        playSound(soundSrc(sound()))
         return
       }
 
@@ -442,7 +445,7 @@ export default function Layout(props: ParentProps) {
         const directory = e.name
         const sessionID = details.properties.sessionID
         const [syncStore] = globalSync.child(directory, { bootstrap: false })
-        const open = viewing(directory, sessionID)
+        const open = directory === decode64(params.dir) && sessionID === params.id
         const resolved = sessionID
           ? announced(syncStore.session, sessionID, open, (id) =>
               globalSDK.client.session
@@ -454,9 +457,8 @@ export default function Layout(props: ParentProps) {
         void resolved.then((session) => {
           if (sessionID && !session) return
           const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
-          const sound = audible(viewing(directory, sessionID))
           if (details.type === "session.idle") {
-            if (sound) playSound(soundSrc(settings.sounds.agent()))
+            if (audible(open)) playSound(soundSrc(settings.sounds.agent()))
             if (settings.notifications.agent())
               void platform.notify(
                 language.t("notification.session.responseReady.title"),
@@ -466,7 +468,7 @@ export default function Layout(props: ParentProps) {
             return
           }
 
-          if (sound) playSound(soundSrc(settings.sounds.errors()))
+          playSound(soundSrc(settings.sounds.errors()))
           const error = "error" in details.properties ? details.properties.error : undefined
           if (settings.notifications.errors())
             void platform.notify(
@@ -506,7 +508,7 @@ export default function Layout(props: ParentProps) {
       if (now - lastAlerted < cooldownMs) return
       alertedAtBySession.set(sessionKey, now)
 
-      if (audible(viewing(directory, props.sessionID))) playSound(soundSrc(settings.sounds.blocking()))
+      playSound(soundSrc(settings.sounds.blocking()))
       if (settings.notifications.blocking()) void platform.notify(title, description, href)
 
       const currentDir = decode64(params.dir)

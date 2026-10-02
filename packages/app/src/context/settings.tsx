@@ -19,6 +19,8 @@ export interface SoundSettings {
   blocking: string
   errors: string
   stopped: string
+  archived: string
+  deleted: string
   // Marks a record that has had the default-sound change applied; see
   // migrateSettings.
   revision: number
@@ -87,6 +89,8 @@ const defaultSettings: Settings = {
     blocking: "alert-02",
     errors: "nope-05",
     stopped: "bip-bop-02",
+    archived: "bip-bop-05",
+    deleted: "bip-bop-08",
     revision: 2,
   },
   debug: {
@@ -678,6 +682,14 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         stopped: createMemo(() => store.sounds?.stopped ?? defaultSettings.sounds.stopped),
         setStopped(value: string) {
           setStore("sounds", "stopped", value)
+        },
+        archived: createMemo(() => store.sounds?.archived ?? defaultSettings.sounds.archived),
+        setArchived(value: string) {
+          setStore("sounds", "archived", value)
+        },
+        deleted: createMemo(() => store.sounds?.deleted ?? defaultSettings.sounds.deleted),
+        setDeleted(value: string) {
+          setStore("sounds", "deleted", value)
         },
       },
     }

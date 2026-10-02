@@ -1030,6 +1030,7 @@ export type EventSessionStopped = {
   type: "session.stopped"
   properties: {
     sessionID: string
+    action: "stop" | "archive" | "delete"
   }
 }
 

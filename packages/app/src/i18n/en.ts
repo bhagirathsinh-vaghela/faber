@@ -766,7 +766,11 @@ export const dict = {
   "settings.general.sounds.errors.title": "Errors",
   "settings.general.sounds.errors.description": "Play sound when an error occurs",
   "settings.general.sounds.stopped.title": "Session stopped",
-  "settings.general.sounds.stopped.description": "Play sound when a session is stopped, archived, or deleted",
+  "settings.general.sounds.stopped.description": "Play sound when you stop a session",
+  "settings.general.sounds.archived.title": "Session archived",
+  "settings.general.sounds.archived.description": "Play sound when you archive a session",
+  "settings.general.sounds.deleted.title": "Session deleted",
+  "settings.general.sounds.deleted.description": "Play sound when you delete a session",
 
   "settings.shortcuts.title": "Keyboard shortcuts",
   "settings.shortcuts.reset.button": "Reset to defaults",

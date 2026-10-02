@@ -374,7 +374,7 @@ export const SessionRoutes = lazy(() =>
         // deleted. Session.stop recurses into children for the same reason
         // remove() does. A Stop that reports an unpaid debt still leaves nothing
         // running, and the remove drops the debt with the session.
-        await Session.stop({ sessionID, announce: true }).catch((error) =>
+        await Session.stop({ sessionID, announce: "delete" }).catch((error) =>
           log.error("stop before delete failed", { sessionID, error }),
         )
         await Session.remove(sessionID)
@@ -427,7 +427,7 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
         if (typeof updates.time?.archived === "number")
-          await Session.stop({ sessionID, announce: true }).catch((error) =>
+          await Session.stop({ sessionID, announce: "archive" }).catch((error) =>
             log.error("stop before archive failed", { sessionID, error }),
           )
 
@@ -548,7 +548,7 @@ export const SessionRoutes = lazy(() =>
         // The user Stop, and the one implementation of it. Session.stop owns
         // the ordering (disarm, then cancel) that the alternative — cancelling
         // first — gets wrong.
-        await Session.stop({ sessionID, announce: true })
+        await Session.stop({ sessionID, announce: "stop" })
         return c.json(true)
       },
     )
