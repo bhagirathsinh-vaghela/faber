@@ -186,21 +186,33 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     })
   })
 
-  createEffect(() => {
-    const all = flat()
-    if (all.length === 0) return
-    const scroll = scrollRef()
-    if (!scroll) return
-    if (active() === props.key(all[0])) {
-      scroll.scrollTo(0, 0)
-      return
-    }
-    const key = active()
-    if (!key) return
-    const element = findByKey(scroll, key)
-    if (!element) return
-    scrollIntoView(scroll, element, "center")
-  })
+  // Scrolls only to place the opening cursor and to follow a key that steers it.
+  // Rows rebuilding under a reader who scrolled with the wheel (the overview, on
+  // every busy flip or ping), or a cursor reset because its row left the list,
+  // keep the reader's place. A steer sets the cursor synchronously, so the flag
+  // is down again before any data-driven change can see it.
+  let placed = false
+  let steering = false
+  const steer = (e: KeyboardEvent) => {
+    steering = true
+    onKeyDown(e)
+    steering = false
+  }
+  const populated = createMemo(() => flat().length > 0)
+  createEffect(
+    on([active, populated, scrollRef], ([key, ready, scroll]) => {
+      if (!ready || !scroll || !key) return
+      if (placed && !steering) return
+      placed = true
+      if (key === props.key(flat()[0])) {
+        scroll.scrollTo(0, 0)
+        return
+      }
+      const element = findByKey(scroll, key)
+      if (!element) return
+      scrollIntoView(scroll, element, "center")
+    }),
+  )
 
   createEffect(() => {
     const all = flat()
@@ -228,14 +240,14 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
       if (selected) handleSelect(selected, index)
     } else if (props.search) {
       if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key === "n" || e.key === "p")) {
-        onKeyDown(e)
+        steer(e)
         return
       }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        onKeyDown(e)
+        steer(e)
       }
     } else {
-      onKeyDown(e)
+      steer(e)
     }
   }
 
