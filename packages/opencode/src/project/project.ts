@@ -72,19 +72,9 @@ export namespace Project {
         .text()
         .then((x) => path.resolve(root, x.trim()))
         .catch(() => undefined)
-      if (!top) return { worktree: root, vcs: "git" as const }
-
-      const shared = await $`git rev-parse --git-common-dir`
-        .quiet()
-        .nothrow()
-        .cwd(top)
-        .text()
-        .then((x) => {
-          const parent = path.dirname(x.trim())
-          return parent === "." ? top : parent
-        })
-        .catch(() => undefined)
-      return { worktree: shared ?? top, vcs: "git" as const }
+      // A linked git worktree is its own checkout: snapshots, reverts and
+      // discovery must stay inside it, never reach the main repo's tree.
+      return { worktree: top ?? root, vcs: "git" as const }
     })
 
     const existing = await Storage.read<Info>(["project", id]).catch(() => undefined)

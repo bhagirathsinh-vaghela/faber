@@ -524,7 +524,7 @@ test("snapshot state isolation between projects", async () => {
   })
 })
 
-test.skip("patch detects changes in secondary worktree (skipped: worktree resolves to the primary checkout)", async () => {
+test("patch detects changes in secondary worktree", async () => {
   await using tmp = await bootstrap()
   const worktreePath = `${tmp.path}-worktree`
   await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
@@ -556,7 +556,7 @@ test.skip("patch detects changes in secondary worktree (skipped: worktree resolv
   }
 })
 
-test.skip("revert only removes files in invoking worktree (skipped: worktree resolves to the primary checkout)", async () => {
+test("revert only removes files in invoking worktree", async () => {
   await using tmp = await bootstrap()
   const worktreePath = `${tmp.path}-worktree`
   await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
@@ -595,7 +595,7 @@ test.skip("revert only removes files in invoking worktree (skipped: worktree res
   }
 })
 
-test.skip("diff reports worktree-only/shared edits and ignores primary-only (skipped: worktree resolves to the primary checkout)", async () => {
+test("diff reports worktree-only/shared edits and ignores primary-only", async () => {
   await using tmp = await bootstrap()
   const worktreePath = `${tmp.path}-worktree`
   await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()

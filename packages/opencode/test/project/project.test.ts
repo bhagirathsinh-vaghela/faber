@@ -63,18 +63,21 @@ describe("Project.fromDirectory identity vs worktree", () => {
     expect(project.worktree).toBe(tmp.path)
   })
 
-  test("a git worktree checkout has its own id, worktree resolves to the shared root", async () => {
+  test("a linked git worktree is its own id and its own worktree", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    const worktreePath = await fs.realpath(path.dirname(tmp.path)).then((d) => path.join(d, "worktree-test"))
+    const worktreePath = await fs
+      .realpath(path.dirname(tmp.path))
+      .then((d) => path.join(d, `worktree-test-${path.basename(tmp.path)}`))
     await $`git worktree add ${worktreePath} -b test-branch`.cwd(tmp.path).quiet()
 
-    const { project } = await Project.fromDirectory(worktreePath)
-
-    expect(project.id).toBe(worktreePath)
-    expect(project.worktree).toBe(tmp.path)
-
-    await $`git worktree remove ${worktreePath}`.cwd(tmp.path).quiet()
+    try {
+      const { project } = await Project.fromDirectory(worktreePath)
+      expect(project.id).toBe(worktreePath)
+      expect(project.worktree).toBe(worktreePath)
+    } finally {
+      await $`git worktree remove --force ${worktreePath}`.cwd(tmp.path).quiet().nothrow()
+    }
   })
 })
 

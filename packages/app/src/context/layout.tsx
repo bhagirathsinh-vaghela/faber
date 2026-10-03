@@ -418,8 +418,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const open = globalSync.data.open_projects
       const order = store.projectOrder
       const rank = new Map(order.map((worktree, index) => [worktree, index]))
+      // A project is its directory (`id`); the entry's `worktree` is only the
+      // repo root that bounds discovery, which a subfolder project shares with
+      // the repo. The sidebar opens, loads and closes the directory.
       return open
-        .map((project) => ({ worktree: project.worktree, exists: project.exists }))
+        .map((project) => ({ worktree: project.id, exists: project.exists }))
         .sort((a, b) => (rank.get(a.worktree) ?? order.length) - (rank.get(b.worktree) ?? order.length))
     })
 
@@ -490,7 +493,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     createEffect(() => {
       if (!globalSync.ready) return
-      for (const project of globalSync.data.open_projects) globalSync.project.loadSessions(project.worktree)
+      for (const project of globalSync.data.open_projects) globalSync.project.loadSessions(project.id)
     })
 
     return {

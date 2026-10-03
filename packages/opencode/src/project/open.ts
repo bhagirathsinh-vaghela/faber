@@ -49,10 +49,11 @@ export namespace OpenProjects {
     for (const entry of stored) if (entry) entries.set(entry.id, entry)
   })
 
-  // Stat each worktree so the wire snapshot carries whether it still resolves.
+  // Stat each project's own directory (its id) so the wire snapshot carries
+  // whether it still resolves; a subfolder project's worktree is the repo root.
   async function project() {
     return Promise.all(
-      [...entries.values()].map(async (entry) => ({ ...entry, exists: await Filesystem.isDir(entry.worktree) })),
+      [...entries.values()].map(async (entry) => ({ ...entry, exists: await Filesystem.isDir(entry.id) })),
     )
   }
 
