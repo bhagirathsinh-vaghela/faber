@@ -38,6 +38,7 @@ export namespace Sessions {
         archived: ["INTEGER", "$.time.archived"],
         stopped: ["INTEGER", "$.time.stopped"],
         keep: ["INTEGER", "$.keepWarm"],
+        starred: ["INTEGER", "$.starred"],
         ephemeral: ["INTEGER", "$.ephemeral"],
         request: ["INTEGER", "$.cache.lastRequestAt"],
       },
@@ -48,6 +49,7 @@ export namespace Sessions {
         session_ephemeral_idx: `ON session (time_created) WHERE ephemeral = 1`,
         session_warm_idx: `ON session (request) WHERE keep = 1 AND parent IS NULL AND ephemeral IS NOT 1`,
         session_archived_idx: `ON session (archived) WHERE archived > 0 AND parent IS NULL`,
+        session_starred_idx: `ON session (id) WHERE starred = 1 AND parent IS NULL`,
       },
     )
     return {
@@ -64,6 +66,9 @@ export namespace Sessions {
       archived: db.query<{ archived: number | null }, [string]>(`SELECT archived FROM session WHERE id = ?`),
       listArchived: db.query<{ json: string }, []>(
         `SELECT json FROM session WHERE archived > 0 AND parent IS NULL ORDER BY archived DESC`,
+      ),
+      listStarred: db.query<{ id: string; json: string }, []>(
+        `SELECT id, json FROM session WHERE starred = 1 AND parent IS NULL`,
       ),
       listTurning: db.query<{ id: string; json: string }, []>(`SELECT id, json FROM session WHERE turn IS NOT NULL`),
       listWarm: db.query<{ id: string; json: string }, [number]>(
@@ -233,6 +238,10 @@ export namespace Sessions {
   // owed by the session, or owed something themselves.
   export async function debted(parentID: string) {
     return joined().then((q) => q.debted.all(parentID).map((row) => row.id))
+  }
+
+  export async function listStarred() {
+    return scan(await open().then((q) => q.listStarred.all()))
   }
 
   // Sessions carrying a turn marker, across every project.

@@ -68,6 +68,9 @@ export namespace SessionRecent {
       // and a kept-warm session's pings are interaction even though they persist
       // no message and so never advance `updated`.
       pinged: z.number().optional(),
+      // Exempt from the cap's eviction. Mirrors the session record, which
+      // hydrate re-reads, so the lossy flush can never drop a star.
+      starred: z.boolean(),
     })
     .meta({ ref: "RecentSession" })
   export type Entry = z.infer<typeof Entry>
@@ -100,9 +103,38 @@ export namespace SessionRecent {
         question: false,
         error: false,
         permission: false,
+        starred: false,
       })
+    await star()
     await seed()
   })
+
+  // A starred session the list lost (a dropped flush) comes back at its last
+  // activity.
+  async function star() {
+    const { Sessions } = await import("@/storage/sessions")
+    for (const session of await Sessions.listStarred()) {
+      const entry = entries.get(session.id)
+      if (entry) {
+        entry.starred = true
+        continue
+      }
+      entries.set(session.id, {
+        sessionID: session.id,
+        directory: session.directory,
+        title: session.title,
+        updated: session.lastActivity ?? session.time.updated,
+        unseen: session.unseen === true,
+        turn: false,
+        subagents: 0,
+        jobs: 0,
+        question: false,
+        error: false,
+        permission: false,
+        starred: true,
+      })
+    }
+  }
 
   // Debts persist across a restart and turns do not, so each entry's debt
   // counts are read from the debt table rather than left at 0.
@@ -122,7 +154,7 @@ export namespace SessionRecent {
     timer = setTimeout(() => {
       timer = undefined
       const durable: Stored[] = sorted().map(
-        ({ turn, subagents, jobs, question, error, permission, pingAt, ...rest }) => rest,
+        ({ turn, subagents, jobs, question, error, permission, pingAt, starred, ...rest }) => rest,
       )
       void Storage.write(KEY, durable, { compact: true })
     }, FLUSH_MS)
@@ -171,12 +203,12 @@ export namespace SessionRecent {
   }
 
   // A real turn touched this session: move it to the front and evict the oldest
-  // past the cap. Live flags survive a re-touch so a busy turn that writes many
-  // messages doesn't strobe the spinner off between chunks.
+  // unstarred entries past the cap. Live flags survive a re-touch so a busy
+  // turn that writes many messages doesn't strobe the spinner off between chunks.
   export async function touch(
     input: Omit<
       Entry,
-      "agent" | "turn" | "subagents" | "jobs" | "unseen" | "question" | "permission" | "error" | "pingAt"
+      "agent" | "turn" | "subagents" | "jobs" | "unseen" | "question" | "permission" | "error" | "pingAt" | "starred"
     > & { agent?: string },
   ) {
     await hydrate()
@@ -202,12 +234,18 @@ export namespace SessionRecent {
       error: false,
       pingAt: prev?.pingAt,
       pinged: prev?.pinged,
+      starred: prev?.starred ?? false,
     })
-    if (entries.size > LIMIT) {
-      const drop = sorted().slice(LIMIT)
-      for (const entry of drop) entries.delete(entry.sessionID)
-    }
+    evict()
     flush()
+  }
+
+  function evict() {
+    if (entries.size <= LIMIT) return
+    const drop = sorted()
+      .filter((entry) => !entry.starred)
+      .slice(LIMIT)
+    for (const entry of drop) entries.delete(entry.sessionID)
   }
 
   // An unarchive is a membership change the user just asked for, so it goes out
@@ -299,6 +337,18 @@ export namespace SessionRecent {
     const entry = entries.get(sessionID)
     if (!entry || entry.title === title) return
     entry.title = title
+    flush()
+    publish()
+  }
+
+  // An unstarred session rejoins the cap by its own recency, so it is evicted
+  // at once if it is now among the oldest.
+  export async function setStarred(sessionID: string, starred: boolean) {
+    await hydrate()
+    const entry = entries.get(sessionID)
+    if (!entry || entry.starred === starred) return
+    entry.starred = starred
+    evict()
     flush()
     publish()
   }

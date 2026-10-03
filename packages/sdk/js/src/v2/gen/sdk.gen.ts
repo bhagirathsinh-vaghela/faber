@@ -1458,6 +1458,7 @@ export class Session extends HeyApiClient {
          */
         archived?: number | null
       }
+      starred?: boolean
       cacheProbeIndex?: number
       cacheProbeMessageID?: string
     },
@@ -1472,6 +1473,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "body", key: "title" },
             { in: "body", key: "time" },
+            { in: "body", key: "starred" },
             { in: "body", key: "cacheProbeIndex" },
             { in: "body", key: "cacheProbeMessageID" },
           ],

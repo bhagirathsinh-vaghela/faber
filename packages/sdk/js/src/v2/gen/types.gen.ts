@@ -27,6 +27,7 @@ export type RecentSession = {
   permission: boolean
   pingAt?: number
   pinged?: number
+  starred: boolean
 }
 
 export type FileDiff = {
@@ -81,6 +82,7 @@ export type Session = {
   titleGenerated?: string
   titleOrdinal?: number
   prompts?: number
+  starred?: boolean
   version: string
   branch?: string
   time: {
@@ -3556,6 +3558,7 @@ export type SessionUpdateData = {
        */
       archived?: number | null
     }
+    starred?: boolean
     cacheProbeIndex?: number
     cacheProbeMessageID?: string
   }

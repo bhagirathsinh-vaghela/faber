@@ -71,6 +71,9 @@ export function useSessionActions() {
     return false
   }
 
+  const starredRefusal = (action: "archive" | "delete") =>
+    language.t(action === "archive" ? "session.archive.starred.title" : "session.delete.starred.title")
+
   return {
     rename: (session: SessionRef, title: string) => {
       const next = title.trim()
@@ -108,6 +111,18 @@ export function useSessionActions() {
         .catch(fail(language.t("session.unarchive.failed.title"))),
     idle: (session: SessionRef, action: "archive" | "delete") =>
       idle(session, language.t(action === "archive" ? "session.archive.live.title" : "session.delete.live.title")),
+    star: (session: SessionRef, starred: boolean) =>
+      sdk.client.session
+        .update({ directory: session.directory, sessionID: session.id, starred })
+        .then((x) => {
+          if ((x.data?.starred === true) !== starred) throw new Error(language.t("common.requestFailed"))
+          return true
+        })
+        .catch(fail(language.t(starred ? "session.star.failed.title" : "session.unstar.failed.title"))),
+    // A menu shows the reason on the disabled item; a keybind, which has no
+    // item, toasts it.
+    starredRefusal,
+    refuseStarred: (action: "archive" | "delete") => showToast({ title: starredRefusal(action) }),
     delete: (session: SessionRef) =>
       sdk.client.session
         .delete({ directory: session.directory, sessionID: session.id })

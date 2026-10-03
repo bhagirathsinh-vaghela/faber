@@ -973,6 +973,7 @@ export default function Layout(props: ParentProps) {
   }
 
   async function archiveSession(session: Session) {
+    if (session.starred) return sessionActions.refuseStarred("archive")
     const next = neighbour(session)
     if (await sessionActions.archive(session)) leave(session, next)
   }
@@ -1943,13 +1944,17 @@ export default function Layout(props: ParentProps) {
                 >
                   <DropdownMenu.ItemLabel>{language.t("common.rename")}</DropdownMenu.ItemLabel>
                 </DropdownMenu.Item>
-                <DropdownMenu.Item onSelect={() => archiveSession(props.session)}>
-                  <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
-                </DropdownMenu.Item>
+                <div title={props.session.starred ? sessionActions.starredRefusal("archive") : undefined}>
+                  <DropdownMenu.Item disabled={props.session.starred} onSelect={() => archiveSession(props.session)}>
+                    <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
+                  </DropdownMenu.Item>
+                </div>
                 <DropdownMenu.Separator />
-                <DropdownMenu.Item onSelect={() => confirmDelete(props.session)}>
-                  <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
-                </DropdownMenu.Item>
+                <div title={props.session.starred ? sessionActions.starredRefusal("delete") : undefined}>
+                  <DropdownMenu.Item disabled={props.session.starred} onSelect={() => confirmDelete(props.session)}>
+                    <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
+                  </DropdownMenu.Item>
+                </div>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu>

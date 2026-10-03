@@ -10,6 +10,7 @@ import { streamSSE } from "hono/streaming"
 import { basicAuth } from "hono/basic-auth"
 import z from "zod"
 import { Provider } from "../provider/provider"
+import { Session } from "../session"
 import { NamedError } from "@opencode-ai/util/error"
 import { LSP } from "../lsp"
 import { Format } from "../format"
@@ -133,6 +134,7 @@ export namespace Server {
           if (err instanceof Storage.NotFoundError) status = 404
           else if (err instanceof Provider.ModelNotFoundError) status = 400
           else if (err.name.startsWith("Worktree")) status = 400
+          else if (err instanceof Session.StarredError) status = 400
           else status = 500
           return c.json(err.toObject(), { status })
         }

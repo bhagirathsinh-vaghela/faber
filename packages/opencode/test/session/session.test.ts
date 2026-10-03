@@ -355,6 +355,97 @@ describe("archive and unarchive", () => {
   })
 })
 
+describe("starred", () => {
+  const request = (sessionID: string, method: string, body?: object) =>
+    Server.App().request(`/session/${sessionID}?directory=${encodeURIComponent(projectRoot)}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
+
+  test("starred entries sit outside the cap, and an unstar rejoins it by recency", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const { SessionRecent } = await import("../../src/session/recent")
+        const oldest = await Session.create({})
+        const newest = await Session.create({})
+        const touch = (sessionID: string, updated: number) =>
+          SessionRecent.touch({ sessionID, directory: projectRoot, title: sessionID, updated })
+        // Fillers newer than any entry an earlier test left, so the cap takes
+        // those first and the fillers alone fill it.
+        const base = Date.now() + 1_000_000
+        await touch(oldest.id, 1)
+        await touch(newest.id, base + 10_000)
+        expect((await request(oldest.id, "PATCH", { starred: true })).status).toBe(200)
+        expect((await request(newest.id, "PATCH", { starred: true })).status).toBe(200)
+        await settle()
+
+        const fillers = Array.from({ length: 500 }, (_, i) => `ses_filler${String(i).padStart(4, "0")}`)
+        for (const [i, id] of fillers.entries()) await touch(id, base + i)
+        const listed = async () => new Set((await SessionRecent.list()).map((row) => row.sessionID))
+        const starred = async (id: string) => (await SessionRecent.list()).find((row) => row.sessionID === id)?.starred
+        const full = await listed()
+        expect(full.has(oldest.id)).toBe(true)
+        expect(await starred(oldest.id)).toBe(true)
+        expect(fillers.filter((id) => full.has(id)).length).toBe(500)
+
+        expect((await request(newest.id, "PATCH", { starred: false })).status).toBe(200)
+        await settle()
+        const afterNewest = await listed()
+        expect(afterNewest.has(newest.id)).toBe(true)
+        expect(await starred(newest.id)).toBe(false)
+        expect(afterNewest.has(fillers[0])).toBe(false)
+        expect(fillers.filter((id) => afterNewest.has(id)).length).toBe(499)
+
+        expect((await request(oldest.id, "PATCH", { starred: false })).status).toBe(200)
+        await settle()
+        const afterOldest = await listed()
+        expect(afterOldest.has(oldest.id)).toBe(false)
+        expect(fillers.filter((id) => afterOldest.has(id)).length).toBe(499)
+
+        for (const id of fillers) await SessionRecent.remove(id)
+        for (const s of [oldest, newest]) await Session.remove(s.id)
+      },
+    })
+  })
+
+  test("archive and delete refuse a starred session until it is unstarred", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const session = await Session.create({})
+        expect((await request(session.id, "PATCH", { starred: true })).status).toBe(200)
+        expect((await Session.get(session.id)).starred).toBe(true)
+
+        const archive = await request(session.id, "PATCH", { time: { archived: 5_000 } })
+        expect(archive.status).toBe(400)
+        expect(await archive.json()).toEqual({
+          name: "SessionStarredError",
+          data: {
+            sessionID: session.id,
+            message: `Cannot archive starred session ${session.id}; unstar it first`,
+          },
+        })
+        expect((await Session.get(session.id)).time.archived).toBeUndefined()
+
+        const remove = await request(session.id, "DELETE")
+        expect(remove.status).toBe(400)
+        expect((await remove.json()).data.message).toBe(`Cannot delete starred session ${session.id}; unstar it first`)
+        expect((await Session.get(session.id)).id).toBe(session.id)
+
+        expect((await request(session.id, "PATCH", { starred: false })).status).toBe(200)
+        expect((await Session.get(session.id)).starred).toBeUndefined()
+        expect((await request(session.id, "PATCH", { time: { archived: 5_000 } })).status).toBe(200)
+        expect((await Session.get(session.id)).time.archived).toBe(5_000)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+})
+
 describe("session index", () => {
   async function ids() {
     const result: string[] = []

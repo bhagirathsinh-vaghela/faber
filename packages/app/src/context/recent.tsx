@@ -30,6 +30,7 @@ export type OverviewRow = {
   // Last interaction of any kind: a real turn or a cache ping. Both are the
   // session doing work on the user's behalf; neither an open nor a stop counts.
   interacted: number
+  starred: boolean
 }
 
 export const { use: useRecent, provider: RecentProvider } = createSimpleContext({
@@ -93,6 +94,9 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
           },
           get interacted() {
             return Math.max(entry.updated, entry.pinged ?? 0)
+          },
+          get starred() {
+            return entry.starred ?? false
           },
         }
         wrappers.set(entry.sessionID, row)

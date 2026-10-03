@@ -24,6 +24,7 @@ import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
 import { SessionPrompt } from "./prompt"
 import { fn } from "@/util/fn"
+import { NamedError } from "@opencode-ai/util/error"
 import { Command } from "../command"
 import { Snapshot } from "@/snapshot"
 
@@ -47,6 +48,22 @@ export namespace Session {
   // for these only.
   export function attended(session: { parentID?: string; ephemeral?: boolean }) {
     return !session.parentID && !session.ephemeral
+  }
+
+  export const StarredError = NamedError.create(
+    "SessionStarredError",
+    z.object({ sessionID: z.string(), message: z.string() }),
+  )
+
+  // Checked before the route stops the session, so a refused archive or delete
+  // leaves a running turn alone.
+  export async function refuseStarred(sessionID: string, action: "archive" | "delete") {
+    const session = await get(sessionID)
+    if (!session.starred) return
+    throw new StarredError({
+      sessionID,
+      message: `Cannot ${action} starred session ${sessionID}; unstar it first`,
+    })
   }
 
   export function isDefaultTitle(title: string) {
@@ -170,6 +187,9 @@ export namespace Session {
       // the infrastructure messages (compaction requests, subagent-result
       // injections) that filterCompacted leaves in place.
       prompts: z.number().optional(),
+      // Kept out of the recent hub's eviction, and refused by archive and
+      // delete until unstarred.
+      starred: z.boolean().optional(),
       version: z.string(),
       branch: z.string().optional(),
       time: z.object({
@@ -664,10 +684,13 @@ export namespace Session {
       void SessionBusy.push(result.id)
       void SessionPing.refresh(result.id)
     }
-    // A rename (or auto-title) must reach the overview, which reads the recent
-    // entry's title — session.updated only refreshes the open session's view.
-    // setTitle no-ops when unchanged, so calling it on every update is cheap.
-    else void SessionRecent.setTitle(id, result.title)
+    // A rename (or auto-title) and a star must reach the overview, which reads
+    // the recent entry — session.updated only refreshes the open session's view.
+    // Both setters no-op when unchanged, so calling them on every update is cheap.
+    else {
+      void SessionRecent.setTitle(id, result.title)
+      void SessionRecent.setStarred(id, result.starred === true)
+    }
     if (changed)
       Bus.publish(Event.Updated, {
         info: result,

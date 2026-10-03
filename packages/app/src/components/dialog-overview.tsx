@@ -5,6 +5,7 @@ import { base64Encode } from "@opencode-ai/util/encode"
 import type { Session } from "@opencode-ai/sdk/v2/client"
 import { Button } from "@opencode-ai/ui/button"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
+import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Chip, ChipGroup } from "@opencode-ai/ui/chip"
 import { CountdownRing } from "@opencode-ai/ui/countdown-ring"
@@ -63,6 +64,7 @@ function archivedRow(session: Session): Item {
     permission: false,
     error: false,
     interacted: session.time.archived ?? session.time.updated,
+    starred: session.starred === true,
     section: "archived",
   }
 }
@@ -209,6 +211,11 @@ function Row(props: { row: Item }) {
 
   return (
     <div class="flex items-center gap-3 w-full min-w-0 text-left">
+      <Show when={props.row.starred}>
+        <span title={language.t("home.starred")} class="shrink-0 flex">
+          <Icon name="star" size="small" class="text-icon-warning-base" />
+        </span>
+      </Show>
       <span class="text-14-regular text-text-base truncate flex-1">
         {props.row.title || language.t("command.session.new")}
       </span>
@@ -316,6 +323,7 @@ export function Overview(props: {
   const mru = useMru()
 
   const [archive, setArchive] = createStore({ shown: false, rows: [] as Item[] })
+  const [starredOnly, setStarredOnly] = createSignal(false)
   // Fetched rather than streamed: archived sessions live outside the recent hub,
   // so a membership change (archive, unarchive, delete) refetches the list. Only
   // the latest request may write, and a local change bumps the counter too, so
@@ -381,9 +389,10 @@ export function Overview(props: {
   // the two sources catch up; the hub copy wins so the list keys stay unique.
   const live = createMemo<Item[]>(() => {
     const hub = [...frozen.attention(), ...frozen.recent()]
-    if (!props.manage || !archive.shown) return hub
     const ids = new Set(hub.map((row) => row.sessionID))
-    return [...hub, ...archive.rows.filter((row) => !ids.has(row.sessionID))]
+    const rows =
+      props.manage && archive.shown ? [...hub, ...archive.rows.filter((row) => !ids.has(row.sessionID))] : hub
+    return starredOnly() ? rows.filter((row) => row.starred) : rows
   })
 
   // Sections stay fixed — "Live sessions" always above "Recent sessions" —
@@ -488,6 +497,7 @@ export function Overview(props: {
     if (!row || row.section === "attention") return
     event.preventDefault()
     event.stopPropagation()
+    if (row.starred) return actions.refuseStarred("delete")
     confirmDelete(row)
   }
   if (props.manage) {
@@ -550,17 +560,30 @@ export function Overview(props: {
   }
 
   const toggle = () => (
-    <Button
-      variant="ghost"
-      size="small"
-      class="shrink-0"
-      onClick={() => {
-        setArchive("shown", (shown) => !shown)
-        refocus()
-      }}
-    >
-      {archive.shown ? language.t("home.archived.hide") : language.t("home.archived.show")}
-    </Button>
+    <div class="flex items-center gap-1 shrink-0">
+      <Button
+        variant="ghost"
+        size="small"
+        onClick={() => {
+          setArchive("shown", (shown) => !shown)
+          refocus()
+        }}
+      >
+        {archive.shown ? language.t("home.archived.hide") : language.t("home.archived.show")}
+      </Button>
+      <Button
+        variant="ghost"
+        size="small"
+        data-active={starredOnly()}
+        aria-pressed={starredOnly()}
+        onClick={() => {
+          setStarredOnly((on) => !on)
+          refocus()
+        }}
+      >
+        {starredOnly() ? language.t("home.starred.hide") : language.t("home.starred.show")}
+      </Button>
+    </div>
   )
   // Built once: List reads its search options at several sites, and an element
   // inside that object would be rebuilt on each read.
@@ -579,6 +602,7 @@ export function Overview(props: {
     const archiveOne = choose(() => void archiveRow(row).then(refocus))
     const unarchiveOne = choose(() => void unarchiveRow(row).then(refocus))
     const deleteOne = choose(() => confirmDelete(row))
+    const starOne = choose(() => void actions.star(target(row), !row.starred).then(refocus))
     return (
       <DropdownMenu>
         <DropdownMenu.Trigger
@@ -600,11 +624,18 @@ export function Overview(props: {
               <DropdownMenu.Item onSelect={rename}>
                 <DropdownMenu.ItemLabel>{language.t("common.rename")}</DropdownMenu.ItemLabel>
               </DropdownMenu.Item>
+              <DropdownMenu.Item onSelect={starOne}>
+                <DropdownMenu.ItemLabel>
+                  {row.starred ? language.t("session.unstar") : language.t("session.star")}
+                </DropdownMenu.ItemLabel>
+              </DropdownMenu.Item>
             </Show>
             <Show when={row.section === "recent"}>
-              <DropdownMenu.Item onSelect={archiveOne}>
-                <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
-              </DropdownMenu.Item>
+              <div title={row.starred ? actions.starredRefusal("archive") : undefined}>
+                <DropdownMenu.Item disabled={row.starred} onSelect={archiveOne}>
+                  <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
+                </DropdownMenu.Item>
+              </div>
             </Show>
             <Show when={row.section === "archived"}>
               <DropdownMenu.Item onSelect={unarchiveOne}>
@@ -613,10 +644,12 @@ export function Overview(props: {
             </Show>
             <Show when={row.section !== "attention"}>
               <DropdownMenu.Separator />
-              <DropdownMenu.Item onSelect={deleteOne}>
-                <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
-                <span class="ml-auto pl-4 text-12-regular text-text-weak">{formatKeybind(DELETE_KEYBIND)}</span>
-              </DropdownMenu.Item>
+              <div title={row.starred ? actions.starredRefusal("delete") : undefined}>
+                <DropdownMenu.Item disabled={row.starred} onSelect={deleteOne}>
+                  <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
+                  <span class="ml-auto pl-4 text-12-regular text-text-weak">{formatKeybind(DELETE_KEYBIND)}</span>
+                </DropdownMenu.Item>
+              </div>
             </Show>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
@@ -629,7 +662,9 @@ export function Overview(props: {
       when={!empty()}
       fallback={
         <div class="flex items-center justify-between px-3 py-6">
-          <span class="text-14-regular text-text-weak">{language.t("home.empty.description")}</span>
+          <span class="text-14-regular text-text-weak">
+            {starredOnly() ? language.t("home.starred.empty") : language.t("home.empty.description")}
+          </span>
           <Show when={props.manage}>{toggle()}</Show>
         </div>
       }

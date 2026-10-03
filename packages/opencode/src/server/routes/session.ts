@@ -367,6 +367,7 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
+        await Session.refuseStarred(sessionID, "delete")
         // Stop BEFORE removing: the daemon outlives its session otherwise,
         // pinging a record that no longer exists until the process dies. Order
         // matters — the disarm writes through Session.update, which re-indexes,
@@ -419,6 +420,7 @@ export const SessionRoutes = lazy(() =>
                 .meta({ description: "Epoch ms to archive; null unarchives" }),
             })
             .optional(),
+          starred: z.boolean().optional(),
           cacheProbeIndex: z.number().optional(),
           cacheProbeMessageID: z.string().optional(),
         }),
@@ -426,10 +428,12 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
-        if (typeof updates.time?.archived === "number")
+        if (typeof updates.time?.archived === "number") {
+          await Session.refuseStarred(sessionID, "archive")
           await Session.stop({ sessionID, announce: "archive" }).catch((error) =>
             log.error("stop before archive failed", { sessionID, error }),
           )
+        }
 
         const updatedSession = await Session.update(
           sessionID,
@@ -446,6 +450,8 @@ export const SessionRoutes = lazy(() =>
               if (!session.turn) session.time.stopped = Date.now()
             }
             if (typeof updates.time?.archived === "number") session.time.archived = updates.time.archived
+            if (updates.starred === true) session.starred = true
+            if (updates.starred === false) delete session.starred
             if (updates.cacheProbeIndex !== undefined) session.cacheProbeIndex = updates.cacheProbeIndex
             if (updates.cacheProbeMessageID !== undefined) session.cacheProbeMessageID = updates.cacheProbeMessageID
           },
