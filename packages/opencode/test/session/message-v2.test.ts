@@ -1121,7 +1121,7 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
     ],
   }
   const chose =
-    "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production\nI chose: staging"
+    "[Your question tool call: you called the question tool and the user answered in the picker. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Target\nYou asked: Deploy where?\nOptions (pick one):\n- staging — the test box\n- production — the real one\nI chose: staging"
 
   function history(state: MessageV2.ToolPart["state"]): MessageV2.WithParts[] {
     return [
@@ -1199,7 +1199,7 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
       content: [
         {
           type: "text",
-          text: "[Your question tool call, not answered: Error: The user dismissed this question. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production",
+          text: "[Your question tool call, not answered: Error: The user dismissed this question. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Target\nYou asked: Deploy where?\nOptions (pick one):\n- staging — the test box\n- production — the real one",
         },
       ],
     })
@@ -1257,7 +1257,9 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
       { role: "assistant", content: [{ type: "text", text: "One thing first." }] },
       {
         role: "user",
-        content: [{ type: "text", text: `${chose}\n\nYou asked: Notify?\nOptions: yes\nI chose: nothing` }],
+        content: [
+          { type: "text", text: `${chose}\n\nHeader: Notify\nYou asked: Notify?\nOptions (pick one):\n- yes\nI chose: nothing` },
+        ],
       },
     ])
   })
@@ -1292,10 +1294,58 @@ describe("session.message-v2.toModelMessages sends a stamped question as the use
         content: [
           {
             type: "text",
-            text: "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Notify?\nOptions: yes\nI chose: yes",
+            text: "[Your question tool call: you called the question tool and the user answered in the picker. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Notify\nYou asked: Notify?\nOptions (pick one):\n- yes\nI chose: yes",
           },
         ],
       },
+    ])
+  })
+
+  test("a multiple-choice question says so and lists each pick on its own line", () => {
+    const many = {
+      questions: [
+        {
+          question: "Which regions?",
+          header: "Regions",
+          multiple: true,
+          options: [
+            { label: "us, east", description: "Virginia" },
+            { label: "eu", description: "Frankfurt" },
+          ],
+        },
+      ],
+    }
+    const messages = MessageV2.toModelMessages(
+      history({ ...answered, input: many, metadata: { answers: [["us, east", "eu"]], plain: true } }),
+      model,
+    ).messages
+    expect(messages.at(-1)).toStrictEqual({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "[Your question tool call: you called the question tool and the user answered in the picker. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Regions\nYou asked: Which regions?\nOptions (pick any number):\n- us, east — Virginia\n- eu — Frankfurt\nI chose:\n- us, east\n- eu",
+        },
+      ],
+    })
+  })
+
+  test("an answer stored in an older record shape is sent with its stored text", () => {
+    const stored =
+      "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production\nI chose: staging"
+    const reply: MessageV2.WithParts = {
+      info: userInfo("m-reply"),
+      parts: [
+        {
+          ...basePart("m-reply", "r1"),
+          type: "text",
+          text: stored,
+          question: { callID: "q1", questions: asked.questions, answers: [["staging"]] },
+        },
+      ] as MessageV2.Part[],
+    }
+    expect(MessageV2.toModelMessages([reply], model).messages).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: stored }] },
     ])
   })
 })

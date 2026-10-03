@@ -826,7 +826,7 @@ describe("Recovery resume", () => {
     },
   ]
   const cutOff =
-    "[Your question tool call, not answered: the turn was cut off. That was the right way to ask.]\nYou asked: Which one?\nOptions: A, B"
+    "[Your question tool call, not answered: the turn was cut off. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Pick\nYou asked: Which one?\nOptions (pick one):\n- A — first\n- B — second"
 
   async function asking(sessionID: string) {
     const opener = await user(sessionID, "ask me")

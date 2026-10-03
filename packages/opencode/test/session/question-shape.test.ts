@@ -125,9 +125,9 @@ const asked = {
   ],
 }
 const chose =
-  "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production\nI chose: staging"
+  "[Your question tool call: you called the question tool and the user answered in the picker. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Target\nYou asked: Deploy where?\nOptions (pick one):\n- staging — the test box\n- production — the real one\nI chose: staging"
 const unasked = (reason: string) =>
-  `[Your question tool call, not answered: ${reason}. That was the right way to ask.]\nYou asked: Deploy where?\nOptions: staging, production`
+  `[Your question tool call, not answered: ${reason}. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Target\nYou asked: Deploy where?\nOptions (pick one):\n- staging — the test box\n- production — the real one`
 const nudge =
   "<!-- question-tool -->\n<system-reminder>\nAsk any question with a fixed set of answers by calling the question tool; a question written as text shows the user no picker.\n</system-reminder>"
 
@@ -331,7 +331,10 @@ describe("a question is stored and sent as the user's own words once it is answe
             { type: "text", text: nudge },
             { type: "text", text: "deploy it" },
             { type: "text", text: nudge },
-            { type: "text", text: `${chose}\n\nYou asked: Notify?\nOptions: yes\nI chose: yes` },
+            {
+              type: "text",
+              text: `${chose}\n\nHeader: Notify\nYou asked: Notify?\nOptions (pick one):\n- yes — tell the team\nI chose: yes`,
+            },
           ],
         },
       ])
@@ -654,7 +657,7 @@ describe("a written-down question keeps its place in the transcript", () => {
       const users = tail(state.bodies[1]).filter((m) => m.role === "user")
       expect(users.flatMap((m) => m.blocks.map((b) => b.text)).filter((t) => t !== nudge)).toEqual([
         "deploy it",
-        "[Your question tool call, answered in the picker. That was the right way to ask.]\nYou asked: Notify?\nOptions: yes\nI chose: yes",
+        "[Your question tool call: you called the question tool and the user answered in the picker. Only the question tool shows the user a picker, so keep using it for your next question.]\nHeader: Notify\nYou asked: Notify?\nOptions (pick one):\n- yes — tell the team\nI chose: yes",
         chose,
       ])
     })

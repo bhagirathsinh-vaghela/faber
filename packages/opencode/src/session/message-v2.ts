@@ -568,24 +568,36 @@ export namespace MessageV2 {
   // the tool was called, was copied as typed text in place of a call. On the
   // user's side the record tells the model the call was real, so it neither
   // copies the record nor doubts the call.
+  // Carries every field of the call: the model's own call is gone from its turn,
+  // so whatever this drops, the model no longer knows it offered.
   export function record(
-    questions: { question: string; options: { label: string }[] }[],
+    questions: QuestionRecord["questions"],
     outcome: { answers: string[][] } | { reason: string },
   ) {
-    const header =
+    const keep = "Only the question tool shows the user a picker, so keep using it for your next question."
+    const banner =
       "answers" in outcome
-        ? "[Your question tool call, answered in the picker. That was the right way to ask.]"
-        : `[Your question tool call, not answered: ${outcome.reason}. That was the right way to ask.]`
-    const blocks = questions.map((q, i) =>
-      [
+        ? `[Your question tool call: you called the question tool and the user answered in the picker. ${keep}]`
+        : `[Your question tool call, not answered: ${outcome.reason}. ${keep}]`
+    const blocks = questions.map((q, i) => {
+      const chosen = "answers" in outcome ? (outcome.answers[i] ?? []) : undefined
+      return [
+        `Header: ${q.header}`,
         `You asked: ${q.question}`,
-        ...(q.options.length ? [`Options: ${q.options.map((o) => o.label).join(", ")}`] : []),
-        ...("answers" in outcome
-          ? [`I chose: ${outcome.answers[i]?.length ? outcome.answers[i].join(", ") : "nothing"}`]
+        ...(q.options.length
+          ? [
+              q.multiple ? "Options (pick any number):" : "Options (pick one):",
+              ...q.options.map((o) => (o.description ? `- ${o.label} — ${o.description}` : `- ${o.label}`)),
+            ]
           : []),
-      ].join("\n"),
-    )
-    return `${header}\n${blocks.join("\n\n")}`
+        ...(chosen === undefined
+          ? []
+          : chosen.length > 1
+            ? ["I chose:", ...chosen.map((c) => `- ${c}`)]
+            : [`I chose: ${chosen[0] ?? "nothing"}`]),
+      ].join("\n")
+    })
+    return `${banner}\n${blocks.join("\n\n")}`
   }
 
   // The user message a written-down question's answer lives in. It belongs to
