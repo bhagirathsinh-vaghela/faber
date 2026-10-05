@@ -2726,13 +2726,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     </span>
                     <Show when={local.dock.isVisible("branch") && sync.data.vcs?.branch}>
                       {(branch) => (
-                        <span
-                          class="ml-1.5 inline-flex shrink-0 items-center gap-1 [&_[data-component=icon]]:!text-current"
-                          style={{ color: "var(--branch)" }}
-                        >
-                          <Icon name="branch" class="size-3.5" />
-                          <span class="truncate">{branch()}</span>
-                        </span>
+                        <>
+                          <span
+                            class="ml-1.5 inline-flex shrink-0 items-center gap-1 [&_[data-component=icon]]:!text-current"
+                            style={{ color: "var(--branch)" }}
+                          >
+                            <Icon name="branch" class="size-3.5" />
+                            <span class="truncate">{branch()}</span>
+                          </span>
+                          <Show when={sync.data.vcs_diff.added + sync.data.vcs_diff.removed > 0}>
+                            <span class="ml-1.5 shrink-0 font-mono text-text-weak">
+                              (<span style={{ color: "var(--text-diff-add-base)" }}>+{sync.data.vcs_diff.added}</span>{" "}
+                              <span style={{ color: "var(--text-diff-delete-base)" }}>-{sync.data.vcs_diff.removed}</span>)
+                            </span>
+                          </Show>
+                        </>
                       )}
                     </Show>
                   </span>

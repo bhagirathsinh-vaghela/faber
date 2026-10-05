@@ -148,6 +148,7 @@ type State = {
   }
   lsp: LspStatus[]
   vcs: VcsInfo | undefined
+  vcs_diff: { added: number; removed: number }
   limit: number
   message: {
     [sessionID: string]: Message[]
@@ -534,6 +535,7 @@ function createGlobalSync() {
           mcp: {},
           lsp: [],
           vcs: vcsStore.value,
+          vcs_diff: { added: 0, removed: 0 },
           limit: 5,
           message: {},
           part: {},
@@ -595,6 +597,31 @@ function createGlobalSync() {
     booting.delete(directory)
     sessionLoads.delete(directory)
     sessionMeta.delete(directory)
+    clearTimeout(diffTimers.get(directory))
+    diffTimers.delete(directory)
+  }
+
+  // Edits arrive one event per file, so a burst collapses into one git run.
+  const diffTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  function refreshDiff(directory: string) {
+    clearTimeout(diffTimers.get(directory))
+    diffTimers.set(
+      directory,
+      setTimeout(() => {
+        diffTimers.delete(directory)
+        sdkFor(directory)
+          .file.status()
+          .then((x) => {
+            const files = x.data ?? []
+            const totals = {
+              added: files.reduce((sum, file) => sum + file.added, 0),
+              removed: files.reduce((sum, file) => sum + file.removed, 0),
+            }
+            children[directory]?.[1]("vcs_diff", totals)
+          })
+          .catch(() => {})
+      }, 500),
+    )
   }
 
   async function loadSessions(directory: string) {
@@ -741,7 +768,9 @@ function createGlobalSync() {
         sdk.vcs.get().then((x) => {
           const next = x.data ?? store.vcs
           setStore("vcs", next)
-          if (next?.branch) cache.setStore("value", next)
+          if (!next?.branch) return
+          cache.setStore("value", next)
+          refreshDiff(directory)
         }),
         syncPermissions(directory),
         syncQuestions(directory),
@@ -1174,6 +1203,8 @@ function createGlobalSync() {
         break
       case "session.status": {
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
+        // A shell command can change files without any edit event, so a finished turn rechecks.
+        if (event.properties.status.type === "idle") refreshDiff(directory)
         break
       }
       case "session.ping.armed": {
@@ -1361,6 +1392,12 @@ function createGlobalSync() {
         setStore("vcs", next)
         const cache = vcsCache.get(directory)
         if (cache) cache.setStore("value", next)
+        refreshDiff(directory)
+        break
+      }
+      case "file.edited":
+      case "file.watcher.updated": {
+        refreshDiff(directory)
         break
       }
       case "permission.asked": {
