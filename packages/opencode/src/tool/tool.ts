@@ -51,7 +51,9 @@ export namespace Tool {
     return {
       id,
       init: async (initCtx) => {
-        const toolInfo = init instanceof Function ? await init(initCtx) : init
+        // An object init is shared across calls, so wrapping it in place would
+        // stack one more wrapper on every init until the stack overflows.
+        const toolInfo = init instanceof Function ? await init(initCtx) : { ...init }
         const execute = toolInfo.execute
         toolInfo.execute = async (args, ctx) => {
           try {
