@@ -50,6 +50,7 @@ import { JobRoutes } from "./routes/job"
 import { DictationRoutes } from "./routes/dictation"
 import { TtsRoutes } from "./routes/tts"
 import { Directory } from "./directory"
+import { Origin } from "./origin"
 import { MDNS } from "./mdns"
 import { Web } from "./web"
 
@@ -60,7 +61,6 @@ export namespace Server {
   const log = Log.create({ service: "server" })
 
   let _url: URL | undefined
-  let _corsWhitelist: string[] = []
 
   const compressible = /^(application\/json|application\/manifest\+json|text\/|application\/javascript|image\/svg\+xml)/
   // Below ~1KB the br/gzip framing overhead outweighs the savings.
@@ -170,23 +170,7 @@ export namespace Server {
       .use(compress)
       .use(
         cors({
-          origin(input) {
-            if (!input) return
-
-            if (input.startsWith("http://localhost:")) return input
-            if (input.startsWith("http://127.0.0.1:")) return input
-            if (input === "tauri://localhost" || input === "http://tauri.localhost") return input
-
-            // *.opencode.ai (https only, adjust if needed)
-            if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) {
-              return input
-            }
-            if (_corsWhitelist.includes(input)) {
-              return input
-            }
-
-            return
-          },
+          origin: (input) => (input && Origin.allowed(input) ? input : undefined),
         }),
       )
       .route("/global", GlobalRoutes())
@@ -736,7 +720,7 @@ export namespace Server {
     mdnsDomain?: string
     cors?: string[]
   }) {
-    _corsWhitelist = opts.cors ?? []
+    Origin.trust(opts.cors ?? [])
 
     const args = {
       hostname: opts.hostname,

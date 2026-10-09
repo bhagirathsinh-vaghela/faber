@@ -6,6 +6,7 @@ import { Pty } from "@/pty"
 import { Storage } from "../../storage/storage"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { Origin } from "../origin"
 
 export const PtyRoutes = lazy(() =>
   new Hono()
@@ -149,6 +150,7 @@ export const PtyRoutes = lazy(() =>
         },
       }),
       validator("param", z.object({ ptyID: z.string() })),
+      Origin.socket,
       upgradeWebSocket((c) => {
         const id = c.req.param("ptyID")
         let handler: ReturnType<typeof Pty.connect>

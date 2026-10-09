@@ -5,6 +5,7 @@ import z from "zod"
 import { Dictation } from "@/dictation"
 import { DictationRecover } from "@/dictation/recover"
 import { lazy } from "../../util/lazy"
+import { Origin } from "../origin"
 
 export const DictationRoutes = lazy(() =>
   new Hono()
@@ -26,6 +27,7 @@ export const DictationRoutes = lazy(() =>
           },
         },
       }),
+      Origin.socket,
       upgradeWebSocket((c) => {
         // The client mints this id and sends it here, so an unexpected drop can
         // hold the finished transcript for it to pull on reconnect.
