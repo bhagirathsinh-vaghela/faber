@@ -1261,6 +1261,14 @@ export namespace SessionPrompt {
     return toolIds.map((id) => (PATH_SCOPED_TOOLS.includes(id) ? { id, paths: planPaths } : id))
   }
 
+  // The allowlist toolDenial enforces for a session: an explicit session
+  // allowlist (subagent/compaction) wins; otherwise plan mode derives one that
+  // keeps every tool on the wire and scopes edits to the plan files. Build
+  // agents get undefined (all allowed).
+  export function allowlist(session: Session.Info, agent: string, ids: string[]) {
+    return session.allowedTools ?? (agent === "plan" ? planAllowlist(ids) : undefined)
+  }
+
   // Runtime gate for the allowedTools allowlist. Returns a denial message when
   // the tool call is not allowed, or undefined when it is. allowedTools never
   // removes a tool from the request schema (that would change the prompt-cache
@@ -1377,12 +1385,11 @@ export namespace SessionPrompt {
       input.agent,
       input.snapshot,
     )
-    // Effective allowlist: an explicit session allowlist (subagent/compaction)
-    // wins; otherwise plan mode derives one that keeps every tool on the wire and
-    // scopes edits to the plan files. Build agents get undefined (all allowed).
-    const allowedTools =
-      input.session.allowedTools ??
-      (input.agent.name === "plan" ? planAllowlist(registered.map((item) => item.id)) : undefined)
+    const allowedTools = allowlist(
+      input.session,
+      input.agent.name,
+      registered.map((item) => item.id),
+    )
     const ruleset = PermissionNext.merge(input.agent.permission, input.session.permission ?? [])
     const denied = PermissionNext.disabled(
       registered.map((item) => item.id),

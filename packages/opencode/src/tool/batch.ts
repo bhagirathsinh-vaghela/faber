@@ -41,6 +41,14 @@ export const BatchTool = Tool.define("batch", async () => {
       const { ToolRegistry } = await import("./registry")
       const availableTools = await ToolRegistry.tools({ modelID: "", providerID: "" })
       const toolMap = new Map(availableTools.map((t) => [t.id, t]))
+      // Inner calls answer to the same gate as direct ones, so plan mode's scoping
+      // and a subagent's toolset cannot be stepped around by batching.
+      const { SessionPrompt } = await import("../session/prompt")
+      const allowed = SessionPrompt.allowlist(
+        await Session.get(ctx.sessionID),
+        ctx.agent,
+        availableTools.map((t) => t.id),
+      )
 
       const executeCall = async (call: (typeof toolCalls)[0]) => {
         const callStartTime = Date.now()
@@ -61,6 +69,8 @@ export const BatchTool = Tool.define("batch", async () => {
             )
           }
           const validatedParams = tool.parameters.parse(call.parameters)
+          const denial = SessionPrompt.toolDenial(allowed, call.tool, validatedParams)
+          if (denial) throw new Error(denial)
 
           await Session.updatePart({
             id: partID,
