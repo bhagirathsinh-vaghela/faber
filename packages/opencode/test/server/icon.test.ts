@@ -38,7 +38,15 @@ describe("Icon.png", () => {
 
 describe("Web.serve install icons", () => {
   test("serves hostname-labelled icons under hash-versioned manifest URLs", async () => {
-    await Web.reload()
+    const encode = (text: string) => Buffer.from(text).toString("base64")
+    const icons = [
+      { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png" },
+      { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png" },
+    ]
+    Web.load({
+      "/index.html": { type: "text/html; charset=utf-8", body: encode("<!doctype html>") },
+      "/site.webmanifest": { type: "application/manifest+json", body: encode(JSON.stringify({ icons })) },
+    })
     const label = os.hostname().split(".")[0]
     const manifest = await Web.serve("/site.webmanifest")!.json()
     const srcs: string[] = manifest.icons.map((icon: { src: string }) => icon.src)
