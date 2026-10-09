@@ -30,7 +30,6 @@ import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
 import { PlanExitTool, PlanEnterTool } from "./plan"
 import { ApplyPatchTool } from "./apply_patch"
-import { Auth } from "../auth"
 import { McpSearchTool } from "./mcp-search"
 
 export namespace ToolRegistry {
@@ -106,13 +105,6 @@ export namespace ToolRegistry {
     custom.push(tool)
   }
 
-  // Native Anthropic web search calls the API with the provider's key, so OAuth sessions
-  // (no API key) keep the regular web search tool
-  async function nativeSearch(providerID?: string) {
-    if (providerID !== "anthropic") return false
-    return (await Auth.get(providerID))?.type !== "oauth"
-  }
-
   async function all(providerID?: string, pinned?: Tool.Info[]): Promise<Tool.Info[]> {
     const custom: Tool.Info[] = pinned ? pinned : await state().then((x) => x.custom)
     const config = await Config.get()
@@ -120,7 +112,6 @@ export namespace ToolRegistry {
     // Use Anthropic-optimized tools (prompt-based webfetch, native server tool websearch)
     // when using the Anthropic provider directly
     const isAnthropic = providerID === "anthropic"
-    const anthropicSearch = await nativeSearch(providerID)
 
     // Sort by id for deterministic ordering. tools[] sits at the front of
     // Anthropic's prefix cache hash chain; any order change invalidates all
@@ -139,7 +130,7 @@ export namespace ToolRegistry {
       isAnthropic ? WebFetchAnthropicTool : WebFetchTool,
       TodoWriteTool,
       // TodoReadTool,
-      anthropicSearch ? WebSearchAnthropicTool : WebSearchTool,
+      isAnthropic ? WebSearchAnthropicTool : WebSearchTool,
       CodeSearchTool,
       SkillTool,
       ApplyPatchTool,
@@ -169,14 +160,13 @@ export namespace ToolRegistry {
     snapshot?: SessionPin.Snapshot,
   ) {
     const tools = await all(model.providerID, snapshot?.custom)
-    const anthropicSearch = await nativeSearch(model.providerID)
     const result = await Promise.all(
       tools
         .filter((t) => {
           // Anthropic websearch uses the native server tool (Anthropic with an API key)
           // Exa websearch/codesearch only for opencode provider or via flag
           if (t.id === "websearch") {
-            return anthropicSearch || model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
+            return model.providerID === "anthropic" || model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
           }
           if (t.id === "codesearch") {
             return model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA

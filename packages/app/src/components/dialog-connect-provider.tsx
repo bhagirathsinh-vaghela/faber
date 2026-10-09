@@ -179,12 +179,7 @@ export function DialogConnectProvider(props: { provider: string }) {
         <div class="px-2.5 flex gap-4 items-center">
           <ProviderIcon id={props.provider as IconName} class="size-5 shrink-0 icon-strong-base" />
           <div class="text-16-medium text-text-strong">
-            <Switch>
-              <Match when={props.provider === "anthropic" && method()?.label?.toLowerCase().includes("max")}>
-                {language.t("provider.connect.title.anthropicProMax")}
-              </Match>
-              <Match when={true}>{language.t("provider.connect.title", { provider: provider().name })}</Match>
-            </Switch>
+            {language.t("provider.connect.title", { provider: provider().name })}
           </div>
         </div>
         <div class="px-2.5 pb-10 flex flex-col gap-6">

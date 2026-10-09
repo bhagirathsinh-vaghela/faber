@@ -21,7 +21,6 @@ mock.module("../../src/bun/index", () => ({
 
 const mockPlugin = () => ({})
 mock.module("opencode-copilot-auth", () => ({ default: mockPlugin }))
-mock.module("opencode-anthropic-auth", () => ({ default: mockPlugin }))
 mock.module("@gitlab/opencode-gitlab-auth", () => ({ default: mockPlugin }))
 
 // Import after mocks are set up
