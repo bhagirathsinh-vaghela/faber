@@ -49,6 +49,12 @@ delete process.env["OPENCODE_DISABLE_LSP_DOWNLOAD"]
 // process's fresh cache on the first model call, under a process-wide lock,
 // so a slow registry stalls every turn in the file past its test's deadline.
 process.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "1"
+// Tests create commits in temp repos; a machine with no global git identity
+// would refuse them ("Author identity unknown").
+process.env["GIT_AUTHOR_NAME"] = "opencode test"
+process.env["GIT_AUTHOR_EMAIL"] = "test@opencode.local"
+process.env["GIT_COMMITTER_NAME"] = "opencode test"
+process.env["GIT_COMMITTER_EMAIL"] = "test@opencode.local"
 delete process.env["OPENCODE_CONFIG"]
 delete process.env["OPENCODE_CONFIG_CONTENT"]
 delete process.env["OPENCODE_PERMISSION"]
