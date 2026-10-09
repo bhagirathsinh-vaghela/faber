@@ -2,6 +2,24 @@ import { spawn, type Subprocess } from "bun"
 import os from "os"
 import path from "path"
 import { cmd } from "./cmd"
+import { Origin } from "../../server/origin"
+
+// The server it supervises puts every route, health included, behind basic auth
+// when a password is set (server.ts), so the probe sends the same credentials.
+export function credentials(password: string | undefined, username = "opencode"): Record<string, string> {
+  if (!password) return {}
+  // UTF-8, as the server's basic auth decodes it; btoa would encode Latin-1.
+  return { Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` }
+}
+
+// The supervisor can stop the server, so with a password set it asks for the
+// same credentials the server does.
+export function admitted(req: Request, password: string | undefined, username?: string) {
+  if (!password) return true
+  // The scheme name is case-insensitive (RFC 7617), so only the token is compared.
+  const token = req.headers.get("authorization")?.match(/^basic +(\S+)$/i)?.[1]
+  return token === credentials(password, username).Authorization.slice("Basic ".length)
+}
 
 // Supervisor for the long-lived OpenCode server: a small outer shell that owns
 // the serve process so it can be restarted from a browser with no terminal.
@@ -22,6 +40,13 @@ import { cmd } from "./cmd"
 // (SessionPin), so new sessions always see current disk and a stopped session
 // re-pins fresh on reopen — nothing needs manual publishing.
 
+// Whether a process command line has the `serve --port <port>` shape serveArgs
+// below launches, the only kind of listener reapOrphan may kill. A hand-run
+// serve with the same arguments matches too; nothing else does.
+export function launched(command: string, port: number) {
+  return command.match(/\bserve --port (\d+)\b/)?.[1] === String(port)
+}
+
 export const SuperviseCommand = cmd({
   command: "supervise",
   describe: "run the supervisor that owns and restarts the opencode server",
@@ -29,11 +54,18 @@ export const SuperviseCommand = cmd({
     yargs
       .option("port", { type: "number", describe: "port the supervisor listens on", default: 4099 })
       .option("serve-port", { type: "number", describe: "port the owned opencode server listens on", default: 4097 })
-      .option("stage-port", { type: "number", describe: "staging port for health-checked builds", default: 4098 }),
+      .option("stage-port", { type: "number", describe: "staging port for health-checked builds", default: 4098 })
+      .option("hostname", {
+        type: "string",
+        describe: "interface the supervisor and its server listen on; 0.0.0.0 exposes both to the network",
+        default: "127.0.0.1",
+      }),
   handler: async (args) => {
     const SUPERVISOR_PORT = args.port
     const PORT = args["serve-port"]
     const ALT_PORT = args["stage-port"]
+    const HOST = args.hostname
+    const probe = HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST.includes(":") ? `[${HOST}]` : HOST
 
     // Optional per-machine config. uiUrl is the browser-facing URL of the
     // OpenCode UI when a proxy/tunnel fronts it on a different scheme/host/port
@@ -54,7 +86,7 @@ export const SuperviseCommand = cmd({
     const base = compiled ? [process.execPath] : [process.execPath, "run", "--conditions=browser", entry]
 
     function serveArgs(port: number, restore = false) {
-      const args = [...base, "serve", "--port", String(port), "--hostname", "0.0.0.0"]
+      const args = [...base, "serve", "--port", String(port), "--hostname", HOST]
       if (restore) args.push("--restore")
       return args
     }
@@ -64,7 +96,10 @@ export const SuperviseCommand = cmd({
     let current: Subprocess | null = null
 
     async function health(port: number) {
-      return fetch(`http://127.0.0.1:${port}/global/health`, { signal: AbortSignal.timeout(2000) })
+      return fetch(`http://${probe}:${port}/global/health`, {
+        headers: credentials(process.env["OPENCODE_SERVER_PASSWORD"], process.env["OPENCODE_SERVER_USERNAME"]),
+        signal: AbortSignal.timeout(2000),
+      })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
     }
@@ -118,22 +153,29 @@ export const SuperviseCommand = cmd({
       return [...new Set(found.filter((pid) => pid !== String(process.pid)))]
     }
 
-    // Reap whatever LISTENS on the port — an orphan from a prior supervisor,
-    // or a killed server whose socket release is racing our relaunch. Gate on
-    // the listen socket, not health: a wedged holder that never answers
-    // /global/health still blocks the bind. Returns whether the port came
-    // free; SIGTERM first, SIGKILL after 5s, give up after 10s.
+    // Reap the opencode server LISTENING on the port: an orphan from a prior
+    // supervisor, or a killed server whose socket release is racing our
+    // relaunch. Gate on the listen socket, not health: a wedged holder that
+    // never answers /global/health still blocks the bind. Any other listener
+    // is left alone. Returns why the port is not free, or undefined once it
+    // is; SIGTERM first, SIGKILL after 5s, give up after 10s.
     async function reapOrphan(port: number) {
       let pids = await listeners(port)
-      if (!pids.length) return true
-      for (const pid of pids) spawn(["kill", pid])
+      if (!pids.length) return
+      const commands = await Promise.all(pids.map((pid) => run(["ps", "-o", "command=", "-p", pid])))
+      if (commands.some((command) => command.trim() && !launched(command, port)))
+        return `port ${port} is held by a process this supervisor did not launch`
+      // A pid whose command could not be read (it exited between the two reads,
+      // or ps cannot see it) is never signalled; the re-reads below decide.
+      const owned = new Set(pids.filter((_, index) => launched(commands[index], port)))
+      for (const pid of owned) spawn(["kill", pid])
       for (let i = 1; i <= 20; i++) {
         await Bun.sleep(500)
         pids = await listeners(port)
-        if (!pids.length) return true
-        if (i === 10) for (const pid of pids) spawn(["kill", "-9", pid])
+        if (!pids.length) return
+        if (i === 10) for (const pid of pids) if (owned.has(pid)) spawn(["kill", "-9", pid])
       }
-      return false
+      return `port ${port} is held by a process that won't die`
     }
 
     // Health-poll a server WE spawned. A health answer on the port is not
@@ -171,8 +213,8 @@ export const SuperviseCommand = cmd({
     async function restart(restore = false) {
       // Stage on the alt port and prove it healthy before touching the live
       // server.
-      if (!(await reapOrphan(ALT_PORT)))
-        return { ok: false, step: "stage", detail: `port ${ALT_PORT} is held by a process that won't die` }
+      const staging = await reapOrphan(ALT_PORT)
+      if (staging) return { ok: false, step: "stage", detail: staging }
       const stage = launch(ALT_PORT)
       const staged = await waitOwned(stage, ALT_PORT)
       if (!staged) {
@@ -187,8 +229,8 @@ export const SuperviseCommand = cmd({
       // The kill above releases the socket asynchronously; reapOrphan also
       // clears any unowned holder AND confirms the port is actually free, so
       // the relaunch can't lose the bind race and leave stale bits serving.
-      if (!(await reapOrphan(PORT)))
-        return { ok: false, step: "cutover", detail: `port ${PORT} is held by a process that won't die` }
+      const cutover = await reapOrphan(PORT)
+      if (cutover) return { ok: false, step: "cutover", detail: cutover }
       current = launch(PORT, restore)
       const live = await waitOwned(current, PORT)
       if (!live) {
@@ -284,15 +326,22 @@ export const SuperviseCommand = cmd({
 
     Bun.serve({
       port: SUPERVISOR_PORT,
-      hostname: "0.0.0.0",
+      hostname: HOST,
       // /restart holds the request through stage-boot + health-check + cutover
       // + resume — well past the 10s default idle timeout. 255 is Bun's max.
       idleTimeout: 255,
       async fetch(req) {
+        if (!admitted(req, process.env["OPENCODE_SERVER_PASSWORD"], process.env["OPENCODE_SERVER_USERNAME"]))
+          return new Response("authentication required", {
+            status: 401,
+            headers: { "WWW-Authenticate": 'Basic realm="supervisor"' },
+          })
         const url = new URL(req.url)
         if (url.pathname === "/") return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         if (url.pathname === "/status")
           return Response.json({ port: PORT, owned: !!current, pid: current?.pid ?? null, health: await health(PORT) })
+        if (req.method === "POST" && Origin.foreign(req))
+          return new Response("cross-origin request refused", { status: 403 })
         if (url.pathname === "/restart" && req.method === "POST") return Response.json(await restart())
         if (url.pathname === "/stop" && req.method === "POST") {
           await stop(current)
@@ -305,7 +354,7 @@ export const SuperviseCommand = cmd({
     })
 
     console.log(
-      `supervisor listening on 0.0.0.0:${SUPERVISOR_PORT} (local: http://localhost:${SUPERVISOR_PORT}, opencode :${PORT}, stage :${ALT_PORT})`,
+      `supervisor listening on ${HOST}:${SUPERVISOR_PORT} (local: http://localhost:${SUPERVISOR_PORT}, opencode :${PORT}, stage :${ALT_PORT})`,
     )
 
     // Boot the server the supervisor exists to own, so a machine that just
