@@ -512,6 +512,9 @@ export type TextPart = {
     start: number
     end?: number
   }
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type SubagentPart = {
@@ -535,6 +538,9 @@ export type ReasoningPart = {
   messageID: string
   type: "reasoning"
   text: string
+  metadata?: {
+    [key: string]: unknown
+  }
   signature?: string
   time: {
     start: number
@@ -659,6 +665,9 @@ export type ToolPart = {
   callID: string
   tool: string
   state: ToolState
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type StepStartPart = {
@@ -2174,6 +2183,9 @@ export type TextPartInput = {
   time?: {
     start: number
     end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
   }
 }
 
