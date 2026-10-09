@@ -52,6 +52,7 @@ import { $, fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
 import { Wildcard } from "../util/wildcard"
+import { Patch } from "../patch"
 import { Filesystem } from "../util/filesystem"
 import { NamedError } from "@opencode-ai/util/error"
 import { fn } from "@/util/fn"
@@ -1227,8 +1228,24 @@ export namespace SessionPrompt {
     throw new Error("Impossible")
   })
 
-  // Tools that carry a file path we can scope against (the edit family).
-  const PATH_SCOPED_TOOLS = ["edit", "write", "multiedit"]
+  // Tools that write files we can scope against (the edit family).
+  const PATH_SCOPED_TOOLS = ["edit", "write", "multiedit", "apply_patch"]
+
+  // Every file a path-scoped call would write: apply_patch names them in its
+  // patch (a moved file counts at both ends), the others in `filePath`.
+  // undefined when the call names none the gate can read.
+  function scopedTargets(id: string, args: any): string[] | undefined {
+    if (id !== "apply_patch") return typeof args?.filePath === "string" ? [args.filePath] : undefined
+    if (typeof args?.patchText !== "string") return undefined
+    const hunks = (() => {
+      try {
+        return Patch.parsePatch(args.patchText).hunks
+      } catch {
+        return undefined
+      }
+    })()
+    return hunks?.flatMap((hunk) => (hunk.type === "update" && hunk.move_path ? [hunk.path, hunk.move_path] : [hunk.path]))
+  }
 
   // Plan mode allowlist: every registered tool stays available (so the request
   // schema is identical to a build turn and the prompt cache survives the
@@ -1277,11 +1294,18 @@ export namespace SessionPrompt {
     }
     if (typeof entry === "string") return undefined
     if (!PATH_SCOPED_TOOLS.includes(id)) return undefined
-    const filePath = args?.filePath
-    if (typeof filePath !== "string") return `Tool "${id}" requires a file path for this task.`
-    const target = path.isAbsolute(filePath) ? path.relative(Instance.worktree, filePath) : filePath
-    if (entry.paths.some((p) => Wildcard.match(target, p) || Wildcard.match(filePath, p))) return undefined
-    return `Tool "${id}" is restricted to ${entry.paths.join(", ")} for this task. "${filePath}" is not allowed.`
+    const targets = scopedTargets(id, args)
+    if (!targets?.length) return `Tool "${id}" requires a file path for this task.`
+    // Resolved the way the tools resolve a path (Filesystem.resolve), then
+    // normalized, so `..` cannot step out of an allowed folder: a glob's `*`
+    // also matches `/` (Wildcard.match).
+    const outside = targets.find((file) => {
+      const absolute = path.resolve(Filesystem.resolve(Instance.directory, file))
+      const relative = path.relative(Instance.worktree, absolute)
+      return !entry.paths.some((p) => Wildcard.match(relative, p) || Wildcard.match(absolute, p))
+    })
+    if (outside === undefined) return undefined
+    return `Tool "${id}" is restricted to ${entry.paths.join(", ")} for this task. "${outside}" is not allowed.`
   }
 
   // Per-session MCP latch, enforced at execute time so tools[] stays
