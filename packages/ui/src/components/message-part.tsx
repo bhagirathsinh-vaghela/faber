@@ -11,6 +11,7 @@ import {
   type JSX,
 } from "solid-js"
 import stripAnsi from "strip-ansi"
+import { safeHref } from "../util/link"
 import { Dynamic } from "solid-js/web"
 import {
   AgentPart,
@@ -1414,7 +1415,7 @@ ToolRegistry.register({
               data-size="normal"
               data-variant="secondary"
               data-slot="tool-action"
-              href={props.input.url}
+              href={safeHref(props.input.url)}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}

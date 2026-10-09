@@ -22,6 +22,7 @@ import {
   type JSX,
 } from "solid-js"
 import { isServer } from "solid-js/web"
+import { safeHref } from "../util/link"
 
 // rehype-katex statically pulls the whole KaTeX engine (~280KB) into the initial
 // chunk, but most messages carry no math. Load it on demand the first time a
@@ -371,7 +372,7 @@ function components(labels: CopyLabels, theme: () => string, complete: () => boo
     },
     a(props) {
       return (
-        <a href={props.href} target="_blank" rel="noopener noreferrer" class="external-link">
+        <a href={safeHref(props.href)} target="_blank" rel="noopener noreferrer" class="external-link">
           {props.children}
         </a>
       )
