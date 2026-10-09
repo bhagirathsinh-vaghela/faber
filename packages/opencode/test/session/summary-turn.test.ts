@@ -46,3 +46,35 @@ describe("SessionSummary.turn", () => {
     expect(ids("m9")).toEqual([])
   })
 })
+
+describe("SessionSummary.summarize", () => {
+  test("a message the session no longer has is skipped, not a crash", async () => {
+    const { Instance } = await import("../../src/project/instance")
+    const { Session } = await import("../../src/session")
+    const { tmpdir } = await import("../fixture/fixture")
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "summarize a removed message" })
+        await expect(SessionSummary.summarize({ sessionID: session.id, messageID: "msg_gone" })).resolves.toBeUndefined()
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("a session removed before the summary runs is skipped, not a rejection", async () => {
+    const { Instance } = await import("../../src/project/instance")
+    const { Session } = await import("../../src/session")
+    const { tmpdir } = await import("../fixture/fixture")
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "summarize a removed session" })
+        await Session.remove(session.id)
+        await expect(SessionSummary.summarize({ sessionID: session.id, messageID: "msg_gone" })).resolves.toBeUndefined()
+      },
+    })
+  })
+})

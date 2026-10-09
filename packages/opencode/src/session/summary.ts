@@ -74,11 +74,19 @@ export namespace SessionSummary {
       messageID: z.string(),
     }),
     async (input) => {
-      const all = await Session.messages({ sessionID: input.sessionID })
-      await Promise.all([
-        summarizeSession({ sessionID: input.sessionID, messages: all }),
-        summarizeMessage({ messageID: input.messageID, messages: all }),
-      ])
+      // Callers do not await this, so a session removed while it runs must not
+      // surface as an unhandled rejection; there is nothing left to summarize.
+      await Promise.resolve()
+        .then(async () => {
+          const all = await Session.messages({ sessionID: input.sessionID })
+          await Promise.all([
+            summarizeSession({ sessionID: input.sessionID, messages: all }),
+            summarizeMessage({ messageID: input.messageID, messages: all }),
+          ])
+        })
+        .catch((error) => {
+          if (!Storage.NotFoundError.isInstance(error)) throw error
+        })
     },
   )
 
@@ -128,7 +136,10 @@ export namespace SessionSummary {
 
   async function summarizeMessage(input: { messageID: string; messages: MessageV2.WithParts[] }) {
     const messages = turn(input.messages, input.messageID)
-    const userMsg = messages[0]!.info as MessageV2.User
+    // The message can be gone by the time this runs (the session or the
+    // message was removed meanwhile); there is then nothing to summarize.
+    if (!messages.length) return
+    const userMsg = messages[0].info as MessageV2.User
     const diffs = await computeDiff({ messages })
     userMsg.summary = {
       ...userMsg.summary,
