@@ -49,7 +49,7 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
   // The ordinary case after a restart: the job finished while nothing was
   // watching, and its result is sitting on disk.
   test("collects a job that exited while nobody was watching", async () => {
-    const proc = spawnJob("true")
+    const proc = spawnJob("sleep 0.3")
     const job = await store({ process: await identify(proc.pid) })
     await proc.exited
     await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
@@ -70,7 +70,7 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
   // server must call this a timeout, not a plain failure — the same verdict the
   // live handle reaches, on the sibling path.
   test("calls a job that self-timed-out while nobody watched a timeout, not a failure", async () => {
-    const proc = spawnJob("true")
+    const proc = spawnJob("sleep 0.3")
     const job = await store({
       process: await identify(proc.pid),
       time: { created: Date.now() - 7200_000, hard: Date.now() - 3600_000 },
@@ -94,7 +94,7 @@ describe("BackgroundReconcile: a job that outlived the server", () => {
   // pass's own clock would call this a timeout; judging against when the job
   // ended keeps it a clean completion.
   test("keeps a normal early finish a completion, however late the pass runs", async () => {
-    const proc = spawnJob("true")
+    const proc = spawnJob("sleep 0.3")
     const job = await store({
       process: await identify(proc.pid),
       // Deadline far in the future, so the exit file written now ends well

@@ -51,10 +51,14 @@ export namespace BackgroundProcess {
   // job is gone rather than merely unmatched.
   //
   // `command` is read for diagnostics only — never for identity, per Identity.
+  // A zombie (state Z: exited, not yet reaped by its parent) is gone: `ps -p`
+  // still lists it and exits 0. LC_ALL and TZ pin lstart's format and zone, so
+  // a locale or a DST change cannot turn the same process into a mismatch.
   export async function inspect(pid: number) {
     const proc = Bun.spawn({
-      cmd: ["ps", "-o", "lstart=,pgid=,command=", "-p", String(pid)],
+      cmd: ["ps", "-o", "stat=,lstart=,pgid=,command=", "-p", String(pid)],
       stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
     })
     const text = await new Response(proc.stdout).text()
     if ((await proc.exited) !== 0) return undefined
@@ -64,9 +68,9 @@ export namespace BackgroundProcess {
     // so its five fields are matched individually rather than split on
     // whitespace. Runs of spaces are tolerated throughout: a single-digit day
     // is double-spaced, and macOS pads the column where Linux does not.
-    const match = line.match(/^(\w{3}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\d+)\s+(.*)$/)
-    if (!match) return undefined
-    return { pid, start: match[1], pgid: Number(match[2]), command: match[3] }
+    const match = line.match(/^(\S+)\s+(\w{3}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\d+)\s+(.*)$/)
+    if (!match || match[1].startsWith("Z")) return undefined
+    return { pid, start: match[2], pgid: Number(match[3]), command: match[4] }
   }
 
   // When this process started, to the second, as the OS reports it. A pid alone
@@ -87,7 +91,7 @@ export namespace BackgroundProcess {
     if (owner.pid === process.pid) return owner.boot === undefined || Math.abs(owner.boot - boot) <= SKEW
     const read = await Promise.resolve()
       .then(async () => {
-        const proc = Bun.spawn(["ps", "-o", "lstart=", "-p", String(owner.pid)], {
+        const proc = Bun.spawn(["ps", "-o", "stat=,lstart=", "-p", String(owner.pid)], {
           stdout: "pipe",
           stderr: "ignore",
           env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
@@ -102,8 +106,11 @@ export namespace BackgroundProcess {
     // `ps -p` exits 1 with nothing printed for a pid that does not exist.
     if (!read || (read.code !== 0 && read.code !== 1)) return undefined
     if (!read.text) return false
+    // A zombie has exited, as in inspect.
+    const [state = "", ...start] = read.text.split(/\s+/)
+    if (state.startsWith("Z")) return false
     if (owner.boot === undefined) return true
-    return Math.abs(Math.floor(new Date(read.text + " UTC").getTime() / 1000) - owner.boot) <= SKEW
+    return Math.abs(Math.floor(new Date(start.join(" ") + " UTC").getTime() / 1000) - owner.boot) <= SKEW
   }
 
   export type Match = "alive" | "gone" | "mismatch"

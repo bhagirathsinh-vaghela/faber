@@ -46,7 +46,7 @@ describe("BackgroundProcess.verify", () => {
   })
 
   test("gone once the process has exited", async () => {
-    const proc = spawnJob("true")
+    const proc = spawnJob("sleep 0.3")
     const identity = await identify(proc.pid)
     await proc.exited
     expect(await BackgroundProcess.verify(identity)).toBe("gone")
@@ -119,9 +119,26 @@ describe("BackgroundProcess.kill", () => {
   })
 
   test("reports gone for an already-exited job without throwing", async () => {
-    const proc = spawnJob("true")
+    const proc = spawnJob("sleep 0.3")
     const identity = await identify(proc.pid)
     await proc.exited
     expect(await BackgroundProcess.kill(identity)).toBe("gone")
+  })
+})
+
+describe("a zombie", () => {
+  // The shell backgrounds a short sleep, prints its pid, then execs into a
+  // longer sleep that never reaps it, so the short one sits as a zombie.
+  test("reads as gone to inspect, verify and alive", async () => {
+    const parent = Bun.spawn(["sh", "-c", "sleep 0.1 & echo $!; exec sleep 3"], { stdout: "pipe" })
+    const reader = parent.stdout.getReader()
+    const pid = Number(new TextDecoder().decode((await reader.read()).value).trim())
+    await Bun.sleep(500)
+    const listed = await new Response(Bun.spawn(["ps", "-o", "stat=", "-p", String(pid)]).stdout).text()
+    expect(listed.trim().startsWith("Z")).toBe(true)
+    expect(await BackgroundProcess.inspect(pid)).toBeUndefined()
+    expect(await BackgroundProcess.verify({ pid, start: "Thu Jan  1 00:00:00 1970", pgid: pid })).toBe("gone")
+    expect(await BackgroundProcess.alive({ pid })).toBe(false)
+    parent.kill()
   })
 })

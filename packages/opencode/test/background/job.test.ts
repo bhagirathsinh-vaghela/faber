@@ -126,7 +126,7 @@ describe("BackgroundJob.assess", () => {
   })
 
   test("finished, carrying the recorded exit code, once the process is gone", async () => {
-    const proc = spawnJob("true")
+    const proc = spawnJob("sleep 0.3")
     const job = record({ process: await identify(proc.pid) })
     await proc.exited
     await Bun.write(BackgroundJob.exitPath(job.id), "0\n")
