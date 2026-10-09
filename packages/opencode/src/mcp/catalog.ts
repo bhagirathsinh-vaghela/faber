@@ -1,5 +1,6 @@
 import type { Config } from "../config/config"
 import type { MCP } from "./index"
+import type { ModelMessage } from "ai"
 
 // Progressive-disclosure catalog formatting. Shared by the steady-state
 // catalog block and the mcp_search disclosure tool, so both render a tool
@@ -56,12 +57,49 @@ export namespace McpCatalog {
       }
     })
 
-    return (
-      "<mcp_tool_catalog>\n" +
-      "You have access to these additional tools, grouped by server. Call them with standard tool_use blocks using the names below. " +
-      "When a tool lists no description or input schema here, call the mcp_search tool to retrieve it before using the tool.\n" +
-      JSON.stringify(groups) +
-      "\n</mcp_tool_catalog>"
+    return "<mcp_tool_catalog>\n" + INSTRUCTION + "\n" + JSON.stringify(groups) + "\n</mcp_tool_catalog>"
+  }
+
+  const INSTRUCTION =
+    "You have access to these additional tools, grouped by server. Call them with standard tool_use blocks using the names below. " +
+    "When a tool lists no description or input schema here, call the mcp_search tool to retrieve it before using the tool."
+
+  // Every tool name a catalog block in these messages lists. A session can carry
+  // more than one block (a later one is appended when the MCP set changes), and a
+  // name the model has seen in any of them stays callable. Only a block with
+  // build()'s own instruction line counts, and one whose list does not parse is
+  // skipped: the text can also be something a user pasted.
+  export function listed(messages: ModelMessage[]) {
+    const names = new Set<string>()
+    const opening = "<mcp_tool_catalog>\n" + INSTRUCTION + "\n"
+    for (const message of messages) {
+      if (message.role !== "user") continue
+      const parts = typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content
+      for (const part of parts) {
+        if (part.type !== "text") continue
+        for (const chunk of part.text.split(opening).slice(1)) {
+          const end = chunk.indexOf("\n</mcp_tool_catalog>")
+          if (end < 0) continue
+          for (const name of groupNames(chunk.slice(0, end))) names.add(name)
+        }
+      }
+    }
+    return names
+  }
+
+  function groupNames(json: string): string[] {
+    const groups = (() => {
+      try {
+        return JSON.parse(json) as unknown
+      } catch {
+        return undefined
+      }
+    })()
+    if (!Array.isArray(groups)) return []
+    return groups.flatMap((group) =>
+      Array.isArray(group?.tools)
+        ? group.tools.flatMap((tool: { name?: unknown }) => (typeof tool?.name === "string" ? [tool.name] : []))
+        : [],
     )
   }
 }

@@ -1,4 +1,6 @@
 import { Installation } from "@/installation"
+import { McpCatalog } from "@/mcp/catalog"
+import { MCP } from "@/mcp"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import {
@@ -352,6 +354,23 @@ export namespace LLM {
       if (convIndex !== undefined) probeIndex = convIndex + system.length
     }
 
+    // MCP tools the conversation's catalog lists stay out of tools[]: tools[]
+    // sits ahead of every cache marker, so an MCP server toggled mid-session
+    // would rewrite the whole cached prefix, and the catalog plus mcp_search
+    // already give the model each name and, on request, its schema. The tools
+    // stay registered, so a call to one still executes (ai 5.0.124 streamText:
+    // activeTools filters only what is sent; tool calls are parsed against the
+    // full set). Only the Anthropic API accepts a tool_use whose name is not in
+    // tools[], so other providers are sent every tool. A tool a server's
+    // `disabled` list names is left out too once a catalog is in play: the
+    // catalog never lists it and its calls are denied, and leaving it in would
+    // change tools[] when it is re-enabled.
+    const listed = input.model.providerID === "anthropic" ? McpCatalog.listed(input.messages) : new Set<string>()
+    const disabled = listed.size
+      ? (await Promise.all(Object.keys(tools).map(async (key) => ((await MCP.isDisabled(key)) ? [key] : [])))).flat()
+      : []
+    const catalogued = new Set([...listed, ...disabled])
+
     // Calculate cache marker indices based on the final messages
     const cache = input.cache ?? true
     const cacheMarkers = cache ? ProviderTransform.cacheMarkerIndices(finalMessages, probeIndex, cache) : []
@@ -387,7 +406,7 @@ export namespace LLM {
       topP: params.topP,
       topK: params.topK,
       providerOptions: ProviderTransform.providerOptions(input.model, params.options),
-      activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
+      activeTools: Object.keys(tools).filter((x) => x !== "invalid" && !catalogued.has(x)),
       tools,
       maxOutputTokens,
       abortSignal: input.abort,
