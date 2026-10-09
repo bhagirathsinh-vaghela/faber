@@ -2,8 +2,16 @@ const MAX_REDIRECTS = 10
 
 const REDIRECT_STATUS = [301, 302, 303, 307, 308]
 
-function sameHost(a: string, b: string) {
-  return new URL(a).hostname.replace(/^www\./, "") === new URL(b).hostname.replace(/^www\./, "")
+// A hop is followed when it stays on the same host (ignoring a www. prefix)
+// with the same scheme and port, or only upgrades http to https on the default
+// ports. An https-to-http hop or a port change is reported like a host change.
+export function followable(a: string, b: string) {
+  const from = new URL(a)
+  const to = new URL(b)
+  const host = (url: URL) => url.hostname.replace(/^www\./, "")
+  if (host(from) !== host(to)) return false
+  if (from.protocol === to.protocol) return from.port === to.port
+  return from.protocol === "http:" && to.protocol === "https:" && !from.port && !to.port
 }
 
 export type FetchResult =
@@ -26,7 +34,7 @@ export async function fetchFollowingSameHost(url: string, init: RequestInit, dep
   if (!location) throw new Error(`Redirect from ${url} missing Location header`)
 
   const next = new URL(location, url).toString()
-  if (!sameHost(url, next))
+  if (!followable(url, next))
     return { type: "cross-host", from: url, to: next, status: response.status, statusText: response.statusText }
 
   return fetchFollowingSameHost(next, init, depth + 1)
