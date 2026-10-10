@@ -255,22 +255,22 @@ export type EventRecentUpdated = {
 
 export type QuestionOption = {
   /**
-   * Display text (1-5 words, concise)
+   * Display text (1-5 words, concise), shown as a numbered row in the picker and echoed back as the answer
    */
   label: string
   /**
-   * Explanation of choice
+   * Explanation of choice, shown in small muted text under the label
    */
   description: string
 }
 
 export type QuestionInfo = {
   /**
-   * Complete question
+   * Complete question. The user sees it in a picker panel at the bottom of the chat: this text on top, rendered as full markdown by the same renderer as your replies (tables, lists, bold, code, headings, callouts), then the options as numbered rows, then a free-text row. Present it however reads best
    */
   question: string
   /**
-   * Very short label (max 30 chars)
+   * Very short label (max 30 chars), shown as the tab name when several questions are asked at once and as the prefix of the answered summary
    */
   header: string
   /**

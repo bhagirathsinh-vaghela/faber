@@ -11,8 +11,12 @@ export namespace Question {
 
   export const Option = z
     .object({
-      label: z.string().describe("Display text (1-5 words, concise)"),
-      description: z.string().describe("Explanation of choice"),
+      label: z
+        .string()
+        .describe(
+          "Display text (1-5 words, concise), shown as a numbered row in the picker and echoed back as the answer",
+        ),
+      description: z.string().describe("Explanation of choice, shown in small muted text under the label"),
     })
     .meta({
       ref: "QuestionOption",
@@ -21,8 +25,16 @@ export namespace Question {
 
   export const Info = z
     .object({
-      question: z.string().describe("Complete question"),
-      header: z.string().describe("Very short label (max 30 chars)"),
+      question: z
+        .string()
+        .describe(
+          "Complete question. The user sees it in a picker panel at the bottom of the chat: this text on top, rendered as full markdown by the same renderer as your replies (tables, lists, bold, code, headings, callouts), then the options as numbered rows, then a free-text row. Present it however reads best",
+        ),
+      header: z
+        .string()
+        .describe(
+          "Very short label (max 30 chars), shown as the tab name when several questions are asked at once and as the prefix of the answered summary",
+        ),
       options: z.array(Option).describe("Available choices"),
       multiple: z.boolean().optional().describe("Allow selecting multiple choices"),
       custom: z.boolean().optional().describe("Allow typing a custom answer (default: true)"),

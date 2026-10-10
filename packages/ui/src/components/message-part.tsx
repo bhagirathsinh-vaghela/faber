@@ -2011,7 +2011,9 @@ ToolRegistry.register({
                 })
                 return (
                   <div data-slot="question-answer-item">
-                    <div data-slot="question-text">{q.question}</div>
+                    <div data-slot="question-text">
+                      <Markdown class="question-markdown" text={q.question} complete />
+                    </div>
                     <Show when={picked().length} fallback={<div data-slot="answer-text">{format(answer())}</div>}>
                       <For each={picked()}>
                         {(choice) => (

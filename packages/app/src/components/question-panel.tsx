@@ -697,7 +697,7 @@ function Panel(props: { requests: QuestionRequest[]; asked?: number; onCollapse:
         {/* Question + options */}
         <Show when={!confirm()}>
           <div>
-            <Markdown class="question-markdown-heading" text={question()?.question ?? ""} complete />
+            <Markdown text={question()?.question ?? ""} complete />
             <Show when={multi()}>
               <span class="text-11-regular text-text-weak"> (select all that apply)</span>
             </Show>

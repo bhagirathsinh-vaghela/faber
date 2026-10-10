@@ -44,25 +44,6 @@
   }
 }
 
-/* Question line: rendered as a heading so the prompt stands out above the
-   options. Inherits the shared --markdown-heading-* tokens (size/weight/color)
-   so appearance customization flows through. Single class because the Markdown
-   component treats its `class` prop as one classList key. */
-.question-markdown-heading[data-component="markdown"] {
-  color: var(--markdown-heading);
-  font-size: var(--markdown-heading-1-size);
-  font-weight: var(--markdown-heading-1-weight);
-  line-height: var(--line-height-large);
-
-  p {
-    margin: 0;
-  }
-
-  > * + * {
-    margin-top: 0.375rem;
-  }
-}
-
 /* Label usage: single short line that must sit on the same baseline as the
    option number / checkbox, so render the markdown root and its paragraph
    inline instead of as a block. Self-contained (single class) because the
