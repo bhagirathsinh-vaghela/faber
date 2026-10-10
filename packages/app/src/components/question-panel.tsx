@@ -18,7 +18,7 @@ import { createDictation, dictationActive, dictationTarget, registerDictationTar
 import { overlayActive } from "@/utils/overlay"
 import { createCoarsePointer } from "@/utils/mobile"
 import { DictationOverlay } from "@/components/dictation-overlay"
-import { actsOnFirstPress } from "@/components/question-panel-guard"
+import { actsOnFirstPress, yields } from "@/components/question-panel-guard"
 import { MicIcon } from "@/components/mic-icon"
 import { usePrompt } from "@/context/prompt"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -430,8 +430,9 @@ function Panel(props: { requests: QuestionRequest[]; asked?: number; onCollapse:
   // fires — the question is answered before anything else can be typed. Keys it
   // does NOT consume fall through untouched, so unrelated global keybinds (reader,
   // the palette) keep working while a question is up. Any focused editable (the
-  // custom-answer textarea, the prompt, an input) keeps its own keys, so the
-  // handler yields while one has focus.
+  // custom-answer textarea, the prompt, an input) keeps its own keys, and a
+  // focused control outside the panel keeps Enter and Tab, so the handler
+  // yields to them.
   function handleKey(event: KeyboardEvent) {
     if (store.editing) return
     // An overlay owns Enter, Escape and Space (accept, discard, pause) for as
@@ -441,15 +442,10 @@ function Panel(props: { requests: QuestionRequest[]; asked?: number; onCollapse:
     // act, or a held key answers every queued request in order.
     if (event.repeat && (event.key === "Enter" || event.key === " ")) return
 
-    // Yield while the user is typing in an editable field (the prompt
-    // contenteditable, a textarea, an input). The panel grabs focus on mount so
-    // arrows drive the question by default; if the user deliberately clicks into
-    // the prompt to type, Enter and arrows belong to the prompt, not the panel.
-    const active = document.activeElement as HTMLElement | null
-    if (active && active !== panel) {
-      const editable = active.isContentEditable || active.tagName === "TEXTAREA" || active.tagName === "INPUT"
-      if (editable) return
-    }
+    // The panel grabs focus on mount so arrows drive the question by default; if
+    // the user deliberately clicks into the prompt to type, or onto a button
+    // elsewhere, that element keeps the keys it acts on.
+    if (yields(document.activeElement, panel, event.key)) return
 
     const stop = () => {
       event.preventDefault()
