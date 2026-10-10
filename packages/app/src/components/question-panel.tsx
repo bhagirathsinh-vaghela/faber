@@ -869,8 +869,8 @@ function Panel(props: { requests: QuestionRequest[]; asked?: number; onCollapse:
         </Show>
       </div>
 
-      {/* Actions. Glyph buttons sized to a 44px touch target, shrinking to 32px
-          on desktop, matching the dictation overlay. Each carries the keyboard
+      {/* Actions. Glyph buttons at the control height: 40px on a touch
+          pointer, 32px on desktop, matching the dictation overlay. Each carries the keyboard
           shortcut that triggers it as a hint above (handled in handleKey: alt+D
           reject, Escape collapse, Enter submit, Tab cycles requests), hidden
           where there is no keyboard. */}
