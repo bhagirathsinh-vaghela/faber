@@ -13,6 +13,8 @@ What it adds:
 
 Every feature is listed in [FEATURES.md](FEATURES.md), with a deep dive per feature in [docs/features](docs/features).
 
+> **Built on Anthropic.** I use Anthropic models exclusively, so the caching and cost work is built around Anthropic's prompt cache: at most four cache breakpoints per request, 5-minute and 1-hour entry lifetimes, and its cache-read and cache-write prices. The principles carry over to any provider with prefix caching: keep the prompt prefix byte-stable, append instead of editing, keep the cache warm while waiting, and show what each turn costs. The mechanisms differ, though, and with other providers several of these features do less or nothing. Each feature page says where this applies.
+
 ## Quick start
 
 Faber runs from source. It needs [Bun](https://bun.sh) 1.3.11, git, and macOS or Linux (Windows is not supported).

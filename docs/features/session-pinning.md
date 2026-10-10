@@ -2,6 +2,8 @@
 
 A running session's instructions, agents, commands, toolsets, skill catalog and custom tools are frozen for its lifetime. Editing config, `AGENTS.md` or a skill's frontmatter never rewrites a live session's cached prompt prefix. New sessions always see what is on disk now, and Stop followed by reopening a session is the refresh.
 
+> **Provider scope.** Pinning works with every model: a session's behaviour does not change mid-conversation. The cache payoff, a byte-stable prefix that keeps Anthropic's cache markers hitting, applies to Claude models; providers with automatic prefix caching gain from the stable prefix too.
+
 ## How it works
 
 ### What a pin holds

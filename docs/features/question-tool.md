@@ -2,6 +2,8 @@
 
 When the model needs a decision, it calls the `question` tool and the user answers in a picker in the web UI: click an option, pick several, or type a free-text answer. Once the question is settled, Faber rewrites it in the transcript the model sees. On Anthropic models, the tool call is removed from the model's own turn, and the full question plus the answer is stored as the user's own message. This keeps the model calling the tool for its next question instead of typing look-alike questions as plain text.
 
+> **Provider scope.** The picker works with every model. Sending an answer as the user's own words happens only for the `anthropic` provider (`MessageV2.stampable`): it works around Claude's behaviour, and another provider may bill a request that ends in a user message as user-initiated.
+
 ## How it works
 
 ### Asking

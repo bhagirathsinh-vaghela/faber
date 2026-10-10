@@ -2,6 +2,8 @@
 
 "Revert here" rolls a session back to an earlier user message and re-seeds the prompt cache entry for the conversation up to that point first. The next prompt after the revert continues on a cache hit, even when the entry for that point had expired or sat beyond Anthropic's 20-block lookback.
 
+> **Provider scope.** The revert works with every model. Re-seeding the cache entry for the kept prefix pays off only where Faber places cache markers, which is Claude models (see [prompt caching](prompt-caching.md)).
+
 ## How it works
 
 ### The problem

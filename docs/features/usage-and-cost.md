@@ -2,6 +2,8 @@
 
 The server computes token, cache and dollar figures for every request, per message and as running session totals. Cache writes are priced by their TTL (1h at 2x base input, 5m at 1.25x), and prices can be overridden in config. The web UI shows the figures as a row of chips in the session dock and under each answer, with a field layout stored on the server and shared by every client.
 
+> **Provider scope.** Token and dollar figures work for any model with known prices. The split of cache writes by lifetime and the weighted session input use Anthropic's cache price multipliers (reads 0.1x, 5-minute writes 1.25x, 1-hour writes 2x).
+
 ## How it works
 
 ### Reading usage

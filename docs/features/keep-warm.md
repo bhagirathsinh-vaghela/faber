@@ -2,6 +2,8 @@
 
 Anthropic's conversation cache entries live for five minutes. A session waiting on you, a long build, or a tool call that runs past that window would otherwise resume on a full cache rewrite. With keep-warm enabled, a per-session daemon re-sends the session's exact request a few seconds before the entry expires, which refreshes it. The ping persists no message and runs no tools, but its tokens and cost are counted like any other request.
 
+> **Provider scope.** Pings are sent for any model, but the timing is built for Anthropic's 5-minute cache lifetime, which a request refreshes. With a provider whose cache works differently, or has no cache, a ping costs a request and buys nothing; leave `ping.enabled` off there.
+
 ## How it works
 
 ### The anchor and the deadline

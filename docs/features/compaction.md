@@ -2,6 +2,8 @@
 
 When a conversation nears the model's context limit, Faber summarizes it and continues from the summary. Auto-compaction fires at a configurable share of the context window. The summarizing request reuses the session's own agent, model, tools and system blocks, so it is a cache read rather than a full prefix rewrite. The summary follows a fixed structure that keeps decisions, rejected alternatives and exact identifiers. Afterwards the model is nudged to continue whatever it was doing.
 
+> **Provider scope.** Compaction works with every model. The cache-safe parts, such as the summary request reusing the session's cached prefix, pay off where Faber places cache markers, which is Claude models.
+
 ## How it works
 
 ### When it fires

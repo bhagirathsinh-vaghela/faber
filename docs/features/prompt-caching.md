@@ -2,6 +2,8 @@
 
 Faber keeps every byte in front of the conversation identical across turns, sessions, repositories, plan/build switches, keep-warm pings and compaction, so Anthropic's prompt cache keeps hitting. Across 176,856 Anthropic requests between July and October 2026, about 99% of input tokens (99.05%) were served from cache, measured as cache reads divided by uncached input plus cache reads plus cache writes. The first part of this work is upstream OpenCode [PR #14743](https://github.com/anomalyco/opencode/pull/14743).
 
+> **Provider scope.** Cache markers are placed only for Claude models, whether served by Anthropic or by another provider whose model id names Claude, such as Bedrock or OpenRouter (`ProviderTransform.message` in `provider/transform.ts`). The four breakpoints and the 5-minute and 1-hour lifetimes are Anthropic's. Providers with automatic prefix caching (OpenAI, Gemini) still benefit from the byte-stable prefix, but nothing on this page controls their cache.
+
 ## How it works
 
 Anthropic hashes a request in a fixed order: `tools`, then `system`, then `messages`. A cache entry is keyed by the cumulative hash of everything up to a `cache_control` marker, and the API allows four markers per request. Any byte that changes early in that order (a tool description that embeds the working directory, today's date, a reordered tool list) invalidates every entry behind it. Faber arranges the request so that stable content comes first and never moves, then places the four markers where they buy the most reuse.

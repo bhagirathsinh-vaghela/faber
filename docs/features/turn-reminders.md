@@ -2,6 +2,8 @@
 
 Faber restates selected rules and state changes where the model reads them next, without breaking the prompt cache. Every injected reminder (concise style, question tool, plan and build mode, skill checklists, date or branch changes, MCP and subagent catalogs, the subagent "cannot delegate" note) goes through one funnel that appends it to the message that opens the current turn. A write that would land on a message already sent to the API is refused.
 
+> **Provider scope.** Reminders work with every model. Appending them to the turn's opening message instead of editing earlier text is what keeps Anthropic's cache valid; providers with automatic prefix caching benefit from the same discipline without markers.
+
 ## How it works
 
 ### The turn opener

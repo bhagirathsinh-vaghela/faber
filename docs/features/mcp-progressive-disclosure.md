@@ -2,6 +2,8 @@
 
 MCP servers can add tens of thousands of tokens of tool schemas to every request. Faber instead shows the model a compact catalog of every MCP tool (names only by default) and lets it pull a description or input schema on demand with the `mcp_search` tool. The catalog is injected once into the conversation as durable history and is byte-identical across sessions that share the same servers and settings, so it stays inside the cached prompt prefix. Arguments the model emits without having seen a schema are coerced back to the declared types before the call.
 
+> **Provider scope.** The compact catalog is shown to every model, but leaving catalogued MCP tools out of `tools[]` happens only for the `anthropic` provider (`McpCatalog.listed` in `session/llm.ts`). Claude served through another provider, and every other model, still receives every MCP tool schema.
+
 ## How it works
 
 ### The catalog block

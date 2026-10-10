@@ -2,6 +2,8 @@
 
 Everything Faber adds on top of upstream OpenCode, grouped by area. Each entry links to a page with how it works, configuration, and code pointers.
 
+> **Built on Anthropic.** Faber is developed and used daily with Anthropic models only. The caching, keep-warm and cost features are built around Anthropic's prompt cache (four breakpoints, 5-minute and 1-hour lifetimes, its cache prices). The principles apply to any provider with prefix caching; the mechanisms do not, and each page states its provider scope.
+
 ## Prompt caching and cost
 
 **Prompt caching.** Faber keeps every byte in front of the conversation identical across turns, sessions, repos, plan/build switches, keep-warm pings and compaction, so Anthropic's prompt cache keeps hitting. Stable content comes first, the four allowed cache markers sit where they buy the most reuse, and secondary requests reuse the session's own prefix. About 99% of Anthropic input tokens are served from cache (99.05% over 176,856 requests, July to October 2026). [Details](docs/features/prompt-caching.md)
