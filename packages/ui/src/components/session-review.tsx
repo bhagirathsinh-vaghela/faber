@@ -17,6 +17,7 @@ import { type FileContent, type FileDiff } from "@opencode-ai/sdk/v2"
 import { type FileDiffPreload } from "../pierre"
 import { type SelectedLineRange } from "@pierre/diffs"
 import { Dynamic } from "solid-js/web"
+import { collapses, toggleAll } from "./session-review-toggle"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 
@@ -170,12 +171,10 @@ export const SessionReview = (props: SessionReviewProps) => {
   // is the sole authority, otherwise the internal store is.
   const controlled = () => props.open !== undefined
   // The persisted open intent — pure client state, NEVER reconciled against the
-  // diff list. This is the single source of truth for the toggle button, so a
-  // mid-turn diff refetch cannot change what the button does.
+  // diff list, so a file that leaves the list and comes back reopens as it was.
   const open = () => (controlled() ? props.open! : store.open)
-  // Lazily reconcile against the live file list ONLY for the accordion's value
-  // prop: Kobalte would otherwise carry a key for an unrendered file. The button
-  // does not read this, so diff churn cannot desync the toggle.
+  // Lazily reconcile against the live file list for the accordion's value prop:
+  // Kobalte would otherwise carry a key for an unrendered file.
   const rendered = createMemo(() => {
     const files = new Set(props.diffs.map((d) => d.file))
     return open().filter((file) => files.has(file))
@@ -198,12 +197,13 @@ export const SessionReview = (props: SessionReviewProps) => {
     commit([...preserved, ...next])
   }
 
-  // Toggle target from the persisted intent's own emptiness, independent of the
-  // diff store: anything open → collapse; nothing open → expand every file.
-  // These write the whole set directly (not a rendered-relative delta).
-  const anyOpen = () => open().length > 0
   const handleExpandOrCollapseAll = () => {
-    commit(anyOpen() ? [] : props.diffs.map((d) => d.file))
+    commit(
+      toggleAll(
+        open(),
+        props.diffs.map((d) => d.file),
+      ),
+    )
   }
 
   // lazy-load each file's diff bodies the first time its accordion item opens.
@@ -346,7 +346,14 @@ export const SessionReview = (props: SessionReviewProps) => {
           </Show>
           <Button size="normal" icon="chevron-grabber-vertical" onClick={handleExpandOrCollapseAll}>
             <Switch>
-              <Match when={open().length > 0}>{i18n.t("ui.sessionReview.collapseAll")}</Match>
+              <Match
+                when={collapses(
+                  open(),
+                  props.diffs.map((d) => d.file),
+                )}
+              >
+                {i18n.t("ui.sessionReview.collapseAll")}
+              </Match>
               <Match when={true}>{i18n.t("ui.sessionReview.expandAll")}</Match>
             </Switch>
           </Button>
