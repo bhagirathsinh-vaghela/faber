@@ -1,4 +1,5 @@
 import type { Hooks, PluginInput, Plugin as PluginInstance } from "@opencode-ai/plugin"
+import { Auth } from "../auth"
 import { Config } from "../config/config"
 import { Bus } from "../bus"
 import { Log } from "../util/log"
@@ -20,8 +21,10 @@ export namespace Plugin {
 
   // Builtins are installed from npm on every start, so the GitLab login plugin
   // is fetched only for a config that names the gitlab provider.
-  export function builtin(config: Config.Info) {
-    if (config.provider?.["gitlab"] || config.enabled_providers?.includes("gitlab")) return BUILTIN
+  // A stored GitLab login also counts, so a token issued before the config
+  // listed gitlab keeps being refreshed by the plugin that issued it.
+  export function builtin(config: Config.Info, stored = false) {
+    if (stored || config.provider?.["gitlab"] || config.enabled_providers?.includes("gitlab")) return BUILTIN
     return []
   }
 
@@ -54,7 +57,7 @@ export namespace Plugin {
 
     const plugins = [...(config.plugin ?? [])]
     if (!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
-      plugins.push(...builtin(config))
+      plugins.push(...builtin(config, (await Auth.get("gitlab")) !== undefined))
     }
 
     for (let plugin of plugins) {

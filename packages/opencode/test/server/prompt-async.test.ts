@@ -5,9 +5,10 @@ import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { Debt } from "../../src/storage/debt"
 import { Log } from "../../src/util/log"
-import { tmpdir } from "../fixture/fixture"
+import { connected, tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
+connected()
 
 // `noReply` writes the message without starting a turn, so the route's ack is
 // decided by the durable write alone and no provider is needed.

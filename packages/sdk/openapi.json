@@ -11575,7 +11575,7 @@
         "enum": ["DEBUG", "INFO", "WARN", "ERROR"]
       },
       "ServerConfig": {
-        "description": "Server configuration for opencode serve and web commands",
+        "description": "Server configuration for opencode serve and opencode supervise",
         "type": "object",
         "properties": {
           "port": {

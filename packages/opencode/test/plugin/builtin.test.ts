@@ -11,4 +11,8 @@ describe("Plugin.builtin", () => {
     expect(Plugin.builtin({ provider: { gitlab: {} } })).toEqual(["@gitlab/opencode-gitlab-auth@1.3.2"])
     expect(Plugin.builtin({ enabled_providers: ["gitlab"] })).toEqual(["@gitlab/opencode-gitlab-auth@1.3.2"])
   })
+
+  test("a stored gitlab login installs the GitLab login plugin without a config entry", () => {
+    expect(Plugin.builtin({}, true)).toEqual(["@gitlab/opencode-gitlab-auth@1.3.2"])
+  })
 })
