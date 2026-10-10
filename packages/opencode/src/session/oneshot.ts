@@ -128,6 +128,7 @@ export namespace Oneshot {
       tools: {},
       messages: [{ role: "user", content: input.prompt }],
       system: { env: [], globalInstructions: [], projectInstructions: [] },
+      bare: true,
       abort: input.abort,
       cache: input.cache ? "system" : false,
     })
@@ -203,7 +204,6 @@ export namespace Oneshot {
   }
 
   export type StreamInput = {
-    /** Required: without one the persona falls back to the provider's full coding-agent prompt. */
     system: string
     prompt: string
     model: string

@@ -52,6 +52,8 @@ export namespace LLM {
     /** Persist the computed promptIndex. Only a caller that OWNS the turn may set this. */
     persistPromptIndex?: boolean
     small?: boolean
+    /** Send no provider prompt when the agent has none (a one-shot call with no system prompt). */
+    bare?: boolean
     tools: Record<string, Tool>
     retries?: number
     /** One-shot probe: place an extra cache marker at this block index for testing */
@@ -106,7 +108,7 @@ export namespace LLM {
     // experimental.chat.system.transform hook, not from this file.
     const providerPrompt = input.agent.prompt
       ? input.agent.prompt
-      : isCodex
+      : isCodex || input.bare
         ? ""
         : SystemPrompt.provider(input.model).join("\n")
     const globalInstructions = input.system.globalInstructions.join("\n")

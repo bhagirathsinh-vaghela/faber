@@ -141,6 +141,14 @@ function systemText(body: Body) {
 }
 
 describe("Oneshot.run", () => {
+  test("a call with no system prompt sends no system blocks at all", async () => {
+    await withInstance(async () => {
+      const request = respond(() => textReply("ok"))
+      await Oneshot.run({ model: "default", variant: "default", prompt: "Hi" })
+      expect((await request).body.system).toBeUndefined()
+    })
+  }, 30_000)
+
   test("sends only the caller's system prompt and prompt, no tools or cache markers, and returns the text with usage", async () => {
     await withInstance(async () => {
       const request = respond(() => textReply("Hello back"))
