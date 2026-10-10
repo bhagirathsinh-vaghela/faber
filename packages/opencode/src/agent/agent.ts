@@ -357,11 +357,10 @@ export namespace Agent {
    * grant no MCP access, unchanged.
    */
   const BUILTIN_TOOLSETS: Record<string, string[]> = {
-    explore: ["grep", "glob", "list", "bash", "read", "todowrite", "webfetch", "websearch", "codesearch", "lsp"],
+    explore: ["grep", "glob", "bash", "read", "todowrite", "webfetch", "websearch", "codesearch", "lsp"],
     general: [
       "grep",
       "glob",
-      "list",
       "bash",
       "read",
       "todowrite",
@@ -378,7 +377,6 @@ export namespace Agent {
     "explore-mcp": [
       "grep",
       "glob",
-      "list",
       "bash",
       "read",
       "todowrite",
@@ -392,7 +390,6 @@ export namespace Agent {
     "general-mcp": [
       "grep",
       "glob",
-      "list",
       "bash",
       "read",
       "todowrite",

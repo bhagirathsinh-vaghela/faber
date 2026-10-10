@@ -5,6 +5,10 @@ import { MCP } from "../../src/mcp/index"
 import { Instance } from "../../src/project/instance"
 import type { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
+import { ToolRegistry } from "../../src/tool/registry"
+import { LspTool } from "../../src/tool/lsp"
+import { McpSearchTool } from "../../src/tool/mcp-search"
+import { ApplyPatchTool } from "../../src/tool/apply_patch"
 
 // The MCP-capable subagent toolsets and the sentinel grant live in two places:
 // Agent.BUILTIN_TOOLSETS names the presets (with the MCP sentinels), and
@@ -55,6 +59,26 @@ describe("Agent.toolsets presets", () => {
     expect(set).toContain(Agent.MCP_WRITE)
     expect(set).toContain("mcp_search")
     expect(set).not.toContain(Agent.MCP_READ)
+  })
+
+  // A preset entry that names no tool grants nothing, silently. The edit-capable
+  // presets must grant apply_patch by its real id, since GPT models get it in
+  // place of edit/write. lsp and mcp_search register only under a flag or with
+  // MCP configured, so they count without being present.
+  test("every built-in preset entry names a real tool or an MCP sentinel", async () => {
+    const known = await withInstance(async () => [
+      ...(await ToolRegistry.ids()),
+      LspTool.id,
+      McpSearchTool.id,
+      Agent.MCP_READ,
+      Agent.MCP_WRITE,
+    ])
+    const sets = await withInstance(() => Agent.toolsets())
+    for (const name of ["explore", "general", "explore-mcp", "general-mcp"]) {
+      expect(sets[name].filter((tool) => !known.includes(tool)), `preset "${name}"`).toEqual([])
+    }
+    expect(sets.general).toContain(ApplyPatchTool.id)
+    expect(sets["general-mcp"]).toContain(ApplyPatchTool.id)
   })
 
   test("the plain explore/general presets carry no MCP sentinel", async () => {
