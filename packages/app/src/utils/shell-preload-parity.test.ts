@@ -37,3 +37,19 @@ describe("oc-theme-preload.js mirrors ui/util/size-class.ts", () => {
     }
   })
 })
+
+describe("oc-theme-preload.js color scheme", () => {
+  test("with no stored scheme it paints dark, as the theme context does, even on a light OS", () => {
+    localStorage.removeItem("opencode-color-scheme")
+    localStorage.removeItem("opencode-theme-id")
+    const meta = document.createElement("meta")
+    meta.setAttribute("name", "theme-color")
+    document.head.appendChild(meta)
+    const original = window.matchMedia
+    window.matchMedia = ((query: string) => ({ matches: false, media: query })) as typeof window.matchMedia
+    new Function(preload)()
+    window.matchMedia = original
+    meta.remove()
+    expect(meta.getAttribute("content")).toBe("#131010")
+  })
+})

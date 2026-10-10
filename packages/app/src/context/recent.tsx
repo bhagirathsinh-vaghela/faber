@@ -126,7 +126,8 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     // warm for an hour was in use that whole time even though its pings persist
     // no message — ordering it on the stale turn timestamp buries it under
     // sessions abandoned earlier. Neither clock counts an open or a stop: those
-    // are per-device acts, and the client MRU already layers view order on top.
+    // are per-device acts; the client MRU layers view order onto the live
+    // section only.
     const attention = createMemo(() =>
       rows()
         .filter((r) => globalSync.isAlive(r))

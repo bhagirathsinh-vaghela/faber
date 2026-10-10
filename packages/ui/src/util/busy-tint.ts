@@ -11,8 +11,8 @@
 // busy cause reaches whichever copies get edited and silently omits the rest.
 
 // The subagent accent covers a subagent and the job accent a background command.
-// The job indicator carries the gold indicator colour, distinct from the blue
-// accent its result card draws. Own turns carry the agent's own colour, which the
+// The job indicator reads its own token (--box-indicator-job), which defaults to
+// the same colour as its result card's accent. Own turns carry the agent's own colour, which the
 // caller resolves and passes in.
 const SUBAGENT = "var(--box-accent-subagent)"
 const JOB = "var(--box-indicator-job)"
@@ -56,8 +56,8 @@ export function busyOverlays(facts: BusyFacts, agent: string | undefined) {
 }
 
 // Each overlay's animation is phase-shifted so N colours divide the cycle
-// evenly rather than peaking together. A single overlay lands on the half-cycle
-// offset, which is what a two-colour cross-fade already holds.
+// evenly rather than peaking together. A single overlay is offset by half a
+// cycle.
 const CYCLE = 2.6
 
 export function busyDelay(index: number, total: number) {

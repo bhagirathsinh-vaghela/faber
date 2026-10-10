@@ -40,39 +40,6 @@
   }
 }
 
-/* The single accent-box scheme. Every transcript box (message, task, tool
-   cards) uses this: set ONE variable, --box-accent, to the box's main color and
-   the border + background are derived from it here. Change the formula once and
-   all boxes follow.
-
-   The fill is the accent mixed into the SOLID page background (opaque), never a
-   translucent color over `transparent`: a translucent partial fill re-composites
-   against the scrolling transcript every frame and flickers hard under GPU
-   compositing once many boxes stack. Tunable via --box-fill-strength and
-   --box-border-strength. */
-.accent-box {
-  --box-accent: var(--color-text-weak, #8b949e);
-  --box-border-strength: 80%;
-  /* Reproduce the original look (accent at 7% painted over the transcript
-     backdrop) but OPAQUELY: mix the accent into the SOLID backdrop color rather
-     than over `transparent`. The backdrop the box actually sits on is
-     --color-background-strong (the near-black panel), NOT background-base — so
-     mixing into strong gives the original dark/dim tint. A translucent partial
-     fill re-composites against the scrolling transcript every frame and flickers
-     under GPU compositing; mixing into the solid backdrop composites once. */
-  --box-fill-strength: 7%;
-  --box-backdrop: var(--color-background-strong, #010409);
-  /* Border and fill are now driven by explicit --box-border / --box-bg, which
-     each box type points at its per-type token (assistant/task/tool). They fall
-     back to the accent-derived mix so any box that only sets --box-accent still
-     renders the original look. */
-  --box-fill: color-mix(in srgb, var(--box-accent) var(--box-fill-strength), var(--box-backdrop));
-  border: 1px solid
-    var(--box-border, color-mix(in srgb, var(--box-accent) var(--box-border-strength), var(--box-backdrop)));
-  border-radius: 8px;
-  background: var(--box-bg, var(--box-fill));
-}
-
 [data-component="user-message"] {
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
@@ -144,8 +111,7 @@
     overflow: hidden;
     font-weight: var(--font-weight-semibold);
     /* No inner box: the text sits bare inside the card (one block, one box). No
-       background/border/radius here; padding only for the copy button's absolute
-       position. */
+       background/border/radius here. */
     padding: 0 28px 0 0;
 
     [data-highlight="file"] {
@@ -198,10 +164,7 @@
     }
   }
 
-  /* The scroll-to arrow. Two discoverability modes, chosen by data-jump-hint:
-     - "rest": faint at rest, full-strength on hover/focus (default).
-     - "hover": hidden at rest, appears only on hover/focus.
-     On touch (no hover) both modes show it, since there is no hover to reveal. */
+  /* The scroll-to arrow. */
   [data-slot="message-box-jump"] {
     display: inline-flex;
     align-items: center;
@@ -211,21 +174,18 @@
       color 0.12s ease;
   }
 
-  /* "rest" mode: always in the layout, just dimmed until hover/focus. */
-  &[data-jump-hint="rest"] [data-slot="message-box-jump"] {
-    opacity: 0.45;
-  }
-
-  /* "hover" mode: takes no room at rest, so a card that is not being pointed at
-     starts its index at the very same inset as a card with no jump control at
-     all. Summoned by the ROW, like every other control on it: keying it on the
-     identity would move that identity out from under the pointer as the arrow
-     took its place, hiding the arrow and flickering at the refresh rate. */
-  &[data-jump-hint="hover"] {
+  /* Takes no room at rest, so a card that is not being pointed at starts its
+     index at the very same inset as a card with no jump control at all.
+     Summoned by hovering the enclosing transcript-card-identity cluster, not
+     the control itself: keying it on its own hover would move it out from under
+     the pointer as it took its place, hiding it and flickering at the refresh
+     rate. Under (hover: none) it stays collapsed, so the #N column aligns with
+     every other card; the whole pinned bar is tappable. */
+  &[data-jump="true"] {
     display: none;
   }
 
-  [data-slot="transcript-card-identity"]:hover &[data-jump-hint="hover"] {
+  [data-slot="transcript-card-identity"]:hover &[data-jump="true"] {
     display: flex;
   }
 
@@ -233,17 +193,6 @@
   &[data-jump="true"]:focus-visible [data-slot="message-box-jump"] {
     opacity: 1;
     color: var(--text-strong);
-  }
-
-  /* No hover (touch): the "rest" mode already keeps its arrow faintly visible; a
-     "hover" identity stays collapsed so the #N column aligns with every other
-     card on touch too (the whole pinned bar is tappable, so the jump arrow is a
-     fine-pointer convenience, not the only way in). */
-  @media (hover: none) {
-    &[data-jump-hint="rest"] [data-slot="message-box-jump"] {
-      display: inline-flex;
-      opacity: 0.45;
-    }
   }
 }
 
@@ -515,14 +464,16 @@ a[data-component="tool-action"]:hover {
   width: 100%;
   /* paint (not just layout) confines the tool box's repaint to its own bounds:
      a live card's header sweep animates for as long as the part runs, and
-     without a paint boundary its per-frame repaint fills the whole box. Nothing
-     here overflows the box, so clipping is safe. */
+     without a paint boundary its per-frame repaint fills the whole box. It also
+     clips anything a descendant paints outside the box, which is why the
+     permission ring below is painted on the wrapper itself. */
   contain: layout paint;
 
-  /* One block, one box: a tool call is its own block, so give its box the same
-     accent-box scheme as message/task boxes — a muted-purple accent drives both
-     the border and the faint opaque fill. Same formula as .accent-box, applied
-     here via border-color/background-color so the collapsible keeps its own
+  /* One block, one box: a tool call is its own block, so one accent drives both
+     its border and its faint fill, each mixed into the solid backdrop rather
+     than over `transparent` (a translucent fill re-composites against the
+     scrolling transcript every frame and flickers under GPU compositing).
+     Applied via border-color/background-color so the collapsible keeps its own
      border-radius/behavior. Scoped to the tool wrapper so other collapsibles
      keep the neutral shell. */
   & > [data-component="collapsible"] {
@@ -545,8 +496,7 @@ a[data-component="tool-action"]:hover {
     );
   }
 
-  &[data-permission="true"],
-  &[data-question="true"] {
+  &[data-permission="true"] {
     position: sticky;
     top: calc(2px + var(--sticky-header-height, var(--control-bar)));
     bottom: 0px;
@@ -592,11 +542,6 @@ a[data-component="tool-action"]:hover {
       0 0 0 1px color-mix(in srgb, var(--permission-ring) 35%, transparent),
       0 0 12px 2px color-mix(in srgb, var(--permission-ring) 22%, transparent);
   }
-
-  &[data-question="true"] {
-    background: var(--background-base);
-    border: 1px solid var(--border-weak-base);
-  }
 }
 
 [data-component="permission-prompt"] {
@@ -607,174 +552,6 @@ a[data-component="tool-action"]:hover {
   border-radius: 0 0 6px 6px;
 
   [data-slot="permission-actions"] {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-}
-
-[data-component="question-prompt"] {
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  background-color: var(--surface-inset-base);
-  border-radius: 0 0 6px 6px;
-  gap: 12px;
-
-  [data-slot="question-tabs"] {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-
-    [data-slot="question-tab"] {
-      padding: 4px 12px;
-      font-size: 13px;
-      border-radius: 4px;
-      background-color: var(--surface-base);
-      color: var(--text-base);
-      border: none;
-      cursor: pointer;
-      transition:
-        color 0.15s,
-        background-color 0.15s;
-
-      &:hover {
-        background-color: var(--surface-base-hover);
-      }
-
-      &[data-active="true"] {
-        background-color: var(--surface-raised-base);
-      }
-
-      &[data-answered="true"] {
-        color: var(--text-strong);
-      }
-    }
-  }
-
-  [data-slot="question-content"] {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-
-    [data-slot="question-text"] {
-      font-size: 14px;
-      color: var(--text-base);
-      line-height: 1.5;
-    }
-  }
-
-  [data-slot="question-options"] {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-
-    [data-slot="question-option"] {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
-      padding: 8px 12px;
-      background-color: var(--surface-base);
-      border: 1px solid var(--border-weaker-base);
-      border-radius: 6px;
-      cursor: pointer;
-      text-align: left;
-      width: 100%;
-      transition:
-        background-color 0.15s,
-        border-color 0.15s;
-      position: relative;
-
-      &:hover {
-        background-color: var(--surface-base-hover);
-        border-color: var(--border-default);
-      }
-
-      &[data-picked="true"] {
-        [data-component="icon"] {
-          position: absolute;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--text-strong);
-        }
-      }
-
-      [data-slot="option-label"] {
-        font-size: 14px;
-        color: var(--text-base);
-        font-weight: 500;
-      }
-
-      [data-slot="option-description"] {
-        font-size: 12px;
-        color: var(--text-weak);
-      }
-    }
-
-    [data-slot="custom-input-form"] {
-      display: flex;
-      gap: 8px;
-      padding: 8px 0;
-      align-items: stretch;
-
-      [data-slot="custom-input"] {
-        flex: 1;
-        padding: 8px 12px;
-        font-size: 14px;
-        border: 1px solid var(--border-default);
-        border-radius: 6px;
-        background-color: var(--surface-base);
-        color: var(--text-base);
-        outline: none;
-
-        &:focus {
-          border-color: var(--border-focus);
-        }
-
-        &::placeholder {
-          color: var(--text-weak);
-        }
-      }
-
-      [data-component="button"] {
-        height: auto;
-      }
-    }
-  }
-
-  [data-slot="question-review"] {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-
-    [data-slot="review-title"] {
-      display: none;
-    }
-
-    [data-slot="review-item"] {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      font-size: 13px;
-
-      [data-slot="review-label"] {
-        color: var(--text-weak);
-      }
-
-      [data-slot="review-value"] {
-        color: var(--text-strong);
-
-        &[data-answered="false"] {
-          color: var(--text-weak);
-        }
-      }
-    }
-  }
-
-  [data-slot="question-actions"] {
     display: flex;
     align-items: center;
     gap: 8px;

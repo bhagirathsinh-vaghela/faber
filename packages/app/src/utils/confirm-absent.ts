@@ -17,7 +17,7 @@
 const ATTEMPTS = 3
 const DELAY_MS = 400
 
-function isNotFound(error: unknown) {
+export function isNotFound(error: unknown) {
   return (error as { name?: string })?.name === "NotFoundError"
 }
 

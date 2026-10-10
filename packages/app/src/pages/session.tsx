@@ -16,7 +16,7 @@ import { createCoarsePointer, preserveFocus, TOUCH_SLOP, useShell } from "@/util
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
-import { Dynamic, Portal } from "solid-js/web"
+import { Dynamic } from "solid-js/web"
 import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { diffSnippet, isDeletionOnly, previewLines } from "@/context/diff-snippet"
@@ -61,7 +61,7 @@ import { DialogSelectFile } from "@/components/dialog-select-file"
 import FileTree from "@/components/file-tree"
 import { ReaderPill } from "@/components/reader-pill"
 import { DialogSelectModel } from "@/components/dialog-select-model"
-import { DialogSettings } from "@/components/dialog-settings"
+import { DialogMcpCorpus } from "@/components/dialog-mcp-corpus"
 import { DialogFork } from "@/components/dialog-fork"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
@@ -843,8 +843,7 @@ export default function Page() {
       (lastId, prevLastId) => {
         // Snap the active message to the newest turn ONLY while following the
         // tail. If the user has navigated away with alt+9/alt+0 (following is
-        // off), a new streamed turn must NOT reset their position — otherwise
-        // it drags them back to the bottom mid-read.
+        // off), a new streamed turn must NOT reset their active message.
         if (!following()) return
         if (lastId && prevLastId && lastId > prevLastId) {
           setStore("messageId", undefined)
@@ -1213,7 +1212,7 @@ export default function Page() {
       category: language.t("command.category.mcp"),
       keybind: "mod+;",
       slash: "mcp",
-      onSelect: () => dialog.show(() => <DialogSettings initialTab="mcp" />),
+      onSelect: () => dialog.show(() => <DialogMcpCorpus />),
     },
     {
       id: "agent.cycle",
@@ -1379,11 +1378,14 @@ export default function Page() {
       title: language.t("command.session.switcher"),
       category: language.t("command.category.session"),
       keybind: "ctrl+tab",
-      onSelect: () => {
+      onSelect: (source) => {
         const parent = info()?.parentID
+        const switcher = source === "keybind"
         if (parent)
-          return dialog.show(() => <DialogSubagents sessionID={parent} current={params.id} advance switcher />)
-        dialog.show(() => <DialogOverview advance switcher current={params.id} />)
+          return dialog.show(() => (
+            <DialogSubagents sessionID={parent} current={params.id} advance switcher={switcher} />
+          ))
+        dialog.show(() => <DialogOverview advance switcher={switcher} current={params.id} />)
       },
     },
     {
@@ -1391,10 +1393,12 @@ export default function Page() {
       title: language.t("command.session.switcher.reverse"),
       category: language.t("command.category.session"),
       keybind: "ctrl+shift+tab",
-      onSelect: () => {
+      onSelect: (source) => {
         const parent = info()?.parentID
-        if (parent) return dialog.show(() => <DialogSubagents sessionID={parent} current={params.id} switcher />)
-        dialog.show(() => <DialogOverview switcher current={params.id} />)
+        const switcher = source === "keybind"
+        if (parent)
+          return dialog.show(() => <DialogSubagents sessionID={parent} current={params.id} switcher={switcher} />)
+        dialog.show(() => <DialogOverview switcher={switcher} current={params.id} />)
       },
     },
     {
@@ -1523,6 +1527,7 @@ export default function Page() {
   const handleAuxClick = (event: MouseEvent) => {
     if (event.button !== 1) return
     if (dialog.active) return
+    if (event.target instanceof Element && event.target.closest("a[href]")) return
     event.preventDefault()
     resumeScroll()
     // preventScroll: see the End-key branch — a bare focus() scroll-yanks the
@@ -1986,7 +1991,7 @@ export default function Page() {
     })
   }
 
-  // virtua owns turn windowing: it keeps only the visible range (+overscan)
+  // virtua owns turn windowing: it keeps only the visible range (+bufferSize)
   // mounted and props the scroller to full estimated height, so scrollHeight
   // stays honest for the tail-follow/restore logic below. Its handle drives
   // every jump-to-turn (Home/End/deep-link/prev-next) via scrollToIndex, which
@@ -2250,8 +2255,8 @@ export default function Page() {
         return
       }
 
-      // If we have a message hash but the message isn't loaded/rendered yet,
-      // don't fall back to "bottom". We'll retry once messages arrive.
+      // A message hash whose message isn't loaded yet leaves the view where it
+      // is rather than falling back to the bottom. Nothing retries it.
       return
     }
 
@@ -2356,7 +2361,7 @@ export default function Page() {
 
     const msg = visibleUserMessages().find((m) => m.id === targetId)
     if (!msg) return
-    if (ui.pendingMessage === targetId) setUi("pendingMessage", undefined)
+    setUi("pendingMessage", undefined)
     setFollowing(false)
     requestAnimationFrame(() => scrollToMessage(msg, "auto"))
   })
@@ -2439,7 +2444,7 @@ export default function Page() {
   // window resize.
   const [dockRect, setDockRect] = createSignal<{ right: number; top: number } | null>(null)
   const measureDock = () => {
-    // A composer translated off-screen would drag the pill down with it, taking
+    // A dock hidden by reader would drag the pill down with it, taking
     // the only way out of reader off the viewport. Null hands the pill its
     // corner. Keyed to whether the dock actually left, not to reader itself: a
     // summoned composer is on screen and the cluster has to sit above it rather
@@ -3020,7 +3025,9 @@ export default function Page() {
                   onClick={() => command.trigger("session.redo")}
                 >
                   <div class="text-13-regular text-text-base">
-                    {language.t("session.revert.count", { count: revertedCount() })}
+                    {language.t(revertedCount() === 1 ? "session.revert.count.one" : "session.revert.count.other", {
+                      count: revertedCount(),
+                    })}
                   </div>
                   <div class="text-11-regular text-text-weak">
                     {language.t("session.revert.restore", { keybind: command.keybind("session.redo") })}

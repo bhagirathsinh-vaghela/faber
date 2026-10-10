@@ -15,8 +15,7 @@ describe("busy tints", () => {
     const facts = { turn: true, subagents: 1, jobs: 0 }
     expect(busyBase(facts, AGENT)).toBe(AGENT)
     expect(busyOverlays(facts, AGENT)).toEqual(["var(--box-accent-subagent)"])
-    // A single overlay sits at the half-cycle, which is what a two-colour
-    // cross-fade holds.
+    // A single overlay is offset by half a cycle.
     expect(busyDelay(0, 1)).toBe("-1.30s")
   })
 

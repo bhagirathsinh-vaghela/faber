@@ -141,8 +141,8 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
   }
 
   // A draft only survives while it is being composed. The moment focus leaves
-  // the editor without a submit (click into the diff, scroll away, focus
-  // elsewhere), drop it so the highlight and marker never linger unposted.
+  // the editor without a submit (click into the diff, focus elsewhere), drop
+  // it so the highlight and marker never linger unposted.
   // A blur into the editor's own buttons (Cancel/Submit) stays: their click
   // handlers own the outcome.
   const dismissOnBlur = (e: FocusEvent) => {

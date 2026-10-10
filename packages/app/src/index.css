@@ -126,8 +126,8 @@
    about how big a button is. The pointer is a physical fact about the device: a
    fingertip covers about 9mm and a cursor covers a pixel, so one size cannot be
    honest for both. Handhelds also pack ~160 CSS px to the inch against a
-   desktop's ~110, which compounds it — the same 40px is a third larger in the
-   hand on a monitor than on a phone. */
+   desktop's ~110, which compounds it — the same 40px is about half again larger
+   in the hand on a monitor than on a phone. */
 :root {
   /* Coarse WINS, and the base is the fine size, because `any-pointer: coarse`
      asks whether ANY pointer is coarse. A tablet on a trackpad answers to both
@@ -297,12 +297,6 @@
   }
 }
 
-/* Busy bar: an indeterminate track trailing the last message, in the gap between
-   the last box and the dock. The busy cue in both modes (reader and normal). Shares
-   the tool streaming bar's shape + traveling band (opacity + transform only,
-   dodging the Lightning CSS custom-property @keyframes bug), and tints with the
-   --stream-accent (agent color, set inline). While a subagent runs, a task-accent
-   fill cross-fades over the base so the color oscillates. */
 /* Pill-shaped surround behind the busy bar. The bar itself is only 6px tall and
    sits high in the dock over the scrolling transcript, so an opaque bar alone
    still reads poorly against the moving text behind it. This padded pill, filled
@@ -324,6 +318,12 @@
   );
 }
 
+/* Busy bar: an indeterminate track trailing the last message, in the gap between
+   the last box and the dock. The busy cue in both modes (reader and normal). Shares
+   the tool streaming bar's shape + traveling band (opacity + transform only,
+   dodging the Lightning CSS custom-property @keyframes bug), and tints with the
+   --stream-accent (agent color, set inline). While a subagent runs, a task-accent
+   fill cross-fades over the base so the color oscillates. */
 .busy-bar {
   position: relative;
   width: 100%;

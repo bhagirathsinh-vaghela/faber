@@ -7,13 +7,14 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import { Snapshot } from "@/utils/snapshot"
+import { isNotFound } from "@/utils/confirm-absent"
 import type { Message, Part, Session } from "@opencode-ai/sdk/v2/client"
 
 const keyFor = (directory: string, id: string) => `${directory}\n${id}`
 
 const cmp = Identifier.compare
 
-// Level 2 streaming does not persist a text/reasoning part until block-end
+// The server does not persist a streamed text/reasoning part until block-end
 // (or a 256KB checkpoint), so a mid-turn REST snapshot is behind the stream.
 // Mirror the SSE handler's longer-text-wins rule for these two part types.
 export function guardParts(snapshot: Part[], held: Part[] | undefined, completed: boolean): Part[] {
@@ -34,6 +35,13 @@ export function guardParts(snapshot: Part[], held: Part[] | undefined, completed
       guarded.set(hp.id, hp)
   }
   return [...guarded.values()].sort((a, b) => cmp(a.id, b.id))
+}
+
+// A session read answers "gone" only when the session is archived or the server
+// says NotFound; a read that fails any other way (network, 5xx) cannot tell, so
+// it keeps the user where they are.
+export function present(read: Promise<{ data?: { id?: string; time?: { archived?: number } } }>) {
+  return read.then((x) => !!x.data?.id && !x.data.time?.archived).catch((error) => !isNotFound(error))
 }
 
 export const {
@@ -81,7 +89,8 @@ export const {
 
     // One GET /session/:id per open, doing BOTH jobs the open needs from it:
     // it is the server's arm-on-attach hook for the cache-ping daemon
-    // (idempotent, self-stops if the window is dead), AND its result fills the
+    // (idempotent; past the cache window the daemon stays armed but idle until
+    // the next turn), AND its result fills the
     // store when the record is missing. `getSession` returning undefined means
     // "not cached", never "does not exist", so a load path that can leave the
     // record out (a message-only heal, an eviction that kept the transcript)
@@ -96,8 +105,7 @@ export const {
       if (existing) return existing
       // Single-flight: store the promise, delete on settle (in finally, so a
       // caller arriving just after this resolves starts a fresh fetch rather
-      // than joining a dead one). Errors are swallowed: arming is best-effort
-      // and a failed fill just leaves the miss to the next open.
+      // than joining a dead one).
       const promise = retry(() => client.session.get({ sessionID }))
         .then((session) => {
           const record = session.data
@@ -232,7 +240,10 @@ export const {
         return
       }
       const known = current()[0].message[input.sessionID]
-      if (!known || known.length < 2) return loadMessages(input)
+      // A session seeded at creation records a 0 window, and a 0-limit load
+      // returns no messages, which would empty the transcript.
+      if (!known || known.length < 2)
+        return loadMessages({ ...input, limit: limitFor(Math.max(input.limit, known?.length ?? 0)) })
       const cursor = known[known.length - 2].id
 
       setMeta("loading", key, true)
@@ -318,10 +329,7 @@ export const {
             .then((x) => (x.data ?? []).some((project) => project.worktree === sdk.directory))
             .catch(() => undefined)
           if (openBeforeAttaching === false) return false
-          return sdk.client.session
-            .get({ sessionID })
-            .then((x) => !!x.data?.id && !x.data.time?.archived)
-            .catch(() => true)
+          return present(sdk.client.session.get({ sessionID }))
         },
         addOptimisticMessage(input: {
           sessionID: string
@@ -356,7 +364,7 @@ export const {
         // write (reconcile message + parts, set meta.limit) so the session reads
         // as `hydrated`; the caller then runs sync(id, force=true), which takes
         // the deltaMessages branch and fetches only the gap since the snapshot's
-        // newest message id. No-op if a snapshot is missing, stale-versioned, or
+        // second-newest message id. No-op if a snapshot is missing, stale-versioned, or
         // the session already holds messages (a live open beat us to it).
         hydrate(snapshot: Snapshot) {
           const directory = sdk.directory

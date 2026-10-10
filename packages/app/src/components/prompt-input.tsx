@@ -69,7 +69,6 @@ import { Worktree as WorktreeState } from "@/utils/worktree"
 import { Statusline } from "@/components/statusline"
 import { PromptActionBar } from "@/components/prompt-actionbar"
 import { usePermission } from "@/context/permission"
-import { useQuestion } from "@/context/question"
 import { useLanguage } from "@/context/language"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
@@ -135,8 +134,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return home && sdk.directory.startsWith(home) ? "~" + sdk.directory.slice(home.length) : sdk.directory
   })
   const layout = useLayout()
-  // Reader takes the composer off screen entirely, so this slims what remains
-  // for the frame in which it is still painted. All other dock chrome
+  // Reader keeps only a slim composer on screen when summoned. All other dock chrome
   // (model/agent/variant selectors, the bottom status/action row, the permission
   // auto-accept toggle) is gated behind !reader().
   const reader = () => layout.reader.opened()
@@ -147,7 +145,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const providers = useProviders()
   const command = useCommand()
   const permission = usePermission()
-  const question = useQuestion()
   const language = useLanguage()
   const settings = useSettings()
   let editorRef!: HTMLDivElement
@@ -350,11 +347,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [composing, setComposing] = createSignal(false)
   const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
-
-  // Whole-dock collapse: one toggle hides the entire usage + action-bar strip
-  // (its contents render unchanged when shown). Reclaims vertical space on a
-  // crowded viewport without per-component logic.
-  const [dockHidden, setDockHidden] = createSignal(false)
 
   const coarse = createCoarsePointer()
   onMount(() => {
@@ -1202,7 +1194,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       category: language.t("command.category.session"),
       keybind: "alt+/",
       onSelect: () => {
-        // preventScroll: auto-focus on session load must not scroll the
+        // preventScroll: a programmatic focus must not scroll the
         // contenteditable (bottom of the dock) into view and yank the message
         // list off its restored position.
         editorRef.focus({ preventScroll: true })
@@ -1234,6 +1226,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       title: language.t("command.prompt.focus"),
       description: language.t("command.prompt.focus.description"),
       category: language.t("command.category.session"),
+      // Programmatic only: the palette already lists prompt.focus under the
+      // same title. trigger() runs a disabled command; the palette hides it.
+      disabled: true,
       onSelect: () => {
         editorRef.focus({ preventScroll: true })
         // Placed with the focus as well as a frame later: a key typed in that
@@ -1431,7 +1426,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
-    // Ctrl+C clears the input, matching the TUI. A non-collapsed selection means
+    // Ctrl+C clears the input, matching OpenCode's terminal UI. A non-collapsed selection means
     // the user is copying, so let the browser handle it and clear nothing.
     if (ctrl && event.code === "KeyC") {
       if (overlayActive()) return
@@ -1475,7 +1470,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // is the next layer: once the overlay is gone the composer no longer holds
       // the caret, so the session's Escape command (disabled while the composer
       // is focused) takes over and stops the turn. This handler runs only while
-      // focused, so it owns the overlay-dismiss layer alone and never the abort.
+      // focused, so with no overlay to dismiss it aborts the turn itself.
       if (reader() && layout.reader.revealed()) {
         layout.reader.returnIfRevealed()
         return
@@ -1547,7 +1542,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     // A prompt queues behind a running turn, but shell takes the session's
     // in-flight handle exclusively and the server rejects it outright. Say so
-    // here and keep the draft, rather than losing it to a Session is busy error.
+    // here and keep the draft, before the server rejects it with a bare
+    // Session is busy error.
     if (mode === "shell" && busy().turn) {
       showToast({
         title: language.t("prompt.toast.shellBusy.title"),
@@ -1674,9 +1670,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         // from the first paint. Seeding after would lose the race it exists to win.
         sync.session.seed(made, sessionDirectory)
         // Creating a session is an explicit open — declare keep-warm intent up
-        // front (same client + directory used to create it). The organic turn
-        // about to run also sets it, but only on completion; arming here closes
-        // the gap so a concurrent client can't read it cold in between.
+        // front (same client + directory used to create it). The turn about to
+        // run arms it too, but only once the server has taken the prompt;
+        // arming here closes the gap so a concurrent client can't read it cold
+        // in between.
         void client.session.arm({ sessionID: made.id, directory: sessionDirectory })
         layout.reader.carry(made.id)
         navigate(`/${base64Encode(sessionDirectory)}/session/${made.id}`)
@@ -2959,44 +2956,27 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </div>
           <Show when={!reader()}>
-            <Show
-              when={!dockHidden()}
-              fallback={
-                <div class="border-t border-border-weak-base px-3 py-0.5 flex flex-row items-center justify-end">
-                  <Tooltip value={language.t("dock.show")} placement="top" gutter={8}>
-                    <IconButton
-                      icon="arrow-up"
-                      variant="ghost"
-                      class="size-(--control-height) p-0"
-                      onClick={() => setDockHidden(false)}
-                      aria-label={language.t("dock.show")}
-                    />
-                  </Tooltip>
-                </div>
-              }
+            {/* Chip row: on mobile the grabber collapses it with the info line
+              (hidden unless dockInfoOpen); desktop always shows it. The pt-2
+              keeps the chips off the divider. Statusline + PromptActionBar are
+              direct children (their inner wrappers are display:contents on
+              mobile) so every chip group spreads evenly across the width with
+              no left/right split. */}
+            <div
+              classList={{
+                "border-t border-border-weak-base px-3 flex flex-row flex-wrap items-center justify-between gap-1.5": true,
+                "hidden dock-wide:flex": !dockInfoOpen(),
+                "pt-2 pb-0 dock-wide:py-1": true,
+              }}
             >
-              {/* Chip row: on mobile the grabber collapses it with the info line
-                (hidden unless dockInfoOpen); desktop always shows it. The pt-2
-                keeps the chips off the divider. Statusline + PromptActionBar are
-                direct children (their inner wrappers are display:contents on
-                mobile) so every chip group spreads evenly across the width with
-                no left/right split. */}
-              <div
-                classList={{
-                  "border-t border-border-weak-base px-3 flex flex-row flex-wrap items-center justify-between gap-1.5": true,
-                  "hidden dock-wide:flex": !dockInfoOpen(),
-                  "pt-2 pb-0 dock-wide:py-1": true,
-                }}
-              >
-                {/* Statusline is runtime telemetry with nothing to show pre-turn;
-                  the action-bar chips (MCP latch especially) matter on a
-                  brand-new session, so only the left side gates on a session id. */}
-                <Show when={params.id}>
-                  <Statusline />
-                </Show>
-                <PromptActionBar />
-              </div>
-            </Show>
+              {/* Statusline is runtime telemetry with nothing to show pre-turn;
+                the action-bar chips (MCP latch especially) matter on a
+                brand-new session, so only the left side gates on a session id. */}
+              <Show when={params.id}>
+                <Statusline />
+              </Show>
+              <PromptActionBar />
+            </div>
           </Show>
         </form>
       </div>

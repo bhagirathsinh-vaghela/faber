@@ -111,12 +111,9 @@ if (root && viewport && softKeyboard) {
   }
 
   let raf = 0
-  // fit() runs every frame while settling. --keyboard-inset inherits from the
-  // root, so rewriting an unchanged value invalidates the whole document's style
-  // instead of costing nothing, and a redundant height write is what feeds
-  // WebKit's resize loop.
+  // fit() runs every frame while settling, and a redundant height write is what
+  // feeds WebKit's resize loop.
   let appliedHeight = -1
-  let appliedInset = -1
   const fit = () => {
     measure()
     // A 0 height would blank the app; the class-supplied h-dvh holds visibility
@@ -128,18 +125,9 @@ if (root && viewport && softKeyboard) {
       root.style.height = `${next}px`
     }
     root.toggleAttribute("data-keyboard", keyboard())
-    // Fixed-position elements resolve against the layout viewport, which iOS
-    // leaves full-height behind the keyboard, so anything anchored to the
-    // window bottom lands under it while the root stops at the keyboard's top
-    // edge. Publish the gap between the two so such an element can bridge it.
-    const inset = Math.max(0, full - next)
-    if (inset !== appliedInset) {
-      appliedInset = inset
-      document.documentElement.style.setProperty("--keyboard-inset", `${inset}px`)
-    }
     // Keyboard-only: iOS pans the document to reveal the caret and the reset
-    // undoes that pan. The document also scrolls legitimately now (the
-    // min-h-lvh range that collapses the URL bar), and the bar collapse fires
+    // undoes that pan. The document also scrolls legitimately (the extra
+    // document range that collapses the URL bar), and the bar collapse fires
     // this same settle loop through visualViewport scroll, so an
     // unconditional reset would re-expand the bar the moment it collapsed.
     if (keyboard() && (window.scrollX !== 0 || window.scrollY !== 0)) window.scrollTo(0, 0)

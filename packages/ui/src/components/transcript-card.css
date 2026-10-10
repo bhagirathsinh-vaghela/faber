@@ -185,7 +185,7 @@
     [data-slot="transcript-card-title"],
     [data-slot="transcript-card-block-number"],
     [data-slot="transcript-card-identity"] [data-slot="icon-svg"] {
-      color: var(--box-accent-claude);
+      color: var(--box-accent-thinking-line);
     }
   }
 

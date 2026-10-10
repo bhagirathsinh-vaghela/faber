@@ -118,9 +118,6 @@ export function SessionTurn(
     stepsExpanded?: boolean
     onStepsExpandedToggle?: () => void
     onJump?: () => void
-    // Discoverability of the sticky header's jump affordance; forwarded to
-    // Message ("hover" reveal-on-hover by default, "rest" for faint-at-rest).
-    jumpHint?: "rest" | "hover"
     footer?: (message: AssistantMessage) => JSX.Element
     classes?: {
       root?: string
@@ -459,12 +456,9 @@ export function SessionTurn(
     root.style.setProperty("--session-turn-sticky-height", `${next}px`)
   }
 
-  // Elapsed turn time, formatted to match luxon's narrow compact output the
-  // full pipeline (Interval -> toDuration -> normalize -> toHuman) produced
-  // before: "45s" at or under a minute, "3m, 20s" past it, the seconds part
-  // dropped when zero ("60m"). Runs once a second while a turn is live, so the
-  // luxon build and the dead zh-locale branch were per-tick waste for the en
-  // case; a couple of divisions replace them.
+  // Elapsed turn time in whole seconds: "45s" at or under a minute, "3m, 20s"
+  // past it, the seconds part dropped when zero ("60m"). Runs once a second
+  // while a turn is live, so it is plain arithmetic rather than a formatter.
   function duration() {
     const msg = message()
     if (!msg) return ""
@@ -634,13 +628,7 @@ export function SessionTurn(
                       <div data-slot="session-turn-sticky-fade" aria-hidden="true" />
                       {/* User Message */}
                       <div data-slot="session-turn-message-content" aria-live="off">
-                        <Message
-                          message={msg()}
-                          parts={stickyParts()}
-                          boxed
-                          onJump={props.onJump}
-                          jumpHint={props.jumpHint}
-                        />
+                        <Message message={msg()} parts={stickyParts()} boxed onJump={props.onJump} />
                       </div>
 
                       {/* Trigger (sticky) */}
@@ -661,6 +649,7 @@ export function SessionTurn(
                                   <For each={overlays()}>
                                     {(tint, index) => (
                                       <Spinner
+                                        class="spinner-tint-overlay"
                                         style={{
                                           position: "absolute",
                                           inset: 0,
@@ -743,11 +732,10 @@ export function SessionTurn(
                         </div>
                       </Show>
                     </div>
-                    {/* Response. The answer part has ONE lifelong mount point per
-                        turn, keyed by part.id, so a busy-rollup edge cannot remount
-                        it mid-stream. Which mount point is chosen by stepsExpanded
-                        (stable, user-driven) never by working() (flickers on
-                        subtree/job rollups). Expanded shows every step inline;
+                    {/* Response. The answer part's mount point is chosen by
+                        stepsExpanded (stable, user-driven), never by working()
+                        (flickers on subtree/job rollups), so a busy-rollup edge
+                        cannot remount it mid-stream. Expanded shows every step inline;
                         collapsed shows just the final text block as a peek. */}
                     <Show when={props.stepsExpanded && assistantMessages().length > 0}>
                       <div data-slot="session-turn-collapsible-content-inner">

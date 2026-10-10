@@ -32,10 +32,8 @@ import { HoverCard } from "@opencode-ai/ui/hover-card"
 import { MessageNav } from "@opencode-ai/ui/message-nav"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { ContextMenu } from "@opencode-ai/ui/context-menu"
-import { Collapsible } from "@opencode-ai/ui/collapsible"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { Spinner } from "@opencode-ai/ui/spinner"
-import { Dialog } from "@opencode-ai/ui/dialog"
 import { getFilename } from "@opencode-ai/util/path"
 import { Session, type Message, type TextPart, type UserMessage } from "@opencode-ai/sdk/v2/client"
 import { usePlatform } from "@/context/platform"
@@ -54,7 +52,7 @@ import { useProviders } from "@/hooks/use-providers"
 import { showToast, Toast, toaster } from "@opencode-ai/ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useRecent } from "@/context/recent"
-import { attention, busy as busyDot, flat, strongest } from "@/utils/attention"
+import { attention, flat, strongest } from "@/utils/attention"
 import { usePermission } from "@/context/permission"
 import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
@@ -124,7 +122,6 @@ export default function Layout(props: ParentProps) {
   const colorSchemeLabel = (scheme: ColorScheme) => language.t(colorSchemeKey[scheme])
 
   const [state, setState] = createStore({
-    busyWorkspaces: new Set<string>(),
     hoverSession: undefined as string | undefined,
     previewProject: undefined as string | undefined,
     scrollSessionKey: undefined as string | undefined,
@@ -135,16 +132,6 @@ export default function Layout(props: ParentProps) {
     active: "" as string,
     value: "",
   })
-  const setBusy = (directory: string, value: boolean) => {
-    const key = workspaceKey(directory)
-    setState("busyWorkspaces", (prev) => {
-      const next = new Set(prev)
-      if (value) next.add(key)
-      else next.delete(key)
-      return next
-    })
-  }
-  const isBusy = (directory: string) => state.busyWorkspaces.has(workspaceKey(directory))
   const editorRef = { current: undefined as HTMLInputElement | undefined }
 
   // On the collapsed rail the flyout panel is open when a project is previewed.
@@ -434,13 +421,11 @@ export default function Layout(props: ParentProps) {
 
     const unsub = globalSDK.event.listen((e) => {
       if (e.details?.type === "worktree.ready") {
-        setBusy(e.name, false)
         WorktreeState.ready(e.name)
         return
       }
 
       if (e.details?.type === "worktree.failed") {
-        setBusy(e.name, false)
         WorktreeState.failed(e.name, e.details.properties?.message ?? language.t("common.requestFailed"))
         return
       }
@@ -634,8 +619,6 @@ export default function Layout(props: ParentProps) {
     const previewed = id ? layout.projects.list().find((p) => p.worktree === id) : undefined
     return previewed ?? currentProject()
   })
-
-  const workspaceKey = (directory: string) => directory.replace(/[\\/]+$/, "")
 
   // Session lists re-derive on every session.updated (title, seen, summary and
   // other lifecycle fields; the per-step token/cache churn rides lean events
@@ -1133,14 +1116,14 @@ export default function Layout(props: ParentProps) {
         title: language.t("command.overview.attention"),
         category: language.t("command.category.session"),
         keybind: "ctrl+tab",
-        onSelect: () => dialog.show(() => <DialogOverview advance switcher />),
+        onSelect: (source) => dialog.show(() => <DialogOverview advance switcher={source === "keybind"} />),
       },
       {
         id: "overview.attention.reverse",
         title: language.t("command.overview.attention.reverse"),
         category: language.t("command.category.session"),
         keybind: "ctrl+shift+tab",
-        onSelect: () => dialog.show(() => <DialogOverview switcher />),
+        onSelect: (source) => dialog.show(() => <DialogOverview switcher={source === "keybind"} />),
       },
     )
 
@@ -1262,10 +1245,9 @@ export default function Layout(props: ParentProps) {
     onCleanup(() => window.removeEventListener(deepLinkEvent, handler as EventListener))
   })
 
-  // Label a project by the shortest meaningful path, mirroring the TUI's
-  // directory.ts: collapse a $HOME prefix to "~", otherwise show the absolute
-  // path. A user-set name still wins. Identity is the directory now, so the
-  // path is the natural label (not just the basename).
+  // A project is identified by its directory, so it is labelled by the whole
+  // path (a $HOME prefix collapsed to "~") rather than the basename, which two
+  // projects can share. A user-set name still wins.
   const shortPath = (directory: string) => {
     const home = globalSync.data.path.home
     if (home && (directory === home || directory.startsWith(home + "/"))) return "~" + directory.slice(home.length)
@@ -1332,248 +1314,6 @@ export default function Layout(props: ParentProps) {
   }
 
   const errorMessage = (err: unknown) => describeError(err, language.t("common.requestFailed"))
-
-  const deleteWorkspace = async (root: string, directory: string) => {
-    if (directory === root) return
-
-    setBusy(directory, true)
-
-    const result = await globalSDK.client.worktree
-      .remove({ directory: root, worktreeRemoveInput: { directory } })
-      .then((x) => x.data)
-      .catch((err) => {
-        showToast({
-          title: language.t("workspace.delete.failed.title"),
-          description: errorMessage(err),
-        })
-        return false
-      })
-
-    setBusy(directory, false)
-
-    if (!result) return
-
-    // The worktree directory is now gone, so unlink its sidebar entry and drop
-    // the client child store. Any session still live under it stops on its own;
-    // its instance auto-disposes once idle.
-    await layout.projects
-      .close(directory)
-      .then(() => globalSync.disposeChild(directory))
-      .catch((err) => {
-        showToast({
-          title: language.t("project.close.failed.title"),
-          description: errorMessage(err),
-        })
-      })
-    layout.projects.open(root)
-
-    if (params.dir && decode64(params.dir) === directory) {
-      navigateToProject(root)
-    }
-  }
-
-  const resetWorkspace = async (root: string, directory: string) => {
-    if (directory === root) return
-    setBusy(directory, true)
-
-    const progress = showToast({
-      persistent: true,
-      title: language.t("workspace.resetting.title"),
-      description: language.t("workspace.resetting.description"),
-    })
-    const dismiss = () => toaster.dismiss(progress)
-
-    const sessions = await globalSDK.client.session
-      .list({ directory })
-      .then((x) => x.data ?? [])
-      .catch(() => [])
-
-    const result = await globalSDK.client.worktree
-      .reset({ directory: root, worktreeResetInput: { directory } })
-      .then((x) => x.data)
-      .catch((err) => {
-        showToast({
-          title: language.t("workspace.reset.failed.title"),
-          description: errorMessage(err),
-        })
-        return false
-      })
-
-    if (!result) {
-      setBusy(directory, false)
-      dismiss()
-      return
-    }
-
-    const archivedAt = Date.now()
-    await Promise.all(
-      sessions
-        .filter((session) => session.time.archived === undefined)
-        .map((session) =>
-          globalSDK.client.session
-            .update({
-              sessionID: session.id,
-              directory: session.directory,
-              time: { archived: archivedAt },
-            })
-            .catch(() => undefined),
-        ),
-    )
-
-    await globalSDK.client.instance.dispose({ directory }).catch(() => undefined)
-
-    setBusy(directory, false)
-    dismiss()
-
-    showToast({
-      title: language.t("workspace.reset.success.title"),
-      description: language.t("workspace.reset.success.description"),
-      actions: [
-        {
-          label: language.t("command.session.new"),
-          onClick: () => {
-            const href = `/${base64Encode(directory)}/session`
-            navigate(href)
-            layout.overlaySidebar.hide()
-          },
-        },
-        {
-          label: language.t("common.dismiss"),
-          onClick: "dismiss",
-        },
-      ],
-    })
-  }
-
-  function DialogDeleteWorkspace(props: { root: string; directory: string }) {
-    const name = createMemo(() => getFilename(props.directory))
-    const [data, setData] = createStore({
-      status: "loading" as "loading" | "ready" | "error",
-      dirty: false,
-    })
-
-    onMount(() => {
-      globalSDK.client.file
-        .status({ directory: props.directory })
-        .then((x) => {
-          const files = x.data ?? []
-          const dirty = files.length > 0
-          setData({ status: "ready", dirty })
-        })
-        .catch(() => {
-          setData({ status: "error", dirty: false })
-        })
-    })
-
-    const handleDelete = () => {
-      dialog.close()
-      void deleteWorkspace(props.root, props.directory)
-    }
-
-    const description = () => {
-      if (data.status === "loading") return language.t("workspace.status.checking")
-      if (data.status === "error") return language.t("workspace.status.error")
-      if (!data.dirty) return language.t("workspace.status.clean")
-      return language.t("workspace.status.dirty")
-    }
-
-    return (
-      <Dialog title={language.t("workspace.delete.title")} fit>
-        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
-          <div class="flex flex-col gap-1">
-            <span class="text-14-regular text-text-strong">
-              {language.t("workspace.delete.confirm", { name: name() })}
-            </span>
-            <span class="text-12-regular text-text-weak">{description()}</span>
-          </div>
-          <div class="flex justify-end gap-2">
-            <Button variant="ghost" size="large" onClick={() => dialog.close()}>
-              {language.t("common.cancel")}
-            </Button>
-            <Button variant="primary" size="large" disabled={data.status === "loading"} onClick={handleDelete}>
-              {language.t("workspace.delete.button")}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-    )
-  }
-
-  function DialogResetWorkspace(props: { root: string; directory: string }) {
-    const name = createMemo(() => getFilename(props.directory))
-    const [state, setState] = createStore({
-      status: "loading" as "loading" | "ready" | "error",
-      dirty: false,
-      sessions: [] as Session[],
-    })
-
-    const refresh = async () => {
-      const sessions = await globalSDK.client.session
-        .list({ directory: props.directory })
-        .then((x) => x.data ?? [])
-        .catch(() => [])
-      const active = sessions.filter((session) => session.time.archived === undefined)
-      setState({ sessions: active })
-    }
-
-    onMount(() => {
-      globalSDK.client.file
-        .status({ directory: props.directory })
-        .then((x) => {
-          const files = x.data ?? []
-          const dirty = files.length > 0
-          setState({ status: "ready", dirty })
-          void refresh()
-        })
-        .catch(() => {
-          setState({ status: "error", dirty: false })
-        })
-    })
-
-    const handleReset = () => {
-      dialog.close()
-      void resetWorkspace(props.root, props.directory)
-    }
-
-    const archivedCount = () => state.sessions.length
-
-    const description = () => {
-      if (state.status === "loading") return language.t("workspace.status.checking")
-      if (state.status === "error") return language.t("workspace.status.error")
-      if (!state.dirty) return language.t("workspace.status.clean")
-      return language.t("workspace.status.dirty")
-    }
-
-    const archivedLabel = () => {
-      const count = archivedCount()
-      if (count === 0) return language.t("workspace.reset.archived.none")
-      if (count === 1) return language.t("workspace.reset.archived.one")
-      return language.t("workspace.reset.archived.many", { count })
-    }
-
-    return (
-      <Dialog title={language.t("workspace.reset.title")} fit>
-        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
-          <div class="flex flex-col gap-1">
-            <span class="text-14-regular text-text-strong">
-              {language.t("workspace.reset.confirm", { name: name() })}
-            </span>
-            <span class="text-12-regular text-text-weak">
-              {description()} {archivedLabel()} {language.t("workspace.reset.note")}
-            </span>
-          </div>
-          <div class="flex justify-end gap-2">
-            <Button variant="ghost" size="large" onClick={() => dialog.close()}>
-              {language.t("common.cancel")}
-            </Button>
-            <Button variant="primary" size="large" disabled={state.status === "loading"} onClick={handleReset}>
-              {language.t("workspace.reset.button")}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-    )
-  }
 
   createEffect(
     on(
@@ -1959,48 +1699,6 @@ export default function Layout(props: ParentProps) {
             </DropdownMenu.Portal>
           </DropdownMenu>
         </div>
-      </div>
-    )
-  }
-
-  const NewSessionItem = (props: { slug: string; dense?: boolean }): JSX.Element => {
-    const sidebarMode = useSidebarMode()
-    const label = language.t("command.session.new")
-    const tooltip = () => sidebarMode.overlay || !sidebarExpanded()
-    const item = (
-      <A
-        href={`${props.slug}/session`}
-        end
-        class={`flex items-center justify-between gap-3 min-w-0 text-left w-full focus:outline-none ${props.dense ? "py-0.5" : "py-1"}`}
-        onClick={() => {
-          setState("hoverSession", undefined)
-          if (layout.sidebar.opened()) return
-          queueMicrotask(() => setState("previewProject", undefined))
-        }}
-      >
-        <div class="flex items-center gap-1 w-full">
-          <div class="shrink-0 size-6 flex items-center justify-center">
-            <Icon name="plus-small" size="small" class="text-icon-weak" />
-          </div>
-          <span class="text-14-regular text-text-strong grow-1 min-w-0 overflow-hidden text-ellipsis truncate">
-            {label}
-          </span>
-        </div>
-      </A>
-    )
-
-    return (
-      <div class="group/session relative w-full rounded-md cursor-default transition-colors pl-2 pr-3 hover:bg-surface-raised-base-hover [&:has(:focus-visible)]:bg-surface-raised-base-hover has-[.active]:bg-surface-base-active">
-        <Show
-          when={!tooltip()}
-          fallback={
-            <Tooltip placement={sidebarMode.overlay ? "bottom" : "right"} value={label} gutter={10}>
-              {item}
-            </Tooltip>
-          }
-        >
-          {item}
-        </Show>
       </div>
     )
   }

@@ -71,9 +71,9 @@ function archivedRow(session: Session): Item {
 
 // The overview freezes item ORDER at open so keyboard navigation can't land on
 // the wrong session when the server reorders the live list underneath. Content
-// (busy/unseen/countdown/title) stays live per row; only positions and section
-// membership are held. A row keeps its slot until the session leaves the recent
-// hub entirely. Reopening reseeds the order.
+// (busy/unseen/countdown/title) stays live per row; only positions are held. A
+// row keeps its slot until its session changes section or leaves the recent
+// hub. Reopening reseeds the order.
 //
 // Where an arrival lands depends on the direction, because the two sections are
 // read for different things. A row falling into Recent stopped working just now,
@@ -468,7 +468,7 @@ export function Overview(props: {
   // attention keybind. Holding Ctrl and tapping Tab advances the highlight
   // (Ctrl+Shift+Tab retreats); releasing Ctrl commits the highlighted session,
   // matching OS-style Alt+Tab. Cycling spans the whole list — it starts on the
-  // first attention session but flows into the recent sessions past the end.
+  // `initial` row but flows into the recent sessions past the end.
   // Opened any other way, releasing Ctrl does nothing — a stray modifier must
   // never navigate.
   let ref: ListRef | undefined
@@ -696,7 +696,7 @@ export function Overview(props: {
           // strand arrow-key navigation. Every row stays mounted here.
           // The `auto` in contain-intrinsic-size makes a row remember its measured
           // height, so scroll-into-view math doesn't drift off the estimate.
-          class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_36px] any-pointer-coarse:[&_[data-slot=list-item]]:[contain-intrinsic-size:auto_56px]"
+          class="flex-1 min-h-0 !px-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 [&_[data-slot=list-scroll]]:gap-10 [&_[data-slot=list-scroll]]:pb-6 [&_[data-slot=list-group]:last-child]:pb-0 [&_[data-slot=list-header]]:!bg-background-base [&_[data-slot=list-header]:after]:!bg-none [&_[data-slot=list-items]]:gap-1 [&_[data-slot=list-item]]:rounded-md [&_[data-slot=list-item]]:px-3 [&_[data-slot=list-item]]:py-2 [&_[data-slot=list-item]]:[content-visibility:auto] [&_[data-slot=list-item]]:[contain-intrinsic-size:auto_48px] any-pointer-coarse:[&_[data-slot=list-item]]:[contain-intrinsic-size:auto_56px]"
         >
           {(row) => <Row row={row} />}
         </List>

@@ -109,7 +109,8 @@ export const dict = {
   "command.prompt.clear.description": "Discard whatever is typed in the composer",
   "command.question.list": "Show pending questions",
   "command.question.list.description": "Expand the collapsed question panel",
-  "question.collapsed": "{{count}} question(s) pending",
+  "question.collapsed.one": "{{count}} question pending",
+  "question.collapsed.other": "{{count}} questions pending",
   "command.session.share": "Share session",
   "command.session.share.description": "Share this session and copy the URL to clipboard",
   "command.session.unshare": "Unshare session",
@@ -122,7 +123,7 @@ export const dict = {
 
   "actionbar.questions.tooltip": "Show pending questions",
 
-  "dock.hide": "Hide usage",
+
   "dock.show": "Show usage",
   "reader.enter": "Reader mode",
   "reader.exit": "Exit reader mode",
@@ -517,9 +518,9 @@ export const dict = {
   "notification.center.untitledSession": "Untitled session",
 
   "home.title": "Overview",
-  "home.recentProjects": "Recent projects",
+
   "home.recentSessions": "Recent sessions",
-  "home.empty.title": "No recent projects",
+
   "home.empty.description": "Get started by opening a local project",
   "home.attention": "Live sessions",
   "home.archivedSessions": "Archived sessions",
@@ -545,7 +546,8 @@ export const dict = {
   "session.stop": "Stop session (abort turn and ping)",
   "session.panel.reviewAndFiles": "Review and files",
   "session.review.filesChanged": "{{count}} Files Changed",
-  "session.revert.count": "{{count}} message reverted",
+  "session.revert.count.one": "{{count}} message reverted",
+  "session.revert.count.other": "{{count}} messages reverted",
   "session.revert.restore": "{{keybind}} or /redo to restore",
   "session.review.change.one": "Change",
   "session.review.change.other": "Changes",
@@ -557,7 +559,7 @@ export const dict = {
   "session.files.all": "All files",
   "session.files.binaryContent": "Binary file (content cannot be displayed)",
 
-  "session.messages.renderEarlier": "Render earlier messages",
+
   "session.messages.loadingEarlier": "Loading earlier messages...",
   "session.messages.loadEarlier": "Load earlier messages",
   "session.messages.loading": "Loading messages...",
@@ -581,19 +583,6 @@ export const dict = {
   "status.popover.tab.plugins": "Plugins",
   "status.popover.action.manageServers": "Manage servers",
 
-  "session.share.popover.title": "Publish on web",
-  "session.share.popover.description.shared":
-    "This session is public on the web. It is accessible to anyone with the link.",
-  "session.share.popover.description.unshared":
-    "Share session publicly on the web. It will be accessible to anyone with the link.",
-  "session.share.action.share": "Share",
-  "session.share.action.publish": "Publish",
-  "session.share.action.publishing": "Publishing...",
-  "session.share.action.unpublish": "Unpublish",
-  "session.share.action.unpublishing": "Unpublishing...",
-  "session.share.action.view": "View",
-  "session.share.copy.copied": "Copied",
-  "session.share.copy.copyLink": "Copy link",
 
   "lsp.tooltip.none": "No LSP servers",
   "lsp.label.connected": "{{count}} LSP",
@@ -659,8 +648,7 @@ export const dict = {
   "settings.fonts.inlineCode": "Inline code",
   "settings.fonts.inheritsBody": "inherits Body",
   "settings.fonts.fromCodeTheme": "from code theme",
-  "settings.fonts.bodyWeight.title": "Body weight",
-  "settings.fonts.bodyWeight.description": "Thickness of normal body text",
+
   "settings.fonts.codeTheme.title": "Code block theme",
   "settings.fonts.codeTheme.description": "Syntax-highlighting theme for fenced code blocks",
   "settings.fonts.diffTheme.title": "Diff theme",
@@ -675,10 +663,7 @@ export const dict = {
   "settings.general.row.appearance.description": "Customise how Faber looks on your device",
   "settings.general.row.theme.title": "Theme",
   "settings.general.row.theme.description": "Customise how Faber is themed.",
-  "settings.general.row.font.title": "Font",
-  "settings.general.row.font.description": "Customise the mono font used in code blocks",
-  "settings.general.row.fontSize.title": "Font size",
-  "settings.general.row.fontSize.description": "Base text size for the chat and code blocks",
+
 
   "settings.general.row.releaseNotes.title": "Release notes",
   "settings.general.row.releaseNotes.description": "Show What's New popups after updates",
@@ -757,7 +742,7 @@ export const dict = {
 
   "settings.general.notifications.agent.title": "Agent",
   "settings.general.notifications.agent.description":
-    "Show system notification when the agent is complete or needs attention",
+    "Show system notification when the agent is complete",
   "settings.general.notifications.blocking.title": "Blocking prompts",
   "settings.general.notifications.blocking.description":
     "Show system notification when a permission or question is blocking the agent",
@@ -765,7 +750,7 @@ export const dict = {
   "settings.general.notifications.errors.description": "Show system notification when an error occurs",
 
   "settings.general.sounds.agent.title": "Agent",
-  "settings.general.sounds.agent.description": "Play sound when the agent is complete or needs attention",
+  "settings.general.sounds.agent.description": "Play sound when the agent is complete",
   "settings.general.sounds.blocking.title": "Blocking prompts",
   "settings.general.sounds.blocking.description": "Play sound when a permission or question is blocking the agent",
   "settings.general.sounds.errors.title": "Errors",

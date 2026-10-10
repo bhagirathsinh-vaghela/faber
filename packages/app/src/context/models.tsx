@@ -7,6 +7,7 @@ import { useProviders } from "@/hooks/use-providers"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { decode64 } from "@/utils/base64"
+import { batched } from "@/utils/batched"
 
 export type ModelKey = { providerID: string; modelID: string }
 
@@ -29,14 +30,13 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       return globalSync.data.model_preference
     })
 
-    const save = (next: Partial<ReturnType<typeof pref>>) => {
-      const current = pref()
+    // A visibility change and a recent push land in the same tick when a model
+    // is picked, each sending the whole preference document.
+    const save = batched(pref, (doc) => {
       globalSDK.client.preference.model
-        .set({
-          modelPreference: { user: current.user, recent: current.recent, ...next },
-        })
+        .set({ modelPreference: { user: doc.user, recent: doc.recent } })
         .catch(() => undefined)
-    }
+    })
 
     const available = createMemo(() =>
       providers.connected().flatMap((p) =>

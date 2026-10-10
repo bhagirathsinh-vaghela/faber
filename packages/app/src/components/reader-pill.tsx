@@ -61,9 +61,10 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
   // no mic is present (interactive). In a
   // reader session the mic replaces it, and the exit orb joins on top once the
   // non-sticky composer is up.
-  // Every orb is a transparent ghost ring; the glyph carries its own backing via
-  // an interior filled with the disc color (--orb-glyph-fill), so it floats over
-  // content without a solid disc covering it.
+  // Every orb is a transparent ghost ring. The book glyphs carry their own
+  // backing via an interior filled with the disc color (--orb-glyph-fill), so
+  // they float over content without a solid disc covering them; the mic fills
+  // solid in its own color.
   type Orb = { label: string; press: () => void; icon: JSX.Element; dictation?: boolean }
   const orbs = createMemo<Orb[]>(() => {
     if (!layout.reader.opened()) {

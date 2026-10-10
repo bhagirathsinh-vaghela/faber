@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 // A raw <button> that is control-shaped (a fixed square box holding an icon,
-// sized off --control-height or a `size-N`) steals focus when tapped next to a
+// sized off --control-height or --control-icon) steals focus when tapped next to a
 // focused editable, and on iOS that blur costs the first tap. The shared
 // Button/IconButton primitive cancels the focus shift; a raw one that cannot use
 // the primitive (an emoji glyph, a bespoke badge) must spread preserveFocus()

@@ -95,12 +95,9 @@ export interface TranscriptCardProps {
 // in the theme, so naming the family is enough for the base to reach all three.
 export type CardAccent = "user" | "assistant" | "subagent" | "job" | "thinking" | "tool"
 
-// Per-tool accent: a tool can name its own token, or fall back to its
-// family's. The family is the default so the transcript is scannable by
-// action type; a per-tool entry overrides it when a card needs to stand
-// out from its siblings.
+// Per-tool accent: the tool's family token, so the transcript is scannable by
+// action type.
 type ToolFamily = "readonly" | "write" | "execute" | "agent"
-const TOOL_ACCENTS: Record<string, string> = {}
 const TOOL_FAMILIES: Record<string, ToolFamily> = {
   read: "readonly",
   grep: "readonly",
@@ -131,8 +128,6 @@ const TOOL_FAMILIES: Record<string, ToolFamily> = {
 
 function toolAccent(tool?: string): string | undefined {
   if (!tool) return undefined
-  const direct = TOOL_ACCENTS[tool]
-  if (direct) return direct
   const family = TOOL_FAMILIES[tool]
   if (family) return `var(--box-accent-tool-${family})`
   return undefined
@@ -144,7 +139,7 @@ function accentTokens(accent: CardAccent, tone?: string, tool?: string) {
   const base = resolved ?? `var(--box-accent-${accent})`
   // A thinking card's border wears the Claude colour; its washes and fill are
   // the assistant card's (transcript-card.css colours the header labels).
-  const line = accent === "thinking" ? "var(--box-accent-claude)" : base
+  const line = accent === "thinking" ? "var(--box-accent-thinking-line)" : base
   return {
     "--box-accent-tool": base,
     "--box-border-tool": `color-mix(in srgb, ${line} 80%, var(--box-backdrop, #010409))`,

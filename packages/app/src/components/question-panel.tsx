@@ -30,7 +30,7 @@ import { showToast } from "@opencode-ai/ui/toast"
 // The question blocks server-side; the ping daemon keeps the cache warm, so the
 // web panel offers collapse (not defer). Collapse shrinks the floating panel to
 // a one-line bar near the dock without answering — the question stays pending.
-// A new question auto-expands. (Defer stays for the TUI, which cannot collapse.)
+// A new question opens expanded or collapsed per the box defaults.
 export function QuestionPanel(props: { onClose?: () => void }) {
   const command = useCommand()
   const language = useLanguage()
@@ -117,7 +117,9 @@ export function QuestionPanel(props: { onClose?: () => void }) {
           >
             <Icon name="help" class="text-text-weak" />
             <span class="text-13-regular text-text-base">
-              {language.t("question.collapsed", { count: question.total() })}
+              {language.t(question.total() === 1 ? "question.collapsed.one" : "question.collapsed.other", {
+                count: question.total(),
+              })}
             </span>
             <Show when={asked()}>
               <span class="ml-auto text-11-regular text-text-weak tabular-nums">{clock(asked()!)}</span>
@@ -134,7 +136,6 @@ export function QuestionPanel(props: { onClose?: () => void }) {
       >
         <Panel
           requests={question.requests()}
-          pendingIDs={question.pendingIDs()}
           asked={asked()}
           onCollapse={() => {
             question.collapse()
@@ -154,13 +155,7 @@ function clock(ms: number) {
   return new Date(ms).toLocaleTimeString(undefined, { timeStyle: "short" })
 }
 
-function Panel(props: {
-  requests: QuestionRequest[]
-  pendingIDs: Set<string>
-  asked?: number
-  onCollapse: () => void
-  onClose?: () => void
-}) {
+function Panel(props: { requests: QuestionRequest[]; asked?: number; onCollapse: () => void; onClose?: () => void }) {
   const sdk = useSDK()
   const local = useLocal()
   const language = useLanguage()
@@ -282,8 +277,6 @@ function Panel(props: {
     return store.answers[store.tab]?.includes(value) ?? false
   })
 
-  const isPending = (id: string) => props.pendingIDs.has(id)
-
   function resetForRequest() {
     setStore({ tab: 0, answers: [], custom: [], selected: 0, editing: false })
   }
@@ -315,14 +308,14 @@ function Panel(props: {
     const r = request()
     if (!r) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
-    if (isPending(r.id)) deliver(r.id, () => sdk.client.question.reply({ requestID: r.id, answers }))
+    deliver(r.id, () => sdk.client.question.reply({ requestID: r.id, answers }))
   }
 
   function reject() {
     if (isDoublePress()) return
     const r = request()
     if (!r) return
-    if (isPending(r.id)) deliver(r.id, () => sdk.client.question.reject({ requestID: r.id }))
+    deliver(r.id, () => sdk.client.question.reject({ requestID: r.id }))
   }
 
   function pick(answer: string, isCustom = false) {
@@ -338,7 +331,7 @@ function Panel(props: {
     if (single()) {
       const r = request()
       if (!r) return
-      if (isPending(r.id)) deliver(r.id, () => sdk.client.question.reply({ requestID: r.id, answers: [[answer]] }))
+      deliver(r.id, () => sdk.client.question.reply({ requestID: r.id, answers: [[answer]] }))
       return
     }
     setStore("tab", store.tab + 1)
@@ -436,9 +429,9 @@ function Panel(props: {
   // stopPropagation on the keys it consumes so the prompt's own handler never
   // fires — the question is answered before anything else can be typed. Keys it
   // does NOT consume fall through untouched, so unrelated global keybinds (reader,
-  // the palette) keep working while a question is up. The custom-answer textarea
-  // is the one exception: it keeps its own Enter/Escape handling, so yield while
-  // it has focus.
+  // the palette) keep working while a question is up. Any focused editable (the
+  // custom-answer textarea, the prompt, an input) keeps its own keys, so the
+  // handler yields while one has focus.
   function handleKey(event: KeyboardEvent) {
     if (store.editing) return
     // An overlay owns Enter, Escape and Space (accept, discard, pause) for as
@@ -620,7 +613,9 @@ function Panel(props: {
       >
         <Icon name="help" class="text-text-weak" />
         <span class="text-13-regular text-text-base">
-          {language.t("question.collapsed", { count: questionCount() })}
+          {language.t(questionCount() === 1 ? "question.collapsed.one" : "question.collapsed.other", {
+            count: questionCount(),
+          })}
         </span>
         <Show when={props.asked}>
           <span class="ml-auto text-11-regular text-text-weak tabular-nums">{clock(props.asked!)}</span>
@@ -664,10 +659,10 @@ function Panel(props: {
           </div>
         </Show>
 
-        {/* Question tabs + confirm (multi-question request). Left arrow keys /
-            Tab cycle tabs; the active tab gets a full cobalt border (a
-            left-only bar looks lopsided on a pill), and the ⇥ hint sits
-            top-left. */}
+        {/* Question tabs + confirm (multi-question request). Left/Right arrows
+            and Tab/Shift+Tab cycle tabs; the active tab gets a full border in
+            the agent accent (a left-only bar looks lopsided on a pill), and
+            the ⇥ hint sits top-left. */}
         <Show when={!single()}>
           <div class="flex flex-row flex-wrap items-center gap-1">
             <kbd class="text-11-regular text-text-weak mr-0.5">⇥</kbd>

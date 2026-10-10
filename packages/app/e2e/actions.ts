@@ -240,7 +240,7 @@ export async function openStatusPopover(page: Page) {
 
   const rightSection = page.locator(titlebarRightSelector)
   // Scoped to the bar rather than one mount: which section holds the indicator
-  // is a layout decision, and only one of the two branches is ever rendered.
+  // is a layout decision, and only one of the two branches is ever visible.
   const trigger = page
     .locator(titlebarSelector)
     .getByRole("button", { name: /status/i })

@@ -2,8 +2,8 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useNavigate, useParams } from "@solidjs/router"
 
-// The one Stop action, shared by every stop control (the prompt-input stop
-// button, the session header, the overview). Aborts the in-flight turn — which
+// The one Stop action, shared by every stop control (the session header, the
+// overview, the subagents dialog). Aborts the in-flight turn — which
 // server-side also tears down the session's ping daemon — and, only when the
 // stopped session is the one on screen, returns to the overview home.
 // Alt+Q and Ctrl+D both fire the stop action, wherever a stop control lives.

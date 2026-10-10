@@ -6,7 +6,6 @@ import type {
   SessionStatus,
   PermissionRequest,
   QuestionRequest,
-  QuestionAnswer,
 } from "@opencode-ai/sdk/v2"
 import { createSimpleContext } from "./helper"
 import { createMemo } from "solid-js"
@@ -50,10 +49,6 @@ export type PermissionRespondFn = (input: {
   response: "once" | "always" | "reject"
 }) => void
 
-export type QuestionReplyFn = (input: { requestID: string; answers: QuestionAnswer[] }) => void
-
-export type QuestionRejectFn = (input: { requestID: string }) => void
-
 export type NavigateToSessionFn = (sessionID: string) => void
 
 export type RevertMessageFn = (input: { sessionID: string; messageID: string }) => void
@@ -82,8 +77,6 @@ export const {
     data: Data
     directory: string
     onPermissionRespond?: PermissionRespondFn
-    onQuestionReply?: QuestionReplyFn
-    onQuestionReject?: QuestionRejectFn
     onNavigateToSession?: NavigateToSessionFn
     onRevertMessage?: RevertMessageFn
     onFetchMessageDiff?: FetchMessageDiffFn
@@ -127,8 +120,6 @@ export const {
         return numbers()[sessionID]?.get(id)
       },
       respondToPermission: props.onPermissionRespond,
-      replyToQuestion: props.onQuestionReply,
-      rejectQuestion: props.onQuestionReject,
       navigateToSession: props.onNavigateToSession,
       revertMessage: props.onRevertMessage,
       fetchMessageDiff: props.onFetchMessageDiff,

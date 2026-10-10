@@ -25,9 +25,9 @@ export function takesPaste(node: unknown): boolean {
 }
 
 // Snapshot the element that currently holds focus and return a function that
-// restores focus to it. Used by overlays that hide the focused element (reader,
-// the question panel, terminals) and by the dialog provider so focus returns to
-// where it was before the overlay/dialog opened, not to a fixed target.
+// restores focus to it. Used by the question panel and the dialog provider so
+// focus returns to where it was before the panel/dialog opened, not to a fixed
+// target.
 //
 // The snapshot skips body/null (no real element had focus). Restore defers one
 // frame — an overlay's chrome may only re-lay-out (and become focusable) after

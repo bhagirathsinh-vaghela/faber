@@ -50,14 +50,15 @@ export function Tooltip(props: TooltipProps) {
   const c = children(() => local.children)
 
   // Touch long-press support: mobile browsers have no hover, so a tooltip would
-  // otherwise never appear. We open it after a ~1500ms press (Material's value)
-  // and close it on the next touch anywhere. The timer is armed only on
-  // touchstart, so desktop hover is untouched. touchmove/touchend/touchcancel
-  // before the threshold cancel it (a scroll or quick tap is not a long-press).
+  // otherwise never appear. We open it after a ~1500ms press (a chosen value)
+  // and close it when the finger lifts (endPress) or on a touch elsewhere. The
+  // timer is armed only on touchstart, so desktop hover is untouched.
+  // touchmove/touchend/touchcancel before the threshold cancel it (a scroll or
+  // quick tap is not a long-press).
   //
-  // We deliberately DO NOT swallow the tap's click. Matching Material and native
-  // icon-button behavior, a tap always activates the button on the first try;
-  // long-press only reveals the tooltip. A held tap that crosses the threshold
+  // We deliberately DO NOT swallow the tap's click. Matching native icon-button
+  // behavior, a tap always activates the button on the first try; long-press
+  // only reveals the tooltip. A held tap that crosses the threshold
   // both shows the tooltip and (on release) fires the button — the accepted
   // trade for never eating a first tap.
   let pressTimer: ReturnType<typeof setTimeout> | undefined
@@ -74,9 +75,9 @@ export function Tooltip(props: TooltipProps) {
     }, 1500)
   }
   // On release (lift, slide-off, or cancel): drop the pending timer AND close an
-  // already-shown tooltip. Matching Material — the tooltip lives only while the
-  // finger is down. Without this, holding to show then lifting (or sliding the
-  // finger off the button) would leave the tooltip stuck open until a tap
+  // already-shown tooltip, so the tooltip lives only while the finger is down.
+  // Without this, holding to show then lifting (or sliding the finger off the
+  // button) would leave the tooltip stuck open until a tap
   // elsewhere. Sliding off before touchend fires no synthesized click, so the
   // button correctly does not activate — only the tooltip needs closing.
   const endPress = () => {

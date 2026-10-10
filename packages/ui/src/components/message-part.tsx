@@ -30,7 +30,7 @@ import {
 } from "@opencode-ai/sdk/v2"
 import { legacyInternal, typed } from "../util/internal"
 import { stripJobResult, stripSubagentMeta, stripSubagentResult } from "../util/envelope"
-import { jobAccent, jobLabel } from "../util/job-status"
+import { jobLabel } from "../util/job-status"
 import { LaunchCard } from "../util/launch-card"
 import { shown } from "../util/question"
 import { useData } from "../context"
@@ -40,7 +40,6 @@ import { useDialog } from "../context/dialog"
 import { Dialog } from "./dialog"
 import { useI18n } from "../context/i18n"
 import { TranscriptCard, type CardAccent } from "./transcript-card"
-import { Collapsible } from "./collapsible"
 import { Button } from "./button"
 import { Icon } from "./icon"
 import { IconButton } from "./icon-button"
@@ -53,7 +52,7 @@ import { getDirectory as _getDirectory, getFilename, truncateMiddle } from "@ope
 import { Tooltip } from "./tooltip"
 import { CopyButton } from "./copy-button"
 import { SpeakButton } from "./speak-button"
-import { createBoxOpen, useBoxDefaults } from "../context/box-defaults"
+import { useBoxDefaults } from "../context/box-defaults"
 import { messageTime } from "../util/time"
 
 interface Diagnostic {
@@ -108,9 +107,6 @@ export interface MessageProps {
   // When set, the box header's identity (◈ #N ROLE time) becomes a button that
   // scrolls this message into view. Used by the sticky user-message header.
   onJump?: () => void
-  // How discoverable the jump affordance is: "hover" (default) reveals the arrow
-  // only on hover; "rest" keeps it faintly visible at rest.
-  jumpHint?: "rest" | "hover"
 }
 
 export interface MessagePartProps {
@@ -326,16 +322,6 @@ function stripSubagentOutput(text: string): string {
   return stripSubagentMeta(cleaned)
 }
 
-// Ring-dot separator, same as the assistant footer chip line.
-function SubagentDot() {
-  return (
-    <span
-      class="mx-2 inline-block size-[4px] rounded-full border align-middle"
-      style={{ "border-color": "var(--text-weaker)" }}
-    />
-  )
-}
-
 function subagentDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
@@ -492,18 +478,15 @@ function statusTone(status: string): string | undefined {
 }
 
 // The scroll-to-this-message control the sticky header shows, or nothing when
-// the card is not in a jump context. Sibling of the trigger (never nested). The
-// `hint` drives the arrow's discoverability via data-jump-hint (see the
-// message-box-identity CSS): "hover" hides it until hover/focus, "rest" keeps it
-// faint; on a coarse pointer (hover: none) both reveal it persistently. Omitting
-// the hint is what made the arrow always-on — it MUST be set.
-function jumpAction(onJump?: () => void, hint: "rest" | "hover" = "hover"): JSX.Element | undefined {
+// the card is not in a jump context. Sibling of the trigger (never nested). It
+// takes no room until its identity cluster is hovered (see the
+// message-box-identity CSS).
+function jumpAction(onJump?: () => void): JSX.Element | undefined {
   if (!onJump) return undefined
   return (
     <span
       data-slot="message-box-identity"
       data-jump="true"
-      data-jump-hint={hint}
       role="button"
       tabindex={0}
       title="Scroll to this message"
@@ -543,7 +526,7 @@ function SubagentResultDisplay(props: { part: TextPart }) {
   return (
     <div data-component="subagent-result" data-scrollable>
       <Show when={excerpt().text}>
-        <Markdown text={excerpt().text} cacheKey={props.part.id} />
+        <Markdown text={excerpt().text} />
       </Show>
       <Show when={meta().sessionID}>
         <Button
@@ -641,7 +624,7 @@ function NoticeDisplay(props: { part: TextPart }) {
   return (
     <div data-component="notice-result">
       <div data-component="notice-body" data-scrollable>
-        <Markdown text={props.part.text} cacheKey={props.part.id} />
+        <Markdown text={props.part.text} />
       </div>
     </div>
   )
@@ -663,7 +646,7 @@ function CompactionDisplay(props: { part: CompactionPart }) {
   return (
     <div data-component="notice-result">
       <div data-component="notice-body" data-scrollable>
-        <Markdown text={text()} cacheKey={props.part.id} />
+        <Markdown text={text()} />
       </div>
     </div>
   )
@@ -689,7 +672,7 @@ function JobResultDisplay(props: { part: TextPart }) {
         {"$ " + meta().command}
       </div>
       <Show when={content().trim()}>
-        <Markdown text={content()} cacheKey={props.part.id} />
+        <Markdown text={content()} />
       </Show>
     </div>
   )
@@ -714,7 +697,7 @@ export function Message(props: MessageProps) {
               accent="subagent"
               tone={statusTone(part().backgroundSubagentResult!.status)}
               tool="subagent_result"
-              jump={jumpAction(props.onJump, props.jumpHint)}
+              jump={jumpAction(props.onJump)}
             >
               <SubagentResultDisplay part={part()} />
             </CardBox>
@@ -733,7 +716,7 @@ export function Message(props: MessageProps) {
               accent="job"
               tone={statusTone(part().backgroundJobResult!.status)}
               tool="job_result"
-              jump={jumpAction(props.onJump, props.jumpHint)}
+              jump={jumpAction(props.onJump)}
             >
               <JobResultDisplay part={part()} />
             </CardBox>
@@ -750,7 +733,7 @@ export function Message(props: MessageProps) {
               args={[noticeSummary(part().text)]}
               summaryOnly
               tool="system_notice"
-              jump={jumpAction(props.onJump, props.jumpHint)}
+              jump={jumpAction(props.onJump)}
             >
               <NoticeDisplay part={part()} />
             </CardBox>
@@ -764,9 +747,9 @@ export function Message(props: MessageProps) {
               message={props.message}
               icon="bell"
               title={i18n.t("ui.compaction.title")}
-              args={[i18n.t("ui.compaction.reason")]}
+              args={part().auto ? [i18n.t("ui.compaction.reason")] : undefined}
               tool="system_notice"
-              jump={jumpAction(props.onJump, props.jumpHint)}
+              jump={jumpAction(props.onJump)}
             >
               <CompactionDisplay part={part()} />
             </CardBox>
@@ -789,7 +772,7 @@ export function Message(props: MessageProps) {
               role="user"
               accent="user"
               raw
-              jump={jumpAction(props.onJump, props.jumpHint)}
+              jump={jumpAction(props.onJump)}
               revert={<RevertButton message={userMessage() as UserMessage} />}
               copy={() =>
                 (props.parts.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined)
@@ -990,7 +973,8 @@ export interface ToolProps {
   forceOpen?: boolean
   locked?: boolean
   // The box's sequential index, shown inline in the header row. Threaded to
-  // TranscriptCard via {...props} so every tool renderer carries it without change.
+  // TranscriptCard via {...props}, so every renderer that spreads its props into
+  // TranscriptCard carries it without change.
   blockNumber?: number
   // The box's timestamp (ms), threaded the same way so every tool card shows it
   // between the icon and title.
@@ -1036,23 +1020,34 @@ function genericArg(value: unknown) {
   return truncateMiddle(text.replace(/\s+/g, " ").trim(), GENERIC_ARG_MAX)
 }
 
+export function genericArgs(input: Record<string, unknown>) {
+  return Object.entries(input).flatMap(([key, value]) => {
+    const formatted = genericArg(value)
+    return formatted === undefined ? [] : [`${key}=${formatted}`]
+  })
+}
+
+// A CommonMark fence closes only on a run of backticks at least as long as its
+// opener (https://spec.commonmark.org/0.31.2/#fenced-code-blocks), so open with
+// one more than the longest run inside the text.
+export function fence(text: string, lang = "") {
+  const longest = Math.max(2, ...(text.match(/`+/g) ?? []).map((run) => run.length))
+  const ticks = "`".repeat(longest + 1)
+  return ticks + lang + "\n" + text + "\n" + ticks
+}
+
 // Fallback for every tool with no registered renderer — MCP and plugin tools.
 // Their names are opaque, so the call is unreadable without its arguments: all
 // of them go inline in the header, the full input and output into the body.
 // Box-typed as "mcp" rather than the tool id so one settings row governs the
 // collapse default for all of them instead of one row per discovered tool.
 function GenericTool(props: ToolProps) {
-  const args = createMemo(() =>
-    Object.entries(props.input).flatMap(([key, value]) => {
-      const formatted = genericArg(value)
-      return formatted ? [`${key}=${formatted}`] : []
-    }),
-  )
+  const args = createMemo(() => genericArgs(props.input))
 
   const body = createMemo(() => {
     const sections: string[] = []
-    if (Object.keys(props.input).length) sections.push("```json\n" + JSON.stringify(props.input, null, 2) + "\n```")
-    if (props.output) sections.push("```\n" + stripAnsi(props.output) + "\n```")
+    if (Object.keys(props.input).length) sections.push(fence(JSON.stringify(props.input, null, 2), "json"))
+    if (props.output) sections.push(fence(stripAnsi(props.output)))
     return sections.join("\n\n")
   })
 
@@ -1226,7 +1221,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
         copy={displayText}
         speak={() => (finished() ? { key: part.id, text: displayText() } : undefined)}
       >
-        <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
+        <StreamingMarkdown text={throttledText()} complete={!!part.time?.end} />
         <StepFooter message={props.message} footer={props.footer} />
       </CardBox>
     </Show>
@@ -1269,7 +1264,7 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
         copy={throttledText}
         speak={() => (finished() ? { key: part.id, text: text() } : undefined)}
       >
-        <StreamingMarkdown text={throttledText()} cacheKey={part.id} complete={!!part.time?.end} />
+        <StreamingMarkdown text={throttledText()} complete={!!part.time?.end} />
         <StepFooter message={props.message} footer={props.footer} />
       </CardBox>
     </Show>
@@ -1799,7 +1794,8 @@ ToolRegistry.register({
 
 interface ApplyPatchFile {
   filePath: string
-  targetPath: string
+  targetPath?: string
+  relativePath?: string
   type: "add" | "update" | "delete" | "move"
   diff: string
   before: string
@@ -1861,7 +1857,7 @@ ToolRegistry.register({
                           </span>
                         </Match>
                       </Switch>
-                      <span data-slot="apply-patch-file-path">{file.targetPath}</span>
+                      <span data-slot="apply-patch-file-path">{file.targetPath ?? file.relativePath}</span>
                       <Show when={file.type !== "delete"}>
                         <DiffChanges changes={{ additions: file.additions, deletions: file.deletions }} />
                       </Show>
@@ -1951,20 +1947,16 @@ ToolRegistry.register({
     const i18n = useI18n()
     const questions = createMemo(() => (props.input.questions ?? []) as QuestionInfo[])
     const answers = createMemo(() => (props.metadata.answers ?? []) as QuestionAnswer[])
-    const deferred = createMemo(() => props.metadata.deferred === true)
     const completed = createMemo(() => answers().length > 0)
 
-    const DEFERRED_ANSWER = "__deferred__"
     const format = (answer: QuestionAnswer | undefined) => {
       if (!answer?.length) return i18n.t("ui.question.answer.none")
-      if (answer.length === 1 && answer[0] === DEFERRED_ANSWER) return i18n.t("ui.question.answer.deferred")
       return answer.join(", ")
     }
 
     const subtitle = createMemo(() => {
       const count = questions().length
       if (count === 0) return ""
-      if (deferred()) return i18n.t("ui.question.subtitle.deferred")
       if (completed()) return i18n.t("ui.question.subtitle.answered", { count })
       return `${count} ${i18n.t(count > 1 ? "ui.common.question.other" : "ui.common.question.one")}`
     })
@@ -1986,7 +1978,6 @@ ToolRegistry.register({
                 const picked = createMemo(() => {
                   const a = answer()
                   if (!a?.length) return []
-                  if (a.length === 1 && a[0] === DEFERRED_ANSWER) return []
                   return a.map((label) => ({
                     label,
                     description: q.options.find((o) => o.label === label)?.description,

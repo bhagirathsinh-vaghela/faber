@@ -32,6 +32,11 @@ const MAX_AGE = 12 * 60 * 60 * 1000
 // pruning leaves it alone. Comfortably above the writer's 5s cadence.
 const STALE_AFTER = 30 * 1000
 
+// The writer skips a tail whose fingerprint has not changed, so the fingerprint
+// changes at least this often: an idle open session is rewritten often enough
+// to stay younger than STALE_AFTER and MAX_AGE.
+const REFRESH = 10 * 1000
+
 export type Snapshot = {
   version: number
   writtenAt: number
@@ -55,7 +60,7 @@ const key = (directory: string, sessionID: string) => `${directory}\n${sessionID
 const supported = typeof indexedDB !== "undefined"
 
 // Memoize the open so every caller shares one connection. Rejects are swallowed
-// by callers (get/put/remove each catch), so a blocked/failed open degrades to
+// by callers (read/write/prune each catch), so a blocked/failed open degrades to
 // "no snapshots" rather than throwing into boot.
 let db: Promise<IDBPDatabase<Schema>> | undefined
 function connect() {
@@ -130,13 +135,6 @@ export const Snapshot = {
     } catch {}
   },
 
-  async remove(directory: string, sessionID: string) {
-    if (!supported) return
-    try {
-      await connect().then((d) => d.delete("snapshot", key(directory, sessionID)))
-    } catch {}
-  },
-
   build(directory: string, session: Session, messages: Message[], parts: Record<string, Part[]>): Snapshot {
     const tail = messages.slice(-TAIL)
     // Store slices are SolidJS reactive proxies, which IndexedDB's structured
@@ -161,11 +159,17 @@ export const Snapshot = {
   // compare against the last one it wrote. A streaming turn mutates parts under a
   // stable message id, and a completing message mutates in place, so the newest
   // id alone would read unchanged for a whole turn.
-  fingerprint(messages: Message[], parts: Record<string, Part[]>) {
+  fingerprint(messages: Message[], parts: Record<string, Part[]>, now = Date.now()) {
     const last = messages[messages.length - 1]
     if (!last) return ""
     const time = last.time as { created: number; completed?: number }
-    return [last.id, messages.length, parts[last.id]?.length ?? 0, time.completed ?? time.created].join(":")
+    return [
+      last.id,
+      messages.length,
+      parts[last.id]?.length ?? 0,
+      time.completed ?? time.created,
+      Math.floor(now / REFRESH),
+    ].join(":")
   },
 
   // Drop every record outside `keep`. The caller's keep-set is the overview's

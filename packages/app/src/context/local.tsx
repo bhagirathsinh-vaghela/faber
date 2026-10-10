@@ -569,9 +569,6 @@ export const {
 
       return {
         favorite: createMemo(() => store.favorite),
-        isFavorite(name: string) {
-          return store.favorite.includes(name)
-        },
         toggleFavorite(name: string) {
           const exists = store.favorite.includes(name)
           persist(exists ? store.favorite.filter((x) => x !== name) : [name, ...store.favorite])
@@ -583,32 +580,35 @@ export const {
       // Per-surface VISIBLE field-id sets. Server seeds the
       // defaults when no config exists, so an empty initial store is just
       // the pre-load state. `surface()` picks which set the render sites read.
-      const [store, setStore] = createStore<{ desktop: string[]; mobile: string[] }>({ desktop: [], mobile: [] })
+      const [store, setStore] = createStore({ desktop: [] as string[], mobile: [] as string[], failed: false })
       const shell = useShell()
       // The two stored sets are a server schema (setDockConfig), so the size
       // class maps onto them rather than replacing them: anything with room for
       // more than one pane reads the roomier set.
       const surface = createMemo(() => (shell.wide() ? "desktop" : "mobile"))
 
-      sdk.client.app.dockConfig().then((res) => {
-        if (res.data) setStore(res.data)
-      })
+      // Without the stored sets every field would stay hidden, so a failed load
+      // shows them all until a dock.updated event delivers the real sets.
+      sdk.client.app
+        .dockConfig()
+        .then((res) => {
+          if (res.data) setStore(res.data)
+        })
+        .catch(() => setStore("failed", true))
 
       // Any client's toggle broadcasts dock.updated on the global stream, so
       // every other open client applies the change live without a reload.
       const unsub = globalSDK.event.on("global", (event) => {
         if (event.type !== "dock.updated") return
-        setStore(event.properties)
+        setStore({ ...event.properties, failed: false })
       })
       onCleanup(unsub)
 
       return {
         isDesktop: shell.wide,
-        // The active surface's visible set, as a memo for render gating.
-        visible: createMemo(() => store[surface()]),
         list: (s: "desktop" | "mobile") => store[s],
         isVisible(id: string) {
-          return store[surface()].includes(id)
+          return store.failed || store[surface()].includes(id)
         },
         // The titlebar renders BOTH rows and lets CSS hide one, so a row knows
         // which surface it is more precisely than `surface()` can: that memo
@@ -616,9 +616,11 @@ export const {
         // 840px `expanded` breakpoint. A tablet between the two would otherwise
         // show the mobile row while obeying the desktop set.
         isVisibleOn(s: "desktop" | "mobile", id: string) {
-          return store[s].includes(id)
+          return store.failed || store[s].includes(id)
         },
         toggle(s: "desktop" | "mobile", id: string) {
+          // Saving from the empty pre-load sets would overwrite the stored config.
+          if (store.failed) return
           const has = store[s].includes(id)
           setStore(s, has ? store[s].filter((x) => x !== id) : [...store[s], id])
           sdk.client.app.setDockConfig({ desktop: store.desktop, mobile: store.mobile })

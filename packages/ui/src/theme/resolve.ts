@@ -229,11 +229,6 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-agent-ask-base"] = interactive[8]
   tokens["icon-agent-build-base"] = isDark ? "#9d7cd8" : "#8445bc"
 
-  // Tool-call block box (one block, one box): a muted purple border + faintly
-  // tinted panel fill, matching the TUI's BlockTool. Colors can be tuned later.
-  tokens["box-tool-border"] = isDark ? "#4a3d63" : "#c9bce0"
-  tokens["box-tool-bg"] = isDark ? "#1a1622" : "#f6f3fb"
-
   tokens["icon-on-success-base"] = withAlpha(success[8], 0.9) as ColorValue
   tokens["icon-on-success-hover"] = withAlpha(success[9], 0.9) as ColorValue
   tokens["icon-on-success-selected"] = withAlpha(success[10], 0.9) as ColorValue

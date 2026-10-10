@@ -54,6 +54,14 @@
     opacity: 0.7;
   }
 
+  /* A busy turn's tint overlays (session-turn.tsx) cross-fade with an inline
+     dock-task-fade on the svg itself, which the rect rule above never reaches.
+     Rest them hidden so the base tint shows alone. */
+  .spinner-tint-overlay {
+    animation: none !important;
+    opacity: 0;
+  }
+
   /* The Tailwind `animate-pulse` utility (pulse-opacity) is used app-wide for
      loading skeletons and the dictation dot. Freeze it at a mid opacity so the
      element stays visible without pulsing. */
@@ -63,9 +71,9 @@
   }
 }
 
-/* When the tab is hidden the ticker context sets data-app-hidden on <html>.
-   Pause every running animation in place — spinners, the streaming/working
-   bars, the shimmer sweep, the cursor blink — so a backgrounded tab burns no
+/* When the tab is hidden the app's shared Visibility source sets data-app-hidden
+   on <html>. Pause every running animation in place — spinners, the
+   streaming/working bars, the shimmer sweep, the cursor blink — so a backgrounded tab burns no
    compositor or paint cycles. One blanket rule instead of re-listing every
    animated selector: animation-play-state only freezes what is already
    running, changes no layout, and resumes exactly where it paused when the

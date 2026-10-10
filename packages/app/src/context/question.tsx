@@ -8,7 +8,6 @@ import { useParams } from "@solidjs/router"
 // warm, so blocking is harmless — the web panel is collapsible instead of
 // deferrable. `collapsed` shrinks the floating panel to a one-line bar near
 // the dock without touching the server; the question stays live and pending.
-// (Defer still exists server-side for the TUI, which cannot collapse.)
 export const { use: useQuestion, provider: QuestionProvider } = createSimpleContext({
   name: "Question",
   init: () => {

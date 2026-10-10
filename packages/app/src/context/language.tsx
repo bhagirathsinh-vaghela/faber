@@ -21,7 +21,6 @@ export const { use: useLanguage, provider: LanguageProvider } = createSimpleCont
     })
 
     return {
-      ready: () => true,
       locale: () => "en" as Locale,
       t,
     }

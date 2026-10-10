@@ -10,7 +10,7 @@ export type UiI18n = {
   t: (key: UiI18nKey, params?: UiI18nParams) => string
 }
 
-export function resolveTemplate(text: string, params?: UiI18nParams) {
+function resolveTemplate(text: string, params?: UiI18nParams) {
   if (!params) return text
   return text.replace(/{{\s*([^}]+?)\s*}}/g, (_, rawKey) => {
     const key = String(rawKey)

@@ -1,10 +1,10 @@
 // Curated catalog of theme tokens exposed in the Customization settings pane,
 // grouped by the chat element they affect (not by internal token name). Each
 // entry maps a human label to the CSS custom property the chat UI actually
-// reads. `type` drives which editor renders; `shared` notes when a token also
-// styles another element so edits aren't surprising.
+// reads. Every entry is a color, edited with the color editor; `shared` notes
+// when a token also styles another element so edits aren't surprising.
 
-export type TokenType = "color" | "weight" | "size" | "family"
+export type TokenType = "color"
 
 export interface TokenEntry {
   token: string

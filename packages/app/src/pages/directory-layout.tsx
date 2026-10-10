@@ -8,7 +8,6 @@ import { QuestionProvider } from "@/context/question"
 
 import { DataProvider } from "@opencode-ai/ui/context"
 import { iife } from "@opencode-ai/util/iife"
-import type { QuestionAnswer } from "@opencode-ai/sdk/v2"
 import { decode64 } from "@/utils/base64"
 import { Snapshot } from "@/utils/snapshot"
 import { createSpeech } from "@/utils/speak"
@@ -79,8 +78,9 @@ export default function Layout(props: ParentProps) {
               // earlier background-and-survive happened to write.
               //
               // The write costs ~1ms for a 40-message tail, so the cadence is bound
-              // by the dirty check rather than the write: an idle session compares
-              // one string per tick and does nothing.
+              // by the dirty check rather than the write. The fingerprint also
+              // changes every Snapshot refresh interval, so an idle open session is
+              // rewritten that often and stays younger than the prune age.
               let written = ""
               const capture = async () => {
                 const id = location.pathname.match(/\/session\/([^/?#]+)/)?.[1]
@@ -110,11 +110,6 @@ export default function Layout(props: ParentProps) {
                 permissionID: string
                 response: "once" | "always" | "reject"
               }) => sdk.client.permission.respond(input)
-
-              const replyToQuestion = (input: { requestID: string; answers: QuestionAnswer[] }) =>
-                sdk.client.question.reply(input)
-
-              const rejectQuestion = (input: { requestID: string }) => sdk.client.question.reject(input)
 
               const navigateToSession = (sessionID: string) => {
                 navigate(`/${params.dir}/session/${sessionID}`)
@@ -156,8 +151,6 @@ export default function Layout(props: ParentProps) {
                   data={sync.data}
                   directory={directory()}
                   onPermissionRespond={respond}
-                  onQuestionReply={replyToQuestion}
-                  onQuestionReject={rejectQuestion}
                   onNavigateToSession={navigateToSession}
                   onRevertMessage={revertHost.revert}
                   onFetchMessageDiff={fetchMessageDiff}

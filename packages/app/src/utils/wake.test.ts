@@ -1,41 +1,5 @@
 import { describe, expect, test } from "bun:test"
-
-// Mirrors the reconnect loop's interruptible backoff in global-sdk. Held here
-// rather than exported from the context, which cannot be constructed without a
-// live server and a Solid owner.
-function createSleeper() {
-  let wake: { generation: number; resolve: () => void } | undefined
-  let generation = 0
-  let pendingWake = false
-
-  const nudge = () => {
-    if (!wake) {
-      pendingWake = true
-      return
-    }
-    wake.resolve()
-    wake = undefined
-  }
-
-  const sleep = (ms: number) => {
-    if (pendingWake) {
-      pendingWake = false
-      return Promise.resolve()
-    }
-    generation++
-    const mine = generation
-    return new Promise<void>((resolve) => {
-      wake = { generation: mine, resolve }
-      setTimeout(() => {
-        if (wake?.generation !== mine) return
-        wake = undefined
-        resolve()
-      }, ms)
-    })
-  }
-
-  return { nudge, sleep }
-}
+import { createSleeper } from "./wake"
 
 const elapsed = async (fn: () => Promise<void>) => {
   const start = Date.now()

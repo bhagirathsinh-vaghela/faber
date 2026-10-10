@@ -8,6 +8,7 @@ import { Visibility } from "@/utils/visibility"
 import { revalidate } from "@/utils/revalidate"
 import { shouldAbort } from "@/utils/hide-abort"
 import { createCoarsePointer } from "@/utils/mobile"
+import { createSleeper } from "@/utils/wake"
 import { HEARTBEAT_MS, IDLE_MS, RESUME_MS } from "@opencode-ai/util/stream"
 
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
@@ -105,7 +106,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     // Render-batching window: coalesce incoming events into one Solid flush per
     // FLUSH_MS instead of one per event (the server already coalesces text on the
-    // wire at ~80ms; this is the browser-side reactive pass). Leading-edge, so a
+    // wire, every 100ms by default via experimental.stream_flush_ms; this is the
+    // browser-side reactive pass). Leading-edge, so a
     // lone event still flushes within the window of the last one. 48ms (~3 frames)
     // cuts flushes ~3x on a fast stream vs the old 16ms with no perceptible lag,
     // now that collapse() concatenates additive deltas so a wider window can't
@@ -153,39 +155,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     // A device leaving a tunnel should reconnect on the signal that it left,
     // not on a timer that knows nothing about it — and that timer is longest
     // exactly when the outage was longest.
-    //
-    // A signal arriving while the loop is NOT sleeping is remembered rather than
-    // dropped, since the common ordering is an abort immediately followed by a
-    // nudge, which lands before the loop has reached its sleep. The sleeper is
-    // held with the generation that created it so a superseded timer firing late
-    // cannot release, or silently discard, a later sleep.
-    let wake: { generation: number; resolve: () => void } | undefined
-    let generation = 0
-    let pendingWake = false
-    const nudge = () => {
-      if (!wake) {
-        pendingWake = true
-        return
-      }
-      wake.resolve()
-      wake = undefined
-    }
-    const backoffSleep = (ms: number) => {
-      if (pendingWake) {
-        pendingWake = false
-        return Promise.resolve()
-      }
-      generation++
-      const mine = generation
-      return new Promise<void>((resolve) => {
-        wake = { generation: mine, resolve }
-        setTimeout(() => {
-          if (wake?.generation !== mine) return
-          wake = undefined
-          resolve()
-        }, ms)
-      })
-    }
+    const { nudge, sleep: backoffSleep } = createSleeper()
 
     createEffect(() => {
       if (shouldAbort(Visibility.hidden(), coarse())) attempt?.abort()
@@ -277,9 +247,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         try {
           // sseMaxRetryAttempts:1 disables the SDK's own retry loop, which
           // otherwise swallows a drop and sleeps 3-30s internally before
-          // retrying — the app's for-await never sees the error and this fast
-          // backoff never runs. Capping at one attempt surfaces the error out
-          // of the stream so THIS loop owns reconnection on its own fast clock.
+          // retrying, so this fast backoff never runs. With one attempt the SDK
+          // ends the stream after the first failure (it reports the error to
+          // onSseError and breaks; nothing is thrown into the for-await), so
+          // THIS loop owns reconnection on its own fast clock.
           const events = await eventSdk.global.event(
             { connectionID },
             {

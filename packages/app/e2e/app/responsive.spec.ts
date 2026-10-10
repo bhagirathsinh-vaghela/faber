@@ -666,8 +666,7 @@ test.describe("chrome geometry", () => {
   test("every titlebar control receives its own clicks", async ({ page, gotoSession }) => {
     await gotoSession()
 
-    // The centred search box is an absolutely-positioned overlay spanning the
-    // whole bar, so a stray pointer-events:auto on its wrapper silently
+    // An element positioned over the bar with pointer-events:auto silently
     // swallows clicks aimed at the buttons beneath it.
     for (const name of ["phone", "tabletPortrait", "desktop"] as const) {
       await page.setViewportSize(VIEWPORTS[name])

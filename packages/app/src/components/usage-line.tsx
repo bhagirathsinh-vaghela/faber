@@ -74,15 +74,14 @@ export function UsageLine(props: {
   // the action-bar chips (no separate flex box). Desktop keeps the flex row.
   flat?: boolean
 }) {
-  // Context fill color follows the same 75% threshold as utilizationColor:
-  // below 75% the start (green) token, at/above the end (red) token.
+  // Context fill color: below 75% the start (green) token, at/above the end
+  // (red) token.
   const contextFill = () => (props.stats.percentage >= 75 ? "usage-context-end" : "usage-context-start")
   const icon = (name: Parameters<typeof Icon>[0]["name"]) => <Icon name={name} class="size-4" />
 
   // Render-only show/hide: each chip is gated by the active surface's
-  // visible set. Group markers (turn / Σ) are NOT in the registry —
-  // a marker shows only when at least one chip in its group is visible
-  // (no orphan markers). Order is canonical (source order here), never stored.
+  // visible set, and a group renders only when at least one of its chips
+  // does. Order is canonical (source order here), never stored.
   const local = useLocal()
   const show = (id: string) => local.dock.isVisible(id)
   const anyTurn = () => show("cached") || show("cache-write") || show("next-turn")
@@ -117,7 +116,7 @@ export function UsageLine(props: {
             fillColor={contextFill()}
             onClick={props.onContextClick}
             aria-label={props.onContextClick ? "View context usage" : undefined}
-            tooltip={`Context window: ${tokens(props.stats.total)} of ${tokens(props.stats.limit)} used — how full the conversation is before older turns drop off.`}
+            tooltip={`Context window: ${tokens(props.stats.total)} of ${tokens(props.stats.limit)} used — how full the conversation is before it gets compacted.`}
           >
             {tokens(props.stats.total)}/{tokens(props.stats.limit)}
           </Chip>
@@ -150,7 +149,7 @@ export function UsageLine(props: {
             <Chip
               icon={icon("usage-next-turn")}
               accent="usage-next-turn"
-              tooltip="The context you carry into the next turn before new input — your starting cost for the next message."
+              tooltip="Output generated this turn — it joins the context the next turn sends."
             >
               {tokens(props.stats.nextTurn)}
             </Chip>
@@ -165,7 +164,7 @@ export function UsageLine(props: {
             <Chip
               icon={icon("usage-input")}
               accent="usage-totals"
-              tooltip="All tokens you've sent this session — your prompts plus the context fed each turn."
+              tooltip="Cache-weighted input this session — cache reads and writes counted at their price relative to fresh input."
             >
               {tokens(props.totals.input)}
             </Chip>

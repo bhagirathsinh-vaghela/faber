@@ -72,11 +72,8 @@ function remarkDirectiveContainerOnly(this: any) {
 // label, so remark-rehype emits real elements the CSS can style. An unknown
 // `:::name` is left untouched, which drops back to plain rendering rather than
 // leaking the raw fence. Written as a bare recursive walk to avoid pulling in
-// unist-util-visit for one traversal.
-//
-// A remark transform that renders the callout directives. Authored as
-// `:::name` with a body, and `check` also takes a directive label carrying the
-// question: `:::check[the question]`. remark-directive flags that label as the
+// unist-util-visit for one traversal. `check` also takes a directive label
+// carrying the question: `:::check[the question]`. remark-directive flags that label as the
 // directive's first child paragraph (`data.directiveLabel`), which becomes the
 // <summary> so the question shows while the answer (the body) folds. Every other
 // callout is an <aside> with the name tag prepended.
@@ -183,7 +180,8 @@ const calloutHandler: RemendHandler = {
 }
 
 // Split markdown into top-level blocks so settled blocks freeze and only the
-// growing tail re-parses (the O(message) to O(tail) streaming win). Blocks are
+// growing tail re-parses and re-renders. The lexing here still walks the whole
+// message each tick; the remark/rehype pass drops to the tail. Blocks are
 // marked's top-level tokens by raw text, EXCEPT a `:::name … :::` region is kept
 // as one block: a callout is not a marked token, so left alone its body would
 // split across several renders and lose the aside/details wrapper. Invariant:
@@ -204,12 +202,13 @@ export function splitBlocks(text: string): string[] {
 
 // A fenced code block: <div box><pre><code/></pre> + copy button. The body
 // streams plain, then Shiki-highlights once the block SETTLES — either the part
-// completed, or its source stopped growing for one debounce window. The clamp
-// upstream only ever hands a CLOSED fence to CodeBlock, so "source stopped
-// changing" means "this fence is done", even while later blocks keep streaming.
-// That colors each closed block as soon as it settles (responsive) instead of
-// waiting for the whole message, and the debounce caps it at one highlight per
-// settled block (re-highlighting every ~10Hz append is the O(n^2) trap we avoid;
+// completed, or its source stopped growing for one debounce window. While the
+// part streams, remend closes an open fence (completeTail), so a fence that is
+// still growing reaches CodeBlock too: a pause longer than the window
+// highlights it, and the next append re-highlights on the following pause.
+// That colors each block as soon as it settles (responsive) instead of waiting
+// for the whole message, and the debounce caps it at one highlight per pause
+// (re-highlighting every ~10Hz append is the O(n^2) trap we avoid;
 // the LRU cache in marked.tsx turns the final complete-time pass into a hit).
 const SETTLE_MS = 150
 function CodeBlock(props: { lang: string; source: string; labels: CopyLabels; theme: string; complete?: boolean }) {
@@ -240,8 +239,8 @@ function CodeBlock(props: { lang: string; source: string; labels: CopyLabels; th
     onCleanup(() => (live = false))
     highlightCode(raw, lang, theme)
       .then((html) => {
-        // Completion flips `complete` and releases the streaming-prefix clamp in
-        // the same tick, so SolidMarkdown is reconciling this fence's <code>
+        // Completion flips `complete` and drops remend's tail completion in the
+        // same tick, so SolidMarkdown is reconciling this fence's <code>
         // right now. Writing Shiki nodes into it synchronously races that
         // reconcile and can leave the block blank. Defer the swap to a microtask
         // so reconcile settles first, then re-read the LIVE node (not a captured
@@ -383,14 +382,13 @@ function components(labels: CopyLabels, theme: () => string, complete: () => boo
 export function Markdown(
   props: ComponentProps<"div"> & {
     text: string
-    cacheKey?: string
     class?: string
     classList?: Record<string, boolean>
     complete?: boolean
     block?: boolean
   },
 ) {
-  const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList", "complete", "block"])
+  const [local, others] = splitProps(props, ["text", "class", "classList", "complete", "block"])
   const i18n = useI18n()
   const theme = useCodeTheme()
   const [root, setRoot] = createSignal<HTMLDivElement>()
@@ -398,7 +396,7 @@ export function Markdown(
   // A caller that omits `complete` is rendering static, already-settled text
   // (a finished task result, a question label); only the two live-streaming
   // sites pass the real flag. Treat absence as complete so those static fences
-  // still highlight (and skip the streaming-prefix clamp).
+  // still highlight.
   const complete = () => local.complete ?? true
 
   // Tail completion and block splitting live in StreamingMarkdown, which feeds
@@ -466,7 +464,6 @@ export function Markdown(
     >
       <SolidMarkdown
         renderingStrategy="reconcile"
-        skipHtml
         remarkPlugins={[
           remarkGfm,
           [remarkMath, MATH_OPTIONS],
@@ -493,7 +490,6 @@ export function Markdown(
 export function StreamingMarkdown(
   props: ComponentProps<"div"> & {
     text: string
-    cacheKey?: string
     class?: string
     classList?: Record<string, boolean>
     complete?: boolean

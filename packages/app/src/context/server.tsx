@@ -198,9 +198,6 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       get version() {
         return state.version
       },
-      get host() {
-        return state.host
-      },
       get list() {
         return store.list
       },

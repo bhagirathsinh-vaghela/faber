@@ -76,6 +76,10 @@
   --color-text-weak: var(--text-weak);
   --color-text-weaker: var(--text-weaker);
   --color-text-strong: var(--text-strong);
+  --color-text-invert-base: var(--text-invert-base);
+  --color-text-invert-weak: var(--text-invert-weak);
+  --color-text-invert-weaker: var(--text-invert-weaker);
+  --color-text-invert-strong: var(--text-invert-strong);
   --color-text-interactive-base: var(--text-interactive-base);
   --color-text-on-brand-base: var(--text-on-brand-base);
   --color-text-on-interactive-base: var(--text-on-interactive-base);
@@ -214,7 +218,6 @@
   --color-markdown-text: var(--markdown-text);
   --color-markdown-link: var(--markdown-link);
   --color-markdown-link-text: var(--markdown-link-text);
-  --color-markdown-inline-code: var(--markdown-inline-code-color);
   --color-markdown-block-quote: var(--markdown-block-quote);
   --color-markdown-emph: var(--markdown-emph);
   --color-markdown-strong: var(--markdown-strong);

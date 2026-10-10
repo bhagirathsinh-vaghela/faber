@@ -13,7 +13,6 @@ const icons = {
   "bullet-list": `<path d="M9.58329 13.7497H17.0833M9.58329 6.24967H17.0833M6.24996 6.24967C6.24996 7.17015 5.50377 7.91634 4.58329 7.91634C3.66282 7.91634 2.91663 7.17015 2.91663 6.24967C2.91663 5.3292 3.66282 4.58301 4.58329 4.58301C5.50377 4.58301 6.24996 5.3292 6.24996 6.24967ZM6.24996 13.7497C6.24996 14.6701 5.50377 15.4163 4.58329 15.4163C3.66282 15.4163 2.91663 14.6701 2.91663 13.7497C2.91663 12.8292 3.66282 12.083 4.58329 12.083C5.50377 12.083 6.24996 12.8292 6.24996 13.7497Z" stroke="currentColor" stroke-linecap="square"/>`,
   "check-small": `<path d="M6.5 11.4412L8.97059 13.5L13.5 6.5" stroke="currentColor" stroke-linecap="square"/>`,
   "chevron-down": `<path d="M6.6665 8.33325L9.99984 11.6666L13.3332 8.33325" stroke="currentColor" stroke-linecap="square"/>`,
-  "chevron-up": `<path d="M6.6665 11.6666L9.99984 8.33325L13.3332 11.6666" stroke="currentColor" stroke-linecap="square"/>`,
   "chevron-right": `<path d="M8.33301 13.3327L11.6663 9.99935L8.33301 6.66602" stroke="currentColor" stroke-linecap="square"/>`,
   "chevron-grabber-vertical": `<path d="M6.66675 12.4998L10.0001 15.8332L13.3334 12.4998M6.66675 7.49984L10.0001 4.1665L13.3334 7.49984" stroke="currentColor" stroke-linecap="square"/>`,
   "chevron-grabber-inward": `<path d="M6.66675 4.1665L10.0001 7.49984L13.3334 4.1665M6.66675 15.8332L10.0001 12.4998L13.3334 15.8332" stroke="currentColor" stroke-linecap="square"/>`,
@@ -71,10 +70,8 @@ const icons = {
   "layout-right-partial": `<path d="M12.0827 2.91602L2.91602 2.91602L2.91602 17.0827L12.0827 17.0827L12.0827 2.91602Z" fill="currentColor" fill-opacity="40%" /><path d="M2.91602 2.91602L17.0827 2.91602L17.0827 17.0827L2.91602 17.0827M2.91602 2.91602L2.91602 17.0827M2.91602 2.91602L12.0827 2.91602L12.0827 17.0827L2.91602 17.0827" stroke="currentColor" stroke-linecap="square"/>`,
   "layout-right-full": `<path d="M12.0827 2.91602L2.91602 2.91602L2.91602 17.0827L12.0827 17.0827L12.0827 2.91602Z" fill="currentColor"/><path d="M2.91602 2.91602L17.0827 2.91602L17.0827 17.0827L2.91602 17.0827M2.91602 2.91602L2.91602 17.0827M2.91602 2.91602L12.0827 2.91602L12.0827 17.0827L2.91602 17.0827" stroke="currentColor" stroke-linecap="square"/>`,
   "square-arrow-top-right": `<path d="M7.91675 2.9165H2.91675V17.0832H17.0834V12.0832M12.0834 2.9165H17.0834V7.9165M9.58342 10.4165L16.6667 3.33317" stroke="currentColor" stroke-linecap="square"/>`,
-  sparkles: `<path d="M10 2.5L11.2 7.3L16 8.5L11.2 9.7L10 14.5L8.8 9.7L4 8.5L8.8 7.3L10 2.5Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/><path d="M15.5 13L15.9 14.6L17.5 15L15.9 15.4L15.5 17L15.1 15.4L13.5 15L15.1 14.6L15.5 13Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
   "house-mobile": `<path d="M2.5 8.5L10 2.5L17.5 8.5V17H12V12H8V17H2.5V8.5Z" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"/>`,
   "menu-mobile": `<path d="M3 5.5H17M3 10H17M3 14.5H17" stroke="currentColor" stroke-linecap="square"/>`,
-  "stop-mobile": `<rect x="5" y="5" width="10" height="10" rx="1.5" fill="currentColor"/>`,
   "speech-bubble": `<path d="M18.3334 10.0003C18.3334 5.57324 15.0927 2.91699 10.0001 2.91699C4.90749 2.91699 1.66675 5.57324 1.66675 10.0003C1.66675 11.1497 2.45578 13.1016 2.5771 13.3949C2.5878 13.4207 2.59839 13.4444 2.60802 13.4706C2.69194 13.6996 3.04282 14.9364 1.66675 16.7684C3.5186 17.6538 5.48526 16.1982 5.48526 16.1982C6.84592 16.9202 8.46491 17.0837 10.0001 17.0837C15.0927 17.0837 18.3334 14.4274 18.3334 10.0003Z" stroke="currentColor" stroke-linecap="square"/>`,
   comment: `<path d="M16.25 3.75H3.75V16.25L6.875 14.4643H16.25V3.75Z" stroke="currentColor" stroke-linecap="square"/>`,
   "folder-add-left": `<path d="M2.08333 9.58268V2.91602H8.33333L10 5.41602H17.9167V16.2493H8.75M3.75 12.0827V14.5827M3.75 14.5827V17.0827M3.75 14.5827H1.25M3.75 14.5827H6.25" stroke="currentColor" stroke-linecap="square"/>`,
@@ -127,8 +124,6 @@ const icons = {
   // Cache-write (written to cache): database cylinder (Lucide `database`). The
   // cost-bearing one. Scaled from Lucide's 24-grid to the 20 viewBox (×0.8333).
   "usage-cache-write": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></g>`,
-  // Totals (session sum): sigma.
-  "usage-totals": `<path d="M14.5833 4.16732V2.91732H5.41667L10 10.0007L5.41667 17.084H14.5833V15.834" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="round"/>`,
   // Cost (accumulated $): stacked coins (Lucide `coins`). Scaled ×0.8333.
   "usage-cost": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.744 17.736a6 6 0 1 1-7.48-7.48"/><path d="M15 6h1v4"/><path d="m6.134 14.768.866-.5 2 3.464"/><circle cx="16" cy="8" r="6"/></g>`,
   // Next-turn (output this turn): arrow rising up off a baseline = output out.
@@ -140,14 +135,8 @@ const icons = {
   "usage-input": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></g>`,
   // Session output (cumulative tokens received): arrow down (Lucide `arrow-down`). Scaled ×0.8333.
   "usage-output": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></g>`,
-  // Per-turn cluster marker (this turn's activity): pulse (Lucide `activity`),
-  // the live/current counterpart to the Σ totals marker. Scaled ×0.8333.
-  "usage-per-turn": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></g>`,
   // Home / hub (Lucide `house`). Scaled ×0.8333 into the 20px grid.
   house: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g>`,
-  // Clock (cache-expiry countdown; Lucide `clock`). Scaled ×0.8333. No
-  // stroke-width attr so the chip's CSS stroke-width wins (matches sibling icons).
-  clock: `<g transform="scale(0.8333)" stroke="currentColor" stroke-linecap="square" stroke-linejoin="round"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></g>`,
   // Dictation (Lucide `mic`). Scaled ×0.8333.
   mic: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></g>`,
   // Filled dictation mic: the capsule interior is filled in currentColor, so the
@@ -159,14 +148,11 @@ const icons = {
   monitor: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></g>`,
   "monitor-smartphone": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8"/><path d="M10 19v-3.96 3.15"/><path d="M7 19h5"/><rect width="6" height="10" x="16" y="12" rx="2"/></g>`,
   smartphone: `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></g>`,
-  "book-open": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></g>`,
   // Filled book variants for the reader ghost pill: the book body is filled with
   // --orb-glyph-fill (the disc color) so the glyph carries its own backing on a
   // transparent orb; the outline and inner mark stay stroked in currentColor.
   "book-open-filled": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" fill="var(--orb-glyph-fill, currentColor)"/><path d="M12 7v14"/></g>`,
   "book-check-filled": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" fill="var(--orb-glyph-fill, currentColor)"/><path d="m9 9.5 2 2 4-4"/></g>`,
-  "book-x": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="m14.5 7.5-5 5"/><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9.5 7.5 5 5"/></g>`,
-  "book-check": `<g transform="scale(0.8333)" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></g>`,
 }
 
 export interface IconProps extends ComponentProps<"svg"> {

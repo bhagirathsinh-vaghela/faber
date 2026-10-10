@@ -182,27 +182,33 @@ type ChildOptions = {
 
 const cmp = Identifier.compare
 
-// Mirror bash.ts's metadata cap: when appending streamed tool-output deltas the
-// client must apply the same 30KB display truncation the server does, so the
-// mid-stream store matches the capped full output the completion event ships.
-const MAX_TOOL_OUTPUT = 30_000
-const capOutput = (output: string) =>
-  output.length > MAX_TOOL_OUTPUT ? output.slice(0, MAX_TOOL_OUTPUT) + "\n\n..." : output
+// A full-snapshot text part shorter than what deltas already appended is behind
+// the stream (mid-stream timing or coalescer ordering); taking it would blank
+// the block for a frame until the next delta rebuilds it. The finished part is
+// the exception: completion trims trailing whitespace and the text.complete
+// plugin hook may rewrite it, so a shorter final text is the true one.
+export function behind(part: Part, held: Part) {
+  if (part.type !== "text" && part.type !== "reasoning") return false
+  if (held.type !== "text" && held.type !== "reasoning") return false
+  if (part.time?.end) return false
+  return part.text.length < held.text.length
+}
 
 // A summary diff payload carries no `before`/`after` bodies — those are
 // lazy-fetched per file by sync.session.diffFile. When a fresh summary arrives
 // mid-turn we must NOT drop bodies already fetched for open files, otherwise the
 // review accordion loses its rendered content and the rows remount (collapsing
-// what the user expanded). Carry any previously-fetched body forward onto the
-// matching new row before reconciling.
+// what the user expanded). Carry a previously-fetched body forward onto the
+// matching new row only while that row's summary is unchanged; a file edited
+// again mid-turn drops its body so the next open fetches the new one.
 export function mergeDiffBodies(prev: FileDiff[] | undefined, next: FileDiff[]): FileDiff[] {
   if (!prev?.length) return next
   const bodies = new Map(prev.map((d) => [d.file, d]))
   return next.map((d) => {
     const old = bodies.get(d.file)
-    if (old && typeof old.before === "string" && typeof old.after === "string")
-      return { ...d, before: old.before, after: old.after }
-    return d
+    if (!old || typeof old.before !== "string" || typeof old.after !== "string") return d
+    if (old.additions !== d.additions || old.deletions !== d.deletions || old.status !== d.status) return d
+    return { ...d, before: old.before, after: old.after }
   })
 }
 
@@ -786,8 +792,9 @@ function createGlobalSync() {
     return promise
   }
 
-  // Live root sessions from recent_hub. Children are resolved separately by
-  // childrenOf; recent_hub only carries roots (Session.touch skips parentID).
+  // Live root sessions from recent_hub. Children are added by buildInterestSet;
+  // recent_hub carries only root sessions (SessionRecent.touch is called for
+  // roots only).
   function liveSessions() {
     const live = new Set<string>()
     for (const entry of globalStore.recent_hub) {
@@ -811,8 +818,8 @@ function createGlobalSync() {
   // Per-connection event scoping. The set of sessions this client
   // wants message-level events for: the open session, live roots, and
   // one-level children of both (subagent children never appear in recent_hub,
-  // since Session.touch skips parentID, so interestSet resolves them from the
-  // per-directory session stores). The server drops every other session's
+  // since SessionRecent.touch is called for roots only, so interestSet resolves
+  // them from the per-directory session stores). The server drops every other session's
   // streaming firehose for this connection.
   const [openSession, rawSetOpenSession] = createSignal<string | undefined>()
   // The open session's directory — the subtree the busy reconcile tick heals.
@@ -1156,8 +1163,8 @@ function createGlobalSync() {
         break
       }
       case "session.cache-updated": {
-        // The lean per-step counterpart for the cache anchor (TUI-only fields).
-        // The web dock reads none of these, so applying them keeps the cached
+        // The lean per-step counterpart for the cache anchor. The web dock reads
+        // none of these fields, so applying them keeps the cached
         // record complete without driving any web render. No-op when absent, same
         // as totals.
         const props = event.properties
@@ -1231,9 +1238,9 @@ function createGlobalSync() {
         }
         const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
         if (result.found) {
-          // merge:true so the message node keeps its identity and only leaf
-          // fields (tokens, cost, time.completed, finish) update. A full replace
-          // gives the record a new reference, which remounts the reference-keyed
+          // reconcile, not a plain set, so the message node keeps its identity
+          // and only leaf fields (tokens, cost, time.completed, finish) update. A
+          // new reference would remount the reference-keyed
           // <For each={assistantMessages()}> — blanking the streaming card for a
           // frame at turn completion.
           setStore(
@@ -1275,19 +1282,11 @@ function createGlobalSync() {
       case "message.part.updated": {
         const part = event.properties.part
         const delta = event.properties.delta
-        // Deltas ride on text/reasoning parts (a blanked text field) and on tool
-        // parts (a blanked state.metadata.output, bash streaming its chunks). In
-        // both the server keeps the wire O(n) instead of O(n^2) and the client
-        // appends the delta to the field it holds.
+        // Deltas ride on text/reasoning parts (a blanked text field): the server
+        // keeps the wire O(n) instead of O(n^2) and the client appends the delta
+        // to the field it holds.
         const isText = part.type === "text" || part.type === "reasoning"
         const textDelta = delta !== undefined && isText ? delta : undefined
-        const toolDelta = delta !== undefined && part.type === "tool" ? delta : undefined
-        // Seed a tool part whose output the server blanked: the delta IS the
-        // output so far. Same 30KB display cap the server applies (bash.ts).
-        const seedTool = (p: typeof part) =>
-          toolDelta !== undefined && p.type === "tool" && p.state.status === "running"
-            ? { ...p, state: { ...p.state, metadata: { ...p.state.metadata, output: capOutput(toolDelta) } } }
-            : p
         const parts = store.part[part.messageID]
         if (!parts) {
           // Same guard as message.updated: a part for a message we don't hold is
@@ -1298,7 +1297,7 @@ function createGlobalSync() {
           const seed =
             textDelta !== undefined && (part.type === "text" || part.type === "reasoning")
               ? { ...part, text: textDelta }
-              : seedTool(part)
+              : part
           setStore("part", part.messageID, [seed])
           break
         }
@@ -1317,35 +1316,8 @@ function createGlobalSync() {
             )
             break
           }
-          if (toolDelta !== undefined) {
-            // Append to the output we hold, then re-cap. Keep the rest of the
-            // blanked part's state (title/status/input/time) off the wire copy
-            // so a mid-stream reconcile can't clobber running fields.
-            setStore(
-              "part",
-              part.messageID,
-              result.index,
-              produce((p) => {
-                if (p.type === "tool" && p.state.status === "running")
-                  p.state.metadata = {
-                    ...p.state.metadata,
-                    output: capOutput((p.state.metadata?.output ?? "") + toolDelta),
-                  }
-              }),
-            )
-            break
-          }
-          // Streamed text only ever grows. A full-snapshot part carrying text
-          // shorter than what deltas already appended is behind the stream
-          // (mid-stream timing or coalescer ordering); taking it would blank the
-          // block for a frame until the next delta rebuilds it. Keep the longer
-          // text, reconcile the rest of the fields.
           const held = parts[result.index]
-          if (
-            (part.type === "text" || part.type === "reasoning") &&
-            (held.type === "text" || held.type === "reasoning") &&
-            part.text.length < held.text.length
-          ) {
+          if (behind(part, held) && (held.type === "text" || held.type === "reasoning")) {
             setStore("part", part.messageID, result.index, reconcile({ ...part, text: held.text }, { merge: true }))
             break
           }
@@ -1358,7 +1330,7 @@ function createGlobalSync() {
         const inserted =
           textDelta !== undefined && (part.type === "text" || part.type === "reasoning")
             ? { ...part, text: textDelta }
-            : seedTool(part)
+            : part
         setStore(
           "part",
           part.messageID,

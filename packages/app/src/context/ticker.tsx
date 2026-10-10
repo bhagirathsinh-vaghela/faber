@@ -3,11 +3,10 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { Visibility } from "@/utils/visibility"
 
 // One app-global 1Hz clock, shared by every live countdown (statusline cache
-// ring, overview ping deadlines, working-turn elapsed). Before
-// this, each site ran its own setInterval seeded at its own mount time, so two
-// views of the same deadline could read `now` up to a second apart and show
-// different values — the session view and the overview visibly disagreed. One
-// interval means one `now`, so every consumer ticks in lockstep.
+// ring, overview ping deadlines, job elapsed times). An interval per site,
+// each seeded at its own mount time, would let two views of the same deadline
+// read `now` up to a second apart and show different values. One interval
+// means one `now`, so every consumer ticks in lockstep.
 //
 // While the tab is hidden the interval is cleared (no wakeups, no battery
 // burn); the shared Visibility source owns the listener and the data-app-hidden

@@ -5,49 +5,36 @@ import { Tooltip } from "./tooltip"
 // Chip inside is a segment (icon + value) carrying its own per-metric color.
 // Segments in a group are joined by straight vertical dividers; only the group
 // has rounded corners. A group with one segment is just a single rounded chip
-// (e.g. the context gauge chip). This restores the pre-chip
-// grouping (cache group, session group) that flat standalone chips lost.
+// (e.g. the context gauge chip).
 //
 // Token-driven (no hardcoded color): group surface from --color-surface-inset-base,
 // border from --color-border-weak-base. A segment's `accent` token colors BOTH
-// its icon and value (they match). The gauge `fill` is a separate, value-driven
-// background and is independent of the accent.
+// its icon and value (they match). The gauge `fill` draws a value-driven meter
+// bar under the value and is independent of the accent.
 
 export type ChipProps = {
   // Leading slot — typically the metric icon.
   icon?: JSX.Element
-  // Main content — label + value. Optional: an icon-only segment (e.g. the Σ
-  // cluster marker) omits it.
+  // Main content — label + value. Optional: an icon-only segment omits it.
   children?: JSX.Element
   // Raw theme token name (the runtime CSS var, NOT the --color- Tailwind alias)
-  // that colors the icon and (unless valueAccent overrides) the value, so they
-  // match by default. e.g. "usage-cached" → var(--usage-cached). Raw --<token>
+  // that colors the icon and the value, so they match. e.g. "usage-cached" →
+  // var(--usage-cached). Raw --<token>
   // because Tailwind v4 tree-shakes the --color-* aliases when only referenced
   // from inline styles; the theme loader always injects the raw var on :root.
   // Omit for the neutral text-strong color.
   accent?: string
-  // Colors ONLY the value, splitting it from the icon. Used by gauge chips: the
-  // icon keeps the utilization ramp (a danger cue) while the value goes neutral
-  // so it stays legible over the colored fill instead of merging into it.
-  // Defaults to `accent` when unset, so plain chips keep icon+value matching.
-  valueAccent?: string
   // When set, the chip is interactive (renders a <button>).
   onClick?: (e: MouseEvent) => void
-  // Badge variant: the segment fills with the accent mixed into the panel
-  // backdrop and gains an accent border (the .accent-box recipe), for a strong
-  // on/off state (e.g. MCP enabled) instead of accent-tinted text.
-  filled?: boolean
-  // Fraction 0..1 for "value out of a max" metrics (e.g. context). The
-  // segment background fills left-to-right to the fraction (the proven
-  // Copilot/LibreChat gauge), independent of `accent`. `fillColor` tints the
-  // fill; the rest is the inset track.
+  // Fraction 0..1 for "value out of a max" metrics (e.g. context). The meter
+  // bar under the value fills left-to-right to the fraction, independent of
+  // `accent`. `fillColor` tints the filled part; the rest is the track.
   fill?: number
   fillColor?: string
   class?: string
   title?: string
-  // Rich tooltip content (styled popover with keybind hint). When set, the chip
-  // wraps itself in <Tooltip>. The trigger wrapper uses display:contents so it
-  // does not break the ChipGroup divider/border-collapse layout.
+  // Rich tooltip content. When set, the chip wraps itself in <Tooltip>, whose
+  // inline-flex trigger becomes the ChipGroup segment and carries the divider.
   tooltip?: JSX.Element
   tooltipPlacement?: "top" | "bottom" | "left" | "right"
   // An interactive chip's value alone rarely names its action for a screen
@@ -70,9 +57,7 @@ export function Chip(props: ChipProps) {
     "icon",
     "children",
     "accent",
-    "valueAccent",
     "onClick",
-    "filled",
     "fill",
     "fillColor",
     "class",
@@ -81,25 +66,7 @@ export function Chip(props: ChipProps) {
     "tooltipPlacement",
   ])
 
-  // Filled variant mirrors the .accent-box recipe (message/tool boxes): the
-  // accent mixed opaquely into the near-black panel for the fill, the accent at
-  // full strength for the border. The 7% box mix is too faint at chip scale, so
-  // fill sits at 18%. Text stays neutral-strong (not inverted) to read over the
-  // dark tint, matching how the boxes keep light text on their green fill.
-  const filledBg = () =>
-    local.filled && local.accent
-      ? `color-mix(in srgb, var(--${local.accent}) 18%, var(--color-background-strong))`
-      : undefined
-  const filledBorder = () => (local.filled && local.accent ? `var(--${local.accent})` : undefined)
-  const iconTone = () => (local.accent ? `var(--${local.accent})` : "var(--color-text-strong)")
-  const valueTone = () =>
-    local.filled
-      ? "var(--color-text-strong)"
-      : local.valueAccent
-        ? `var(--${local.valueAccent})`
-        : local.accent
-          ? `var(--${local.accent})`
-          : "var(--color-text-strong)"
+  const tone = () => (local.accent ? `var(--${local.accent})` : "var(--color-text-strong)")
 
   // Utilization as a percentage 0..100, or undefined for non-gauge chips.
   const gaugePct = () => (local.fill === undefined ? undefined : Math.max(0, Math.min(1, local.fill)) * 100)
@@ -129,17 +96,14 @@ export function Chip(props: ChipProps) {
   }
 
   // Every chip stacks value above the bar (real on gauge chips, transparent on
-  // plain ones) so the layout — and thus the value baseline — is identical. A
-  // filled chip is never a gauge chip and its background makes the box edges
-  // visible, so the transparent spacer would push its value off-center; drop it
-  // there and center the value on the full chip height instead.
+  // plain ones) so the layout — and thus the value baseline — is identical.
   const value = () => (
     <Show when={local.children !== undefined}>
       <span class="inline-flex flex-col justify-center gap-0 leading-none">
-        <span data-slot="chip-content" class="leading-none" style={{ color: valueTone() }}>
+        <span data-slot="chip-content" class="leading-none" style={{ color: tone() }}>
           {local.children}
         </span>
-        <Show when={!local.filled}>{gaugeBar()}</Show>
+        {gaugeBar()}
       </span>
     </Show>
   )
@@ -150,7 +114,7 @@ export function Chip(props: ChipProps) {
         <span
           class="inline-flex size-3.5 shrink-0 items-center justify-center [&_[data-component=icon]]:!text-current [&_[data-component=icon]]:!size-full [&_[data-slot=icon-svg]]:!size-full [&_:is(path,circle,rect,line,ellipse,polyline,polygon)]:![stroke-width:2.6]"
           data-slot="chip-icon"
-          style={{ color: iconTone() }}
+          style={{ color: tone() }}
         >
           {local.icon}
         </span>
@@ -161,20 +125,11 @@ export function Chip(props: ChipProps) {
 
   const cls = `${seg} relative overflow-hidden ${local.class ?? ""}`
 
-  const filledStyle = () =>
-    local.filled
-      ? {
-          "background-color": filledBg(),
-          border: `1px solid ${filledBorder()}`,
-          "border-radius": "4px",
-        }
-      : {}
-
   const chip = (
     <Show
       when={local.onClick}
       fallback={
-        <span data-slot="chip" title={local.title} class={cls} style={filledStyle()} {...rest}>
+        <span data-slot="chip" title={local.title} class={cls} {...rest}>
           {content}
         </span>
       }
@@ -186,7 +141,6 @@ export function Chip(props: ChipProps) {
         title={local.title}
         onClick={local.onClick}
         class={`${cls} cursor-pointer hover:bg-surface-raised-base-hover`}
-        style={filledStyle()}
         {...rest}
       >
         {content}

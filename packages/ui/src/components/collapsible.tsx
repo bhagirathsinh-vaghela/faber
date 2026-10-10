@@ -7,7 +7,7 @@ export interface CollapsibleProps extends ParentProps<CollapsibleRootProps> {
   classList?: ComponentProps<"div">["classList"]
   variant?: "normal" | "ghost"
   // The root renders a div and forwards these to it, so a caller can style the
-  // box and hang data-attributes on it (e.g. a transcript card's accent-box tokens).
+  // box and hang data-attributes on it (e.g. a transcript card's box tokens).
   style?: ComponentProps<"div">["style"]
   [key: `data-${string}`]: string | undefined
 }

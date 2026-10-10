@@ -1,7 +1,8 @@
 // The single definition of the shell size classes: the storage key, the media
-// queries, and the classification. Consumed by two very different callers —
-// util/shell.ts (the reactive signal) and the app's generated pre-paint script
-// — so it must stay dependency-free and side-effect-free.
+// queries, and the classification. util/shell.ts (the reactive signal) imports
+// it; the app's hand-written pre-paint script (oc-theme-preload.js) cannot, so it
+// mirrors these values and a parity test in the app holds the two together. Keep
+// it dependency-free and side-effect-free.
 
 export type SizeClass = "compact" | "medium" | "expanded"
 

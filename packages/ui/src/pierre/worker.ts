@@ -12,7 +12,7 @@ export function workerFactory(): Worker {
 // diffTheme in via setDiffTheme once settings load.
 let theme = "github-dark"
 
-function createPool(lineDiffType: "none" | "word-alt") {
+function createPool(lineDiffType: "word-alt") {
   const pool = new WorkerPoolManager(
     {
       workerFactory,

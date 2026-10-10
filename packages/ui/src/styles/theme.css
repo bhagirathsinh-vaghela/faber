@@ -48,16 +48,15 @@
      token is NOT it, despite the name, since it resolves to a brown a shade
      off the subagent amber. */
   --box-accent-job: var(--box-accent-tool-execute, #f472b6);
-  /* The job's live INDICATOR (busy bar, spinner, overview dot) carries a gold
-     yellow instead of the box accent above: an indicator sits beside the amber
-     subagent indicator, where the gold reads as kin while staying a distinct,
-     brighter step, whereas the result BOX keeps the accent above. */
+  /* The job's live INDICATOR (busy bar, spinner, overview dot) has its own
+     token so a theme can tune it apart from the result BOX accent above; both
+     default to the same execute-family colour. */
   --box-indicator-job: var(--box-accent-tool-execute, #f472b6);
   --box-accent-tool: var(--ink-dark-11, #b1b7b7);
-  --box-accent-claude: #cb7153;
+  --box-accent-thinking-line: #cb7153;
   /* The thinking card is the assistant's own voice, so its fill and washes are
-     the assistant card's; only its border and header labels wear the Claude
-     colour (transcript-card). */
+     the assistant card's; only its border and header labels wear
+     --box-accent-thinking-line (transcript-card). */
   --box-accent-thinking: var(--box-accent-assistant);
 
   /* Tool-family accents: each action type carries its own colour so the

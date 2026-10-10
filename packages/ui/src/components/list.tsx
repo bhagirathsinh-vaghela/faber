@@ -81,7 +81,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     container.scrollTop = Math.max(0, Math.min(target, max))
   }
 
-  const { filter, grouped, flat, active, setActive, hovered, hover, unhover, onKeyDown, onInput, refetch } =
+  const { filter, grouped, flat, active, hovered, hover, unhover, onKeyDown, onInput, refetch } =
     useFilteredList<T>(props)
 
   // Rows arrive in chunks, because a list that runs to hundreds of rows (the
@@ -89,8 +89,9 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   // task and holds first paint for the whole thing. Only the RENDER is
   // deferred: flat() is complete from the first frame, so arrow keys, Enter
   // and the filter all address the full set while later rows are still
-  // pending. content-visibility already spares offscreen rows their layout,
-  // but not their construction, which is what this defers.
+  // pending. A caller that sets content-visibility on its rows (the overview)
+  // spares offscreen rows their layout, but not their construction, which is
+  // what this defers.
   // The opening task only has to fill the viewport, so it carries a smaller
   // first chunk than the idle passes that follow it: everything mounted in that
   // task is laid out before the list can paint, and rows past the fold cost the

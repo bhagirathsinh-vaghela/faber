@@ -9,9 +9,10 @@ import { OverlayPanel } from "./overlay-panel"
 // Live transcription HUD: a compact floating pill with a canvas waveform, in
 // the style of modern dictation apps. Text settles here, not in the host
 // input: Enter, the check button, or a tap outside accepts, while Escape and
-// the close button discard. All close the mic. If the host unmounts
-// mid-dictation there is nowhere to insert, so the transcript is stashed rather
-// than dropped. Portaled to body with a top z-index so no ancestor
+// the close button discard. All close the mic. Unmounting mid-dictation
+// (the host's mic toggle, or the host itself going away) settles the
+// transcript and still hands it to onAccept rather than dropping it.
+// Portaled to body with a top z-index so no ancestor
 // (overflow-clip forms, panels) can hide it.
 export function DictationOverlay(props: {
   dictation: ReturnType<typeof createDictation>
@@ -23,7 +24,6 @@ export function DictationOverlay(props: {
 }) {
   const language = useLanguage()
 
-  let panelRef: HTMLDivElement | undefined
   let transcriptScroll: HTMLDivElement | undefined
   const setTranscriptScroll = (el: HTMLDivElement) => (transcriptScroll = el)
   // Keep the newest words in view as they arrive: reading committed/interim here

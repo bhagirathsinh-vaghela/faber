@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs"
 import fs from "node:fs/promises"
 import net from "node:net"
 import os from "node:os"
@@ -55,6 +56,12 @@ const extraArgs = (() => {
 const [serverPort, webPort] = await Promise.all([freePort(), freePort()])
 
 const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-e2e-"))
+// Removed on every exit path (a failed seed, a throw, Ctrl-C), so runs do not
+// accumulate sandboxes. Bun runs "exit" handlers for process.exit and uncaught
+// throws; the signal handlers route SIGINT/SIGTERM through process.exit.
+process.on("exit", () => rmSync(sandbox, { recursive: true, force: true }))
+process.on("SIGINT", () => process.exit(130))
+process.on("SIGTERM", () => process.exit(143))
 
 const model = process.env.OPENCODE_E2E_MODEL ?? "anthropic/claude-haiku-4-5"
 
@@ -144,8 +151,6 @@ const result = await (async () => {
     // the port in lsof), and the promise stop returns never settles. The
     // process exits right after this block, so there is nothing to wait for.
     void server.stop(true)
-    // Remove the tmp sandbox so runs do not accumulate.
-    await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {})
   }
 })()
 

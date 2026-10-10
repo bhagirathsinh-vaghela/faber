@@ -41,9 +41,9 @@ function store(key: string, html: string) {
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!)
 }
 
-// Shared code highlighter used by both the marked path and the solid-markdown
-// renderer. `theme` is any Shiki bundled theme name (github-dark, dracula, …),
-// resolved by @pierre/diffs' bundled-theme fallback; defaults to "github-dark".
+// Code highlighter for the solid-markdown renderer's fenced blocks. `theme` is
+// any Shiki bundled theme name (github-dark, dracula, …), resolved by
+// @pierre/diffs' bundled-theme fallback; defaults to "github-dark".
 export async function highlightCode(code: string, lang: string, theme = "github-dark"): Promise<string> {
   const key = `${theme}\u0000${lang || "text"}\u0000${code}`
   const hit = cached(key)
@@ -59,14 +59,14 @@ export async function highlightCode(code: string, lang: string, theme = "github-
   return html
 }
 
-// Background + foreground of a Shiki bundled theme, used to style inline code so
-// it derives from the chosen code-block theme (github-dark -> GitHub's pill,
-// dracula -> Dracula's, ...). Returns undefined until the theme is loaded.
-export async function themeColors(theme = "github-dark"): Promise<{ bg: string; fg: string } | undefined> {
+// Background of a Shiki bundled theme, used to style inline code so it derives
+// from the chosen code-block theme (github-dark -> GitHub's pill, dracula ->
+// Dracula's, ...). Returns undefined until the theme is loaded.
+export async function themeColors(theme = "github-dark"): Promise<{ bg: string } | undefined> {
   const highlighter = await getSharedHighlighter({ themes: [theme], langs: [] })
   const resolved = highlighter.getTheme(theme)
-  if (!resolved?.bg || !resolved?.fg) return undefined
-  return { bg: resolved.bg, fg: resolved.fg }
+  if (!resolved?.bg) return undefined
+  return { bg: resolved.bg }
 }
 
 async function renderMathInText(text: string): Promise<string> {

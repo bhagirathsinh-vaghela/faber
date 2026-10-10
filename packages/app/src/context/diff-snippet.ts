@@ -25,8 +25,9 @@ function bounds(range: SelectedLineRange): Bounds {
   }
 
   // Endpoints on the same side bound that side's range directly. When the two
-  // endpoints straddle sides, each endpoint bounds its own side and the interior
-  // is filled from the hunk walk (any -/+ line between the endpoints is in view).
+  // endpoints straddle sides, each endpoint bounds its own side and the snippet
+  // slice fills the interior: within one hunk every line between the two hits
+  // is kept. Endpoints in different hunks keep only their own lines.
   if (startSide === endSide) {
     mark(lo, startSide)
     mark(hi, startSide)
@@ -55,8 +56,10 @@ export function diffSnippet(before: string, after: string, range: SelectedLineRa
     let oldNum = hunk.oldStart
     let newNum = hunk.newStart
     const hits: number[] = []
+    const at: { old: number; new: number }[] = []
 
     hunk.lines.forEach((line, i) => {
+      at.push({ old: oldNum, new: newNum })
       const prefix = line[0]
       const inOld = oldNum >= b.oldLo && oldNum <= b.oldHi
       const inNew = newNum >= b.newLo && newNum <= b.newHi
@@ -73,8 +76,10 @@ export function diffSnippet(before: string, after: string, range: SelectedLineRa
     if (hits.length === 0) continue
     const lo = Math.max(0, hits[0] - pad)
     const hi = Math.min(hunk.lines.length - 1, hits[hits.length - 1] + pad)
-    const header = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`
-    out.push(header, ...hunk.lines.slice(lo, hi + 1))
+    const slice = hunk.lines.slice(lo, hi + 1)
+    const olds = slice.filter((line) => line[0] === " " || line[0] === "-").length
+    const news = slice.filter((line) => line[0] === " " || line[0] === "+").length
+    out.push(`@@ -${at[lo].old},${olds} +${at[lo].new},${news} @@`, ...slice)
   }
 
   if (out.length === 0) return

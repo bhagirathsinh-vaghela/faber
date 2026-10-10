@@ -38,7 +38,7 @@ function index() {
 
 // A worker does not control the page that registered it, so the shell would
 // otherwise only be cached from the second visit on. Caching it at install time
-// is what lets a reload boot with no network — the recovery path that matters,
+// is what lets a reload boot without refetching the shell assets — the recovery path that matters,
 // since WebKit reports no chunk URL and cannot retry a poisoned import at all.
 //
 // Shell only, deliberately. The entry references ~31MB once fonts and syntax

@@ -16,7 +16,9 @@
           : "expanded"
   document.documentElement.dataset.sizeClass = sizeClass
 
-  var scheme = localStorage.getItem("opencode-color-scheme") || "system"
+  // The theme context starts on "dark" when nothing is stored; matching it here
+  // keeps a light-OS device from painting a light frame first.
+  var scheme = localStorage.getItem("opencode-color-scheme") || "dark"
   var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
   var mode = isDark ? "dark" : "light"
 

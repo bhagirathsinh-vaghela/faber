@@ -172,7 +172,7 @@ export const SessionReview = (props: SessionReviewProps) => {
   // The persisted open intent — pure client state, NEVER reconciled against the
   // diff list. This is the single source of truth for the toggle button, so a
   // mid-turn diff refetch cannot change what the button does.
-  const open = () => (controlled() ? props.open! : (store.open ?? fallback()))
+  const open = () => (controlled() ? props.open! : store.open)
   // Lazily reconcile against the live file list ONLY for the accordion's value
   // prop: Kobalte would otherwise carry a key for an unrendered file. The button
   // does not read this, so diff churn cannot desync the toggle.
@@ -190,8 +190,8 @@ export const SessionReview = (props: SessionReviewProps) => {
   // Kobalte reports the toggle relative to the rendered (filtered) set, so it
   // only ever knows about currently-live files. Merge that delta back into the
   // full persisted intent instead of overwriting it — otherwise a toggle would
-  // drop intent for any file not currently rendered (the strip, moved to write
-  // time). Keep intent for non-live files, then apply the rendered set verbatim.
+  // drop intent for any file not currently rendered. Keep intent for non-live
+  // files, then apply the rendered set verbatim.
   const handleChange = (next: string[]) => {
     const live = new Set(props.diffs.map((d) => d.file))
     const preserved = open().filter((file) => !live.has(file))

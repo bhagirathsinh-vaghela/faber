@@ -59,8 +59,8 @@ export type { BoxMode }
 
 // Per-box-type collapse defaults, keyed by tool/box name. Each mode flag is
 // `true` = collapsed by default, absent/`false` = expanded. Server-persisted
-// (mirrors AppearancePreference) so it syncs across clients, unlike the
-// localStorage Settings above.
+// (mirrors AppearancePreference), so every client of the server loads the same
+// defaults, unlike the localStorage Settings above.
 export type BoxDefaults = Record<string, { normal?: boolean; reader?: boolean }>
 
 // Both modes default every box to expanded; a saved value wins over this.
@@ -175,6 +175,14 @@ export interface UserTheme extends Appearance {
   baseId: string
 }
 
+// The stored theme under its new name: renaming must not copy the working
+// appearance (which belongs to the active theme) into it.
+export function renamed(list: UserTheme[], id: string, name: string): UserTheme | undefined {
+  const found = list.find((x) => x.id === id)
+  if (!found) return
+  return { ...structuredClone(unwrap(found)), name }
+}
+
 // True when an appearance carries any edit worth migrating into a named theme —
 // any per-mode override, or a font/size/weight differing from the default.
 function hasCustomizations(a: Appearance): boolean {
@@ -283,18 +291,21 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     const [workingName, setWorkingName] = createSignal<string | null>(null)
 
     // Per-box collapse defaults — server-persisted (mirrors appearance/themes),
-    // so ticks survive across clients. Edit-then-Save like appearance: checkbox
-    // clicks mutate the working `boxes` store only; `boxesSaved` is the last
-    // server snapshot; Save pushes, Discard reverts. This keeps the network PUT
-    // off the click path entirely.
+    // so every client loads the same ticks; no event pushes a save to clients
+    // already open. Edit-then-Save like appearance: checkbox clicks mutate the
+    // working `boxes` store only; `boxesSaved` is the last snapshot the server
+    // accepted; Save pushes, Discard reverts. This keeps the network PUT off the
+    // click path entirely.
     const [boxes, setBoxes] = createStore<BoxDefaults>({})
     const [boxesSaved, setBoxesSaved] = createSignal<BoxDefaults>({})
     const boxesDirty = createMemo(() => JSON.stringify(boxes) !== JSON.stringify(boxesSaved()))
     const discardBoxes = () => setBoxes(reconcile(structuredClone(boxesSaved())))
     const saveBoxes = () => {
       const snapshot = structuredClone(unwrap(boxes))
-      setBoxesSaved(snapshot)
-      return globalSDK.client.preference.boxes.set({ boxPreference: snapshot as any }).catch(() => undefined)
+      return globalSDK.client.preference.boxes
+        .set({ boxPreference: snapshot as any })
+        .then(() => setBoxesSaved(snapshot))
+        .catch(() => undefined)
     }
 
     const activeName = createMemo(() => {
@@ -399,15 +410,15 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     }
 
     const rename = (id: string, name: string) => {
-      const at = themes.findIndex((x) => x.id === id)
-      if (at === -1) return
-      setThemes(at, "name", name)
-      return push(snapshot(id, name))
+      const t = renamed(themes, id, name)
+      if (!t) return
+      upsertLocal(t)
+      return push(t)
     }
 
     const removeTheme = (id: string) => {
       setThemes((list) => list.filter((x) => x.id !== id))
-      if (activeThemeID() === id) setActiveThemeID(null)
+      if (activeThemeID() === id) selectBase(theme.themeId())
       return globalSDK.client.preference.theme.remove({ id }).catch(() => undefined)
     }
 
@@ -573,8 +584,6 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           deriveIfNeeded()
           setWork("headingWeight", level, value)
         },
-        // Weight capability of a font id — drives the weight picker's shape.
-        weights: (font: string) => fontWeights(font),
         dirty,
         discard,
       },

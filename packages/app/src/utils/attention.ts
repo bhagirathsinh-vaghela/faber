@@ -28,7 +28,7 @@ export function agentTint(agent: string | undefined, custom: string | undefined)
   return agentColor(agent, custom) || AGENT_FALLBACK
 }
 
-// The one precedence every dot obeys: the two states that need the user answer
+// The one precedence every dot obeys: the three states that need the user answer
 // first, then the two that only report what the session is doing. `custom` is
 // the agent's configured color, resolved by the caller from its own store.
 export function attention(input: AttentionInput, custom?: string): Attention | undefined {

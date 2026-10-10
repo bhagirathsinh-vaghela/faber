@@ -22,7 +22,7 @@ class DictationCapture extends AudioWorkletProcessor {
     if (!channel) return true
     // Fast path: the context is already at the wire rate, so no resampling is
     // needed and none is done — the browser's polyphase resampler produced
-    // these samples. This is what every shipped browser STT client relies on.
+    // these samples. Browser STT clients commonly rely on this.
     if (sampleRate === this.target) {
       this.buffer.push(channel.slice())
       this.length += channel.length
@@ -138,8 +138,8 @@ const [enhanced, setEnhancedSignal] = createSignal(
   })(),
 )
 
-// Whether the browser DSP chain is engaged. Reactive so the overlay's toggle
-// paints live; read by openMic at capture time so a flip lands on the next mic.
+// Whether the browser DSP chain is engaged. Reactive so the dock preferences
+// toggle paints live; read by openMic at capture time so a flip lands on the next mic.
 export const dictationEnhanced = enhanced
 
 export function setDictationEnhanced(next: boolean) {
@@ -163,7 +163,7 @@ function openMic() {
 
 // Builds the capture context at the target rate. Requesting the target rate
 // gets the browser's own polyphase resampler for the 48k->16k step (sinc
-// quality), which is what every shipped browser STT client relies on; the
+// quality), which browser STT clients commonly rely on; the
 // worklet only decimates if the browser ignored the request. Called in-gesture
 // so the resume() below lands inside the user-activation window iOS requires.
 async function acquire(target: number, mic: Promise<MediaStream>) {
@@ -187,7 +187,11 @@ async function acquire(target: number, mic: Promise<MediaStream>) {
     throw new Error(`AudioContext sample rate is ${context.sampleRate}, below the ${target} dictation needs`)
   }
   await resumed
-  await ready
+  await ready.catch((error) => {
+    for (const track of stream.getTracks()) track.stop()
+    context.close().catch(() => {})
+    throw error
+  })
   return { stream, context }
 }
 
@@ -254,7 +258,7 @@ const setActive = (next: (() => void) | undefined) => {
 // focused composer registers itself as the target; the prompt dock also
 // registers as the fallback, so the shortcut always has somewhere to land even
 // when nothing is focused. `dictationTarget()` resolves focused-over-fallback,
-// and each mic reads it to paint its focus ring.
+// and each mic reads it to pick its tint.
 type Target = { id: string; toggle: () => void }
 const [focused, setFocused] = createSignal<Target>()
 const [fallback, setFallback] = createSignal<Target>()
@@ -277,7 +281,8 @@ export function registerDictationTarget(target: Target, active: () => boolean, r
 }
 
 // Transcript accumulates in the store (finals append to committed, interims
-// replace) and is only handed to the host on an explicit accept; stop()
+// replace) and reaches the host through settle() (an accept, or the overlay
+// unmounting) or, after a dropped connection, through onRecovered; stop()
 // discards. The host renders committed/interim live and decides.
 export function createDictation(opts: {
   url: () => string
@@ -363,7 +368,8 @@ export function createDictation(opts: {
   }
 
   // Releases the microphone but leaves the socket open, since a batch engine
-  // sends nothing until the audio ends. Resolves when the server closes.
+  // sends nothing until the audio ends. Resolves on the final transcript, the
+  // socket closing, or the drain ceiling, whichever comes first.
   // Resolving transfers ownership of the transcript to the caller, so the
   // store is left empty for the next dictation. Concurrent callers (the
   // overlay's unmount and the host's own accept) share one promise, so the
@@ -383,7 +389,6 @@ export function createDictation(opts: {
     paused = false
     if (active === stop) setActive(undefined)
     setStore({ active: false, listening: false, paused: false, transcribing: true })
-    const asked = performance.now()
     const closeAudio = release(socket, context, stream, target)
     settling = new Promise<string>((resolve) => {
       let done = false
@@ -494,11 +499,16 @@ export function createDictation(opts: {
       for (const frame of pending) socket.send(frame)
       pending.length = 0
     }
-    // The wire rate is always asked of the server rather than assumed, so a
-    // model whose rate changed reaches every client through a reconnect. Capture
-    // waits on this, so there is no path where the browser guesses a rate.
+    // Capture starts at DEFAULT_RATE and is rebuilt if the server names another,
+    // so a model whose rate changed reaches every client through a reconnect.
+    // A socket that closes before naming a rate fails the start rather than
+    // leaving it waiting forever.
     let resolveRate: (rate: number) => void
-    const wireRate = new Promise<number>((resolve) => (resolveRate = resolve))
+    const wireRate = new Promise<number>((resolve, reject) => {
+      resolveRate = resolve
+      socket.addEventListener("close", () => reject(new Error("Dictation connection closed")), { once: true })
+    })
+    wireRate.catch(() => {})
     socket.onmessage = (event) => {
       const message = JSON.parse(String(event.data))
       if (message.type === "rate") {
@@ -536,7 +546,8 @@ export function createDictation(opts: {
       }
       // A network drop otherwise leaves the overlay rendering a live-looking
       // mic forever. Error before teardown: the host dismisses while the
-      // transcript is still in the store, so its unmount stash keeps the text.
+      // transcript is still in the store, so the overlay's unmount settle()
+      // hands the text to the host.
       opts.onError?.("Dictation connection closed")
       teardown()
     }
@@ -552,7 +563,9 @@ export function createDictation(opts: {
     let stream: MediaStream | undefined
     let context: AudioContext | undefined
     const dispose = () => {
-      abortStart = undefined
+      // A late dispose of an abandoned start must not clear the hook a newer
+      // start has installed.
+      if (abortStart === dispose) abortStart = undefined
       socket.onclose = null
       socket.close()
       // The mic may still be opening when the abort lands, so stop its tracks

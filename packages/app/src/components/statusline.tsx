@@ -47,7 +47,7 @@ export function Statusline() {
 
   // The dock mirrors the latest assistant message: same deriver as the
   // per-message footer (statsFromMessage), fed the last message instead of a
-  // specific one. Session totals/cost come from that message's snapshot.
+  // specific one. Session totals/cost come from the live session record.
   const lastMessage = createMemo(() => {
     const msgs = params.id ? sync.data.message[params.id] : undefined
     const last = msgs?.findLast((x) => {

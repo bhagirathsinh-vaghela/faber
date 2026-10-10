@@ -17,7 +17,6 @@ export const dict = {
 
   "ui.sessionTurn.steps.show": "Show steps",
   "ui.sessionTurn.steps.hide": "Hide steps",
-  "ui.sessionTurn.summary.response": "Response",
   "ui.sessionTurn.summary.changedFiles": "Changed files",
   "ui.sessionTurn.diff.showMore": "Show more changes ({{count}})",
 
@@ -40,8 +39,6 @@ export const dict = {
   "ui.messagePart.diagnostic.error": "Error",
   "ui.messagePart.title.edit": "Edit",
   "ui.messagePart.title.write": "Write",
-  "ui.messagePart.option.typeOwnAnswer": "Type your own answer",
-  "ui.messagePart.review.title": "Review your answers",
 
   "ui.list.loading": "Loading",
   "ui.list.empty": "No results",
@@ -51,7 +48,6 @@ export const dict = {
 
   "ui.messageNav.newMessage": "New message",
 
-  "ui.textField.copyToClipboard": "Copy to clipboard",
   "ui.textField.copyLink": "Copy link",
   "ui.textField.copied": "Copied",
 
@@ -92,20 +88,14 @@ export const dict = {
   "ui.common.question.one": "question",
   "ui.common.question.other": "questions",
 
-  "ui.common.add": "Add",
   "ui.common.cancel": "Cancel",
-  "ui.common.confirm": "Confirm",
   "ui.common.dismiss": "Dismiss",
   "ui.common.close": "Close",
-  "ui.common.next": "Next",
-  "ui.common.submit": "Submit",
 
   "ui.permission.deny": "Deny",
   "ui.permission.allowAlways": "Allow always",
   "ui.permission.allowOnce": "Allow once",
 
-  "ui.message.expand": "Expand message",
-  "ui.message.collapse": "Collapse message",
   "ui.message.copy": "Copy",
   "ui.message.copied": "Copied!",
   "ui.message.speak": "Read aloud",
@@ -124,10 +114,5 @@ export const dict = {
   "ui.patch.action.patched": "Patched",
 
   "ui.question.subtitle.answered": "{{count}} answered",
-  "ui.question.subtitle.deferred": "Deferred",
   "ui.question.answer.none": "(no answer)",
-  "ui.question.answer.deferred": "Deferred",
-  "ui.question.review.notAnswered": "(not answered)",
-  "ui.question.multiHint": "(select all that apply)",
-  "ui.question.custom.placeholder": "Type your answer...",
 }

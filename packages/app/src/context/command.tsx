@@ -340,13 +340,13 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
         run()
       }
 
-      if (palette().has(sig)) return fire(showPalette)
-
       const option = keymap().get(sig)
-      if (!option) return
       // An overlay owns the keyboard while it is up and answers only its own
-      // keys, so a keybind waits unless it is the one that dismisses the overlay.
-      if (overlayActive() && !option.overlay) return
+      // keys, so a keybind (the palette's included) waits unless it is the one
+      // that dismisses the overlay.
+      if (overlayActive() && !option?.overlay) return
+      if (palette().has(sig)) return fire(showPalette)
+      if (!option) return
       fire(() => option.onSelect?.("keybind"))
     }
 

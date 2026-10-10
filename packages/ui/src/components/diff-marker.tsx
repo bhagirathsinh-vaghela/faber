@@ -7,7 +7,8 @@ export type SelectionSide = "additions" | "deletions"
 // ../pierre. Pierre roots a diff at [data-diff] and a file at [data-file], and
 // renders each [data-code] as a gutter column and a content column side by side;
 // a row in either carries data-line-index, and split rows carry a "new,old"
-// pair. A version that changes any of these is a change to this file alone.
+// pair. A pierre version that changes any of these means updating this file and
+// the file-view lookups code.tsx keeps for itself.
 export const ROOT_SELECTOR = ":is([data-diff], [data-file])"
 const LINE_SELECTOR = "[data-line], [data-alt-line]"
 
