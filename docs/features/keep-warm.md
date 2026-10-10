@@ -84,7 +84,7 @@ On my own install, 2026-07-10 to 2026-10-10: after a pause of 5 to 60 minutes, *
 | September | 352 of 370 (95.1%)                        |
 | October   | 316 of 323 (97.8%)                        |
 
-Whether pings pay for themselves is not established. Pings are logged only since 2026-10-07; in that window they were about 18% of spend and roughly broke even, at each model's own read price, against the rewrites they prevented. Most turns that followed a ping (324 of 430) came within 5 minutes of the previous request, when the cache was still warm without it.
+What pings cost against the rewrites they prevent has not been measured; [When pings stop paying](#when-pings-stop-paying) gives the arithmetic.
 
 ## Configuration
 
