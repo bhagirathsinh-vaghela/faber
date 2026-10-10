@@ -2,7 +2,7 @@
 
 The supervisor is for running Faber from a phone or tablet: it lets you start, restart and stop the server from a browser page, with no SSH session to the machine it runs on. If you always have a terminal on that machine, `opencode serve` alone is enough.
 
-`opencode supervise` runs a small, separate process that owns the long-lived OpenCode server: it starts it, restarts it from a browser page with a health check, and stops it. Because the supervisor is its own process, killing or replacing the server never touches it. It is the fixed point that outlives every restart. Deciding which sessions to resume or pay after a restart is not the supervisor's job; the server does that from its own database (see [restart recovery](features/restart-recovery.md)).
+`opencode supervise` runs a small, separate process that owns the long-lived Faber server: it starts it, restarts it from a browser page with a health check, and stops it. Because the supervisor is its own process, killing or replacing the server never touches it. It is the fixed point that outlives every restart. Deciding which sessions to resume or pay after a restart is not the supervisor's job; the server does that from its own database (see [restart recovery](features/restart-recovery.md)).
 
 ## Running it
 

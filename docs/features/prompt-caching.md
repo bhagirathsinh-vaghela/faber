@@ -1,6 +1,6 @@
 # Prompt caching
 
-Faber keeps every byte in front of the conversation identical across turns, sessions, repositories, plan/build switches, keep-warm pings and compaction, so Anthropic's prompt cache keeps hitting. Across 176,856 Anthropic requests between July and October 2026, about 99% of input tokens (99.05%) were served from cache, measured as cache reads divided by uncached input plus cache reads plus cache writes. The first part of this work is upstream OpenCode [PR #14743](https://github.com/anomalyco/opencode/pull/14743).
+Faber keeps every byte in front of the conversation identical across turns, sessions, repositories, plan/build switches, keep-warm pings and compaction, so Anthropic's prompt cache keeps hitting. Across 176,856 Anthropic requests between July and October 2026, about 99% of input tokens (99.05%) were served from cache, measured as cache reads divided by uncached input plus cache reads plus cache writes. The first part of this work was contributed upstream.
 
 > **Provider scope.** Cache markers are placed only for Claude models, whether served by Anthropic or by another provider whose model id names Claude, such as Bedrock or OpenRouter (`ProviderTransform.message` in `provider/transform.ts`). The four breakpoints and the 5-minute and 1-hour lifetimes are Anthropic's. Providers with automatic prefix caching (OpenAI, Gemini) still benefit from the byte-stable prefix, but nothing on this page controls their cache.
 

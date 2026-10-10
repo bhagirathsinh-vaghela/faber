@@ -1,6 +1,6 @@
 # Features
 
-Everything Faber adds on top of upstream OpenCode, grouped by area. Each entry links to a page with how it works, configuration, and code pointers.
+Everything Faber adds on top of upstream, grouped by area. Each entry links to a page with how it works, configuration, and code pointers.
 
 > **Built on Anthropic.** Faber is developed and used daily with Anthropic models only. The caching, keep-warm and cost features are built around Anthropic's prompt cache (four breakpoints, 5-minute and 1-hour lifetimes, its cache prices). The principles apply to any provider with prefix caching; the mechanisms do not, and each page states its provider scope.
 

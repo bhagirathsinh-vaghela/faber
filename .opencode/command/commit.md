@@ -1,19 +1,16 @@
 ---
 description: git commit and push
-model: opencode/kimi-k2.5
 subagent: true
 ---
 
 commit and push
 
-make sure it includes a prefix like
+make sure it includes a conventional prefix, with a scope when the change sits
+in one area, like
+feat(app):
+fix(tool):
 docs:
-core:
-ci:
-ignore:
-wip:
-
-For anything in the packages/app use the ignore: prefix.
+chore:
 
 prefer to explain WHY something was done from an end user perspective instead of
 WHAT was done.

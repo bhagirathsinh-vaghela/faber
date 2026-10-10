@@ -6,7 +6,7 @@ Sessions, messages and parts live in one SQLite database in WAL mode instead of 
 
 ### One database
 
-`Db.open` opens `storage/storage.db` under the OpenCode data directory. One connection serves every table:
+`Db.open` opens `storage/storage.db` under the data directory. One connection serves every table:
 
 | Table     | Holds                                                                                                             |
 | --------- | ----------------------------------------------------------------------------------------------------------------- |

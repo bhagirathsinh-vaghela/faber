@@ -1,4 +1,4 @@
-# opencode agent guidelines
+# Server agent guidelines
 
 ## Test Commands
 

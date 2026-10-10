@@ -2,7 +2,7 @@
 
 Every shell command the model runs is a durable job. Faber writes a job record, spawns the command detached with its output going to a log file, and races the process against a 5-second grace window. A command that finishes inside the window returns inline like an ordinary tool call. One that runs longer hands back a job id and a log path, keeps running, and reports its result into the session when it ends, even if the server restarted in between. The model never has to guess how long a command will take.
 
-Stock OpenCode blocked the turn until the command exited or a 2-minute timeout killed it, which forced the model to predict runtime up front.
+Upstream blocked the turn until the command exited or a 2-minute timeout killed it, which forced the model to predict runtime up front.
 
 ## How it works
 

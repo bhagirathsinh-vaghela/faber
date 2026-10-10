@@ -26,10 +26,10 @@ An MCP tool counts as read-only only when its connected server advertises `annot
 
 `Session.plan` names the file `<created>-<slug>.md`:
 
-| Project        | Location                                   |
-| -------------- | ------------------------------------------ |
-| Git repository | `.opencode/plans/` under the worktree      |
-| No VCS         | `plans/` under the OpenCode data directory |
+| Project        | Location                              |
+| -------------- | ------------------------------------- |
+| Git repository | `.opencode/plans/` under the worktree |
+| No VCS         | `plans/` under the data directory     |
 
 The allowlist accepts `*.md` under either location, so a plan written before a repository was initialized is still editable.
 
