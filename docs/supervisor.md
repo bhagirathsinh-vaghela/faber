@@ -19,7 +19,7 @@ opencode supervise
 
 On start, the supervisor checks `GET /global/health` on the serve port. If nothing healthy answers, it boots the server itself, so a machine that just rebooted needs no browser round-trip. If a healthy server is already there (for example, the supervisor itself was restarted to pick up new supervisor code), it leaves that server running.
 
-The supervisor does not watch for a crash: if the server dies, it stays down until someone presses Start on the page. To have the server come back on its own after a crash or a reboot, run `opencode supervise` itself under launchd or systemd; each time the supervisor starts, it boots the server if nothing healthy answers.
+If the server it owns exits without being stopped (a crash, an out-of-memory kill), the supervisor starts it again through the same staged, health-checked restart. A server that exits unexpectedly more than three times within a minute is left down, with a log line saying so, rather than restarted in a loop; pressing Restart starts the count over. Stop never triggers a restart. A server the supervisor adopted at startup (one already healthy on the port) is not watched until the next restart takes ownership of it. To survive a reboot, run `opencode supervise` itself under launchd or systemd; each time it starts, it boots the server if nothing healthy answers.
 
 The server is launched from the same code as the supervisor: the compiled binary re-executes itself as `opencode serve --port <port> --hostname <host>`, and a source run replays its entry script through Bun. A running supervisor keeps executing the code it started with even after the binary on disk is replaced; restart the supervisor to pick up supervisor changes.
 
@@ -85,7 +85,7 @@ There is no reload button: session prompt state is pinned by content hash, so ne
 
 ## Why
 
-- **No SSH from a phone.** An outer process that owns the server lets it be restarted from a browser with no terminal, and killing the server never touches the supervisor (`supervise.ts` header).
+- **No SSH from a phone.** An outer process that owns the server lets it be restarted from a browser with no terminal, revives it after a crash, and killing the server never touches the supervisor (`supervise.ts` header).
 - **Stage before cutover.** A build that fails to boot is caught on the stage port while the live server keeps serving.
 - **Runs from the installed build.** The supervisor needs no repository checkout; it relaunches whatever binary or entry script started it.
 
@@ -96,7 +96,7 @@ There is no reload button: session prompt state is pinned by content hash, so ne
 
 ## Code
 
-- `packages/opencode/src/cli/cmd/supervise.ts`: `SuperviseCommand`, `restart`, `reapOrphan`, `waitOwned`, `launched`, `listeners`, `credentials`, `admitted`
+- `packages/opencode/src/cli/cmd/supervise.ts`: `SuperviseCommand`, `restart`, `reapOrphan`, `waitOwned`, `launched`, `listeners`, `credentials`, `admitted`, `watch`, `crashLoop`
 - `packages/opencode/src/cli/cmd/serve.ts`: `ServeCommand`, `OPENCODE_LIVE`
 - `packages/opencode/src/server/origin.ts`: `Origin.foreign`
 - `packages/opencode/src/server/server.ts`: basic auth middleware (`OPENCODE_SERVER_PASSWORD`)

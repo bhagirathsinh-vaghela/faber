@@ -81,5 +81,5 @@ Everything Faber adds on top of upstream OpenCode, grouped by area. Each entry l
 
 ## Reference
 
-- [Supervisor](docs/supervisor.md): start, restart and stop the server from a browser (for phones and tablets, no SSH), with a health-checked restart.
+- [Supervisor](docs/supervisor.md): start, restart and stop the server from a browser (for phones and tablets, no SSH), with a health-checked restart; a crashed server is started again.
 - [Speech sidecar](docs/speech-sidecar.md): the HTTP wire API a speech server implements for dictation and read-aloud.

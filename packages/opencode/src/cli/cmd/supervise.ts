@@ -47,6 +47,14 @@ export function launched(command: string, port: number) {
   return command.match(/\bserve --port (\d+)\b/)?.[1] === String(port)
 }
 
+// Whether a server that exited unexpectedly at `now` should be left down:
+// more than `limit` such exits inside `window` ms means it dies at boot, and
+// reviving it again would only loop.
+export function crashLoop(times: number[], now: number, limit = 3, window = 60_000) {
+  const recent = [...times.filter((at) => now - at <= window), now]
+  return { recent, stuck: recent.length > limit }
+}
+
 // stdout of a helper command, or "" when it fails. Bun.spawn throws
 // synchronously on a missing binary, before any promise exists to catch.
 export async function run(cmd: string[]) {
@@ -99,6 +107,17 @@ export const SuperviseCommand = cmd({
     // The supervisor OWNS the server it runs: it started it, holds the handle,
     // and kills it through the handle.
     let current: Subprocess | null = null
+    // Servers stopped on purpose, so their exit is not mistaken for a crash.
+    const deliberate = new WeakSet<Subprocess>()
+    let crashes: number[] = []
+
+    // Restart, stop and revive each replace `current`, so they run one at a time.
+    let queue: Promise<unknown> = Promise.resolve()
+    function serial<T>(work: () => Promise<T>) {
+      const next = queue.then(work)
+      queue = next.catch(() => undefined)
+      return next
+    }
 
     async function health(port: number) {
       return fetch(`http://${probe}:${port}/global/health`, {
@@ -111,6 +130,7 @@ export const SuperviseCommand = cmd({
 
     async function stop(proc: Subprocess | null) {
       if (!proc) return
+      deliberate.add(proc)
       proc.kill()
       await proc.exited
     }
@@ -208,6 +228,32 @@ export const SuperviseCommand = cmd({
       return spawn(serveArgs(port), { stdout: "inherit", stderr: "inherit", env })
     }
 
+    // A server that exits without the supervisor stopping it is started again,
+    // through the same staged, health-checked restart. A server that keeps dying
+    // at boot is left down rather than restarted in a loop.
+    function watch(proc: Subprocess) {
+      void proc.exited.then((code) => {
+        if (deliberate.has(proc) || current !== proc) return
+        return serial(async () => {
+          if (current !== proc) return
+          current = null
+          const loop = crashLoop(crashes, Date.now())
+          crashes = loop.recent
+          if (loop.stuck) {
+            console.log(`server exited (code ${code}) ${loop.recent.length} times within a minute; leaving it down`)
+            return
+          }
+          console.log(`server exited unexpectedly (code ${code}); restarting`)
+          const revived = await restart()
+          console.log(
+            revived.ok
+              ? `restarted server on :${PORT}`
+              : `failed to restart server: ${revived.step} — ${revived.detail}`,
+          )
+        })
+      })
+    }
+
     // The supervisor owns processes only. Which sessions to resume, deliver
     // into, or re-arm is decided by the server that holds the recovery lease,
     // from its own database.
@@ -233,6 +279,7 @@ export const SuperviseCommand = cmd({
       const cutover = await reapOrphan(PORT)
       if (cutover) return { ok: false, step: "cutover", detail: cutover }
       current = launch(PORT)
+      watch(current)
       const live = await waitOwned(current, PORT)
       if (!live) {
         await stop(current)
@@ -242,7 +289,7 @@ export const SuperviseCommand = cmd({
       return { ok: true, health: live }
     }
 
-    const page = `<!doctype html><html><head><meta charset="utf-8"><title>OpenCode Supervisor</title>
+    const page = `<!doctype html><html><head><meta charset="utf-8"><title>Faber Supervisor</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   :root { color-scheme: dark }
@@ -255,10 +302,10 @@ export const SuperviseCommand = cmd({
   pre { background:#1a1b26; padding:1rem; border-radius:8px; white-space:pre-wrap; word-break:break-word; min-height:3rem }
   .muted { color:#565f89 }
 </style></head><body>
-<h1>OpenCode Supervisor</h1>
+<h1>Faber Supervisor</h1>
 <p class="muted">supervisor :${SUPERVISOR_PORT} · opencode :${PORT} · stage :${ALT_PORT}</p>
 <p id="state" class="muted">checking…</p>
-<a id="open" target="_blank" rel="noopener"><button id="openbtn" disabled>Open OpenCode</button></a>
+<a id="open" target="_blank" rel="noopener"><button id="openbtn" disabled>Open Faber</button></a>
 <button id="primary" disabled>…</button>
 <button id="stop" class="danger" disabled>Stop</button>
 <pre id="out">ready.</pre>
@@ -343,11 +390,17 @@ export const SuperviseCommand = cmd({
           return Response.json({ port: PORT, owned: !!current, pid: current?.pid ?? null, health: await health(PORT) })
         if (req.method === "POST" && Origin.foreign(req))
           return new Response("cross-origin request refused", { status: 403 })
-        if (url.pathname === "/restart" && req.method === "POST") return Response.json(await restart())
+        if (url.pathname === "/restart" && req.method === "POST") {
+          // A restart asked for by hand starts the crash count over.
+          crashes = []
+          return Response.json(await serial(restart))
+        }
         if (url.pathname === "/stop" && req.method === "POST") {
-          await stop(current)
-          current = null
-          await reapOrphan(PORT)
+          await serial(async () => {
+            await stop(current)
+            current = null
+            await reapOrphan(PORT)
+          })
           return Response.json({ ok: true, health: await health(PORT) })
         }
         return new Response("not found", { status: 404 })
@@ -366,7 +419,7 @@ export const SuperviseCommand = cmd({
     // in-memory liveness) to replace it with an identical one. reapOrphan
     // inside restart() adopts that orphan on the next explicit /restart.
     if (!(await health(PORT))) {
-      const boot = await restart()
+      const boot = await serial(restart)
       console.log(boot.ok ? `started server on :${PORT}` : `failed to start server: ${boot.step} — ${boot.detail}`)
     }
 

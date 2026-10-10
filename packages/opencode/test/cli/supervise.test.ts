@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import { basicAuth } from "hono/basic-auth"
-import { admitted, credentials, launched, run } from "../../src/cli/cmd/supervise"
+import { admitted, crashLoop, credentials, launched, run } from "../../src/cli/cmd/supervise"
 
 describe("launched", () => {
   test("a compiled serve on the port is the supervisor's", () => {
@@ -80,5 +80,22 @@ describe("admitted", () => {
 
   test("with no password everything is admitted", () => {
     expect(admitted(request({}), undefined)).toBe(true)
+  })
+})
+
+describe("crashLoop", () => {
+  test("a first unexpected exit is revived", () => {
+    expect(crashLoop([], 100_000)).toEqual({ recent: [100_000], stuck: false })
+  })
+
+  test("a fourth exit within a minute leaves the server down", () => {
+    expect(crashLoop([50_000, 60_000, 70_000], 100_000)).toEqual({
+      recent: [50_000, 60_000, 70_000, 100_000],
+      stuck: true,
+    })
+  })
+
+  test("exits older than the window do not count", () => {
+    expect(crashLoop([10_000, 20_000, 30_000], 100_000)).toEqual({ recent: [100_000], stuck: false })
   })
 })
