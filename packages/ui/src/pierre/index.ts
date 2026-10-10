@@ -14,6 +14,7 @@ export type FileDiffPreload<T> = PreloadMultiFileDiffResult<T, undefined>
 export type DiffProps<T = {}> = DiffOptions<T> & {
   before: FileContents
   after: FileContents
+  patch?: string
   annotations?: DiffLineAnnotation<T>[]
   selectedLines?: SelectedLineRange | null
   commentedLines?: SelectedLineRange[]

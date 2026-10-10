@@ -1,5 +1,5 @@
 import { checksum } from "@opencode-ai/util/encode"
-import { FileDiff, type SelectedLineRange } from "@pierre/diffs"
+import { FileDiff, getSingularPatch, type SelectedLineRange } from "@pierre/diffs"
 import { createElementSize } from "@solid-primitives/resize-observer"
 import { createEffect, createMemo, createSignal, onCleanup, splitProps } from "solid-js"
 import { createDefaultOptions, type DiffProps, styleVariables } from "../pierre"
@@ -32,6 +32,7 @@ export function Diff<T>(props: DiffProps<T>) {
   const [local, others] = splitProps(props, [
     "before",
     "after",
+    "patch",
     "class",
     "classList",
     "annotations",
@@ -428,20 +429,26 @@ export function Diff<T>(props: DiffProps<T>) {
     setCurrent(instance)
 
     container.innerHTML = ""
-    instance.render({
-      oldFile: {
-        ...local.before,
-        contents: beforeContents,
-        cacheKey: checksum(beforeContents),
-      },
-      newFile: {
-        ...local.after,
-        contents: afterContents,
-        cacheKey: checksum(afterContents),
-      },
-      lineAnnotations: annotations,
-      containerWrapper: container,
-    })
+    // A unified patch carries the file's real hunk positions; diffing two
+    // snippets numbers every line from 1.
+    instance.render(
+      local.patch
+        ? { fileDiff: getSingularPatch(local.patch), lineAnnotations: annotations, containerWrapper: container }
+        : {
+            oldFile: {
+              ...local.before,
+              contents: beforeContents,
+              cacheKey: checksum(beforeContents),
+            },
+            newFile: {
+              ...local.after,
+              contents: afterContents,
+              cacheKey: checksum(afterContents),
+            },
+            lineAnnotations: annotations,
+            containerWrapper: container,
+          },
+    )
 
     applyScheme()
 

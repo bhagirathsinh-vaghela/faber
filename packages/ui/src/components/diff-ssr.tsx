@@ -17,6 +17,7 @@ export function Diff<T>(props: SSRDiffProps<T>) {
   const [local, others] = splitProps(props, [
     "before",
     "after",
+    "patch",
     "class",
     "classList",
     "annotations",

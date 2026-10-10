@@ -1735,10 +1735,11 @@ ToolRegistry.register({
         }}
       >
         <Switch>
-          <Match when={props.metadata.filediff?.path || props.input.newString || props.input.oldString}>
+          <Match when={props.metadata.diff || props.input.newString || props.input.oldString}>
             <div data-component="edit-content">
               <Dynamic
                 component={diffComponent}
+                patch={typeof props.metadata.diff === "string" ? props.metadata.diff : undefined}
                 before={{
                   name: props.metadata?.filediff?.file || props.input.filePath,
                   contents: props.metadata?.filediff?.before || props.input.oldString,
