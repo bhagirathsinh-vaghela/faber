@@ -12,8 +12,11 @@ export namespace Image {
   // 4.7's 2576px high-resolution tier.
   export const MAX_WIDTH = 2000
   export const MAX_HEIGHT = 2000
-  // The direct API allows 10MB per image; Bedrock and Vertex allow 5MB.
-  export const MAX_BASE64_BYTES = 10 * 1024 * 1024
+  // The direct API allows 10MB per image; Bedrock and Vertex allow 5MB
+  // (https://docs.anthropic.com/en/docs/build-with-claude/vision). clamp runs
+  // before the part is persisted, so the stored bytes must suit every provider
+  // the session may later switch to.
+  export const MAX_BASE64_BYTES = 5 * 1024 * 1024
 
   // Visual tokens are ceil(w/28) * ceil(h/28) — a function of dimensions
   // alone — so re-encoding is free to the model and buys only wire bytes.

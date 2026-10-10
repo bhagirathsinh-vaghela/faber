@@ -175,6 +175,33 @@ describe("Image.normalize", () => {
     expect(dimensionsOf(outcome.base64).width).toBeLessThanOrEqual(Image.MAX_WIDTH)
   })
 
+  test("caps the default byte budget at 5 MB", () => {
+    expect(Image.MAX_BASE64_BYTES).toBe(5_242_880)
+  })
+
+  test("re-encodes an image inside the dimension limits but over 5 MB", async () => {
+    const pixels = new Uint8Array(1_200 * 1_200 * 4)
+    let seed = 1
+    for (let index = 0; index < pixels.length; index++) {
+      seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0
+      pixels[index] = index % 4 === 3 ? 255 : seed >>> 24
+    }
+    const noise = new photon.PhotonImage(pixels, 1_200, 1_200)
+    const source = Buffer.from(noise.get_bytes()).toString("base64")
+    noise.free()
+    expect(Buffer.byteLength(source, "utf8")).toBe(7_682_272)
+
+    const outcome = await Image.normalize(source)
+
+    expect(outcome.status).toBe("resized")
+    if (outcome.status !== "resized") return
+    expect({ width: outcome.width, height: outcome.height, bytes: Buffer.byteLength(outcome.base64, "utf8") }).toEqual({
+      width: 1_200,
+      height: 1_200,
+      bytes: 3_887_212,
+    })
+  })
+
   test("evicts the oldest entry once the cache is full", async () => {
     for (let index = 0; index < 300; index++) await Image.normalize(pngBase64(8, 8 + index))
     expect(Image.cacheSize()).toBeLessThanOrEqual(256)
