@@ -14,13 +14,13 @@ export function cacheCountdownUntil(at: number | undefined, now: number): string
   return format(remaining)
 }
 
-// The ONE source of truth for the cache-ping countdown display, shared by the
-// session statusline and the home overview so they can never diverge. Both feed
-// it the SAME input — the live pingAt the server publishes (the actual scheduled
-// ping, cleared server-side the instant the daemon disarms) — and get back the
-// same { text, fraction }. A session with no scheduled ping (stopped, or window
-// lapsed) yields null text + 0 fraction, so a stopped session shows "--" and an
-// empty ring on both surfaces. Callers differ only in styling, never in logic.
+// The cache-ping countdown display, shared by the session statusline and the
+// home overview. Both feed it the live pingAt the server publishes (the actual
+// scheduled ping, cleared server-side the instant the daemon disarms), so the
+// text always agrees. The fraction also depends on beforeExpiry, which each
+// caller reads from its own config. A session with no scheduled ping (stopped,
+// or window lapsed) yields null text + 0 fraction, so a stopped session shows
+// "--" and an empty ring on both surfaces.
 export function pingCountdown(pingAt: number | undefined, beforeExpiry: number, now: number) {
   const text = cacheCountdownUntil(pingAt, now)
   const window = CACHE_TTL - beforeExpiry

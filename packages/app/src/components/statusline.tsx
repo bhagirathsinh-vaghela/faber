@@ -30,8 +30,10 @@ export function Statusline() {
   // countdown, even though cache.lastRequestAt still lingers.
   const pingAt = createMemo(() => globalSync.data.recent_hub.find((r) => r.sessionID === params.id)?.pingAt)
 
-  // countdown text + ring fraction from the ONE shared predicate, identical to
-  // the overview. Differ only in styling below.
+  // countdown text + ring fraction from the shared predicate the overview also
+  // uses. before_expiry comes from the session directory's config, so a
+  // project-level ping.before_expiry sizes this ring differently from the
+  // overview's, which reads the global config. The text agrees on both.
   const ping = createMemo(() => pingCountdown(pingAt(), beforeExpiryMs(sync.data.config), now()))
   const cacheCountdown = createMemo(() => ping().text)
   const cacheFraction = createMemo(() => ping().fraction)

@@ -152,10 +152,12 @@ export const { use: useRecent, provider: RecentProvider } = createSimpleContext(
     const index = createMemo(() => new Map(rows().map((row) => [row.sessionID, row])))
     const live = (row: OverviewRow) => index().get(row.sessionID) ?? row
 
-    // countdown text and ring fraction both come from the ONE shared predicate
-    // (pingCountdown), fed the live row's pingAt — identical logic to the session
-    // statusline, so the two surfaces can never diverge. Re-derive off the live
-    // row each tick so neither lags a re-armed ping.
+    // countdown text and ring fraction both come from the shared predicate
+    // (pingCountdown) the session statusline also uses, fed the live row's
+    // pingAt. before_expiry comes from the global config here but from the
+    // session directory's config in the statusline, so a project-level
+    // ping.before_expiry makes the two rings differ; the text agrees.
+    // Re-derive off the live row each tick so neither lags a re-armed ping.
     const countdown = (row: OverviewRow) =>
       pingCountdown(live(row).pingAt, beforeExpiryMs(globalSync.data.config), now()).text
 
