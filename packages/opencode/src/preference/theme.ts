@@ -19,7 +19,11 @@ export namespace ThemePreference {
       baseId: z.string(),
       fontSize: z.number(),
       font: z.string(),
-      codeFont: z.string(),
+      // Themes saved before block and inline code fonts were separate carry
+      // only codeFont; the client seeds both from it.
+      codeFont: z.string().optional(),
+      codeBlockFont: z.string().optional(),
+      inlineCodeFont: z.string().optional(),
       codeTheme: z.string(),
       diffTheme: z.string(),
       fontWeight: z.number(),
