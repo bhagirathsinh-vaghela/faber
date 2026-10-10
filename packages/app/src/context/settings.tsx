@@ -1,10 +1,11 @@
 import { createStore, reconcile, unwrap } from "solid-js/store"
-import { createEffect, createMemo, createSignal, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useTheme } from "@opencode-ai/ui/theme"
 import { persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { FONT_WEIGHTS, type FontWeights } from "@opencode-ai/ui/font"
+import { receive } from "@/context/settings-sync"
 
 // `blocking` covers every prompt that halts the turn until answered: a
 // permission request and a question both qualify.
@@ -215,11 +216,13 @@ const defaultAppearance: Appearance = {
 // Normalize a persisted appearance onto the current shape. Records saved before
 // the code-font split carry a single `codeFont`; seed both the block and inline
 // fields from it so an older theme keeps its chosen code font on both surfaces.
-function migrate(a: Partial<Appearance> & { codeFont?: string }): Appearance {
+// A store item arrives as a proxy, which structuredClone rejects, so the copy
+// is taken from the unwrapped value.
+export function migrate(a: Partial<Appearance> & { codeFont?: string }): Appearance {
   const legacy = a.codeFont
   return {
     ...structuredClone(defaultAppearance),
-    ...a,
+    ...structuredClone(unwrap(a)),
     codeBlockFont: a.codeBlockFont ?? legacy ?? defaultAppearance.codeBlockFont,
     inlineCodeFont: a.inlineCodeFont ?? legacy ?? defaultAppearance.inlineCodeFont,
   }
@@ -291,11 +294,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     const [workingName, setWorkingName] = createSignal<string | null>(null)
 
     // Per-box collapse defaults — server-persisted (mirrors appearance/themes),
-    // so every client loads the same ticks; no event pushes a save to clients
-    // already open. Edit-then-Save like appearance: checkbox clicks mutate the
-    // working `boxes` store only; `boxesSaved` is the last snapshot the server
-    // accepted; Save pushes, Discard reverts. This keeps the network PUT off the
-    // click path entirely.
+    // so every client loads the same ticks. Edit-then-Save like appearance:
+    // checkbox clicks mutate the working `boxes` store only; `boxesSaved` is the
+    // last snapshot the server accepted; Save pushes, Discard reverts. This keeps
+    // the network PUT off the click path entirely.
     const [boxes, setBoxes] = createStore<BoxDefaults>({})
     const [boxesSaved, setBoxesSaved] = createSignal<BoxDefaults>({})
     const boxesDirty = createMemo(() => JSON.stringify(boxes) !== JSON.stringify(boxesSaved()))
@@ -331,9 +333,9 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     const push = (t: UserTheme) =>
       globalSDK.client.preference.theme.save({ userTheme: t as any }).catch(() => undefined)
 
-    // Apply a stored user theme: switch to its base, load its appearance into
+    // Load a stored user theme: switch to its base, load its appearance into
     // `work`, mark it active and saved (a freshly-loaded theme is not dirty).
-    const applyTheme = (t: UserTheme) => {
+    const load = (t: UserTheme) => {
       if (theme.themeId() !== t.baseId) theme.setTheme(t.baseId)
       const appearance = migrate(t)
       setWork(reconcile(appearance))
@@ -341,19 +343,27 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
       setActiveThemeID(t.id)
       setWorkingID(null)
       setWorkingName(null)
+    }
+
+    const applyTheme = (t: UserTheme) => {
+      load(t)
       globalSDK.client.preference.theme.setActive({ id: t.id }).catch(() => undefined)
     }
 
-    // Switch to a plain built-in base: change the base AND clear the active user
-    // theme + its overrides. Without the reset, the active theme's inline
-    // overrides keep painting over the new base and it looks like nothing changed.
-    const selectBase = (id: string) => {
-      theme.setTheme(id)
+    // Back to the plain base: clear the active user theme + its overrides.
+    // Without the reset, the active theme's inline overrides keep painting over
+    // the base and it looks like nothing changed.
+    const reset = () => {
       setActiveThemeID(null)
       setWorkingID(null)
       setWorkingName(null)
       setWork(reconcile(structuredClone(defaultAppearance)))
       setSaved(structuredClone(defaultAppearance))
+    }
+
+    const selectBase = (id: string) => {
+      theme.setTheme(id)
+      reset()
       globalSDK.client.preference.theme.setActive({ id: null }).catch(() => undefined)
     }
 
@@ -476,6 +486,23 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         })
         .catch(() => undefined)
     })
+
+    // A save in any client broadcasts on the global stream; apply it here too.
+    onCleanup(
+      globalSDK.event.on("global", (event) => {
+        const patch = receive({ themes, active: activeThemeID(), dirty: dirty(), boxesDirty: boxesDirty() }, event)
+        if (patch.themes) setThemes(reconcile(patch.themes))
+        if (patch.active) setActiveThemeID(patch.active)
+        if (patch.theme) load(patch.theme)
+        if (patch.theme === null) reset()
+        if (patch.appearance) {
+          setWork(reconcile(migrate(patch.appearance as Appearance)))
+          setSaved(structuredClone(unwrap(work)))
+        }
+        if (patch.boxes) setBoxesSaved(structuredClone(patch.boxes as BoxDefaults))
+        if (patch.draft) setBoxes(reconcile(structuredClone(patch.draft as BoxDefaults)))
+      }),
+    )
 
     // Font family / size / weights -> CSS custom props on <html> (live/Apply).
     createEffect(() => {

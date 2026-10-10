@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { renamed, type UserTheme } from "./settings"
+import { createStore } from "solid-js/store"
+import { migrate, renamed, type UserTheme } from "./settings"
 
 const theme = (id: string, fontSize: number): UserTheme => ({
   id,
@@ -24,5 +25,15 @@ describe("renamed", () => {
 
   test("an unknown id renames nothing", () => {
     expect(renamed([theme("a", 13)], "missing", "x")).toBeUndefined()
+  })
+})
+
+// The store is a proxy only in Solid's browser build: run with --conditions=browser.
+describe("migrate", () => {
+  test("a theme read from a store comes back as a plain copy that can be cloned", () => {
+    const [themes] = createStore([theme("a", 15)])
+    const appearance = migrate(themes[0])
+    expect(structuredClone(appearance)).toEqual(appearance)
+    expect(appearance.overrides).toEqual({ light: {}, dark: { "--background-base": "#000" } })
   })
 })
