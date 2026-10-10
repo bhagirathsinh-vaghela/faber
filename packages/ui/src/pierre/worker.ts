@@ -11,8 +11,12 @@ export function workerFactory(): Worker {
 // stock theme as the fallback context; the app pushes the user's chosen
 // diffTheme in via setDiffTheme once settings load.
 let theme = "github-dark"
+let codeTheme = "github-dark"
 
-function createPool(lineDiffType: "word-alt") {
+// A pool's render-options theme overrides the instance's own `theme` option
+// (@pierre/diffs 1.4.1 FileRenderer.getLocalHighlightTheme), so file views
+// themed by the code-block setting need a pool of their own.
+function createPool(lineDiffType: "word-alt", poolTheme = theme) {
   const pool = new WorkerPoolManager(
     {
       workerFactory,
@@ -24,7 +28,7 @@ function createPool(lineDiffType: "word-alt") {
       poolSize: 2,
     },
     {
-      theme,
+      theme: poolTheme,
       lineDiffType,
     },
   )
@@ -35,6 +39,19 @@ function createPool(lineDiffType: "word-alt") {
 
 let unified: WorkerPoolManager | undefined
 let split: WorkerPoolManager | undefined
+let code: WorkerPoolManager | undefined
+
+export function getCodePool(): WorkerPoolManager | undefined {
+  if (typeof window === "undefined") return
+  if (!code) code = createPool("word-alt", codeTheme)
+  return code
+}
+
+export function setCodeTheme(next: string) {
+  if (next === codeTheme) return
+  codeTheme = next
+  code?.setRenderOptions({ theme: codeTheme })
+}
 
 export function getWorkerPool(style: WorkerPoolStyle | undefined): WorkerPoolManager | undefined {
   if (typeof window === "undefined") return

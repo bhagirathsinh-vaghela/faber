@@ -1,7 +1,19 @@
 import { type FileContents, File, LineAnnotation, type SelectedLineRange } from "@pierre/diffs"
-import { ComponentProps, createEffect, createMemo, createSignal, onCleanup, onMount, Show, splitProps } from "solid-js"
+import {
+  ComponentProps,
+  createEffect,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+  splitProps,
+  untrack,
+} from "solid-js"
 import { createDefaultOptions, styleVariables, type CodeOptions } from "../pierre"
-import { getWorkerPool } from "../pierre/worker"
+import { getCodePool, setCodeTheme } from "../pierre/worker"
+import { useCodeTheme } from "../context/code-theme"
 import { isEditable } from "../util/focus"
 import { Icon } from "./icon"
 import { findElement, type SelectionSide } from "./diff-marker"
@@ -149,14 +161,17 @@ export function Code<T>(props: CodeProps<T>) {
   let findMode: "highlights" | "overlay" = "overlay"
   let findHits: Range[] = []
 
+  const theme = useCodeTheme()
+  createRenderEffect(() => setCodeTheme(theme()))
+
   const file = createMemo(
     () =>
       new File<T>(
         {
-          ...createDefaultOptions<T>("unified"),
+          ...createDefaultOptions<T>("unified", untrack(theme)),
           ...others,
         },
-        getWorkerPool("unified"),
+        getCodePool(),
       ),
   )
 

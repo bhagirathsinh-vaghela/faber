@@ -1,8 +1,10 @@
 import { DIFFS_TAG_NAME, FileDiff, type SelectedLineRange } from "@pierre/diffs"
-import { createEffect, onCleanup, onMount, Show, splitProps } from "solid-js"
+import { createEffect, createRenderEffect, onCleanup, onMount, Show, splitProps, untrack } from "solid-js"
 import { Dynamic, isServer } from "solid-js/web"
 import { createDefaultOptions, styleVariables, type DiffProps, type FileDiffPreload } from "../pierre"
 import { useWorkerPool } from "../context/worker-pool"
+import { useDiffTheme } from "../context/diff-theme"
+import { setDiffTheme } from "../pierre/worker"
 import { applyCommentedLines, findRoot, isSplit, rowIndex } from "./diff-marker"
 
 export type SSRDiffProps<T = {}> = DiffProps<T> & {
@@ -22,6 +24,7 @@ export function Diff<T>(props: SSRDiffProps<T>) {
     "commentedLines",
   ])
   const workerPool = useWorkerPool(props.diffStyle)
+  const theme = useDiffTheme()
 
   let fileDiffInstance: FileDiff<T> | undefined
   const cleanupFunctions: Array<() => void> = []
@@ -99,9 +102,11 @@ export function Diff<T>(props: SSRDiffProps<T>) {
       onCleanup(() => monitor.disconnect())
     }
 
+    createRenderEffect(() => setDiffTheme(theme()))
+
     fileDiffInstance = new FileDiff<T>(
       {
-        ...createDefaultOptions(props.diffStyle),
+        ...createDefaultOptions(props.diffStyle, untrack(theme)),
         ...others,
         ...props.preloadedDiff,
       },
