@@ -48,6 +48,7 @@ export namespace Debt {
     await open()
   }
 
+  // Test seam: production opens debts through `Debt.claimer().owe`.
   export async function add(responder: string, kind: Kind, caller: string, created = Date.now()) {
     const q = await open()
     await Db.retry(() => q.add.run(responder, kind, caller, created))

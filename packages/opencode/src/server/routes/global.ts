@@ -440,9 +440,9 @@ export const GlobalRoutes = lazy(() =>
           while (backlog.length) await backlog.shift()!()
           replaying = false
 
-          // `resumed` reports whether the gap was fully covered. False obliges
-          // the client to re-bootstrap, since anything it missed is unrecoverable
-          // from the stream alone.
+          // `resumed` reports whether the replay covered the whole gap. It is
+          // informational: the web client re-bootstraps on every
+          // server.connected regardless (the handler in app global-sync.tsx).
           await send({
             payload: {
               type: "server.connected",
