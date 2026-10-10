@@ -27,7 +27,9 @@ export const LspTool = Tool.define("lsp", {
       filePath: z
         .string()
         .optional()
-        .describe("The absolute or relative path to the file. Optional for workspaceSymbol."),
+        .describe(
+          "The absolute or relative path to the file. Optional for workspaceSymbol, where it starts that file's language servers first.",
+        ),
       symbol: z
         .string()
         .optional()
@@ -51,6 +53,11 @@ export const LspTool = Tool.define("lsp", {
 
     if (args.operation === "workspaceSymbol") {
       if (!args.query) throw new Error("workspaceSymbol requires `query`.")
+      if (args.filePath) {
+        const file = Filesystem.resolve(Instance.directory, args.filePath)
+        await assertExternalDirectory(ctx, file)
+        await LSP.touchFile(file)
+      }
       const symbols = await LSP.workspaceSymbol(args.query, { limit: args.limit, offset: args.offset })
       return {
         title: `workspaceSymbol ${args.query}`,

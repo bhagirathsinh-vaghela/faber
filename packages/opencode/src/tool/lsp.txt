@@ -40,7 +40,10 @@ Operations:
 - outgoingCalls: Find all functions/methods called by the function at a position
 
 Parameters:
-- filePath: required for every operation except workspaceSymbol
+- filePath: required for every operation except workspaceSymbol. workspaceSymbol
+  only queries language servers that are already running, so on a fresh session
+  it can find nothing; pass a filePath of the right language to start its
+  servers before the query.
 - symbol: name of the symbol to target; alternative to line/character
 - line, character: 1-based position, as shown in editors
 - query: required for workspaceSymbol

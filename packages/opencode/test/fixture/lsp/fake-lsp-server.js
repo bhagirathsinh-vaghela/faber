@@ -69,6 +69,18 @@ function handle(raw) {
     if (method) sendRequest(method, {})
     return
   }
+  if (data.method === "workspace/symbol") {
+    const symbol = {
+      name: data.params.query,
+      kind: 12,
+      location: {
+        uri: "file:///fake.fake",
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      },
+    }
+    send({ jsonrpc: "2.0", id: data.id, result: [symbol] })
+    return
+  }
   if (typeof data.id !== "undefined") {
     // Respond OK to any request from client to keep transport flowing
     send({ jsonrpc: "2.0", id: data.id, result: null })
