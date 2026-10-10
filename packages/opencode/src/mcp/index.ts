@@ -188,10 +188,10 @@ export namespace MCP {
   // A dead transport (server crashed, killed, or exited) leaves the client
   // object usable-looking while every call rejects, and nothing else in the
   // process notices, so the only route back is a reconnect on the next call.
-  // A wedged child looks alive but never responds, surfacing as a request
-  // timeout, and only a replacement process clears it.
+  // A request timeout is not one: the connection is live and the server may
+  // still be running the call, so re-sending it could run it twice.
   const unreachable = (error: unknown) =>
-    error instanceof Error && /not connected|connection closed|request timed out/i.test(error.message)
+    error instanceof Error && /not connected|connection closed/i.test(error.message)
 
   // Reconnect and hand back the fresh client, or undefined when the server
   // cannot be revived. Injectable so a test can drive the retry without the
@@ -266,12 +266,10 @@ export namespace MCP {
             tool: mcpTool.name,
             error: (error as Error).message,
           })
-          // A wedged child is still running, so leaving it alive would leak the
-          // process and could hand the same one back.
           await current.close().catch(() => {})
           const revived = await reconnect(clientName).catch(() => undefined)
           // The same object back means nothing was replaced, so a retry would
-          // hit the process that just failed to answer.
+          // hit the connection that just closed.
           if (!revived || revived === current) throw error
           const retried = await call(revived)
           const notice = {

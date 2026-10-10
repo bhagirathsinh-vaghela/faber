@@ -134,9 +134,11 @@ test("a reconnect that cannot revive the server surfaces the original error", as
   expect((err as Error).message).toMatch(/not connected|connection closed/i)
 })
 
-test("a wedged server is replaced and the retry answers", async () => {
+test("a timeout on a live connection returns the timeout and sends the call once", async () => {
+  let runs = 0
   const wedged = await connect((server) =>
     server.registerTool("stuck", { description: "accepts the call, never answers" }, async () => {
+      runs++
       await Bun.sleep(60_000)
       return { content: [{ type: "text" as const, text: "never" }] }
     }),
@@ -159,11 +161,11 @@ test("a wedged server is replaced and the retry answers", async () => {
     },
   )
 
-  const answered = await tool.execute!({}, { toolCallId: "call-7", messages: [] })
+  const err = await tool.execute!({}, { toolCallId: "call-7", messages: [] }).catch((e: Error) => e)
 
-  expect(answered.content[0].text).toContain("was restarted")
-  expect(answered.content[1]).toEqual({ type: "text", text: "revived" })
-  expect(reconnects).toBe(1)
+  expect((err as Error).message).toBe("MCP error -32001: Request timed out")
+  expect(runs).toBe(1)
+  expect(reconnects).toBe(0)
 })
 
 test("a wedged server that cannot be replaced surfaces the timeout", async () => {
