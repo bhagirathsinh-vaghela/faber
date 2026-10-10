@@ -65,7 +65,6 @@ export namespace BusyHeal {
 
 const host = os.hostname()
 
-
 export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
 
 export const GlobalRoutes = lazy(() =>
@@ -436,8 +435,10 @@ export const GlobalRoutes = lazy(() =>
               await send(frame.event, frame.id)
             }
           }
+          // Still replaying while the backlog flushes, so a frame published
+          // mid-flush queues behind it instead of overtaking it.
+          while (backlog.length) await backlog.shift()!()
           replaying = false
-          for (const pending of backlog.splice(0)) await pending()
 
           // `resumed` reports whether the gap was fully covered. False obliges
           // the client to re-bootstrap, since anything it missed is unrecoverable
