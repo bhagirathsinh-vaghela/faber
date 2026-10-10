@@ -9,7 +9,6 @@ import { Auth } from "../auth"
 import { ProviderTransform } from "../provider/transform"
 
 import PROMPT_GENERATE from "./generate.txt"
-import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
@@ -154,21 +153,6 @@ export namespace Agent {
         mode: "subagent",
         native: true,
       },
-      compaction: {
-        name: "compaction",
-        mode: "primary",
-        native: true,
-        hidden: true,
-        prompt: PROMPT_COMPACTION,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            "*": "deny",
-          }),
-          user,
-        ),
-        options: {},
-      },
       title: {
         name: "title",
         mode: "primary",
@@ -203,6 +187,10 @@ export namespace Agent {
     }
 
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
+      // Compaction runs on the session's own agent and model, so an upstream
+      // config's `agent.compaction` has nothing to configure; it must not
+      // become a user agent of that name either.
+      if (key === "compaction") continue
       if (value.disable) {
         delete result[key]
         continue
@@ -379,7 +367,7 @@ export namespace Agent {
       "todowrite",
       "write",
       "edit",
-      "patch",
+      "apply_patch",
       "multiedit",
       "webfetch",
       "websearch",
@@ -410,7 +398,7 @@ export namespace Agent {
       "todowrite",
       "write",
       "edit",
-      "patch",
+      "apply_patch",
       "multiedit",
       "webfetch",
       "websearch",

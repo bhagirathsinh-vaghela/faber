@@ -688,13 +688,22 @@ export namespace Config {
     })
   export type Permission = z.infer<typeof Permission>
 
-  export const Command = z.object({
-    template: z.string(),
-    description: z.string().optional(),
-    agent: z.string().optional(),
-    model: z.string().optional(),
-    subagent: z.boolean().optional(),
-  })
+  // `subtask` is upstream OpenCode's name for `subagent`, accepted as an alias
+  // so a command written for upstream still runs as a subagent.
+  export const Command = z.preprocess(
+    (val) => {
+      if (typeof val !== "object" || val === null || !("subtask" in val) || "subagent" in val) return val
+      const { subtask, ...rest } = val as Record<string, unknown>
+      return { ...rest, subagent: subtask }
+    },
+    z.object({
+      template: z.string(),
+      description: z.string().optional(),
+      agent: z.string().optional(),
+      model: z.string().optional(),
+      subagent: z.boolean().optional(),
+    }),
+  )
   export type Command = z.infer<typeof Command>
 
   export const Skills = z.object({
@@ -964,7 +973,6 @@ export namespace Config {
           // specialized
           title: Agent.optional(),
           summary: Agent.optional(),
-          compaction: Agent.optional(),
         })
         .catchall(Agent)
         .optional()
@@ -1224,7 +1232,7 @@ export namespace Config {
             .nonnegative()
             .optional()
             .describe(
-              "Coalesce streaming text deltas into one event per this many milliseconds, cutting per-token event overhead on the wire. Default 80. Set 0 to publish every delta immediately.",
+              "Coalesce streaming text and reasoning deltas into one event per this many milliseconds, cutting per-token event overhead on the wire. Default 100. Set 0 to publish every delta immediately.",
             ),
         })
         .optional(),
@@ -1525,8 +1533,9 @@ export namespace Config {
     // Config stays the single source of truth; this just refreshes its cache.
     // state.reset() reads Instance.directory, which throws when called outside an
     // instance context (the global config route has none). In that case there is
-    // no per-call instance cache to drop here; the Disposed event below plus each
-    // instance's own re-read cover it. Guard so the write never 500s.
+    // no per-call instance cache to drop here; the Disposed event below makes
+    // clients refetch, and those reads go through SessionPin.refresh, which
+    // resets an instance whose config moved. Guard so the write never 500s.
     try {
       state.reset()
     } catch {}

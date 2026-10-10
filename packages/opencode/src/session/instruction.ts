@@ -219,7 +219,12 @@ export namespace InstructionPrompt {
         return content ? "Instructions from: " + formatPath(p, scope) + "\n" + content : ""
       })
 
-    const locals = { global: await globalLocal(), project: await projectLocal() }
+    const globalLocals = await globalLocal()
+    // Same rule for the local overrides: one found from both sides loads as global.
+    const locals = {
+      global: globalLocals,
+      project: (await projectLocal()).filter((p) => !globalLocals.includes(p)),
+    }
     const globalFiles_ = load(globalPaths, locals.global, "global")
     const projectFiles = load(projectPaths, locals.project, "project")
 

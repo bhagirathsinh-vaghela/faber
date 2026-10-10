@@ -117,7 +117,7 @@ describe("reminderDue", () => {
     expect(due([delivered])).toBe(false)
   })
 
-  test("a fresh typed prompt is due even after a reminded prior turn", () => {
+  test("a fresh typed prompt that carries no reminder yet is due", () => {
     const prompt = user({ texts: [{ text: "subtask work" }] })
     expect(due([prompt])).toBe(true)
   })

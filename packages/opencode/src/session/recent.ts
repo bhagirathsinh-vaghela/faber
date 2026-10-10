@@ -230,8 +230,9 @@ export namespace SessionRecent {
       unseen: prev?.unseen ?? false,
       question: prev?.question ?? false,
       permission: prev?.permission ?? false,
-      // A fresh turn on this session supersedes the last one's failure.
-      error: false,
+      // The failed turn's own final message write lands here after setError,
+      // so a write keeps the flag; the next turn's start clears it (setBusy).
+      error: prev?.error ?? false,
       pingAt: prev?.pingAt,
       pinged: prev?.pinged,
       starred: prev?.starred ?? false,
@@ -280,6 +281,8 @@ export namespace SessionRecent {
     await hydrate()
     const entry = entries.get(sessionID)
     if (!entry || (entry.turn === busy.turn && entry.subagents === busy.subagents && entry.jobs === busy.jobs)) return
+    // A fresh turn on this session supersedes the last one's failure.
+    if (busy.turn && !entry.turn) entry.error = false
     Object.assign(entry, busy)
     publish()
   }

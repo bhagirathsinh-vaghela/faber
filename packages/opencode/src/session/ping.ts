@@ -36,8 +36,8 @@ const MIN_TICK = 1000
 // the daemon for 16m before this guard existed.
 const PING_TIMEOUT = 60 * 1000
 // Consecutive ping misses tolerated before the daemon stands down. A miss is a
-// ping whose stream never emitted "start" (request never reached the server).
-// Seeing "start" means the cache was read server-side, so the ping succeeded
+// ping whose stream never emitted "start-step" (the server streamed no response).
+// Seeing "start-step" means the cache was read server-side, so the ping succeeded
 // for warming purposes even if the body later errors or stalls. Any success
 // resets this to 0; any organic turn re-arms from scratch.
 const MAX_MISSES = 2
@@ -68,6 +68,8 @@ export namespace SessionPing {
   // Consecutive misses per session (in-memory: a process restart re-arms fresh,
   // which is itself a clean retry, consistent with "anything new resets").
   const misses = new Map<string, number>()
+  // Sessions whose start() is still reading config, before arm.
+  const starting = new Set<string>()
   let loopId = 0
 
   // Session IDs whose daemon is armed on this instance — the hub's truth source.
@@ -126,8 +128,8 @@ export namespace SessionPing {
   // on an intent recorded earlier rather than on something the user just did. An
   // explicit arm (a turn, the arm route) must NOT: it runs before its own
   // dispatch re-anchors the cache, so every session resumed after the TTL would
-  // read as cold and never arm — and since arm() is the only writer of keepWarm,
-  // the intent would never be recorded either.
+  // read as cold and never arm — and since arm() is the only place keepWarm is
+  // set, the intent would never be recorded either.
   export function warm(session: Session.Info) {
     const base = session.cache?.lastRequestAt
     return !!base && base + CACHE_TTL > Date.now()
@@ -136,10 +138,9 @@ export namespace SessionPing {
   // All three active mutations funnel through arm/disarm so the event fires
   // exactly when membership changes. The armed event MUST be stamped with the
   // session's own directory: the client routes it into a per-directory store
-  // keyed by sessionID, and the ambient Instance.directory is unreliable here
-  // (arm runs after an await, run's tail disarm runs fully detached, and a
-  // route-driven stop only has the right context if the caller sent it). We
-  // captured the directory at arm time, so re-provide it around the publish.
+  // keyed by sessionID, and a stop runs under its caller's context (a route
+  // that was sent another directory, or none), not necessarily the session's.
+  // We captured the directory at arm time, so re-provide it around the publish.
   function armed(sessionID: string, directory: string, value: boolean) {
     void Instance.provide({ directory, fn: () => Bus.publish(Event.Armed, { sessionID, armed: value }) })
   }
@@ -147,14 +148,18 @@ export namespace SessionPing {
   async function arm(sessionID: string, entry: { abort: AbortController; id: number; directory: string }) {
     active.set(sessionID, entry)
     Liveness.setArmed(entry.directory, sessionID, true)
-    // keepWarm is the persisted shadow of the daemon: it is written HERE and in
-    // disarm, and NOWHERE else. Every intended arm (a prompt, an open, the
-    // button) funnels through start()->arm; every disarm through stop()/tail->
-    // disarm. session.get reconciles off this field but never writes it. One
-    // writer per direction — no caller juggles the flag, no cross-caller races.
-    await Session.update(sessionID, (draft) => {
-      draft.keepWarm = true
-    }).catch(() => {})
+    // keepWarm is the persisted shadow of the daemon: only this sets it true,
+    // and only disarm and stop() clear it. Every intended arm (a prompt, an
+    // open, the button) funnels through start()->arm; every disarm through
+    // stop()/tail->disarm. session.get reconciles off this field but never
+    // writes it, so no other caller juggles the flag.
+    await Session.update(
+      sessionID,
+      (draft) => {
+        draft.keepWarm = true
+      },
+      { touch: false },
+    ).catch(() => {})
     armed(sessionID, entry.directory, true)
   }
 
@@ -164,9 +169,13 @@ export namespace SessionPing {
     active.delete(sessionID)
     Liveness.setArmed(entry.directory, sessionID, false)
     void SessionRecent.setPing(sessionID, undefined)
-    await Session.update(sessionID, (draft) => {
-      draft.keepWarm = false
-    }).catch(() => {})
+    await Session.update(
+      sessionID,
+      (draft) => {
+        draft.keepWarm = false
+      },
+      { touch: false },
+    ).catch(() => {})
     armed(sessionID, entry.directory, false)
   }
 
@@ -182,6 +191,7 @@ export namespace SessionPing {
     // came back" reset, so it must run before the idempotency check below.
     misses.delete(sessionID)
     if (active.has(sessionID)) return
+    starting.add(sessionID)
     // Capture the session's directory here, on the synchronous call path where
     // the instance context is still live (the route/prompt caller ran under it).
     // It is stored in the active entry so arm/disarm can stamp the armed event
@@ -192,15 +202,22 @@ export namespace SessionPing {
     // is armed: organic turns still re-anchor the cache TTL and the statusline
     // countdown still ticks (sliding to "--" on expiry), but no automatic ping
     // fires. probe() is unaffected — explicit cache-safe revert still pings.
-    Config.get().then(async (cfg) => {
-      if (!cfg.ping?.enabled) return
-      // Re-check after the await: an organic turn may have armed a loop already.
-      if (active.has(sessionID)) return
-      const abort = new AbortController()
-      const id = ++loopId
-      await arm(sessionID, { abort, id, directory })
-      run(sessionID, abort.signal, id)
-    })
+    // A stop() that lands during the config read cancels the arm.
+    Config.get()
+      .then(async (cfg) => {
+        if (!starting.delete(sessionID)) return
+        if (!cfg.ping?.enabled) return
+        // Re-check after the await: an organic turn may have armed a loop already.
+        if (active.has(sessionID)) return
+        const abort = new AbortController()
+        const id = ++loopId
+        await arm(sessionID, { abort, id, directory })
+        run(sessionID, abort.signal, id)
+      })
+      .catch((error) => {
+        starting.delete(sessionID)
+        log.error("could not arm the ping daemon", { sessionID, error })
+      })
   }
 
   // Stopping is about the session's persisted INTENT, not about this process
@@ -209,23 +226,28 @@ export namespace SessionPing {
   // with nothing running — and that flag is what the background reconciler
   // reads as "someone is still waiting on this", so it keeps jobs alive too.
   export async function stop(sessionID: string) {
+    starting.delete(sessionID)
     const entry = active.get(sessionID)
     if (entry) {
       entry.abort.abort()
       return disarm(sessionID)
     }
-    await Session.update(sessionID, (draft) => {
-      draft.keepWarm = false
-    }).catch(() => {})
+    await Session.update(
+      sessionID,
+      (draft) => {
+        draft.keepWarm = false
+      },
+      { touch: false },
+    ).catch(() => {})
   }
 
   // Re-publish the ping deadline for an armed session after its cache re-anchors.
   // The daemon computes pingAt from lastRequestAt, then sleeps until it fires —
   // so a busy session that re-anchors mid-turn leaves the hub's pingAt pinned to
-  // the OLD anchor until the loop wakes, and the overview countdown drifts from
-  // the statusline (which reads the live anchor). Called at the re-anchor site,
-  // this recomputes via evaluate() and emits the existing recent.updated event
-  // so the overview snaps to the new deadline at once. No-op unless armed;
+  // the OLD anchor until the loop wakes, and every countdown that reads it (the
+  // overview and the statusline) runs to the old deadline. Called at the
+  // re-anchor site, this recomputes via evaluate() and emits the existing
+  // recent.updated event so the countdowns snap to the new deadline at once. No-op unless armed;
   // setPing itself no-ops when the value is unchanged.
   export async function refresh(sessionID: string) {
     const entry = active.get(sessionID)
@@ -253,11 +275,11 @@ export namespace SessionPing {
   // The daemon stays alive for the lifetime of the session/process. Whether it
   // pings is decided per-tick by evaluate(); "nothing to ping right now" never
   // ends the loop — it only schedules the next check. The loop exits only on
-  // abort (a new prompt supersedes it, an explicit stop, or process death) or
-  // when the session is not a parent (it should never have been started).
+  // abort (an explicit stop or process death) or when the session is not a
+  // parent (it should never have been started).
   async function run(sessionID: string, signal: AbortSignal, id: number) {
     // Only THIS loop, while it is still the armed one, may write the countdown.
-    // evaluate()/sleep() are awaits, so an abort (stop, supersede) can land mid
+    // evaluate()/sleep() are awaits, so an abort (a stop) can land mid
     // await; stamping after that would strand a deadline past disarm's clear.
     // Gating every write on the live signal + loop id makes disarm the last word
     // regardless of async ordering — pingAt is a strict shadow of armed state.
@@ -274,7 +296,13 @@ export namespace SessionPing {
         stamp(next.type === "ping" ? next.at : undefined)
         await sleep(pause(next), signal)
         if (signal.aborted) break
-        if (next.type === "ping" && (await ping(sessionID, signal)) === "skipped") {
+        if (next.type !== "ping") continue
+        // A turn that dispatched during the sleep moved the anchor, and its
+        // request already warmed the cache: ping only if one is still due.
+        const due = await evaluate(sessionID)
+        if (signal.aborted) break
+        if (due.type !== "ping" || due.delay > 0) continue
+        if ((await ping(sessionID, signal)) === "skipped") {
           // A session with no message to send stays that way until a new turn,
           // which re-anchors and re-arms; sleeping the idle tick keeps the
           // daemon from rebuilding an unchanged history every pass.
@@ -375,14 +403,18 @@ export namespace SessionPing {
     // restarts the 5m window, and (unlike an organic turn) it is never
     // persisted as a message, so the session anchor is the only record of it.
     const dispatchedAt = Date.now()
-    await Session.update(sessionID, (draft) => {
-      draft.ping = {
-        count: draft.ping?.count ?? 0,
-        time: draft.ping?.time ?? 0,
-        pending: true,
-      }
-      draft.cache = { lastRequestAt: dispatchedAt }
-    })
+    await Session.update(
+      sessionID,
+      (draft) => {
+        draft.ping = {
+          count: draft.ping?.count ?? 0,
+          time: draft.ping?.time ?? 0,
+          pending: true,
+        }
+        draft.cache = { lastRequestAt: dispatchedAt }
+      },
+      { touch: false },
+    )
 
     // Bound the ping with its own controller: abort on EITHER the daemon signal
     // (explicit stop / new prompt) OR a PING_TIMEOUT deadline. The deadline is
@@ -397,8 +429,10 @@ export namespace SessionPing {
       pingAbort.abort()
     }, PING_TIMEOUT)
 
-    // "start" means the server accepted the request and began responding, i.e.
-    // the cache prefix was read server-side. That alone makes the ping a success
+    // "start-step" means the server accepted the request and began responding,
+    // i.e. the cache prefix was read server-side: ai@5 emits it on the first
+    // provider chunk, while "start" goes out before the request is sent
+    // (streamText in ai 5.0.124). That alone makes the ping a success
     // for warming purposes — a later mid-stream error or a stalled body does not
     // un-warm the cache. So success is classified on `started`, independent of
     // whether we reach finish-step (usage metadata still requires finish-step,
@@ -432,7 +466,7 @@ export namespace SessionPing {
 
       for await (const value of stream.fullStream) {
         if (pingAbort.signal.aborted) break
-        if (value.type === "start") started = true
+        if (value.type === "start-step") started = true
         if (value.type === "finish-step") {
           const usage = Session.getUsage({
             model,
@@ -460,6 +494,7 @@ export namespace SessionPing {
             draft.tokens.cacheWrite1h = usage.tokens.cache.write1h ?? 0
             draft.total.input += weightedInput
             draft.total.output += weightedOutput
+            draft.total.cacheWrite += usage.tokens.cache.write
             draft.cost += stepCost
           })
           log.info("ping complete", {
@@ -484,17 +519,24 @@ export namespace SessionPing {
     } finally {
       clearTimeout(timer)
       signal.removeEventListener("abort", onParentAbort)
-      await Session.update(sessionID, (draft) => {
-        if (draft.ping?.pending) draft.ping = { ...draft.ping, pending: false }
-      })
+      await Session.update(
+        sessionID,
+        (draft) => {
+          if (draft.ping?.pending) draft.ping = { ...draft.ping, pending: false }
+        },
+        { touch: false },
+      )
     }
 
+    // A daemon-signal abort ends the stream with an "abort" part instead of
+    // throwing, so it reaches here; like the throwing path, it is no outcome.
+    if (signal.aborted) return
     await classify(sessionID, started ? dispatchedAt : undefined)
   }
 
-  // Seeing "start" => cache warmed => success: reset the miss counter and
-  // advance telemetry count. Never seeing "start" => the request never reached
-  // the server => miss: increment toward stand-down. The dispatch-time anchor is
+  // Seeing "start-step" => cache warmed => success: reset the miss counter and
+  // advance telemetry count. Never seeing it => the server streamed no response
+  // => miss: increment toward stand-down. The dispatch-time anchor is
   // kept in BOTH cases — the daemon stays armed so the next scheduled ping
   // rewarms; a single miss costs one rewrite, not a permanently cold cache.
   async function classify(sessionID: string, dispatchedAt?: number) {
@@ -503,9 +545,13 @@ export namespace SessionPing {
       // Classified success only: a miss never reached the server, so it is not
       // interaction and must not lift the session up the Recent ordering.
       void SessionRecent.setPinged(sessionID, dispatchedAt)
-      await Session.update(sessionID, (draft) => {
-        draft.ping = { count: (draft.ping?.count ?? 0) + 1, time: dispatchedAt }
-      })
+      await Session.update(
+        sessionID,
+        (draft) => {
+          draft.ping = { count: (draft.ping?.count ?? 0) + 1, time: dispatchedAt }
+        },
+        { touch: false },
+      )
       return
     }
     misses.set(sessionID, (misses.get(sessionID) ?? 0) + 1)

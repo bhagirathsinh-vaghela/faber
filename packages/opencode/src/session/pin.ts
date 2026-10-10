@@ -22,7 +22,7 @@ import { Filesystem } from "../util/filesystem"
 // the input files on disk (config chain, instructions, skills, commands,
 // agents, custom tools) and looks the digest up in a snapshot pool. Identical
 // disk state shares one snapshot across sessions (and one prompt-cache prefix);
-// a changed disk misses the pool, disposes the instance caches so the builders
+// a changed disk misses the pool, resets the instance caches so the builders
 // re-read disk, and builds a fresh snapshot. No reload button, no manual
 // publish step. Pins are process-lifetime; a server restart clears everything.
 export namespace SessionPin {
@@ -113,7 +113,7 @@ export namespace SessionPin {
 
   // Only a skill's frontmatter shapes the prompt: name, description, and
   // location render into the skill tool's description and land in tools[]. The
-  // body is tool OUTPUT, read from the snapshot when the skill is invoked. So a
+  // body is tool OUTPUT, read from disk when the skill is invoked. So a
   // body edit is fingerprinted away, letting a running session pick up new
   // instructions on its next invocation while the cached prefix stands.
   async function skillDigestInput(file: string) {
@@ -252,7 +252,8 @@ export namespace SessionPin {
   // pre-edit config until some session happened to touch this directory.
   // Announcing a digest move here would feed back: a client answers
   // global.disposed by re-bootstrapping every open directory, and each
-  // bootstrap calls the two readers that land here.
+  // bootstrap calls the readers that land here (GET /config,
+  // GET /provider/default, GET /command).
   export async function refresh() {
     const digest = await fingerprint()
     if (built.get(Instance.directory) === digest) return

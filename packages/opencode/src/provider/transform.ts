@@ -881,8 +881,8 @@ export namespace ProviderTransform {
     return { [key]: options }
   }
 
-  // Per-model output ceilings for ids whose real limit is LOWER than what the
-  // registry advertises. Matching is by id substring, so a model released after
+  // Fallback output ceilings for ids the registry reports no output limit for.
+  // Matching is by id substring, so a model released after
   // this list was written matches nothing: such a model falls back to
   // `registryLimit`, the ceiling models.dev reports for it, rather than a
   // hardcoded number that would silently cap it. claude-opus-5 is the case that

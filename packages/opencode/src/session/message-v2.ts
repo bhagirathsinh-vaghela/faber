@@ -908,8 +908,8 @@ export namespace MessageV2 {
 
   // A message the human typed, as opposed to one the loop minted (a task/job
   // result, a compaction, a resume prompt, a question's answer or note). The
-  // single predicate for "was this the user's own voice", used by the prompt
-  // count, the title, and every "last real user message" lookup, so the
+  // single predicate for "was this the user's own voice", used by the title
+  // and every "last real user message" lookup, so the
   // definition lives in one place.
   export function isHumanTyped(msg: WithParts) {
     return msg.info.role === "user" && !msg.info.synthetic && !reply(msg)
@@ -931,7 +931,8 @@ export namespace MessageV2 {
   // (catalogs, session-context, the concise and plan reminders) rides the
   // opener and only there. An opener is a not-yet-sent message, so anything
   // appended to it stays out of every already-sent block and cannot re-hash the
-  // cached prefix; a mid-turn message is never an opener and never receives one.
+  // cached prefix. A delivery that joins a running turn becomes the opener for
+  // the steps after it, and is unsent until the next of them.
   export function turnOpener(messages: WithParts[]) {
     return messages.findLast((m) => m.info.role === "user")
   }

@@ -124,6 +124,34 @@ describe("AGENTS.local.md", () => {
     }
   })
 
+  test("loads once, as global, when the project is the global config dir", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "config", "AGENTS.local.md"), "# Global Local")
+      },
+    })
+
+    const home = process.env.OPENCODE_TEST_HOME
+    const configdir = process.env.OPENCODE_CONFIG_DIR
+    process.env.OPENCODE_TEST_HOME = tmp.path
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp.path, "config")
+
+    try {
+      await Instance.provide({
+        directory: path.join(tmp.path, "config"),
+        fn: async () => {
+          const instructions = await InstructionPrompt.system()
+          expect(instructions.global).toEqual(["Instructions from: ~/config/AGENTS.local.md\n# Global Local"])
+          expect(instructions.project).toEqual([])
+        },
+      })
+    } finally {
+      process.env.OPENCODE_TEST_HOME = home
+      if (configdir) process.env.OPENCODE_CONFIG_DIR = configdir
+      else delete process.env.OPENCODE_CONFIG_DIR
+    }
+  })
+
   test("is picked up from a subdirectory next to that dir's AGENTS.md", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {

@@ -146,7 +146,7 @@ describe("toolDenial — non-MCP subagent (explore/general) denies all MCP", () 
   })
 })
 
-describe("cache stability — the sentinel can never reach tools[]", () => {
+describe("cache stability — the sentinel can never be a tool id", () => {
   // tools[] on the wire is built from registered native ids + MCP.tools() keys,
   // never from allowedTools, so the sentinel is execute-time-only. As a
   // structural guard: a sentinel carries ":", but MCP.toolKey sanitizes every

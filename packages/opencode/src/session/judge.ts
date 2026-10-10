@@ -88,10 +88,10 @@ export namespace SessionJudge {
         abort: deadline.signal,
       })
 
-      // Drive the stream to completion explicitly. text/usage resolve off the
-      // collected steps but do NOT themselves consume the stream; only
-      // finishReason (or this call) drains it. Consuming here means the reads
-      // below cannot hang on an undrained stream if the awaited set ever changes.
+      // Drive the stream to completion explicitly. In ai@5 the text, usage and
+      // finishReason getters each start consuming it too (they read steps or
+      // call consumeStream), so this is belt and braces: the reads below cannot
+      // hang on an undrained stream whatever the awaited set becomes.
       await stream.consumeStream()
       // Settle text, usage, and finishReason together so a text rejection does
       // not leave the other two unhandled (a process-level unhandledRejection).

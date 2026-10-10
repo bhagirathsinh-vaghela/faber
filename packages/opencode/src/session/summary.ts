@@ -78,7 +78,7 @@ export namespace SessionSummary {
       // surface as an unhandled rejection; there is nothing left to summarize.
       await Promise.resolve()
         .then(async () => {
-          const all = await Session.messages({ sessionID: input.sessionID })
+          const all = await Session.messages({ sessionID: input.sessionID, compacted: false })
           await Promise.all([
             summarizeSession({ sessionID: input.sessionID, messages: all }),
             summarizeMessage({ messageID: input.messageID, messages: all }),
@@ -152,7 +152,7 @@ export namespace SessionSummary {
   }
 
   async function messageDiff(input: { sessionID: string; messageID: string }) {
-    return computeDiff({ messages: turn(await Session.messages({ sessionID: input.sessionID }), input.messageID) })
+    return computeDiff({ messages: turn(await Session.messages({ sessionID: input.sessionID, compacted: false }), input.messageID) })
   }
 
   export const diff = fn(

@@ -1790,9 +1790,9 @@ describe("OPENCODE_DISABLE_PROJECT_CONFIG", () => {
 
 // The delegation concept was renamed (task -> agent), inspired by Claude Code
 // keeping the old name as an alias; these prove the old keys still work,
-// because both stale keys fail SILENTLY and
-// destructively otherwise: a permission key lands in a namespace nothing
-// evaluates (so a denial stops denying).
+// because a stale key fails SILENTLY and destructively otherwise: a
+// permission key lands in a namespace nothing evaluates (so a denial stops
+// denying).
 describe("legacy delegation vocabulary", () => {
   test("a stale permission.task denies the agent tool, as permission.agent", () => {
     expect(Config.Permission.parse({ task: "deny", bash: "allow" })).toEqual({ agent: "deny", bash: "allow" })
@@ -1800,5 +1800,32 @@ describe("legacy delegation vocabulary", () => {
 
   test("an explicit permission.agent wins, leaving a stale task key untranslated", () => {
     expect(Config.Permission.parse({ task: "deny", agent: "allow" })).toEqual({ task: "deny", agent: "allow" })
+  })
+})
+
+test("accepts upstream's command subtask key as subagent, in config and in a command file", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          command: {
+            inline: { template: "run it", subtask: true },
+            both: { template: "run it", subtask: true, subagent: false },
+          },
+        }),
+      )
+      await Bun.write(path.join(dir, ".opencode", "command", "filed.md"), "---\nsubtask: true\n---\nrun it")
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.command?.["inline"]).toEqual({ template: "run it", subagent: true })
+      expect(config.command?.["both"]).toEqual({ template: "run it", subagent: false })
+      expect(config.command?.["filed"]?.subagent).toBe(true)
+    },
   })
 })

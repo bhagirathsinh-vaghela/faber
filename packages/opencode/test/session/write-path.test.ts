@@ -720,10 +720,7 @@ describe("a message joining a running turn", () => {
         expect((await Sessions.read(session.id)).current?.agent).toBe("build")
 
         // The switch changes only what is appended: the step after it sends the
-        // first step's tools, system and every content block unchanged. Needs
-        // plan_enter and plan_exit allowed for both agents, as the "*": "allow"
-        // permission here does; the built-in defaults deny each to one agent,
-        // which strips it from that agent's tools[].
+        // first step's tools, system and every content block unchanged.
         const steps = state.requests.filter((body) => body.tools)
         expect(steps.length).toBe(2)
         expect(JSON.stringify(steps[1].tools)).toBe(JSON.stringify(steps[0].tools))

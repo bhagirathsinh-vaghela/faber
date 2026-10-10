@@ -586,7 +586,7 @@ describe("session.llm.stream", () => {
   // a compaction or subagent turn forks the block and misses the whole cache. The
   // question tool stays in the schema across those turns (the allowlist gates it
   // at execute time), so the block is identical whether or not the turn may ask.
-  test("session block is identical whether or not the question tool is present", async () => {
+  test("session block is identical whether or not the turn may ask", async () => {
     const server = state.server
     if (!server) throw new Error("Server not initialized")
 

@@ -892,8 +892,7 @@ export namespace SessionPrompt {
           },
         })) as MessageV2.Assistant
         // Internal subagent path (no LLM to pick a toolset): map the agent name
-        // to a built-in toolset, defaulting to "general" (full tools) for
-        // custom agents, which preserves their pre-toolset unrestricted access.
+        // to a built-in toolset, defaulting to "general" for custom agents.
         const toolsets = await Agent.toolsets()
         const toolset = toolsets[task.agent] ? task.agent : "general"
         let part = (await Session.updatePart({
@@ -1228,6 +1227,8 @@ export namespace SessionPrompt {
     throw new Error("Impossible")
   })
 
+  const MODE_TOOLS = new Set(["plan_enter", "plan_exit"])
+
   // Tools that write files we can scope against (the edit family).
   const PATH_SCOPED_TOOLS = ["edit", "write", "multiedit", "apply_patch"]
 
@@ -1316,7 +1317,7 @@ export namespace SessionPrompt {
     return `Tool "${id}" is restricted to ${entry.paths.join(", ")} for this task. "${outside}" is not allowed.`
   }
 
-  // Per-session MCP latch, enforced at execute time so tools[] stays
+  // MCP tool gate, enforced at execute time so tools[] stays
   // byte-identical whether or not a tool is disabled (gating via the wire would
   // churn the cache). MCP is always on; mcp_search is always available. An
   // individual MCP server tool is denied here iff its native name is in the
@@ -1396,7 +1397,9 @@ export namespace SessionPrompt {
       ruleset,
     )
     for (const item of registered) {
-      if (denied.has(item.id)) continue
+      // The mode-switch tools stay on the wire for every agent, so a plan<->build
+      // switch sends the same tools[]; the agent denied one is refused at execute.
+      if (denied.has(item.id) && !MODE_TOOLS.has(item.id)) continue
       if (input.session.bare && BARE_EXCLUDED.has(item.id)) continue
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
@@ -1405,7 +1408,9 @@ export namespace SessionPrompt {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const ctx = context(args, options)
-          const denial = toolDenial(allowedTools, item.id, args)
+          const denial =
+            toolDenial(allowedTools, item.id, args) ??
+            (denied.has(item.id) ? `Tool "${item.id}" is not available to the ${input.agent.name} agent.` : undefined)
           if (denial) {
             return {
               title: item.id,
@@ -1615,7 +1620,7 @@ export namespace SessionPrompt {
 
   // How a message was sent: its claim, whether the loop minted it (`join`),
   // the running turn's parameters it may adopt, parameters that win over
-  // both (a plan switch's agent, a compaction's model), and whether a person
+  // both (the agent a plan switch or a compaction names), and whether a person
   // sent it though every part is synthetic (`prompt`, a shell command).
   type Minted = {
     claim?: Claim
@@ -2276,7 +2281,7 @@ export namespace SessionPrompt {
   // when the turn-opener does not already carry the reminder, so it lands once,
   // at turn start, on a message not yet sent. A mid-turn re-fire would append to
   // a message already on the wire (the opener stays `findLast(user)` through the
-  // whole tool loop), mutating a sent block and re-hashing the prefix behind the
+  // whole tool loop unless a delivery joins the turn), mutating a sent block and re-hashing the prefix behind the
   // rolling marker every call. Freezing the reminder to the opener keeps every
   // sent block byte-identical for the life of the turn. Synthetic-blind: a
   // result that opens an idle turn gets it too, and so does a question's answer.
@@ -2447,7 +2452,8 @@ export namespace SessionPrompt {
       date: known.date === date ? undefined : date,
       branch: known.branch === branch ? undefined : branch,
     })
-    await appendSyntheticPart(input.messages, text)
+    // A refused append told the model nothing, so nothing is recorded as told.
+    if (!(await appendSyntheticPart(input.messages, text))) return
     await Session.update(
       input.session.id,
       (draft) => {
@@ -2968,7 +2974,8 @@ export namespace SessionPrompt {
 
     // Substituted ahead of the shell expansion below so a !`...` block can pass
     // the id to a command; the model has no other way to learn which session it is.
-    template = swap(template, "$SESSION", input.sessionID, true)
+    // Whole-word only, so a $SESSION_ID or $SESSIONS a shell block reads survives.
+    template = template.replace(/\$SESSION\b/g, () => input.sessionID)
 
     const shell = ConfigMarkdown.shell(template)
     if (shell.length > 0) {

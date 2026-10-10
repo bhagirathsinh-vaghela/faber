@@ -2,7 +2,6 @@ import { Slug } from "@opencode-ai/util/slug"
 import path from "path"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
-import { Decimal } from "decimal.js"
 import z from "zod"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Config } from "../config/config"
@@ -287,7 +286,7 @@ export namespace Session {
         .object({
           input: z.number(),
           output: z.number(),
-          cacheWrite: z.number(),
+          cacheWrite: z.number().default(0),
         })
         .default({ input: 0, output: 0, cacheWrite: 0 }),
       cost: z.number().default(0),
@@ -789,7 +788,8 @@ export namespace Session {
       // are never serialized. Pass false to page into pre-compaction history.
       compacted: z.boolean().optional(),
       // Reconnect delta: return only messages newer than this id. A resuming
-      // client passes its last-known id to heal the disconnect gap without
+      // client passes its second-newest known id, so the newest (possibly still
+      // streaming) message comes back too, healing the disconnect gap without
       // re-fetching the whole window.
       after: Identifier.schema("message").optional(),
     }),
@@ -958,7 +958,6 @@ export namespace Session {
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
-    const project = Instance.project
     try {
       const session = await get(sessionID)
       // Read children from the database, like Session.stop: a child another
@@ -1032,8 +1031,9 @@ export namespace Session {
     MessageV2.uncache(msg.id)
     // A message write is the only real-turn signal (pings never persist a
     // message). Stamp lastActivity with touch:false so it doesn't bump
-    // time.updated; the guard keeps it to one write once the timestamp settles
-    // (streaming chunks share a created time until completed lands). The same
+    // time.updated; the guard keeps it monotonic. The row is rewritten on every
+    // message write, but once the timestamp settles (streaming chunks share a
+    // created time until completed lands) update() skips the publish. The same
     // signal feeds the recent-session LRU the overview reads.
     const at = ("completed" in msg.time ? msg.time.completed : undefined) ?? msg.time.created
     const session = await update(
@@ -1115,7 +1115,7 @@ export namespace Session {
   export function publishPart(part: MessageV2.Part, delta?: string) {
     MessageV2.uncache(part.messageID)
     // Publish the full accumulated part to the in-process bus so every consumer
-    // (TUI, share sync) sees real text. The O(n^2)-on-the-wire cost of resending
+    // (the global event stream, plugins) sees real text. The O(n^2)-on-the-wire cost of resending
     // the growing text is a WEB-SSE concern only, so the blanking lives at that
     // serialization boundary (routes/global.ts), where the delta rides alongside
     // for the web client to append. Consumers that ignore the delta still get

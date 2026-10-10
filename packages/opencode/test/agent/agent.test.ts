@@ -22,7 +22,6 @@ test("returns default native agents when no config", async () => {
       expect(names).toContain("plan")
       expect(names).toContain("general")
       expect(names).toContain("explore")
-      expect(names).toContain("compaction")
       expect(names).toContain("title")
       expect(names).toContain("summary")
     },
@@ -89,17 +88,23 @@ test("general agent denies todo tools", async () => {
   })
 })
 
-test("compaction agent denies all permissions", async () => {
+test("an upstream config's agent.compaction creates no agent", async () => {
+  await using tmp = await tmpdir({ config: { agent: { compaction: { model: "anthropic/claude-sonnet-4-20250514" } } } })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      expect(await Agent.get("compaction")).toBeUndefined()
+      expect((await Agent.list()).some((agent) => agent.name === "compaction")).toBe(false)
+    },
+  })
+})
+
+test("compaction runs on the session's own agent, so there is no compaction agent", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const compaction = await Agent.get("compaction")
-      expect(compaction).toBeDefined()
-      expect(compaction?.hidden).toBe(true)
-      expect(evalPerm(compaction, "bash")).toBe("deny")
-      expect(evalPerm(compaction, "edit")).toBe("deny")
-      expect(evalPerm(compaction, "read")).toBe("deny")
+      expect(await Agent.get("compaction")).toBeUndefined()
     },
   })
 })
@@ -612,13 +617,13 @@ test("defaultAgent throws when default_agent points to subagent", async () => {
 test("defaultAgent throws when default_agent points to hidden agent", async () => {
   await using tmp = await tmpdir({
     config: {
-      default_agent: "compaction",
+      default_agent: "title",
     },
   })
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      await expect(Agent.defaultAgent()).rejects.toThrow('default agent "compaction" is hidden')
+      await expect(Agent.defaultAgent()).rejects.toThrow('default agent "title" is hidden')
     },
   })
 })
@@ -669,6 +674,20 @@ test("defaultAgent throws when all primary agents are disabled", async () => {
     fn: async () => {
       // build and plan are disabled, no primary-capable agents remain
       await expect(Agent.defaultAgent()).rejects.toThrow("no primary visible agent found")
+    },
+  })
+})
+
+test("the write-capable toolsets carry apply_patch, the tool id GPT models edit with", async () => {
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const toolsets = await Agent.toolsets()
+      for (const name of ["general", "general-mcp"]) {
+        expect(toolsets[name]).toContain("apply_patch")
+        expect(toolsets[name]).not.toContain("patch")
+      }
     },
   })
 })

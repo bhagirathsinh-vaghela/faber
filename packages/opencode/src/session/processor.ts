@@ -87,14 +87,14 @@ export namespace SessionProcessor {
         // last checkpoint, bounding what a hard crash (which never runs
         // persistActive) loses. Well above a normal block, so the common case
         // still persists once at block-end and Level 2's write budget holds.
-        const CHECKPOINT_BYTES = 256 * 1024
+        const CHECKPOINT_CHARS = 256 * 1024
         while (true) {
           // Per-iteration streaming state, hoisted above the try so persistActive
           // can flush and persist the active parts from both the post-loop drain
           // and the catch after an abort/error.
           let currentText: MessageV2.TextPart | undefined
           // Text length already checkpointed to disk for the active block, so a
-          // long stream persists once per CHECKPOINT_BYTES rather than never
+          // long stream persists once per CHECKPOINT_CHARS rather than never
           // until block-end.
           let textPersisted = 0
           let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
@@ -149,13 +149,13 @@ export namespace SessionProcessor {
             const { stream, cacheMarkers, systemBlockCount } = await LLM.stream(streamInput)
             buildTimer.stop()
 
-            // Store cache markers and system block count on session for TUI display.
+            // Store cache markers and system block count on the session.
             // Anchor the cache TTL to request dispatch time (parent sessions only) —
             // every request that reaches Anthropic restarts the 5m cache window.
             const dispatchedAt = Date.now()
             // updateCache, not update: this fires once per step, so it broadcasts
-            // the lean CacheUpdated event rather than the whole record. Only the
-            // TUI reads these fields; the web dock takes its countdown from the
+            // the lean CacheUpdated event rather than the whole record. No client
+            // reads the marker fields; the web dock takes its countdown from the
             // ping hub.
             await Session.updateCache(input.sessionID, (draft) => {
               draft.cacheMarkers = cacheMarkers
@@ -179,8 +179,9 @@ export namespace SessionProcessor {
             let firstChunk = true
             while (true) {
               const step = await Promise.race([iterator.next(), aborted.promise])
-              // Abandon the suspended tool rather than await it: returning the
-              // iterator would join the same call that is refusing to finish.
+              // Abandon the suspended tool rather than await it: awaiting the
+              // iterator's return() would join the same call that is refusing
+              // to finish.
               if (step === ABORTED) {
                 void iterator.return?.().catch(() => {})
                 input.abort.throwIfAborted()
@@ -326,7 +327,8 @@ export namespace SessionProcessor {
                           input: value.input,
                         },
                         always: [value.toolName],
-                        ruleset: agent.permission,
+                        // A compaction turn has no agent definition and refuses every tool.
+                        ruleset: agent?.permission ?? PermissionNext.fromConfig({ "*": "deny" }),
                       })
                     }
                   }
@@ -525,10 +527,10 @@ export namespace SessionProcessor {
                     if (!currentText.text) break
                     // Checkpoint a very long block to disk so a hard crash
                     // (SIGKILL/OOM, which persistActive never runs for) loses at
-                    // most CHECKPOINT_BYTES of streamed text, not the whole block.
+                    // most CHECKPOINT_CHARS of streamed text, not the whole block.
                     // The threshold is high enough that an ordinary block still
                     // persists once, at block-end, keeping Level 2's write budget.
-                    if (currentText.text.length - textPersisted >= CHECKPOINT_BYTES) {
+                    if (currentText.text.length - textPersisted >= CHECKPOINT_CHARS) {
                       textPersisted = currentText.text.length
                       await Session.updatePart(currentText)
                     }
