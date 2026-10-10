@@ -26,9 +26,11 @@ function asset(
   gzip?: Uint8Array<ArrayBuffer>,
 ) {
   // Hash the canonical (uncompressed) body so the validator is stable across
-  // the br/gzip/identity variants of the same resource. Bun.hash is a fast
-  // non-crypto hash; an ETag only needs to change when the bytes change.
-  return { type, body, br, gzip, etag: `"${Bun.hash(body).toString(36)}"` }
+  // the br/gzip/identity variants of the same resource. Shared across content
+  // codings it must be weak: a strong ETag names one exact representation
+  // (RFC 9110 section 8.8.1). Bun.hash is a fast non-crypto hash; an ETag
+  // only needs to change when the bytes change.
+  return { type, body, br, gzip, etag: `W/"${Bun.hash(body).toString(36)}"` }
 }
 
 // Each host labels its install icons with its hostname, so PWAs saved from
@@ -46,7 +48,7 @@ const branded = lazy(() => {
   const parsed = JSON.parse(new TextDecoder().decode(manifest.body)) as { icons: { src: string }[] }
   const versioned = parsed.icons.map((icon) => {
     const generated = icons.get(icon.src)
-    return generated ? { ...icon, src: `${icon.src}?v=${generated.etag.slice(1, -1)}` } : icon
+    return generated ? { ...icon, src: `${icon.src}?v=${generated.etag.slice(3, -1)}` } : icon
   })
   const body = Buffer.from(JSON.stringify({ ...parsed, icons: versioned }))
   return new Map([...icons, ["/site.webmanifest", asset(manifest.type, body)]])
@@ -109,7 +111,7 @@ export namespace Web {
     // Vary a 200 would send (RFC 9110 sections 13.1.2 and 15.4.5).
     const fresh = inm?.split(",").some((tag) => {
       const value = tag.trim()
-      return value === "*" || value.replace(/^W\//, "") === asset.etag
+      return value === "*" || value.replace(/^W\//, "") === asset.etag.replace(/^W\//, "")
     })
     if (fresh)
       return new Response(null, {
@@ -129,12 +131,13 @@ export namespace Web {
       ETag: asset.etag,
       Vary: "Accept-Encoding",
       // script-src blob: for the dictation AudioWorklet, which loads its module
-      // from an inline Blob URL; worker-src governs only Worker, SharedWorker
-      // and ServiceWorker (CSP3 section 6.2.2), so a worklet falls to
-      // script-src. media-src blob: for synthesized speech, which arrives as
-      // bytes and is played from an object URL.
+      // from an inline Blob URL. A worklet falls under script-src: worker-src
+      // governs only Worker, SharedWorker and ServiceWorker (CSP3 section
+      // 6.2.2), and every one of those loads from a same-origin file.
+      // media-src blob: for synthesized speech, which arrives as bytes and is
+      // played from an object URL.
       "Content-Security-Policy":
-        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' data:",
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' data:",
     }
     if (encoding) headers["Content-Encoding"] = encoding
     return new Response(body, { headers })
