@@ -72,9 +72,7 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
         {
           label: language.t("reader.enter"),
           press: () => layout.reader.toggle(),
-          icon: (
-            <Icon name="book-open-filled" class="size-full" style={{ color: "var(--icon-strong-base)" }} />
-          ),
+          icon: <Icon name="book-open-filled" class="size-full" style={{ color: "var(--icon-strong-base)" }} />,
         },
       ]
     }
@@ -233,9 +231,13 @@ export function ReaderPill(props: { anchor?: () => { right: number; top: number 
 
   return (
     <Portal>
+      {/* z-40: under dialogs, popovers and menus (z-50 in the ui stylesheets),
+          over the whole session view. That view sits in the layout's
+          contain-strict <main>, and paint containment makes it one stacking
+          context: https://www.w3.org/TR/css-contain-1/#containment-paint */}
       <div
         data-reader-cluster
-        class="fixed z-[100] flex flex-col items-center justify-end pointer-events-none"
+        class="fixed z-40 flex flex-col items-center justify-end pointer-events-none"
         style={{
           // Positioned by its foot, so an orb appearing above the bottom one
           // grows the stack upward and leaves that orb where it was.
