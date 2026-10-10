@@ -20,13 +20,14 @@ export namespace BackgroundSpawn {
 
   export const HARD_MS = 30 * 60 * 1000
 
-  // Ceiling on the first progress check-in, so a nudge always arrives by this
+  // Ceiling on the soft deadline, so the first progress check-in is due by this
   // point however large or absent the caller's estimate. A caller may pass a
   // `soft` estimate of the command's runtime, which can only pull the first
-  // check-in EARLIER (it is min'd with this) and never later, so a wrong
-  // estimate is cheap: too high is clamped here, too low costs one early nudge.
-  // With no estimate the check-in falls to half the hard budget, keeping a
-  // short-hard job nudged before its kill rather than after it.
+  // check-in EARLIER and never later, so a wrong estimate is cheap: too high is
+  // clamped here, too low costs one early nudge. Half the hard budget is a
+  // second ceiling, with or without an estimate, so a short-hard job is due a
+  // nudge before its kill (sending it waits for the next nudge pass; see
+  // BackgroundJob.nudge).
   export const SOFT_CAP_MS = 3 * 60 * 1000
 
   export type Input = {
@@ -95,7 +96,7 @@ export namespace BackgroundSpawn {
   async function launch(input: Input, id: string): Promise<Result> {
     const created = Date.now()
     const hard = input.hard ?? HARD_MS
-    const soft = Math.min(input.soft ?? hard / 2, SOFT_CAP_MS)
+    const soft = Math.min(input.soft ?? hard, hard / 2, SOFT_CAP_MS)
 
     // WRITE BEFORE SPAWN. A crash between the write and the spawn leaves a
     // record naming no process, which the reconciler reads as orphaned and

@@ -298,6 +298,12 @@ describe("BackgroundSpawn durability", () => {
     expect(record.time.soft).toBeGreaterThanOrEqual(before + 30_000)
     expect(record.time.soft).toBeLessThan(before + 40_000)
   })
+
+  test("an estimate past half the hard budget falls back to half of it", async () => {
+    const job = await run("true", { hard: 60_000, soft: 90_000 })
+    const record = (await BackgroundJob.get(job.job.id))!
+    expect(record.time.soft! - record.time.created).toBe(30_000)
+  })
 })
 
 describe("BackgroundSpawn stdin", () => {

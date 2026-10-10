@@ -153,7 +153,7 @@ export const JobRoutes = lazy(() =>
           limit: z.coerce
             .number()
             .optional()
-            .meta({ description: "Return only the last N bytes, for a log that has grown large" }),
+            .meta({ description: "Return only the last N characters, for a log that has grown large" }),
         }),
       ),
       async (c) => {

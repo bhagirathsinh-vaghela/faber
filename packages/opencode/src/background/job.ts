@@ -144,8 +144,8 @@ export namespace BackgroundJob {
     return job.project ?? job.directory
   }
 
-  // v7 is time-ordered, so listing sorts oldest-first for free and the
-  // age-based cleanup needs no stat call to decide what is oldest.
+  // v7 is time-ordered, so sorting by id sorts by start time, which the job
+  // list route relies on.
   export function id() {
     return Bun.randomUUIDv7()
   }
@@ -486,13 +486,15 @@ export namespace BackgroundJob {
   // what the prose keys on to say the first nudge's fuller contract once and the
   // tighter repeat after.
   //
-  // Due when the job is past its soft deadline: the FIRST nudge fires as soon as
-  // the deadline is behind it — the deadline is itself the "should have finished
-  // by now" mark — while every later one waits NUDGE_MS since the previous
-  // nudge. Keying the first on the deadline rather than on NUDGE_MS-past-it is
-  // what makes the soft deadline mean what the caller set it to. A killed or
-  // exited job is never due: the status guard is what bounds the total against
-  // the hard deadline.
+  // Due when the job is past its soft deadline: the FIRST nudge is due as soon
+  // as the deadline is behind it — the deadline is itself the "should have
+  // finished by now" mark — while every later one waits NUDGE_MS since the
+  // previous nudge. Keying the first on the deadline rather than on
+  // NUDGE_MS-past-it is what makes the soft deadline mean what the caller set
+  // it to. Due is not sent: the pass that claims and sends runs every NUDGE_MS
+  // (BackgroundOrchestrator), so a nudge goes out up to that much later. A
+  // killed or exited job is never due: the status guard is what bounds the
+  // total against the hard deadline.
   //
   // The claim runs inside the write lock, the same shape as a settle claim, so
   // the read and the stamp cannot interleave with another pass.

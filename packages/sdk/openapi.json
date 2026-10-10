@@ -7218,7 +7218,7 @@
             "schema": {
               "type": "number"
             },
-            "description": "Return only the last N bytes, for a log that has grown large"
+            "description": "Return only the last N characters, for a log that has grown large"
           }
         ],
         "summary": "Read a job's output",
@@ -11197,9 +11197,6 @@
               "type": "boolean"
             },
             "reader": {
-              "type": "boolean"
-            },
-            "minimal": {
               "type": "boolean"
             }
           }

@@ -1152,7 +1152,6 @@ export type BoxPreference = {
   [key: string]: {
     normal?: boolean
     reader?: boolean
-    minimal?: boolean
   }
 }
 
@@ -5873,7 +5872,7 @@ export type JobLogData = {
   query?: {
     directory?: string
     /**
-     * Return only the last N bytes, for a log that has grown large
+     * Return only the last N characters, for a log that has grown large
      */
     limit?: number
   }
