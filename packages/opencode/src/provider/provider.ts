@@ -615,9 +615,8 @@ export namespace Provider {
     }
   >
 
-  // A config model entry is authoritative, not a patch over models.dev: every
-  // field the registry reads must come from one source, so a half-written entry
-  // cannot silently inherit the rest from a registry that moves on its own.
+  // A config entry for a model models.dev does not know has nothing to inherit,
+  // so it must declare every field the registry reads.
   // The cache rates are absent for most real models (a provider that bills no
   // separate cache rate), so `cost` itself is what must be declared, not each rate.
   const REQUIRED_MODEL_FIELDS: {
@@ -784,61 +783,89 @@ export namespace Provider {
         env: provider.env ?? existing?.env ?? [],
         options: mergeDeep(existing?.options ?? {}, provider.options ?? {}),
         source: "config",
-        models: existing?.models ?? {},
+        // A copy, so an entry written here never becomes the base of an alias
+        // read later in the loop: every base comes from the registry.
+        models: { ...existing?.models },
       }
 
       for (const [modelID, model] of Object.entries(provider.models ?? {})) {
-        const missing = REQUIRED_MODEL_FIELDS.filter((field) => field.read(model) === undefined).map(
-          (field) => field.name,
-        )
+        // An entry for a model models.dev knows overrides only the fields it
+        // sets; one models.dev does not know must describe the model in full.
+        const base = existing?.models[model.id ?? modelID]
+        const missing = base
+          ? []
+          : REQUIRED_MODEL_FIELDS.filter((field) => field.read(model) === undefined).map((field) => field.name)
         if (missing.length > 0) throw new PartialModelConfigError({ providerID, modelID, missing })
+        const flags = (list: string[]) => ({
+          text: list.includes("text"),
+          audio: list.includes("audio"),
+          image: list.includes("image"),
+          video: list.includes("video"),
+          pdf: list.includes("pdf"),
+        })
         const parsedModel: Model = {
           id: modelID,
           api: {
-            id: model.id ?? modelID,
-            npm: model.provider?.npm ?? provider.npm ?? modelsDev[providerID]?.npm ?? "@ai-sdk/openai-compatible",
-            url: provider?.api ?? modelsDev[providerID]?.api!,
+            id: model.id ?? base?.api.id ?? modelID,
+            npm:
+              model.provider?.npm ??
+              provider.npm ??
+              base?.api.npm ??
+              modelsDev[providerID]?.npm ??
+              "@ai-sdk/openai-compatible",
+            url: provider?.api ?? base?.api.url ?? modelsDev[providerID]?.api!,
           },
+          // A config entry is a model the user asked for, so it is never hidden as
+          // deprecated or alpha on the registry's say-so.
           status: model.status ?? "active",
-          name: model.name!,
+          name: model.name ?? (model.id && model.id !== modelID ? modelID : base!.name),
           providerID,
           capabilities: {
-            temperature: model.temperature!,
-            reasoning: model.reasoning!,
-            attachment: model.attachment!,
-            toolcall: model.tool_call!,
-            input: {
-              text: model.modalities!.input!.includes("text"),
-              audio: model.modalities!.input!.includes("audio"),
-              image: model.modalities!.input!.includes("image"),
-              video: model.modalities!.input!.includes("video"),
-              pdf: model.modalities!.input!.includes("pdf"),
-            },
-            output: {
-              text: model.modalities!.output!.includes("text"),
-              audio: model.modalities!.output!.includes("audio"),
-              image: model.modalities!.output!.includes("image"),
-              video: model.modalities!.output!.includes("video"),
-              pdf: model.modalities!.output!.includes("pdf"),
-            },
-            interleaved: model.interleaved ?? false,
+            temperature: model.temperature ?? base!.capabilities.temperature,
+            reasoning: model.reasoning ?? base!.capabilities.reasoning,
+            attachment: model.attachment ?? base!.capabilities.attachment,
+            toolcall: model.tool_call ?? base!.capabilities.toolcall,
+            input: model.modalities?.input ? flags(model.modalities.input) : base!.capabilities.input,
+            output: model.modalities?.output ? flags(model.modalities.output) : base!.capabilities.output,
+            interleaved: model.interleaved ?? base?.capabilities.interleaved ?? false,
           },
-          cost: {
-            input: model.cost!.input,
-            output: model.cost!.output,
-            cache: {
-              read: model.cost!.cache_read ?? 0,
-              write: model.cost!.cache_write ?? 0,
-            },
-          },
-          options: model.options ?? {},
+          // Prices set in config replace the registry's long-context prices too,
+          // so a turn past 200K is never billed at a price the entry overrode.
+          cost: model.cost
+            ? {
+                input: model.cost.input ?? base!.cost.input,
+                output: model.cost.output ?? base!.cost.output,
+                cache: {
+                  read: model.cost.cache_read ?? base?.cost.cache.read ?? 0,
+                  write: model.cost.cache_write ?? base?.cost.cache.write ?? 0,
+                },
+                experimentalOver200K: model.cost.context_over_200k
+                  ? {
+                      cache: {
+                        read: model.cost.context_over_200k.cache_read ?? 0,
+                        write: model.cost.context_over_200k.cache_write ?? 0,
+                      },
+                      input: model.cost.context_over_200k.input,
+                      output: model.cost.context_over_200k.output,
+                    }
+                  : undefined,
+              }
+            : base!.cost,
+          options: mergeDeep(base?.options ?? {}, model.options ?? {}),
           limit: {
-            context: model.limit!.context!,
-            output: model.limit!.output!,
+            context: model.limit?.context ?? base!.limit.context,
+            // The registry's input limit fits the registry's context; compaction
+            // prefers it over context - output, so a different context drops it.
+            input:
+              model.limit?.input ??
+              (model.limit === undefined || model.limit.context === base?.limit.context
+                ? base?.limit.input
+                : undefined),
+            output: model.limit?.output ?? base!.limit.output,
           },
-          headers: model.headers ?? {},
-          family: model.family!,
-          release_date: model.release_date!,
+          headers: mergeDeep(base?.headers ?? {}, model.headers ?? {}),
+          family: model.family ?? base!.family,
+          release_date: model.release_date ?? base!.release_date,
           variants: {},
         }
         const merged = mergeDeep(ProviderTransform.variants(parsedModel), model.variants ?? {})

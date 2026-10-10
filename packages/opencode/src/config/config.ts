@@ -841,6 +841,10 @@ export namespace Config {
         .record(
           z.string(),
           ModelsDev.Model.partial().extend({
+            // `false` turns off interleaved reasoning a models.dev entry turns on.
+            interleaved: z
+              .union([z.boolean(), z.object({ field: z.enum(["reasoning_content", "reasoning_details"]) }).strict()])
+              .optional(),
             variants: z
               .record(
                 z.string(),

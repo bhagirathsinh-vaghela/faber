@@ -780,7 +780,23 @@ test("explicit baseURL overrides api field", async () => {
   })
 })
 
-test("model carrying only a name throws PartialModelConfigError listing every other field", async () => {
+// The anthropic models.dev entry for SONNET, as Provider.list() builds it with
+// no config entry for the model.
+async function registrySonnet() {
+  await using tmp = await tmpdir({})
+  return Instance.provide({
+    directory: tmp.path,
+    init: async () => {
+      Env.set("ANTHROPIC_API_KEY", "test-api-key")
+    },
+    fn: async () => (await Provider.list())["anthropic"].models[SONNET],
+  })
+}
+
+const SONNET = "claude-sonnet-4-20250514"
+
+test("a models.dev model carrying only a name merges with its registry entry", async () => {
+  const registry = await registrySonnet()
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -790,8 +806,45 @@ test("model carrying only a name throws PartialModelConfigError listing every ot
           provider: {
             anthropic: {
               models: {
-                "claude-sonnet-4-20250514": {
+                [SONNET]: {
                   name: "Custom Name for Sonnet",
+                  cost: { input: 1, output: 2 },
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    init: async () => {
+      Env.set("ANTHROPIC_API_KEY", "test-api-key")
+    },
+    fn: async () => {
+      const providers = await Provider.list()
+      expect(providers["anthropic"].models[SONNET]).toEqual({
+        ...registry,
+        name: "Custom Name for Sonnet",
+        cost: { ...registry.cost, input: 1, output: 2 },
+      })
+    },
+  })
+})
+
+test("a model models.dev does not know, carrying only a name, throws PartialModelConfigError listing every other field", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          provider: {
+            anthropic: {
+              models: {
+                "claude-unlisted": {
+                  name: "Unlisted",
                 },
               },
             },
@@ -810,7 +863,7 @@ test("model carrying only a name throws PartialModelConfigError listing every ot
       expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
       expect(error.data).toEqual({
         providerID: "anthropic",
-        modelID: "claude-sonnet-4-20250514",
+        modelID: "claude-unlisted",
         missing: ALL_REQUIRED_FIELDS.filter((field) => field !== "name"),
       })
     },
@@ -1125,7 +1178,8 @@ test("provider with custom npm package", async () => {
 
 // Edge cases for model configuration
 
-test("model alias carrying only an id throws PartialModelConfigError for every required field", async () => {
+test("a model alias carrying only an id takes its registry entry, named by the alias", async () => {
+  const registry = await registrySonnet()
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -1136,7 +1190,7 @@ test("model alias carrying only an id throws PartialModelConfigError for every r
             anthropic: {
               models: {
                 sonnet: {
-                  id: "claude-sonnet-4-20250514",
+                  id: SONNET,
                 },
               },
             },
@@ -1151,13 +1205,8 @@ test("model alias carrying only an id throws PartialModelConfigError for every r
       Env.set("ANTHROPIC_API_KEY", "test-api-key")
     },
     fn: async () => {
-      const error = await listError()
-      expect(Provider.PartialModelConfigError.isInstance(error)).toBe(true)
-      expect(error.data).toEqual({
-        providerID: "anthropic",
-        modelID: "sonnet",
-        missing: ALL_REQUIRED_FIELDS,
-      })
+      const providers = await Provider.list()
+      expect(providers["anthropic"].models["sonnet"]).toEqual({ ...registry, id: "sonnet", name: "sonnet" })
     },
   })
 })
@@ -2344,4 +2393,101 @@ test("model default variant naming a disabled variant throws DefaultVariantError
       })
     },
   })
+})
+
+async function configured(providerID: string, env: [string, string], models: Record<string, unknown>) {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({ $schema: "https://opencode.ai/config.json", provider: { [providerID]: { models } } }),
+      )
+    },
+  })
+  return Instance.provide({
+    directory: tmp.path,
+    init: async () => {
+      Env.set(env[0], env[1])
+    },
+    fn: async () => (await Provider.list())[providerID].models,
+  })
+}
+
+test("a configured context drops the registry's input limit, which fits only the registry's context", async () => {
+  const models = await configured("openai", ["OPENAI_API_KEY", "test-openai-key"], {
+    "gpt-5": { limit: { context: 200000, output: 32000 } },
+  })
+  expect(models["gpt-5"].limit).toEqual({ context: 200000, input: undefined, output: 32000 })
+})
+
+test("an entry without a limit keeps the registry's, input limit included", async () => {
+  const models = await configured("openai", ["OPENAI_API_KEY", "test-openai-key"], {
+    "gpt-5": { name: "GPT 5" },
+  })
+  expect(models["gpt-5"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
+})
+
+test("an entry setting the context and its own input limit keeps that input limit", async () => {
+  const models = await configured("openai", ["OPENAI_API_KEY", "test-openai-key"], {
+    "gpt-5": { limit: { context: 200000, input: 150000, output: 32000 } },
+  })
+  expect(models["gpt-5"].limit).toEqual({ context: 200000, input: 150000, output: 32000 })
+})
+
+test("configured prices replace the registry's long-context prices", async () => {
+  const models = await configured("google", ["GOOGLE_GENERATIVE_AI_API_KEY", "test-google-key"], {
+    "gemini-3-pro-preview": { cost: { input: 1, output: 1 } },
+  })
+  expect(models["gemini-3-pro-preview"].cost).toEqual({
+    input: 1,
+    output: 1,
+    cache: { read: 0.2, write: 0 },
+    experimentalOver200K: undefined,
+  })
+})
+
+test("configured long-context prices are used for turns past 200K", async () => {
+  const models = await configured("google", ["GOOGLE_GENERATIVE_AI_API_KEY", "test-google-key"], {
+    "gemini-3-pro-preview": { cost: { input: 1, output: 1, context_over_200k: { input: 2, output: 3 } } },
+  })
+  expect(models["gemini-3-pro-preview"].cost.experimentalOver200K).toEqual({
+    cache: { read: 0, write: 0 },
+    input: 2,
+    output: 3,
+  })
+})
+
+test("an entry restating the registry's context keeps the registry's input limit", async () => {
+  const models = await configured("openai", ["OPENAI_API_KEY", "test-openai-key"], {
+    "gpt-5": { limit: { context: 400000, output: 64000 } },
+  })
+  expect(models["gpt-5"].limit).toEqual({ context: 400000, input: 272000, output: 64000 })
+})
+
+test("a config entry for a model the registry marks deprecated stays listed, as active", async () => {
+  const models = await configured("groq", ["GROQ_API_KEY", "test-groq-key"], {
+    "gemma2-9b-it": { name: "Gemma 2 9B" },
+  })
+  expect(models["gemma2-9b-it"].status).toBe("active")
+})
+
+test("an alias takes its registry entry whether it is listed before or after an entry for the same model", async () => {
+  const override = { name: "Mine", cost: { input: 9, output: 9 } }
+  const after = await configured("openai", ["OPENAI_API_KEY", "test-openai-key"], {
+    "gpt-5": override,
+    g5: { id: "gpt-5" },
+  })
+  const before = await configured("openai", ["OPENAI_API_KEY", "test-openai-key"], {
+    g5: { id: "gpt-5" },
+    "gpt-5": override,
+  })
+  expect(after["g5"].cost).toEqual({ input: 1.25, output: 10, cache: { read: 0.125, write: 0 } })
+  expect(before["g5"]).toEqual(after["g5"])
+})
+
+test("an entry can turn off interleaved reasoning the registry turns on", async () => {
+  const models = await configured("moonshotai", ["MOONSHOT_API_KEY", "test-moonshot-key"], {
+    "kimi-k2.5": { interleaved: false },
+  })
+  expect(models["kimi-k2.5"].capabilities.interleaved).toBe(false)
 })
