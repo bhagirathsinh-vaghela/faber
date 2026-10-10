@@ -1,15 +1,6 @@
 import { test, expect } from "../fixtures"
-import {
-  openSidebar,
-  openSessionMoreMenu,
-  clickMenuItem,
-  confirmDialog,
-  openSharePopover,
-  withSession,
-} from "../actions"
+import { openSidebar, openSessionMoreMenu, clickMenuItem, confirmDialog, withSession } from "../actions"
 import { sessionItemSelector, inlineInputSelector } from "../selectors"
-
-const shareDisabled = process.env.OPENCODE_DISABLE_SHARE === "true" || process.env.OPENCODE_DISABLE_SHARE === "1"
 
 test("sidebar session can be renamed", async ({ page, sdk, gotoSession }) => {
   const stamp = Date.now()
@@ -62,54 +53,5 @@ test("sidebar session can be deleted", async ({ page, sdk, gotoSession }) => {
     await confirmDialog(page, /delete/i)
 
     await expect(sessionEl).not.toBeVisible()
-  })
-})
-
-test("session can be shared and unshared via header button", async ({ page, sdk, gotoSession }) => {
-  test.skip(shareDisabled, "Share is disabled in this environment (OPENCODE_DISABLE_SHARE).")
-
-  const stamp = Date.now()
-  const title = `e2e share test ${stamp}`
-
-  await withSession(sdk, title, async (session) => {
-    await gotoSession(session.id)
-
-    const { rightSection, popoverBody } = await openSharePopover(page)
-    await popoverBody.getByRole("button", { name: "Publish" }).first().click()
-
-    await expect
-      .poll(
-        async () => {
-          const data = await sdk.session.get({ sessionID: session.id }).then((r) => r.data)
-          return data?.share?.url || undefined
-        },
-        { timeout: 30_000 },
-      )
-      .not.toBeUndefined()
-
-    const copyButton = rightSection.locator('button[aria-label="Copy link"]').first()
-    await expect(copyButton).toBeVisible({ timeout: 30_000 })
-
-    const sharedPopover = await openSharePopover(page)
-    const unpublish = sharedPopover.popoverBody.getByRole("button", { name: "Unpublish" }).first()
-    await expect(unpublish).toBeVisible({ timeout: 30_000 })
-    await unpublish.click()
-
-    await expect
-      .poll(
-        async () => {
-          const data = await sdk.session.get({ sessionID: session.id }).then((r) => r.data)
-          return data?.share?.url || undefined
-        },
-        { timeout: 30_000 },
-      )
-      .toBeUndefined()
-
-    await expect(copyButton).not.toBeVisible({ timeout: 30_000 })
-
-    const unsharedPopover = await openSharePopover(page)
-    await expect(unsharedPopover.popoverBody.getByRole("button", { name: "Publish" }).first()).toBeVisible({
-      timeout: 30_000,
-    })
   })
 })

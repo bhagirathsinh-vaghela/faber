@@ -169,28 +169,6 @@ export async function confirmDialog(page: Page, buttonName: string | RegExp) {
   await button.click()
 }
 
-export async function openSharePopover(page: Page) {
-  const rightSection = page.locator(titlebarRightSelector)
-  const shareButton = rightSection.getByRole("button", { name: "Share" }).first()
-  await expect(shareButton).toBeVisible()
-
-  const popoverBody = page
-    .locator(popoverBodySelector)
-    .filter({ has: page.getByRole("button", { name: /^(Publish|Unpublish)$/ }) })
-    .first()
-
-  const opened = await popoverBody
-    .isVisible()
-    .then((x) => x)
-    .catch(() => false)
-
-  if (!opened) {
-    await shareButton.click()
-    await expect(popoverBody).toBeVisible()
-  }
-  return { rightSection, popoverBody }
-}
-
 export async function clickPopoverButton(page: Page, buttonName: string | RegExp) {
   const button = page.getByRole("button").filter({ hasText: buttonName }).first()
   await expect(button).toBeVisible()

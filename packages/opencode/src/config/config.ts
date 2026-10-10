@@ -228,17 +228,6 @@ export namespace Config {
 
     if (!result.username) result.username = os.userInfo().username
 
-    // Handle migration from autoshare to share field
-    if (result.autoshare === true && !result.share) {
-      result.share = "auto"
-    }
-
-    // Session sharing is disabled in this build regardless of config: it is
-    // unused, and forcing it here turns off the UI share commands (gated on
-    // share !== "disabled") and the server share path (Session.share throws)
-    // through the paths that already honor "disabled".
-    result.share = "disabled"
-
     // Apply flag overrides for compaction settings
     if (Flag.OPENCODE_DISABLE_AUTOCOMPACT) {
       result.compaction = { ...result.compaction, auto: false }
@@ -921,13 +910,11 @@ export namespace Config {
       share: z
         .enum(["manual", "auto", "disabled"])
         .optional()
-        .describe(
-          "Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing",
-        ),
+        .describe("Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load."),
       autoshare: z
         .boolean()
         .optional()
-        .describe("@deprecated Use 'share' field instead. Share newly created sessions automatically"),
+        .describe("Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load."),
       autoupdate: z
         .union([z.boolean(), z.literal("notify")])
         .optional()

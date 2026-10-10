@@ -111,10 +111,6 @@ export const dict = {
   "command.question.list.description": "Expand the collapsed question panel",
   "question.collapsed.one": "{{count}} question pending",
   "question.collapsed.other": "{{count}} questions pending",
-  "command.session.share": "Share session",
-  "command.session.share.description": "Share this session and copy the URL to clipboard",
-  "command.session.unshare": "Unshare session",
-  "command.session.unshare.description": "Stop sharing this session",
 
   "palette.search.placeholder": "Search files, commands, and sessions",
   "palette.empty": "No results found",
@@ -123,8 +119,6 @@ export const dict = {
 
   "actionbar.questions.tooltip": "Show pending questions",
 
-
-  "dock.show": "Show usage",
   "reader.enter": "Reader mode",
   "reader.exit": "Exit reader mode",
   "reader.dictate": "Dictate",
@@ -448,17 +442,6 @@ export const dict = {
   "toast.context.noLineSelection.title": "No line selection",
   "toast.context.noLineSelection.description": "Select a line range in a file tab first.",
 
-  "toast.session.share.copyFailed.title": "Failed to copy URL to clipboard",
-  "toast.session.share.success.title": "Session shared",
-  "toast.session.share.success.description": "Share URL copied to clipboard!",
-  "toast.session.share.failed.title": "Failed to share session",
-  "toast.session.share.failed.description": "An error occurred while sharing the session",
-
-  "toast.session.unshare.success.title": "Session unshared",
-  "toast.session.unshare.success.description": "Session unshared successfully!",
-  "toast.session.unshare.failed.title": "Failed to unshare session",
-  "toast.session.unshare.failed.description": "An error occurred while unsharing the session",
-
   "toast.session.listFailed.title": "Failed to load sessions for {{project}}",
 
   "toast.update.title": "Update available",
@@ -559,7 +542,6 @@ export const dict = {
   "session.files.all": "All files",
   "session.files.binaryContent": "Binary file (content cannot be displayed)",
 
-
   "session.messages.loadingEarlier": "Loading earlier messages...",
   "session.messages.loadEarlier": "Load earlier messages",
   "session.messages.loading": "Loading messages...",
@@ -582,7 +564,6 @@ export const dict = {
   "status.popover.tab.lsp": "LSP",
   "status.popover.tab.plugins": "Plugins",
   "status.popover.action.manageServers": "Manage servers",
-
 
   "lsp.tooltip.none": "No LSP servers",
   "lsp.label.connected": "{{count}} LSP",
@@ -664,7 +645,6 @@ export const dict = {
   "settings.general.row.theme.title": "Theme",
   "settings.general.row.theme.description": "Customise how Faber is themed.",
 
-
   "settings.general.row.releaseNotes.title": "Release notes",
   "settings.general.row.releaseNotes.description": "Show What's New popups after updates",
 
@@ -741,8 +721,7 @@ export const dict = {
   "sound.option.yup06": "Yup 06",
 
   "settings.general.notifications.agent.title": "Agent",
-  "settings.general.notifications.agent.description":
-    "Show system notification when the agent is complete",
+  "settings.general.notifications.agent.description": "Show system notification when the agent is complete",
   "settings.general.notifications.blocking.title": "Blocking prompts",
   "settings.general.notifications.blocking.description":
     "Show system notification when a permission or question is blocking the agent",
@@ -857,29 +836,9 @@ export const dict = {
   "session.rename.title": "Rename session",
   "session.rename.label": "Title",
 
-  "workspace.delete.failed.title": "Failed to delete workspace",
-  "workspace.resetting.title": "Resetting workspace",
-  "workspace.resetting.description": "This may take a minute.",
-  "workspace.reset.failed.title": "Failed to reset workspace",
-  "workspace.reset.success.title": "Workspace reset",
-  "workspace.reset.success.description": "Workspace now matches the default branch.",
   "workspace.error.stillPreparing": "Workspace is still preparing",
-  "workspace.status.checking": "Checking for unmerged changes...",
-  "workspace.status.error": "Unable to verify git status.",
-  "workspace.status.clean": "No unmerged changes detected.",
-  "workspace.status.dirty": "Unmerged changes detected in this workspace.",
-  "workspace.delete.title": "Delete workspace",
-  "workspace.delete.confirm": 'Delete workspace "{{name}}"?',
-  "workspace.delete.button": "Delete workspace",
   "project.close.failed.title": "Failed to close project",
   "project.notFound.title": "Directory not found",
   "project.notFound.description":
     "This project's directory no longer exists on disk. Close it to remove it from the sidebar.",
-  "workspace.reset.title": "Reset workspace",
-  "workspace.reset.confirm": 'Reset workspace "{{name}}"?',
-  "workspace.reset.button": "Reset workspace",
-  "workspace.reset.archived.none": "No active sessions will be archived.",
-  "workspace.reset.archived.one": "1 session will be archived.",
-  "workspace.reset.archived.many": "{{count}} sessions will be archived.",
-  "workspace.reset.note": "This will reset the workspace to match the default branch.",
 }

@@ -370,7 +370,7 @@ test("handles command configuration", async () => {
   })
 })
 
-test("forces share off whatever the config asks for, including deprecated autoshare", async () => {
+test("a config written for OpenCode with share settings still loads", async () => {
   await using tmp = await tmpdir({
     git: true,
     init: async (dir) => {
@@ -378,6 +378,7 @@ test("forces share off whatever the config asks for, including deprecated autosh
         path.join(dir, "opencode.json"),
         JSON.stringify({
           $schema: "https://opencode.ai/config.json",
+          share: "auto",
           autoshare: true,
         }),
       )
@@ -387,8 +388,7 @@ test("forces share off whatever the config asks for, including deprecated autosh
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.share).toBe("disabled")
-      expect(config.autoshare).toBe(true)
+      expect([config.share, config.autoshare]).toEqual(["auto", true])
     },
   })
 })
