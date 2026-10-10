@@ -59,6 +59,7 @@ import { compress } from "@/utils/image"
 import { Persist, persisted } from "@/utils/persist"
 import { Identifier } from "@/utils/id"
 import { confirmAbsent } from "@/utils/confirm-absent"
+import { orphaned } from "@/utils/orphaned"
 import { createDictation, dictationTarget, registerDictationTarget } from "@/utils/dictation"
 import { overlayActive } from "@/utils/overlay"
 import { hold, release } from "@/utils/busy"
@@ -1632,14 +1633,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // A root session minted by this submit exists only to carry the prompt that
     // follows. If that prompt never lands, the record is an orphan: zero
     // messages, nothing to resume, but it still lists and still counts as needing
-    // attention. Reap it on the failure paths so a session never outlives the
-    // send that justified it. Only ever set for a session created right here —
-    // an existing session is the user's and is never reaped on a failed send.
+    // attention. The failure paths reap it unless the view is showing it (see
+    // orphaned). Only ever set for a session created right here — an existing
+    // session is the user's and is never reaped on a failed send.
     let created: string | undefined
     const reapCreated = () => {
       if (!created) return
       const id = created
       created = undefined
+      if (!orphaned(id, params.id)) return
       void client.session.delete({ sessionID: id, directory: sessionDirectory }).catch(() => {})
     }
     if (!session && isNewSession) {
@@ -2733,7 +2735,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <Show when={sync.data.vcs_diff.added + sync.data.vcs_diff.removed > 0}>
                             <span class="ml-1.5 shrink-0 font-mono text-text-weak">
                               (<span style={{ color: "var(--text-diff-add-base)" }}>+{sync.data.vcs_diff.added}</span>{" "}
-                              <span style={{ color: "var(--text-diff-delete-base)" }}>-{sync.data.vcs_diff.removed}</span>)
+                              <span style={{ color: "var(--text-diff-delete-base)" }}>
+                                -{sync.data.vcs_diff.removed}
+                              </span>
+                              )
                             </span>
                           </Show>
                         </>
