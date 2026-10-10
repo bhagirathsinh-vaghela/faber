@@ -1,10 +1,36 @@
 import type { MiddlewareHandler } from "hono"
 
+import os from "os"
+import { isIP } from "net"
+
 export namespace Origin {
   let trusted: string[] = []
+  let names: string[] = []
 
-  export function trust(list: string[]) {
+  export function trust(list: string[], mdns?: string) {
     trusted = list
+    names = [
+      os.hostname().toLowerCase(),
+      os
+        .hostname()
+        .toLowerCase()
+        .replace(/\.local$/, "") + ".local",
+      ...(mdns ? [mdns.toLowerCase()] : []),
+      ...list.filter((origin) => URL.canParse(origin)).map((origin) => new URL(origin).hostname.toLowerCase()),
+    ]
+  }
+  trust([])
+
+  // A page whose DNS name rebinds to this machine is same-origin with the
+  // server, so without a password only Host names that cannot be rebound are
+  // answered: IP literals, localhost, this machine's own names and `--cors`
+  // hosts. With a password, basic auth stops such a page instead.
+  export function host(value: string | undefined) {
+    if (!value || !URL.canParse(`http://${value}`)) return false
+    const name = new URL(`http://${value}`).hostname.toLowerCase().replace(/^\[|\]$/g, "")
+    if (isIP(name)) return true
+    if (name === "localhost" || name.endsWith(".localhost")) return true
+    return names.includes(name)
   }
 
   // The browser origins the server answers cross-origin: local dev servers,

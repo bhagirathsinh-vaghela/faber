@@ -40,7 +40,7 @@ Anthropic is reached with an API key, like every other provider. Faber ships no 
 
 ## Network exposure
 
-The server and the supervisor listen on `127.0.0.1` by default. `--hostname 0.0.0.0` (or an interface address) exposes them, for example to reach the UI from a phone on a private network. Set `OPENCODE_SERVER_PASSWORD` before doing that: the server and the supervisor then both require basic auth. Without it they have no authentication, only a same-origin check on WebSockets and on the supervisor's restart and stop routes.
+The server and the supervisor listen on `127.0.0.1` by default. `--hostname 0.0.0.0` (or an interface address) exposes them, for example to reach the UI from a phone on a private network. Set `OPENCODE_SERVER_PASSWORD` before doing that: the server and the supervisor then both require basic auth. Without it they have no authentication, only a same-origin check on WebSockets and on the supervisor's restart and stop routes, and a Host check: requests are answered only when addressed to an IP address, `localhost` (or a `*.localhost` name), this machine's hostname and its `.local` form, the mDNS name when `--mdns` is on, or a host listed in `server.cors`. To reach Faber through a proxy under another name, set the password or add that origin to `server.cors` in the global `opencode.json` (`opencode serve` also takes `--cors`); the supervisor reads the same list.
 
 ## Voice
 

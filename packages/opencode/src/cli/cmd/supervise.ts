@@ -1,6 +1,7 @@
 import { spawn, type Subprocess } from "bun"
 import path from "path"
 import { cmd } from "./cmd"
+import { Config } from "../../config/config"
 import { Global } from "../../global"
 import { Origin } from "../../server/origin"
 
@@ -86,6 +87,11 @@ export const SuperviseCommand = cmd({
     // Faber UI when a proxy/tunnel fronts it on a different scheme/host/port
     // than PORT (e.g. a Caddy https origin). Absent → the page falls back to
     // the current host with PORT.
+    // The same hosts the server allows (`server.cors` in the global config), so
+    // a proxy that reaches the server under another name reaches this page too.
+    const server = (await Config.global().catch(() => undefined))?.server
+    Origin.trust(server?.cors ?? [], server?.mdns ? (server.mdnsDomain ?? "opencode.local") : undefined)
+
     const configFile = path.join(Global.Path.config, "supervisor.json")
     const uiUrl = await Bun.file(configFile)
       .json()
@@ -379,6 +385,8 @@ export const SuperviseCommand = cmd({
       // well past the 10s default idle timeout. 255 is Bun's max.
       idleTimeout: 255,
       async fetch(req) {
+        if (!process.env["OPENCODE_SERVER_PASSWORD"] && !Origin.host(req.headers.get("host") ?? undefined))
+          return new Response("unrecognized Host header", { status: 403 })
         if (!admitted(req, process.env["OPENCODE_SERVER_PASSWORD"], process.env["OPENCODE_SERVER_USERNAME"]))
           return new Response("authentication required", {
             status: 401,

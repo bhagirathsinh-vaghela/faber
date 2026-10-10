@@ -146,6 +146,11 @@ export namespace Server {
       })
       .use((c, next) => {
         const password = Flag.OPENCODE_SERVER_PASSWORD
+        if (
+          !password &&
+          !Origin.host(c.req.header("host") ?? (URL.canParse(c.req.url) ? new URL(c.req.url).host : undefined))
+        )
+          throw new HTTPException(403, { message: "unrecognized Host header" })
         if (!password) return next()
         const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
         return basicAuth({ username, password })(c, next)
@@ -720,7 +725,7 @@ export namespace Server {
     mdnsDomain?: string
     cors?: string[]
   }) {
-    Origin.trust(opts.cors ?? [])
+    Origin.trust(opts.cors ?? [], opts.mdns ? (opts.mdnsDomain ?? "opencode.local") : undefined)
 
     const args = {
       hostname: opts.hostname,
