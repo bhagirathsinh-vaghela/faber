@@ -20,10 +20,11 @@ export namespace Liveness {
 
   const busy = new Map<string, Set<string>>()
   const armed = new Map<string, Set<string>>()
+  const terminals = new Map<string, Set<string>>()
   const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
   export function alive(directory: string) {
-    return (busy.get(directory)?.size ?? 0) > 0 || (armed.get(directory)?.size ?? 0) > 0
+    return [busy, armed, terminals].some((map) => (map.get(directory)?.size ?? 0) > 0)
   }
 
   function edit(map: Map<string, Set<string>>, directory: string, sessionID: string, present: boolean) {
@@ -64,5 +65,20 @@ export namespace Liveness {
   export function setArmed(directory: string, sessionID: string, value: boolean) {
     edit(armed, directory, sessionID, value)
     reconcile(directory)
+  }
+
+  // An open terminal (PTY) dies with its instance, so it holds the instance
+  // like a live session, and closing one settles the directory like any other
+  // release.
+  export function setTerminal(directory: string, id: string, value: boolean) {
+    edit(terminals, directory, id, value)
+    reconcile(directory)
+  }
+
+  // The instance's own teardown kills its terminals. Releasing them schedules
+  // nothing, so a client that re-opens the directory within the grace window
+  // keeps the new instance.
+  export function releaseTerminal(directory: string, id: string) {
+    edit(terminals, directory, id, false)
   }
 }

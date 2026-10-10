@@ -18,6 +18,10 @@ const disposal = {
   all: undefined as Promise<void> | undefined,
 }
 
+// Directories whose instance is being torn down. The cache entry stays until
+// teardown ends, so work started in that window must not leave anything behind.
+const disposing = new Set<string>()
+
 export const Instance = {
   async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
     let existing = cache.get(input.directory)
@@ -45,6 +49,14 @@ export const Instance = {
   // Whether an instance for the directory exists, without creating one.
   cached(directory: string) {
     return cache.has(directory)
+  },
+  closing(directory: string) {
+    return disposing.has(directory)
+  },
+  // The cache entry for the directory. Work that holds it across awaits can
+  // tell whether the instance it started in is still the live one.
+  entry(directory: string) {
+    return cache.get(directory)
   },
   get directory() {
     return context.use().directory
@@ -76,8 +88,10 @@ export const Instance = {
     // top-level import here would be circular.
     const { SessionPing } = await import("@/session/ping")
     SessionPing.stopForDirectory(directory)
+    disposing.add(directory)
     await State.dispose(directory)
     cache.delete(directory)
+    disposing.delete(directory)
     GlobalBus.emit("event", {
       directory,
       payload: {

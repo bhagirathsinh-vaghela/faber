@@ -6,6 +6,7 @@ import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import type { WSContext } from "hono/ws"
 import { Instance } from "../project/instance"
+import { Liveness } from "../project/liveness"
 import { lazy } from "../util/lazy"
 import { Shell } from "@/shell/shell"
 import { Plugin } from "@/plugin"
@@ -66,15 +67,19 @@ export namespace Pty {
 
   interface ActiveSession {
     info: Info
+    directory: string
     process: IPty
     buffer: string
     subscribers: Set<WSContext>
+    torn?: boolean
   }
 
   const state = Instance.state(
     () => new Map<string, ActiveSession>(),
     async (sessions) => {
       for (const session of sessions.values()) {
+        session.torn = true
+        Liveness.releaseTerminal(session.directory, session.info.id)
         try {
           session.process.kill()
         } catch {}
@@ -96,6 +101,7 @@ export namespace Pty {
 
   export async function create(input: CreateInput) {
     const id = Identifier.create("pty", false)
+    const entry = Instance.entry(Instance.directory)
     const command = input.command || Shell.preferred()
     const args = input.args || []
     if (command.endsWith("sh")) {
@@ -137,11 +143,19 @@ export namespace Pty {
     } as const
     const session: ActiveSession = {
       info,
+      directory: Instance.directory,
       process: ptyProcess,
       buffer: "",
       subscribers: new Set(),
     }
+    // A create that resumes during or after its instance's teardown would add a
+    // terminal nothing kills, holding the directory alive.
+    if (!entry || Instance.closing(session.directory) || Instance.entry(session.directory) !== entry) {
+      ptyProcess.kill()
+      throw new Error(`Cannot open a terminal in ${session.directory}: its instance is shutting down`)
+    }
     state().set(id, session)
+    Liveness.setTerminal(session.directory, id, true)
     ptyProcess.onData((data) => {
       let open = false
       for (const ws of session.subscribers) {
@@ -164,6 +178,7 @@ export namespace Pty {
         ws.close()
       }
       session.subscribers.clear()
+      if (!session.torn) Liveness.setTerminal(session.directory, id, false)
       Bus.publish(Event.Exited, { id, exitCode })
       for (const ws of session.subscribers) {
         ws.close()
@@ -198,6 +213,7 @@ export namespace Pty {
       ws.close()
     }
     state().delete(id)
+    Liveness.setTerminal(session.directory, id, false)
     Bus.publish(Event.Deleted, { id })
   }
 
