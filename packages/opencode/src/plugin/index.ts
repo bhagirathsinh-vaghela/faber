@@ -18,6 +18,13 @@ export namespace Plugin {
 
   const BUILTIN = ["@gitlab/opencode-gitlab-auth@1.3.2"]
 
+  // Builtins are installed from npm on every start, so the GitLab login plugin
+  // is fetched only for a config that names the gitlab provider.
+  export function builtin(config: Config.Info) {
+    if (config.provider?.["gitlab"] || config.enabled_providers?.includes("gitlab")) return BUILTIN
+    return []
+  }
+
   // Built-in plugins that are directly imported (not installed from npm)
   const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin]
 
@@ -47,7 +54,7 @@ export namespace Plugin {
 
     const plugins = [...(config.plugin ?? [])]
     if (!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
-      plugins.push(...BUILTIN)
+      plugins.push(...builtin(config))
     }
 
     for (let plugin of plugins) {

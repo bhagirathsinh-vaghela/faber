@@ -15,14 +15,14 @@ export const ServeCommand = cmd({
       // Accepted and ignored: supervisors from before OPENCODE_LIVE still pass
       // it, and the CLI is strict.
       .option("live", { type: "boolean", default: false, hidden: true }),
-  describe: "starts a headless opencode server",
+  describe: "starts a headless Faber server",
   handler: async (args) => {
     if (!Flag.OPENCODE_SERVER_PASSWORD) {
       console.log("Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.")
     }
     const opts = await resolveNetworkOptions(args)
     const server = Server.listen(opts)
-    console.log(`opencode server listening on http://${server.hostname}:${server.port}`)
+    console.log(`Faber server listening on http://${server.hostname}:${server.port}`)
     // Detached: a boot-time GC of orphan rows must not hold the port unserved.
     void Db.sweepOrphansOnce().catch(() => {})
     // Background jobs outlive the server that spawned them, so EVERY start

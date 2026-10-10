@@ -21,7 +21,7 @@ export function admitted(req: Request, password: string | undefined, username?: 
   return token === credentials(password, username).Authorization.slice("Basic ".length)
 }
 
-// Supervisor for the long-lived OpenCode server: a small outer shell that owns
+// Supervisor for the long-lived Faber server: a small outer shell that owns
 // the serve process so it can be restarted from a browser with no terminal.
 // Because it is a separate process, killing the server never touches it — it
 // is the fixed point that outlives every restart. A running supervisor keeps
@@ -64,11 +64,11 @@ export async function run(cmd: string[]) {
 
 export const SuperviseCommand = cmd({
   command: "supervise",
-  describe: "run the supervisor that owns and restarts the opencode server",
+  describe: "run the supervisor that owns and restarts the Faber server",
   builder: (yargs) =>
     yargs
       .option("port", { type: "number", describe: "port the supervisor listens on", default: 4099 })
-      .option("serve-port", { type: "number", describe: "port the owned opencode server listens on", default: 4097 })
+      .option("serve-port", { type: "number", describe: "port the owned Faber server listens on", default: 4097 })
       .option("stage-port", { type: "number", describe: "staging port for health-checked builds", default: 4098 })
       .option("hostname", {
         type: "string",
@@ -83,7 +83,7 @@ export const SuperviseCommand = cmd({
     const probe = HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST.includes(":") ? `[${HOST}]` : HOST
 
     // Optional per-machine config. uiUrl is the browser-facing URL of the
-    // OpenCode UI when a proxy/tunnel fronts it on a different scheme/host/port
+    // Faber UI when a proxy/tunnel fronts it on a different scheme/host/port
     // than PORT (e.g. a Caddy https origin). Absent → the page falls back to
     // the current host with PORT.
     const configFile = path.join(Global.Path.config, "supervisor.json")

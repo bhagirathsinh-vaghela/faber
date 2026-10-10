@@ -192,20 +192,15 @@ test("handles environment variable substitution", async () => {
   }
 })
 
-test("preserves env variables when adding $schema to config", async () => {
+test("loading a config without $schema leaves the file byte-identical", async () => {
   const originalEnv = process.env["PRESERVE_VAR"]
   process.env["PRESERVE_VAR"] = "secret_value"
+  const text = JSON.stringify({ theme: "{env:PRESERVE_VAR}" })
 
   try {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        // Config without $schema - should trigger auto-add
-        await Bun.write(
-          path.join(dir, "opencode.json"),
-          JSON.stringify({
-            theme: "{env:PRESERVE_VAR}",
-          }),
-        )
+        await Bun.write(path.join(dir, "opencode.json"), text)
       },
     })
     await Instance.provide({
@@ -213,12 +208,8 @@ test("preserves env variables when adding $schema to config", async () => {
       fn: async () => {
         const config = await Config.get()
         expect(config.theme).toBe("secret_value")
-
-        // Read the file to verify the env variable was preserved
-        const content = await Bun.file(path.join(tmp.path, "opencode.json")).text()
-        expect(content).toContain("{env:PRESERVE_VAR}")
-        expect(content).not.toContain("secret_value")
-        expect(content).toContain("$schema")
+        expect(config.$schema).toBeUndefined()
+        expect(await Bun.file(path.join(tmp.path, "opencode.json")).text()).toBe(text)
       },
     })
   } finally {
@@ -370,7 +361,7 @@ test("handles command configuration", async () => {
   })
 })
 
-test("a config written for OpenCode with share settings still loads", async () => {
+test("a config written for upstream with share settings still loads", async () => {
   await using tmp = await tmpdir({
     git: true,
     init: async (dir) => {

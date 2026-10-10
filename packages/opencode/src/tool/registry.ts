@@ -164,12 +164,11 @@ export namespace ToolRegistry {
       tools
         .filter((t) => {
           // Anthropic websearch uses the native server tool (Anthropic with an API key)
-          // Exa websearch/codesearch only for opencode provider or via flag
           if (t.id === "websearch") {
-            return model.providerID === "anthropic" || model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
+            return model.providerID === "anthropic" || Flag.OPENCODE_ENABLE_EXA
           }
           if (t.id === "codesearch") {
-            return model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
+            return Flag.OPENCODE_ENABLE_EXA
           }
 
           // use apply tool in same format as codex

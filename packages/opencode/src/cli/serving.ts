@@ -25,7 +25,7 @@ export async function serving() {
 export async function refuseWhileServing(what: string) {
   if (!(await serving())) return false
   process.stderr.write(
-    `refusing to ${what}: an opencode server is running (supervisor :${SUPERVISOR} reports healthy).${EOL}` +
+    `refusing to ${what}: a Faber server is running (supervisor :${SUPERVISOR} reports healthy).${EOL}` +
       `stop the supervisor's server first, then re-run.${EOL}`,
   )
   process.exitCode = 1

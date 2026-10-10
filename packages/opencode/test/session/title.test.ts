@@ -7,8 +7,10 @@ import { SessionPrompt } from "../../src/session/prompt"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Identifier } from "../../src/id/id"
 import { Log } from "../../src/util/log"
-import { tmpdir } from "../fixture/fixture"
+import { connected, tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
+
+connected()
 
 Log.init({ print: false })
 

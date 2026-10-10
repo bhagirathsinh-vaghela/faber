@@ -296,7 +296,7 @@ export namespace MCP {
   }
 
   // Tools cache: per-client snapshot of listTools() taken once when the client
-  // is created. tools() serves from this cache for the lifetime of the OpenCode
+  // is created. tools() serves from this cache for the lifetime of the Faber
   // instance — never re-calls listTools(). This keeps the tool catalog stable
   // through transient MCP failures (token blips, network blips, server
   // restarts); the cost is that tool catalog changes mid-session (servers
@@ -898,7 +898,7 @@ export namespace MCP {
     // We deliberately do NOT call client.listTools() here — that caused MCP
     // servers to disappear from the catalog on any transient failure
     // (token rotation, network blip, server restart, timeout). The cached
-    // list stays valid for the lifetime of the OpenCode instance.
+    // list stays valid for the lifetime of the Faber instance.
     //
     // Every connected tool is registered here regardless of `disabled`: this map
     // is the executable substrate. A `disabled` tool is both hidden from the

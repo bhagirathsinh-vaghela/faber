@@ -5,7 +5,9 @@ import { SessionPrompt } from "../../src/session/prompt"
 import { SessionPin } from "../../src/session/pin"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Provider } from "../../src/provider/provider"
-import { tmpdir } from "../fixture/fixture"
+import { connected, tmpdir } from "../fixture/fixture"
+
+connected()
 
 const MODEL = { providerID: "anthropic", modelID: "claude-x" }
 

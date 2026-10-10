@@ -14,8 +14,10 @@ import { Server } from "../../src/server/server"
 import { BusyHeal } from "../../src/server/routes/global"
 import { HEARTBEAT_MS } from "@opencode-ai/util/stream"
 import { Log } from "../../src/util/log"
-import { tmpdir } from "../fixture/fixture"
+import { connected, tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
+
+connected()
 
 Log.init({ print: false })
 

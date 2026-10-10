@@ -5,7 +5,6 @@ import { Log } from "./util/log"
 import { Db } from "./storage/db"
 import { AuthCommand } from "./cli/cmd/auth"
 import { AgentCommand } from "./cli/cmd/agent"
-import { UninstallCommand } from "./cli/cmd/uninstall"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { Installation } from "./installation"
@@ -97,14 +96,12 @@ const cli = yargs(hideBin(process.argv))
       args: process.argv.slice(2),
     })
   })
-  .usage("\n" + UI.logo())
   .completion("completion", "generate shell completion script")
   .command(McpCommand)
   .command(GenerateCommand)
   .command(DebugCommand)
   .command(AuthCommand)
   .command(AgentCommand)
-  .command(UninstallCommand)
   .command(ServeCommand)
   .command(SuperviseCommand)
   .command(ModelsCommand)

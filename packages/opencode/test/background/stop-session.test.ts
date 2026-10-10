@@ -8,7 +8,9 @@ import { Debt } from "../../src/storage/debt"
 import { GlobalBus } from "../../src/bus/global"
 import { Recovery } from "../../src/session/recovery"
 import { SessionPrompt } from "../../src/session/prompt"
-import { tmpdir } from "../fixture/fixture"
+import { connected, tmpdir } from "../fixture/fixture"
+
+connected()
 
 // A background job outlives the turn that launched it, and a session accumulates
 // them across turns. Stopping the session (the Stop button) is the point at

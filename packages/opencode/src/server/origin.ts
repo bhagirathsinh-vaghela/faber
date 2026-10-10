@@ -8,12 +8,11 @@ export namespace Origin {
   }
 
   // The browser origins the server answers cross-origin: local dev servers,
-  // the desktop shell, *.opencode.ai over https, and any `--cors` origin.
+  // the desktop shell, and any `--cors` origin.
   export function allowed(input: string) {
     if (input.startsWith("http://localhost:")) return true
     if (input.startsWith("http://127.0.0.1:")) return true
     if (input === "tauri://localhost" || input === "http://tauri.localhost") return true
-    if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) return true
     return trusted.includes(input)
   }
 

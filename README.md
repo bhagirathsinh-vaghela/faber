@@ -56,8 +56,9 @@ The agent does all of its work in the server: it reads and edits files, runs com
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Interface              | Web UI only, branded Faber ([why](#why-a-web-ui-and-no-terminal-ui)). The terminal UI and the desktop app were removed. The binary, config and data directories and env vars keep the `opencode` name. |
 | Session sharing        | Removed.                                                                                                                                                                                               |
-| Install                | From source only. The install script and `opencode upgrade` were removed.                                                                                                                              |
-| Subscription logins    | Claude Pro/Max login removed; ChatGPT, Copilot and GitLab logins kept.                                                                                                                                 |
+| Install                | From source only. The install script, `opencode upgrade` and `opencode uninstall` were removed.                                                                                                        |
+| Subscription logins    | Claude Pro/Max login removed; ChatGPT, Copilot and GitLab logins kept. The GitLab login plugin loads only when the config lists the `gitlab` provider (`"provider": { "gitlab": {} }`).                |
+| OpenCode Zen           | Upstream's hosted models are still a provider you can add with a key, but they no longer load without one or act as the default model.                                                                 |
 | Existing OpenCode data | Sessions keep working, but sessions created by upstream OpenCode are stored under its old project ids and do not show under their folder.                                                              |
 
 ## Development

@@ -1,4 +1,5 @@
 import { $ } from "bun"
+import { afterAll, beforeAll } from "bun:test"
 import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
@@ -7,6 +8,19 @@ import type { Config } from "../../src/config/config"
 // Strip null bytes from paths (defensive fix for CI environment issues)
 function sanitizePath(p: string): string {
   return p.replace(/\0/g, "")
+}
+
+// For a file whose tests resolve the default model, which needs a connected
+// provider. A key connects the models.dev fixture's `opencode` provider.
+export function connected() {
+  const previous = process.env["OPENCODE_API_KEY"]
+  beforeAll(() => {
+    process.env["OPENCODE_API_KEY"] = "test-key"
+  })
+  afterAll(() => {
+    if (previous === undefined) delete process.env["OPENCODE_API_KEY"]
+    if (previous !== undefined) process.env["OPENCODE_API_KEY"] = previous
+  })
 }
 
 type TmpDirOptions<T> = {

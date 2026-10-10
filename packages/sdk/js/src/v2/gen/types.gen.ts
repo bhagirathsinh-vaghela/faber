@@ -1599,7 +1599,7 @@ export type Config = {
   logLevel?: LogLevel
   server?: ServerConfig
   /**
-   * Command configuration, see https://opencode.ai/docs/commands
+   * Command configuration
    */
   command?: {
     [key: string]: {
@@ -1664,11 +1664,11 @@ export type Config = {
   plugin?: Array<string>
   snapshot?: boolean
   /**
-   * Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load.
+   * Ignored: Faber does not share sessions. Accepted so configs written for upstream still load.
    */
   share?: "manual" | "auto" | "disabled"
   /**
-   * Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load.
+   * Ignored: Faber does not share sessions. Accepted so configs written for upstream still load.
    */
   autoshare?: boolean
   /**
@@ -1708,7 +1708,7 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Agent configuration, see https://opencode.ai/docs/agents
+   * Agent configuration
    */
   agent?: {
     plan?: AgentConfig

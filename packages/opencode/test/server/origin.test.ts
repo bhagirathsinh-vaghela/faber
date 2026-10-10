@@ -29,16 +29,20 @@ describe("Origin.foreign", () => {
 })
 
 describe("Origin.allowed", () => {
-  test("local dev servers, the desktop shell and opencode.ai over https", () => {
-    expect(
-      ["http://localhost:3000", "http://127.0.0.1:5173", "tauri://localhost", "https://app.opencode.ai"].map(
-        Origin.allowed,
-      ),
-    ).toEqual([true, true, true, true])
+  test("local dev servers and the desktop shell", () => {
+    expect(["http://localhost:3000", "http://127.0.0.1:5173", "tauri://localhost"].map(Origin.allowed)).toEqual([
+      true,
+      true,
+      true,
+    ])
   })
 
-  test("a plain-http opencode.ai and an unknown site are refused", () => {
-    expect(["http://app.opencode.ai", "https://evil.example"].map(Origin.allowed)).toEqual([false, false])
+  test("opencode.ai pages and an unknown site are refused", () => {
+    expect(
+      ["https://app.opencode.ai", "https://opencode.ai", "http://app.opencode.ai", "https://evil.example"].map(
+        Origin.allowed,
+      ),
+    ).toEqual([false, false, false, false])
   })
 
   test("a --cors origin is allowed once trusted", () => {
@@ -55,6 +59,11 @@ describe("Origin.socket", () => {
 
   test("refuses a handshake from another site's page", async () => {
     const response = await open({ origin: "https://evil.example" })
+    expect([response.status, await response.text()]).toEqual([403, "cross-origin WebSocket refused"])
+  })
+
+  test("refuses a handshake from an opencode.ai page", async () => {
+    const response = await open({ origin: "https://app.opencode.ai" })
     expect([response.status, await response.text()]).toEqual([403, "cross-origin WebSocket refused"])
   })
 

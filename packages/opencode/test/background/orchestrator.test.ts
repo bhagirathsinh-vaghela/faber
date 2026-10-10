@@ -7,7 +7,9 @@ import { BackgroundOrchestrator } from "../../src/background/orchestrator"
 import { BackgroundReconcile } from "../../src/background/reconcile"
 import { Recovery } from "../../src/session/recovery"
 import { Debt } from "../../src/storage/debt"
-import { tmpdir } from "../fixture/fixture"
+import { connected, tmpdir } from "../fixture/fixture"
+
+connected()
 
 const created: string[] = []
 

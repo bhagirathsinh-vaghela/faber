@@ -64,7 +64,7 @@ export namespace Config {
   export const state = Instance.state(async () => {
     const auth = await Auth.all()
 
-    // Config loading order (low -> high precedence): https://opencode.ai/docs/config#precedence-order
+    // Config loading order (low -> high precedence):
     // 1) Remote .well-known/opencode (org defaults)
     // 2) Global config (~/.config/opencode/opencode.json{,c})
     // 3) Custom config (OPENCODE_CONFIG)
@@ -83,8 +83,6 @@ export namespace Config {
         }
         const wellknown = (await response.json()) as any
         const remoteConfig = wellknown.config ?? {}
-        // Add $schema to prevent load() from trying to write back to a non-existent file
-        if (!remoteConfig.$schema) remoteConfig.$schema = "https://opencode.ai/config.json"
         result = mergeConfigConcatArrays(
           result,
           await load(JSON.stringify(remoteConfig), `${key}/.well-known/opencode`),
@@ -677,7 +675,7 @@ export namespace Config {
     })
   export type Permission = z.infer<typeof Permission>
 
-  // `subtask` is upstream OpenCode's name for `subagent`, accepted as an alias
+  // `subtask` is upstream's name for `subagent`, accepted as an alias
   // so a command written for upstream still runs as a subagent.
   export const Command = z.preprocess(
     (val) => {
@@ -896,10 +894,7 @@ export namespace Config {
       theme: z.string().optional().describe("Theme name to use for the interface"),
       logLevel: Log.Level.optional().describe("Log level"),
       server: Server.optional().describe("Server configuration for opencode serve and web commands"),
-      command: z
-        .record(z.string(), Command)
-        .optional()
-        .describe("Command configuration, see https://opencode.ai/docs/commands"),
+      command: z.record(z.string(), Command).optional().describe("Command configuration"),
       skills: Skills.optional().describe("Additional skill folder paths"),
       dictation: Dictation.optional().describe(
         "Local speech sidecar: speech-to-text for the prompt microphone, and the voice and rewrite for read-aloud",
@@ -914,11 +909,11 @@ export namespace Config {
       share: z
         .enum(["manual", "auto", "disabled"])
         .optional()
-        .describe("Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load."),
+        .describe("Ignored: Faber does not share sessions. Accepted so configs written for upstream still load."),
       autoshare: z
         .boolean()
         .optional()
-        .describe("Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load."),
+        .describe("Ignored: Faber does not share sessions. Accepted so configs written for upstream still load."),
       autoupdate: z
         .union([z.boolean(), z.literal("notify")])
         .optional()
@@ -967,7 +962,7 @@ export namespace Config {
         })
         .catchall(Agent)
         .optional()
-        .describe("Agent configuration, see https://opencode.ai/docs/agents"),
+        .describe("Agent configuration"),
       subagent_toolsets: z
         .record(z.string(), z.array(z.string()))
         .optional()
@@ -1268,7 +1263,6 @@ export namespace Config {
         .then(async (mod) => {
           const { provider, model, ...rest } = mod.default
           if (provider && model) result.model = `${provider}/${model}`
-          result["$schema"] = "https://opencode.ai/config.json"
           result = mergeDeep(result, rest)
           await Bun.write(path.join(Global.Path.config, "config.json"), JSON.stringify(result, null, 2))
           await fs.unlink(legacy)
@@ -1292,7 +1286,6 @@ export namespace Config {
   }
 
   async function load(text: string, configFilepath: string) {
-    const original = text
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       return process.env[varName] || ""
     })
@@ -1360,12 +1353,6 @@ export namespace Config {
 
     const parsed = Info.safeParse(legacy(data))
     if (parsed.success) {
-      if (!parsed.data.$schema) {
-        parsed.data.$schema = "https://opencode.ai/config.json"
-        // Write the $schema to the original text to preserve variables like {env:VAR}
-        const updated = original.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
-        await Bun.write(configFilepath, updated).catch(() => {})
-      }
       const data = parsed.data
       if (data.plugin) {
         for (let i = 0; i < data.plugin.length; i++) {

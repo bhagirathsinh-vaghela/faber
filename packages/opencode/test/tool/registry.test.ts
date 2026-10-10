@@ -4,8 +4,25 @@ import fs from "fs/promises"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 import { ToolRegistry } from "../../src/tool/registry"
+import { Flag } from "../../src/flag/flag"
 
 describe("tool.registry", () => {
+  test("the opencode provider gets the Exa search tools only through OPENCODE_ENABLE_EXA", async () => {
+    await using dir = await tmpdir()
+    await Instance.provide({
+      directory: dir.path,
+      fn: async () => {
+        const ids = await ToolRegistry.tools({ providerID: "opencode", modelID: "claude-sonnet-4-5" }).then((tools) =>
+          tools.map((tool) => tool.id),
+        )
+        expect([ids.includes("websearch"), ids.includes("codesearch")]).toEqual([
+          Flag.OPENCODE_ENABLE_EXA,
+          Flag.OPENCODE_ENABLE_EXA,
+        ])
+      },
+    })
+  })
+
   test("loads tools from .opencode/tool (singular)", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
