@@ -168,5 +168,26 @@ describe("Truncate", () => {
       expect(result).toContain("lines truncated] ...")
       expect(result.endsWith("...")).toBe(true)
     })
+
+    test("counts exactly the lines it drops", () => {
+      // 10 bytes per line with its newline, so the 51200-byte cap keeps 5120 lines
+      const lines = Array.from({ length: 10000 }, (_, i) => `+${String(i).padStart(8, "0")}`)
+      const capped = Truncate.diff(lines.join("\n"))
+      expect(capped).toBe(`${lines.slice(0, 5120).join("\n")}\n\n... [4880 lines truncated] ...`)
+      expect(Truncate.diff(lines.join("\n") + "\n")).toBe(capped)
+    })
+
+    test("caps by UTF-8 bytes, not string length", () => {
+      // "+éééé" is 5 UTF-16 units but 9 UTF-8 bytes; 8000 lines are 80000 bytes
+      const lines = Array.from({ length: 8000 }, () => "+éééé")
+      const capped = Truncate.diff(lines.join("\n"))
+      expect(capped).toBe(`${lines.slice(0, 5120).join("\n")}\n\n... [2880 lines truncated] ...`)
+    })
+
+    test("a single oversized line is cut on a whole character", () => {
+      // 1 + 2 * 30000 bytes; the cap falls inside the 25600th "é"
+      const capped = Truncate.diff("a" + "é".repeat(30000))
+      expect(capped).toBe(`a${"é".repeat(25599)}\n\n... [1 lines truncated] ...`)
+    })
   })
 })

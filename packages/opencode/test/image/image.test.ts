@@ -82,6 +82,19 @@ describe("Image.normalize", () => {
     expect(outcome.mime).toBe("image/jpeg")
   })
 
+  test("flattens transparent pixels onto white", async () => {
+    const clear = new photon.PhotonImage(new Uint8Array(2_400 * 10 * 4), 2_400, 10)
+    const source = Buffer.from(clear.get_bytes()).toString("base64")
+    clear.free()
+    const outcome = await Image.normalize(source)
+
+    expect(outcome.status).toBe("resized")
+    if (outcome.status !== "resized") return
+    const decoded = photon.PhotonImage.new_from_byteslice(Buffer.from(outcome.base64, "base64"))
+    expect(Array.from(decoded.get_raw_pixels().slice(0, 4))).toEqual([255, 255, 255, 255])
+    decoded.free()
+  })
+
   test("emits a smaller payload than the lossless source", async () => {
     const source = pngBase64(2_400, 1_200)
     const outcome = await Image.normalize(source)

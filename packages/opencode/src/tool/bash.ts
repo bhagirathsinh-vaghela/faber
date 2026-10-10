@@ -257,8 +257,13 @@ export const BashTool = Tool.define("bash", async () => {
       // machinery speaks milliseconds. Resolve the ceiling in SECONDS here (so
       // the message below can report it) and convert at the single boundary into
       // `run`. A configured value is parsed the same way as a tool argument.
-      const configSecs =
-        cfg.background?.job?.hard_timeout === undefined ? undefined : parseDuration(cfg.background.job.hard_timeout)
+      const configured = cfg.background?.job?.hard_timeout
+      const configSecs = configured === undefined ? undefined : parseDuration(configured)
+      if (configured !== undefined && !((configSecs ?? 0) > 0)) {
+        throw new Error(
+          `Invalid background.job.hard_timeout in config: ${configured}. Use a positive duration like '30m', '90s', or '1h30m'.`,
+        )
+      }
       const seconds = timeoutSecs ?? configSecs ?? BackgroundSpawn.HARD_MS / 1000
 
       // One path for every command: a durable record, a detached process, and

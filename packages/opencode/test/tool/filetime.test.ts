@@ -240,7 +240,55 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
 
         const after = await read.execute({ filePath: file }, ctx)
         expect(after.output).not.toContain("<file_unchanged>")
-        expect(after.output).toContain("2")
+        expect(after.output.split("\n")).toContain("     2\t2")
+      },
+    })
+  })
+
+  test("apply_patch add onto an existing unread file is refused", async () => {
+    await using workspace = await tmpdir({
+      init: (dir) => Bun.write(path.join(dir, "f.txt"), "keep\n"),
+    })
+    await Instance.provide({
+      directory: workspace.path,
+      fn: async () => {
+        const file = path.join(workspace.path, "f.txt")
+        const patchText = `*** Begin Patch\n*** Add File: ${file}\n+new\n*** End Patch`
+        const err = await (
+          await ApplyPatchTool.init()
+        )
+          .execute({ patchText }, ctx)
+          .then(() => null)
+          .catch((e: Error) => e)
+        expect(err?.message).toStartWith(`Read ${file} before editing it.`)
+        expect(await Bun.file(file).text()).toBe("keep\n")
+      },
+    })
+  })
+
+  test("apply_patch move onto an existing unread file is refused", async () => {
+    await using workspace = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "old.txt"), "one\n")
+        await Bun.write(path.join(dir, "new.txt"), "keep\n")
+      },
+    })
+    await Instance.provide({
+      directory: workspace.path,
+      fn: async () => {
+        const source = path.join(workspace.path, "old.txt")
+        const destination = path.join(workspace.path, "new.txt")
+        await (await ReadTool.init()).execute({ filePath: source }, ctx)
+        const patchText = `*** Begin Patch\n*** Update File: ${source}\n*** Move to: ${destination}\n@@\n-one\n+1\n*** End Patch`
+        const err = await (
+          await ApplyPatchTool.init()
+        )
+          .execute({ patchText }, ctx)
+          .then(() => null)
+          .catch((e: Error) => e)
+        expect(err?.message).toStartWith(`Read ${destination} before editing it.`)
+        expect(await Bun.file(destination).text()).toBe("keep\n")
+        expect(await Bun.file(source).text()).toBe("one\n")
       },
     })
   })

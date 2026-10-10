@@ -340,6 +340,41 @@ describe("tool.grep", () => {
     })
   })
 
+  test("content mode with a timeout and no output reports no files", async () => {
+    await using dir = await createFixture()
+    const timeout = AbortSignal.timeout
+    AbortSignal.timeout = () => AbortSignal.abort()
+    await Instance.provide({
+      directory: dir.path,
+      fn: async () => {
+        const grep = await GrepTool.init()
+        const found = await grep.execute({ pattern: "foo", path: dir.path, output_mode: "content" }, ctx)
+        expect(found.output).toBe("No files found\n\n(Search timed out — results may be incomplete)")
+        expect(found.metadata.numLines).toBe(0)
+        expect(found.metadata.totalBeforePagination).toBe(0)
+      },
+    }).finally(() => {
+      AbortSignal.timeout = timeout
+    })
+  })
+
+  test("files mode counts only files that still stat", async () => {
+    await using dir = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "a\nb.txt"), "findme\n")
+      },
+    })
+    await Instance.provide({
+      directory: dir.path,
+      fn: async () => {
+        const grep = await GrepTool.init()
+        const found = await grep.execute({ pattern: "findme", path: dir.path }, ctx)
+        expect(found.output).toBe("No files found")
+        expect(found.metadata.totalBeforePagination).toBe(0)
+      },
+    })
+  })
+
   test("content mode relativizes paths", async () => {
     await using tmp = await createFixture()
     await Instance.provide({

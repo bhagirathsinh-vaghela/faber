@@ -397,3 +397,24 @@ describe("tool.bash truncation", () => {
     })
   })
 })
+
+describe("tool.bash configured hard_timeout", () => {
+  for (const value of [0, -5, "30x"]) {
+    test(`rejects ${JSON.stringify(value)}`, async () => {
+      await using dir = await tmpdir({ git: true, config: { background: { job: { hard_timeout: value } } } })
+      await Instance.provide({
+        directory: dir.path,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const err = await bash
+            .execute({ command: "echo hi", description: "Echo" }, ctx)
+            .then(() => null)
+            .catch((e: Error) => e)
+          expect(err?.message).toBe(
+            `Invalid background.job.hard_timeout in config: ${value}. Use a positive duration like '30m', '90s', or '1h30m'.`,
+          )
+        },
+      })
+    })
+  }
+})

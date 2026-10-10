@@ -79,12 +79,7 @@ export namespace Image {
   const HEADER_PREFIX_CHARS = 4 * 1024
 
   function readHeaderSize(base64: string) {
-    let header: Buffer
-    try {
-      header = Buffer.from(base64.slice(0, HEADER_PREFIX_CHARS), "base64")
-    } catch {
-      return undefined
-    }
+    const header = Buffer.from(base64.slice(0, HEADER_PREFIX_CHARS), "base64")
 
     if (header.length >= 24 && header.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")))
       return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) }
@@ -134,6 +129,24 @@ export namespace Image {
     return sizes
   }
 
+  // JPEG has no alpha channel and photon's encoder drops it, so a transparent
+  // pixel would encode as its stored RGB (black for a cleared canvas). Composite
+  // onto white first. Frees the input and returns a new image.
+  function flatten(photon: Photon, image: InstanceType<Photon["PhotonImage"]>) {
+    const pixels = image.get_raw_pixels()
+    const width = image.get_width()
+    const height = image.get_height()
+    image.free()
+    for (let index = 0; index < pixels.length; index += 4) {
+      const alpha = pixels[index + 3]!
+      if (alpha === 255) continue
+      for (const channel of [0, 1, 2])
+        pixels[index + channel] = Math.round((pixels[index + channel]! * alpha + 255 * (255 - alpha)) / 255)
+      pixels[index + 3] = 255
+    }
+    return new photon.PhotonImage(pixels, width, height)
+  }
+
   export async function normalize(base64: string, limits: Limits = DEFAULT_LIMITS): Promise<Normalized> {
     const bytes = Buffer.byteLength(base64, "utf8")
 
@@ -179,7 +192,7 @@ export namespace Image {
         return remember(key, { status: "unchanged" })
 
       for (const size of shrinkSizes(width, height, limits)) {
-        const resized = photon.resize(decoded, size.width, size.height, photon.SamplingFilter.Lanczos3)
+        const resized = flatten(photon, photon.resize(decoded, size.width, size.height, photon.SamplingFilter.Lanczos3))
         try {
           const candidates = JPEG_QUALITIES.map((quality) => ({
             mime: "image/jpeg",

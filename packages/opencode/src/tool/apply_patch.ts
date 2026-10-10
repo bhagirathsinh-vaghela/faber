@@ -65,6 +65,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
       switch (hunk.type) {
         case "add": {
+          if (await Bun.file(filePath).exists()) await FileTime.assert(ctx.sessionID, filePath)
           const oldContent = ""
           const newContent =
             hunk.contents.length === 0 || hunk.contents.endsWith("\n") ? hunk.contents : `${hunk.contents}\n`
@@ -124,6 +125,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
           const movePath = hunk.move_path ? Filesystem.resolve(Instance.directory, hunk.move_path) : undefined
           await assertExternalDirectory(ctx, movePath)
+          if (movePath && (await Bun.file(movePath).exists())) await FileTime.assert(ctx.sessionID, movePath)
 
           fileChanges.push({
             filePath,

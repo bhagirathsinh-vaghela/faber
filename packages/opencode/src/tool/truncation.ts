@@ -37,12 +37,10 @@ export namespace Truncate {
   }
 
   export async function cleanup() {
-    // Age comes from the file's mtime, not the id. Identifier.timestamp is lossy
-    // for absolute time — the 6-byte time field only holds the low bits of
-    // (ms * 0x1000), so a decoded value is not real milliseconds and wraps every
-    // ~800 days; comparing it to a wall-clock cutoff deleted files at the wrong
-    // age. The filesystem mtime is the real write time and the correct signal for
-    // a retention sweep.
+    // Age comes from the file's mtime, not the id. An id minted with the legacy
+    // 6-byte time field holds only the low bits of (ms * 0x1000), so
+    // Identifier.timestamp decodes it to a time that wraps every ~800 days. The
+    // filesystem mtime is the real write time for every file in the directory.
     const cutoff = Date.now() - RETENTION_MS
     const glob = new Bun.Glob("tool_*")
     const entries = await Array.fromAsync(glob.scan({ cwd: DIR, onlyFiles: true })).catch(() => [] as string[])
@@ -61,10 +59,14 @@ export namespace Truncate {
   }
 
   export function diff(patch: string): string {
-    if (patch.length <= MAX_DIFF_BYTES) return patch
-    const cutoff = patch.lastIndexOf("\n", MAX_DIFF_BYTES)
-    const kept = cutoff > 0 ? patch.slice(0, cutoff) : patch.slice(0, MAX_DIFF_BYTES)
-    const remaining = patch.slice(kept.length).split("\n").length
+    const bytes = Buffer.from(patch)
+    if (bytes.length <= MAX_DIFF_BYTES) return patch
+    // Decoding a cut that splits a multi-byte character yields trailing U+FFFD
+    const head = bytes.subarray(0, MAX_DIFF_BYTES).toString()
+    const cutoff = head.lastIndexOf("\n")
+    const kept = cutoff > 0 ? head.slice(0, cutoff) : head.replace(/\uFFFD+$/, "")
+    const rest = patch.slice(cutoff > 0 ? cutoff + 1 : kept.length)
+    const remaining = rest.split("\n").length - Number(rest.endsWith("\n"))
     return `${kept}\n\n... [${remaining} lines truncated] ...`
   }
 

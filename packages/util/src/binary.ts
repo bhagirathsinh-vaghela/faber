@@ -1,9 +1,9 @@
 import { Identifier } from "./identifier"
 
-// Both searches run over lists the server ordered with Identifier.compare, so
-// they order by the same key. A lexical comparison here would disagree with
-// that order for ids of different time-field widths and land a message at the
-// wrong index.
+// Both searches expect a list sorted with Identifier.compare; server lists can
+// arrive in lexical id order, so a caller sorts first. A lexical comparison here
+// would disagree with that order for ids of different time-field widths and land
+// a message at the wrong index.
 export namespace Binary {
   export function search<T>(array: T[], id: string, compare: (item: T) => string): { found: boolean; index: number } {
     let left = 0

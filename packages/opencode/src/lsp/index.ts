@@ -152,6 +152,8 @@ export namespace LSP {
     return state()
   }
 
+  // Runs from global routes, outside any instance, so it publishes no
+  // lsp.updated: Bus.publish scopes every event to the current instance.
   async function drop(keys: string[]) {
     if (!keys.length) return
     await Promise.all(
@@ -164,20 +166,18 @@ export namespace LSP {
         })
       }),
     )
-    Bus.publish(Event.Updated, {})
   }
 
-  // A closed project is finished with its language servers. Sessions in it are
-  // already gone by the time this runs (project close unlinks the view, and any
-  // live session keeps its own instance alive independently), so nothing is
-  // mid-request on these clients.
+  // A closed project is finished with its language servers. Project close does
+  // not wait for its sessions, so a session still running in the project can
+  // lose a server it is mid-request on.
   export async function shutdownProject(projectID: string) {
     await drop([...pool].filter(([, entry]) => entry.projectID === projectID).map(([key]) => key))
   }
 
-  // Process-exit backstop. Nothing else reaches these clients once the pool
-  // stopped riding on Instance.state, so a root that never sees an explicit
-  // project close would otherwise leak its server for the life of the process.
+  // Global dispose backstop. The pool lives outside Instance.state, so nothing
+  // else reaches these clients, and a root that never sees an explicit project
+  // close would otherwise leak its server for the life of the process.
   export async function shutdownAll() {
     await drop([...pool.keys()])
   }
@@ -398,9 +398,9 @@ export namespace LSP {
   ]
 
   // The cap is applied AFTER merging every client's results, not per client:
-  // capping inside runAll returns up to limit x clients and silently drops
-  // whichever server answered last. offset lets a caller page a common name
-  // rather than guess whether a truncated list held the match.
+  // capping inside runAll would return up to limit x clients. offset lets a
+  // caller page a common name rather than guess whether a truncated list held
+  // the match.
   export async function workspaceSymbol(query: string, page?: { limit?: number; offset?: number }) {
     const limit = page?.limit ?? 10
     const offset = page?.offset ?? 0

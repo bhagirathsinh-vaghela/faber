@@ -189,8 +189,6 @@ async function formatFilesWithMatches(
     .split(/\r?\n/)
     .filter((l) => l)
 
-  const totalBeforePagination = files.length
-
   // Sort by mtime (most recent first), tolerating files deleted between grep and stat
   const results = await Promise.allSettled(
     files.map(async (f) => {
@@ -203,13 +201,20 @@ async function formatFilesWithMatches(
     .map((r) => r.value)
   entries.sort((a, b) => b.mtime - a.mtime)
   files = entries.map((e) => e.path)
+  const totalBeforePagination = files.length
 
   files = paginate(files, params.offset, params.head_limit)
 
   if (files.length === 0) {
     return {
       title: params.pattern,
-      metadata: { numFiles: 0, filenames: [] as string[], totalBeforePagination, appliedLimit: params.head_limit, appliedOffset: params.offset ?? 0 },
+      metadata: {
+        numFiles: 0,
+        filenames: [] as string[],
+        totalBeforePagination,
+        appliedLimit: params.head_limit,
+        appliedOffset: params.offset ?? 0,
+      },
       output: timedOut ? "No files found\n\n(Search timed out — results may be incomplete)" : "No files found",
     }
   }
@@ -258,7 +263,13 @@ function formatCount(
   if (entries.length === 0) {
     return {
       title: params.pattern,
-      metadata: { numFiles: 0, numMatches: 0, totalBeforePagination, appliedLimit: params.head_limit, appliedOffset: params.offset ?? 0 },
+      metadata: {
+        numFiles: 0,
+        numMatches: 0,
+        totalBeforePagination,
+        appliedLimit: params.head_limit,
+        appliedOffset: params.offset ?? 0,
+      },
       output: timedOut ? "No files found\n\n(Search timed out — results may be incomplete)" : "No files found",
     }
   }
@@ -289,7 +300,7 @@ function formatContent(
   hasErrors: boolean,
   timedOut: boolean,
 ): { title: string; metadata: Metadata; output: string } {
-  let lines = output.trimEnd().split(/\r?\n/)
+  let lines = output.trim() ? output.trimEnd().split(/\r?\n/) : []
 
   // Relativize file paths in output lines. Strip only the path prefix: path.relative() on the
   // whole line would also normalize the matched text (e.g. "a // b" -> "a / b").
@@ -304,7 +315,12 @@ function formatContent(
   if (lines.length === 0) {
     return {
       title: params.pattern,
-      metadata: { numLines: 0, totalBeforePagination, appliedLimit: params.head_limit, appliedOffset: params.offset ?? 0 },
+      metadata: {
+        numLines: 0,
+        totalBeforePagination,
+        appliedLimit: params.head_limit,
+        appliedOffset: params.offset ?? 0,
+      },
       output: timedOut ? "No files found\n\n(Search timed out — results may be incomplete)" : "No files found",
     }
   }
