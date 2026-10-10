@@ -55,12 +55,12 @@ export const ProviderRoutes = lazy(() =>
           mapValues(filteredProviders, (x) => Provider.fromModelsDevProvider(x, anthropicContext)),
           connected,
         )
-        // A model is only selectable from a connected provider, so an
-        // unconnected one is listed for the connect flow alone. Its defaults are
-        // resolved before the models are dropped, since that flow reads them.
+        // An unconnected provider keeps its models so a message that ran on one
+        // still shows its name and limits. Only `connected` providers' models are
+        // offered for selection.
         const defaults = mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id)
         return c.json({
-          all: Object.values(providers).map((item) => (connected[item.id] ? item : { ...item, models: {} })),
+          all: Object.values(providers),
           default: defaults,
           connected: Object.keys(connected),
         })
