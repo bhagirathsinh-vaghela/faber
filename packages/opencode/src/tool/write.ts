@@ -3,6 +3,7 @@ import * as fs from "fs"
 import * as path from "path"
 import { Tool } from "./tool"
 import { LSP } from "../lsp"
+import type { LSPClient } from "../lsp/client"
 import { createTwoFilesPatch, structuredPatch } from "diff"
 import DESCRIPTION from "./write.txt"
 import { Bus } from "../bus"
@@ -101,21 +102,7 @@ export const WriteTool = Tool.define("write", {
     await LSP.touchFile(filepath, true)
     const diagnostics = await LSP.diagnostics()
     const normalizedFilepath = Filesystem.normalizePath(filepath)
-    let projectDiagnosticsCount = 0
-    for (const [file, issues] of Object.entries(diagnostics)) {
-      const errors = issues.filter((item) => item.severity === 1)
-      if (errors.length === 0) continue
-      const limited = errors.slice(0, MAX_DIAGNOSTICS_PER_FILE)
-      const suffix =
-        errors.length > MAX_DIAGNOSTICS_PER_FILE ? `\n... and ${errors.length - MAX_DIAGNOSTICS_PER_FILE} more` : ""
-      if (file === normalizedFilepath) {
-        output += `\n\nLSP errors detected in this file, please fix:\n<diagnostics file="${filepath}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
-        continue
-      }
-      if (projectDiagnosticsCount >= MAX_PROJECT_DIAGNOSTICS_FILES) continue
-      projectDiagnosticsCount++
-      output += `\n\nLSP errors detected in other files:\n<diagnostics file="${file}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
-    }
+    output += diagnosticsReport(diagnostics, normalizedFilepath, Instance.worktree)
 
     const own = diagnostics[normalizedFilepath]
     return {
@@ -138,3 +125,29 @@ export const WriteTool = Tool.define("write", {
     }
   },
 })
+
+// The language server keeps every file it has checked in this instance,
+// including ones a read pulled in from another repo. A write can only break the
+// written file or files in the same project, so only those are reported.
+export function diagnosticsReport(
+  diagnostics: Record<string, LSPClient.Diagnostic[]>,
+  filepath: string,
+  worktree: string,
+) {
+  const block = (heading: string, file: string, errors: LSPClient.Diagnostic[]) => {
+    const suffix =
+      errors.length > MAX_DIAGNOSTICS_PER_FILE ? `\n... and ${errors.length - MAX_DIAGNOSTICS_PER_FILE} more` : ""
+    return `\n\n${heading}\n<diagnostics file="${file}">\n${errors.slice(0, MAX_DIAGNOSTICS_PER_FILE).map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
+  }
+  const failing = Object.entries(diagnostics)
+    .map(([file, issues]) => [file, issues.filter((item) => item.severity === 1)] as const)
+    .filter(([, errors]) => errors.length > 0)
+  const own = failing.find(([file]) => file === filepath)
+  const others = failing
+    .filter(([file]) => file !== filepath && Filesystem.contains(worktree, file))
+    .slice(0, MAX_PROJECT_DIAGNOSTICS_FILES)
+  return [
+    own ? block("LSP errors detected in this file, please fix:", filepath, own[1]) : "",
+    ...others.map(([file, errors]) => block("LSP errors detected in other files:", file, errors)),
+  ].join("")
+}
