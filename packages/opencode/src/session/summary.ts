@@ -152,7 +152,9 @@ export namespace SessionSummary {
   }
 
   async function messageDiff(input: { sessionID: string; messageID: string }) {
-    return computeDiff({ messages: turn(await Session.messages({ sessionID: input.sessionID, compacted: false }), input.messageID) })
+    return computeDiff({
+      messages: turn(await Session.messages({ sessionID: input.sessionID, compacted: false }), input.messageID),
+    })
   }
 
   export const diff = fn(

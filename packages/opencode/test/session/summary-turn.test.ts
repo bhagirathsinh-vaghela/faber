@@ -57,7 +57,9 @@ describe("SessionSummary.summarize", () => {
       directory: tmp.path,
       fn: async () => {
         const session = await Session.create({ title: "summarize a removed message" })
-        await expect(SessionSummary.summarize({ sessionID: session.id, messageID: "msg_gone" })).resolves.toBeUndefined()
+        await expect(
+          SessionSummary.summarize({ sessionID: session.id, messageID: "msg_gone" }),
+        ).resolves.toBeUndefined()
         await Session.remove(session.id)
       },
     })
@@ -73,7 +75,9 @@ describe("SessionSummary.summarize", () => {
       fn: async () => {
         const session = await Session.create({ title: "summarize a removed session" })
         await Session.remove(session.id)
-        await expect(SessionSummary.summarize({ sessionID: session.id, messageID: "msg_gone" })).resolves.toBeUndefined()
+        await expect(
+          SessionSummary.summarize({ sessionID: session.id, messageID: "msg_gone" }),
+        ).resolves.toBeUndefined()
       },
     })
   })

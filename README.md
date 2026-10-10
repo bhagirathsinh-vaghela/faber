@@ -57,7 +57,7 @@ Dictation and read-aloud talk to a local speech sidecar at `http://127.0.0.1:411
 ## Development
 
 - Run from source without building: `bun dev serve --port 4096` (the web UI is served only after a build packs it).
-- Tests: `bun test` inside `packages/opencode`, `packages/app` and `packages/util`; `bun test --conditions=browser` inside `packages/ui`. The app's Playwright suite (`bun run test` in `packages/app`) needs `bunx playwright install` and a running server, and its round-trip spec needs `ANTHROPIC_API_KEY` or `OPENCODE_E2E_MODEL`.
+- Tests: `bun test` inside `packages/opencode` and `packages/util`, `bun test src` inside `packages/app` (plain `bun test` there also picks up the Playwright specs), and `bun test --conditions=browser` inside `packages/ui`. The app's Playwright suite (`bun run test` in `packages/app`) needs `bunx playwright install` and a running server, and its round-trip spec needs `ANTHROPIC_API_KEY` or `OPENCODE_E2E_MODEL`.
 - Typecheck: `bun turbo typecheck`. On a machine or VM with little memory, add `--concurrency=1`.
 
 Licensed under Apache-2.0. See LICENSE and NOTICE.
