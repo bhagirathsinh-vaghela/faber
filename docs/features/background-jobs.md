@@ -73,6 +73,10 @@ Job records live in the `job` table in SQLite; logs and exit files live in `<dat
 | `GET /job/:id`, `GET /job/:id/log` | Full record and log for one job                                          |
 | `job.updated` event                | Published when a job is spawned or settles                               |
 
+## Measured
+
+On my own install, since the race shipped on 2026-09-02 and through 2026-10-10, 4,928 of 55,353 completed shell commands (8.9%) ran past the 5-second window and were handed to a background job: 10.5% in September, 7.7% in October. Commands copied into forked sessions are counted once. Under a blocking shell each of those would have held the turn until it exited or hit the timeout.
+
 ## Configuration
 
 | Key                           | Default | Meaning                                                                                        |

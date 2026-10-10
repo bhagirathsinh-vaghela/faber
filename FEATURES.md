@@ -2,11 +2,11 @@
 
 Everything Faber adds on top of upstream, grouped by area. Each entry links to a page with how it works, configuration, and code pointers.
 
-> **Built on Anthropic.** Faber is developed and used daily with Anthropic models only. The caching, keep-warm and cost features are built around Anthropic's prompt cache (four breakpoints, 5-minute and 1-hour lifetimes, its cache prices). The principles apply to any provider with prefix caching; the mechanisms do not, and each page states its provider scope.
+> **Built on Anthropic.** Faber is developed and used daily with Anthropic models only. The caching, keep-warm and cost features are built around Anthropic's prompt cache (four breakpoints, 5-minute and 1-hour lifetimes, its cache prices). The principles apply to any provider with prefix caching; the mechanisms do not, and each page states its provider scope. [Other providers](docs/features/prompt-caching.md#other-providers) compares how the main providers cache.
 
 ## Prompt caching and cost
 
-**Prompt caching.** Faber keeps every byte in front of the conversation identical across turns, sessions, repos, plan/build switches, keep-warm pings and compaction, so Anthropic's prompt cache keeps hitting. Stable content comes first, the four allowed cache markers sit where they buy the most reuse, and secondary requests reuse the session's own prefix. About 99% of Anthropic input tokens are served from cache (99.05% over 176,856 requests, July to October 2026). [Details](docs/features/prompt-caching.md)
+**Prompt caching.** Faber keeps every byte in front of the conversation identical across turns, sessions, repos, plan/build switches, keep-warm pings and compaction, so Anthropic's prompt cache keeps hitting. Stable content comes first, the four allowed cache markers sit where they buy the most reuse, and secondary requests reuse the session's own prefix. About 99% of Anthropic input tokens are served from cache (99.05% over 161,633 requests, July to October 2026; [measured](docs/features/prompt-caching.md#measured)). [Details](docs/features/prompt-caching.md)
 
 **Keep-warm.** A per-session daemon re-sends the cached prefix a few seconds before Anthropic's 5-minute cache expires, so a session waiting on you, a long tool call or a slow model step resumes on a cache hit. The ping persists no message and runs no tools. It arms when you send in or open a session and disarms on Stop, archive or delete; the intent survives restarts. Off by default (`ping.enabled`). [Details](docs/features/keep-warm.md)
 
@@ -14,7 +14,7 @@ Everything Faber adds on top of upstream, grouped by area. Each entry links to a
 
 **Cache-safe revert.** "Revert here" first re-seeds the cache entry for the conversation up to the message you return to, then reverts. Dropping a tangent or retrying from an earlier point continues on a full cache hit, even if that entry had expired. [Details](docs/features/cache-safe-revert.md)
 
-**Turn reminders.** Rules are restated where the model reads them without breaking the cache. Injected reminders (concise style, plan mode, question-tool rule, subagent no-delegation note, skill checklist, date or branch change, MCP catalog change) is appended to the turn's opening message, and a write onto an already-sent message is refused. [Details](docs/features/turn-reminders.md)
+**Turn reminders.** Rules are restated where the model reads them without breaking the cache. Injected reminders (concise style, plan mode, question-tool rule, subagent no-delegation note, skill checklist, date or branch change, MCP catalog change) are appended to the turn's opening message, and a write onto an already-sent message is refused. [Details](docs/features/turn-reminders.md)
 
 **Usage and cost.** Per-message and per-session token, cache and dollar figures are computed on the server, with cache writes priced by TTL (1h at 2x, 5m at 1.25x) and prices overridable in config. They show as a customizable chip row in the dock and under each answer, with one layout shared by every client. [Details](docs/features/usage-and-cost.md)
 

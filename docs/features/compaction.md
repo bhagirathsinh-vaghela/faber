@@ -62,6 +62,17 @@ The session's stored MCP catalog text is also cleared, so the next turn re-injec
 
 Separately from compaction, at the end of each prompt loop `SessionCompaction.prune` walks back through completed tool calls older than the last two turns. It keeps the newest 40,000 tokens of tool output (`PRUNE_PROTECT`) and, if more than 20,000 tokens (`PRUNE_MINIMUM`) lie beyond that, marks those outputs as compacted so they are no longer sent. Output from the `skill` tool is never pruned. Pruning stops at the previous summary.
 
+## Measured
+
+Anthropic compaction requests on my own install, 2026-07-10 to 2026-10-10, each counted once even when a fork copied it:
+
+| Period                   | Compactions | Missed the cache | Input read from cache | Input cost vs a cold summary |
+| ------------------------ | ----------- | ---------------- | --------------------- | ---------------------------- |
+| 2026-07-10 to 2026-09-03 | 55          | 25               | 54.1%                 | 2.0x less                    |
+| 2026-09-04 to 2026-10-10 | 67          | 2                | 96.7%                 | 9.1x less                    |
+
+The 2 misses after 2026-09-04 came from one regression on 2026-09-28 (Pacific time), fixed the same day; the 31 compactions in October missed none (99.6% read, 11.9x less). A compaction counts as a miss when it read nothing from cache or wrote more than half its input. Cost uses Anthropic's list multipliers (cache read 0.1x, 5-minute write 1.25x of base input); a cold summary writes its whole input.
+
 ## Configuration
 
 | Key                    | Default            | Meaning                                                                                                  |

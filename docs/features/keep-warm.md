@@ -1,8 +1,8 @@
 # Keep-warm
 
-Anthropic's conversation cache entries live for five minutes. A session waiting on you, a long build, or a tool call that runs past that window would otherwise resume on a full cache rewrite. With keep-warm enabled, a per-session daemon re-sends the session's exact request a few seconds before the entry expires, which refreshes it. The ping persists no message and runs no tools, but its tokens and cost are counted like any other request.
+Faber caches the conversation with Anthropic's 5-minute lifetime and the stable system blocks with the 1-hour one (see [prompt caching](prompt-caching.md)). A session waiting on you, a long build, or a tool call that runs past the conversation entry's lifetime would otherwise resume on a full cache rewrite. With keep-warm enabled, a per-session daemon re-sends the session's exact request a few seconds before that entry expires, which refreshes it. The ping persists no message and runs no tools, but its tokens and cost are counted like any other request.
 
-> **Provider scope.** Pings are sent for any model, but the timing is built for Anthropic's 5-minute cache lifetime, which a request refreshes. With a provider whose cache works differently, or has no cache, a ping costs a request and buys nothing; leave `ping.enabled` off there.
+> **Provider scope.** Pings are sent for any model, but the timing follows the lifetime of Faber's conversation marker, Anthropic's 5 minutes, which a request refreshes. That lifetime is fixed today; [Why](#why) says why and how to change it. With a provider whose cache works differently, or has no cache, a ping costs a request and buys nothing; leave `ping.enabled` off there.
 
 ## How it works
 
@@ -41,6 +41,18 @@ The ping reads the stream until the first `finish-step`, then records usage with
 
 Seeing `start-step` counts as success: the server accepted the request and read the cached prefix, even if the body later errors.
 
+### When pings stop paying
+
+The daemon has no ping limit: it keeps a session warm until you stop, archive or delete it, or two pings in a row fail. Each ping reads the whole cached prefix, while letting the conversation entry expire costs one rewrite of the conversation when you return. Taking the whole context as conversation, a run of pings pays off only while it is shorter than (write price − read price) ÷ read price pings, at one ping every 4 minutes 50 seconds (5 minutes minus `ping.before_expiry`):
+
+| Cache read price | 5-minute write | Pings to break even | Idle time                |
+| ---------------- | -------------- | ------------------- | ------------------------ |
+| 0.1x             | 1.25x          | 11.5                | about 56 minutes         |
+| 0.05x            | 1.25x          | 24                  | about 1 hour 56 minutes  |
+| 0.025x           | 1.25x          | 49                  | about 3 hours 57 minutes |
+
+Context size scales both sides equally, so it does not move the break-even; how much of the context is conversation does. Each ping also reads the system blocks. While their 1-hour entry is alive anyway (within the hour, or longer if another session keeps it warm), the larger their share, the sooner pings stop paying; past the hour, a lone session's system entry expires too, so the two longer break-evens are lower bounds. Before leaving a session for longer than that, Stop it (which disarms pings) and accept one rewrite on return, or leave `ping.enabled` off.
+
 ### Intent: who arms and who disarms
 
 Each session persists a `keepWarm` flag that mirrors whether a daemon is armed. Only explicit actions change it:
@@ -61,6 +73,19 @@ After a server restart, recovery re-arms every session that carries `keepWarm` a
 
 The session status line and the session overview show a countdown ring to the next ping. A session with no scheduled ping (stopped, disabled, or its window lapsed) shows `--` and an empty ring. The server publishes the deadline (`pingAt`) and the clients only render it, so every surface agrees.
 
+## Measured
+
+On my own install, 2026-07-10 to 2026-10-10: after a pause of 5 to 60 minutes, **96.4% of resumed turns** in top-level sessions (1,012 of 1,050) found the conversation still cached, and every month was between 95.1% and 97.8%. The conversation entry expires 5 minutes after its last use; in between, only a ping, or a subagent or fork that copied the conversation, can refresh it. Warm means the turn read from cache and wrote less than 10% of its input.
+
+| Month     | Warm resumes after a 5 to 60 minute pause |
+| --------- | ----------------------------------------- |
+| July      | 117 of 121 (96.7%)                        |
+| August    | 227 of 236 (96.2%)                        |
+| September | 352 of 370 (95.1%)                        |
+| October   | 316 of 323 (97.8%)                        |
+
+Whether pings pay for themselves is not established. Pings are logged only since 2026-10-07; in that window they were about 18% of spend and roughly broke even, at each model's own read price, against the rewrites they prevented. Most turns that followed a ping (324 of 430) came within 5 minutes of the previous request, when the cache was still warm without it.
+
 ## Configuration
 
 | Key                  | Default | Effect                                                                                                                                                                                             |
@@ -78,7 +103,11 @@ HTTP: `POST /session/:sessionID/arm` arms a session that is still warm; `POST /s
 
 ## Why
 
-The daemon replaced manual `.` keep-alive messages that had to be sent and then cleaned out of history; the daemon persists nothing. The remaining design follows from bugs recorded in commit messages:
+The daemon replaced manual `.` keep-alive messages that had to be sent and then cleaned out of history; the daemon persists nothing.
+
+**Why the conversation gets 5 minutes, not 1 hour.** Every turn writes new conversation tokens to the cache: at 1.25x the base input price with a 5-minute lifetime, 2x with a 1-hour one. The 5-minute lifetime is a bet that, in a session that writes often and idles rarely, the cheaper write plus an occasional ping (a cache read, 0.1x) costs less than paying 2x on every write; it has not been measured against a 1-hour conversation lifetime. The system blocks change rarely, so they get the 1-hour lifetime. If your sessions idle for long stretches, change the lifetime in three places together: `CACHE_TTL` in `session/ping.ts` (ping timing), the conversation markers' `ttl` in `applyCaching` (`provider/transform.ts`), and `CACHE_TTL` in the app's `utils/cache-countdown.ts` (the countdown ring). Making them one config key would be a small patch. `ping.enabled` is off by default, and leaving it off is right for any provider whose cache outlives your pauses.
+
+The remaining design follows from bugs recorded in commit messages:
 
 - **Pinging through a busy turn.** The daemon once stood down while a turn was running. A turn stuck in a long tool call moves no anchor, so the window lapsed while the daemon slept, and "a wedged tool call cost the whole cache rather than one ping".
 - **The 60-second deadline.** One ping stalled for 16 minutes after a network drop. Healthy pings took 1.7 to 39 seconds, so 60 seconds bounds a stall without clipping a live ping, and stays far below the 5-minute TTL.
