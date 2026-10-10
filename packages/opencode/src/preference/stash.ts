@@ -33,25 +33,17 @@ export namespace Stash {
     return Storage.read<Entry[]>(KEY).catch(() => [] as Entry[])
   }
 
-  async function save(entries: Entry[]) {
-    await Storage.write(KEY, entries)
+  async function save(change: (entries: Entry[]) => Entry[]) {
+    const entries = await Storage.reconcile<Entry[]>(KEY, (stored) => change(stored ?? []))
     GlobalBus.emit("event", {
       directory: "global",
       payload: { type: Event.Updated.type, properties: { entries } },
     })
   }
 
-  export const push = fn(Entry, async (input) => {
-    const entries = await list()
-    entries.push(input)
-    if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES)
-    await save(entries)
-  })
+  export const push = fn(Entry, (input) => save((entries) => [...entries, input].slice(-MAX_ENTRIES)))
 
-  export const removeAt = fn(z.object({ index: z.number() }), async (input) => {
-    const entries = await list()
-    if (input.index < 0 || input.index >= entries.length) return
-    entries.splice(input.index, 1)
-    await save(entries)
-  })
+  export const removeAt = fn(z.object({ index: z.number() }), (input) =>
+    save((entries) => entries.filter((_, index) => index !== input.index)),
+  )
 }
