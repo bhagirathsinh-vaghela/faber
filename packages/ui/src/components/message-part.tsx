@@ -1722,6 +1722,7 @@ ToolRegistry.register({
     const diffComponent = useDiffComponent()
     const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
     const filename = () => getFilename(props.input.filePath ?? "")
+    const patch = () => (typeof props.metadata.diff === "string" ? props.metadata.diff : undefined)
     return (
       <TranscriptCard
         {...props}
@@ -1735,11 +1736,13 @@ ToolRegistry.register({
         }}
       >
         <Switch>
-          <Match when={props.metadata.diff || props.input.newString || props.input.oldString}>
+          <Match when={patch() || props.input.newString || props.input.oldString}>
             <div data-component="edit-content">
+              {/* Bare oldString/newString snippets carry no file position, so numbering them would start at 1. */}
               <Dynamic
                 component={diffComponent}
-                patch={typeof props.metadata.diff === "string" ? props.metadata.diff : undefined}
+                patch={patch()}
+                disableLineNumbers={!patch() && !props.metadata?.filediff?.before}
                 before={{
                   name: props.metadata?.filediff?.file || props.input.filePath,
                   contents: props.metadata?.filediff?.before || props.input.oldString,
