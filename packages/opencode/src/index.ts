@@ -5,7 +5,6 @@ import { Log } from "./util/log"
 import { Db } from "./storage/db"
 import { AuthCommand } from "./cli/cmd/auth"
 import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { UninstallCommand } from "./cli/cmd/uninstall"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
@@ -105,7 +104,6 @@ const cli = yargs(hideBin(process.argv))
   .command(DebugCommand)
   .command(AuthCommand)
   .command(AgentCommand)
-  .command(UpgradeCommand)
   .command(UninstallCommand)
   .command(ServeCommand)
   .command(SuperviseCommand)
