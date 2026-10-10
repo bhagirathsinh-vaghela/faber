@@ -75,9 +75,6 @@ export type Session = {
     files: number
     diffs?: Array<FileDiff>
   }
-  share?: {
-    url: string
-  }
   title: string
   titleGenerated?: string
   titleOrdinal?: number
@@ -116,9 +113,6 @@ export type Session = {
   }
   keepWarm?: boolean
   unseen?: boolean
-  seen?: {
-    at: number
-  }
   lastActivity?: number
   tokens?: {
     input: number
@@ -126,17 +120,13 @@ export type Session = {
     cacheWrite: number
     output: number
     reasoning: number
-    cacheWrite5m?: number
-    cacheWrite1h?: number
   }
   total?: {
     input: number
     output: number
-    cacheWrite: number
+    cacheWrite?: number
   }
   cost?: number
-  cacheMarkers?: Array<number>
-  systemBlockCount?: number
   cacheProbeIndex?: number
   cacheProbeMessageID?: string
   allowedTools?: Array<
@@ -996,7 +986,7 @@ export type EventSessionTotalsUpdated = {
     total?: {
       input: number
       output: number
-      cacheWrite: number
+      cacheWrite?: number
     }
     cost?: number
   }
@@ -1009,8 +999,6 @@ export type EventSessionCacheUpdated = {
     cache?: {
       lastRequestAt: number
     }
-    cacheMarkers?: Array<number>
-    systemBlockCount?: number
   }
 }
 
@@ -1179,7 +1167,9 @@ export type UserTheme = {
   baseId: string
   fontSize: number
   font: string
-  codeFont: string
+  codeFont?: string
+  codeBlockFont?: string
+  inlineCodeFont?: string
   codeTheme: string
   diffTheme: string
   fontWeight: number
@@ -1434,7 +1424,7 @@ export type ProviderConfig = {
       temperature?: boolean
       tool_call?: boolean
       interleaved?:
-        | true
+        | boolean
         | {
             field: "reasoning_content" | "reasoning_details"
           }
@@ -1675,11 +1665,11 @@ export type Config = {
   plugin?: Array<string>
   snapshot?: boolean
   /**
-   * Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing
+   * Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load.
    */
   share?: "manual" | "auto" | "disabled"
   /**
-   * @deprecated Use 'share' field instead. Share newly created sessions automatically
+   * Ignored: Faber does not share sessions. Accepted so configs written for OpenCode still load.
    */
   autoshare?: boolean
   /**
@@ -1728,7 +1718,6 @@ export type Config = {
     explore?: AgentConfig
     title?: AgentConfig
     summary?: AgentConfig
-    compaction?: AgentConfig
     [key: string]: AgentConfig | undefined
   }
   /**
@@ -1960,7 +1949,7 @@ export type Config = {
      */
     mcp_oauth_path?: string
     /**
-     * Coalesce streaming text deltas into one event per this many milliseconds, cutting per-token event overhead on the wire. Default 80. Set 0 to publish every delta immediately.
+     * Coalesce streaming text and reasoning deltas into one event per this many milliseconds, cutting per-token event overhead on the wire. Default 100. Set 0 to publish every delta immediately.
      */
     stream_flush_ms?: number
   }
@@ -3771,72 +3760,6 @@ export type SessionAbortTurnResponses = {
 }
 
 export type SessionAbortTurnResponse = SessionAbortTurnResponses[keyof SessionAbortTurnResponses]
-
-export type SessionUnshareData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/share"
-}
-
-export type SessionUnshareErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionUnshareError = SessionUnshareErrors[keyof SessionUnshareErrors]
-
-export type SessionUnshareResponses = {
-  /**
-   * Successfully unshared session
-   */
-  200: Session
-}
-
-export type SessionUnshareResponse = SessionUnshareResponses[keyof SessionUnshareResponses]
-
-export type SessionShareData = {
-  body?: never
-  path: {
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/session/{sessionID}/share"
-}
-
-export type SessionShareErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type SessionShareError = SessionShareErrors[keyof SessionShareErrors]
-
-export type SessionShareResponses = {
-  /**
-   * Successfully shared session
-   */
-  200: Session
-}
-
-export type SessionShareResponse = SessionShareResponses[keyof SessionShareResponses]
 
 export type SessionDiffData = {
   body?: never
@@ -6101,6 +6024,8 @@ export type AppSkillsResponses = {
     content: string
     reminder?: {
       sparse: string
+      exit?: string
+      section?: string
     }
   }>
 }

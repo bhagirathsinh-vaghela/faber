@@ -93,7 +93,8 @@ describe("receive", () => {
   })
 
   test("the legacy appearance seeds the editor only with no active theme", () => {
-    const { id: _id, name: _name, baseId: _base, ...appearance } = theme("x", 16)
+    const { id: _id, name: _name, baseId: _base, ...rest } = theme("x", 16)
+    const appearance = { ...rest, codeFont: "jetbrains-mono" }
     const event = { type: "appearance.preference.updated" as const, properties: appearance }
     expect(receive(local({ active: null }), event)).toEqual({ appearance })
     expect(receive(local(), event)).toEqual({})

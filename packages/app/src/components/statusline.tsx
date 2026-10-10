@@ -63,7 +63,7 @@ export function Statusline() {
     return m ? statsFromMessage(m, sync.data.provider.all) : null
   })
 
-  const totals = createMemo(() => session()?.total ?? { input: 0, output: 0, cacheWrite: 0 })
+  const totals = createMemo(() => ({ input: 0, output: 0, cacheWrite: 0, ...session()?.total }))
   const sessionCost = createMemo(() => session()?.cost ?? 0)
   return (
     <Show when={stats()}>
