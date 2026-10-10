@@ -124,11 +124,6 @@ export namespace Parts {
     await Db.retry(() => q.removeMessage.run(messageID))
   }
 
-  export async function removeSession(sessionID: string) {
-    const q = await open()
-    await Db.retry(() => q.removeSession.run(sessionID))
-  }
-
   // The prepared DELETE, so Session.remove can drop parts, messages, and the
   // session row in one transaction instead of three awaits a crash can interleave.
   export async function removeSessionQuery() {

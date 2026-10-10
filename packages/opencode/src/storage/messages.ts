@@ -166,11 +166,6 @@ export namespace Messages {
     await Db.retry(() => q.remove.run(messageID))
   }
 
-  export async function removeSession(sessionID: string) {
-    const q = await open()
-    await Db.retry(() => q.removeSession.run(sessionID))
-  }
-
   export async function removeSessionQuery() {
     return open().then((q) => q.removeSession)
   }

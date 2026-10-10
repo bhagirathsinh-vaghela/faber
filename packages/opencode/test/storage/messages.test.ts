@@ -58,7 +58,7 @@ describe("Messages", () => {
     expect(await Messages.listSession(session)).toEqual(["msg_a", "msg_b", "msg_c"])
   })
 
-  test("remove deletes one message; removeSession deletes all of a session's", async () => {
+  test("remove deletes one message; removeSessionQuery deletes all of a session's", async () => {
     const session = "ses_del"
     await Messages.put(user("msg_d1", session, 10))
     await Messages.put(user("msg_d2", session, 20))
@@ -67,8 +67,8 @@ describe("Messages", () => {
 
     await Messages.remove("msg_d1")
     expect(await Messages.listSession(session)).toEqual(["msg_d2"])
-
-    await Messages.removeSession(session)
+    const remove = await Messages.removeSessionQuery()
+    remove.run(session)
     expect(await Messages.listSession(session)).toEqual([])
     // Another session is untouched.
     expect(await Messages.listSession("ses_other_del")).toEqual([keep.id])

@@ -689,7 +689,8 @@ describe("Recovery delivery", () => {
       const prompt = await user(sub.id, "count")
       await tick()
       await assistant(sub.id, prompt.id, "7")
-      await Sessions.remove(parent.id)
+      const remove = await Sessions.removeQuery()
+      remove.run(parent.id)
 
       await settle({ idle: true })
 

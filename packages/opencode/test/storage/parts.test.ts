@@ -93,7 +93,7 @@ describe("Parts", () => {
     expect(size).toBe(0)
   })
 
-  test("removeSession deletes every part of the session across all its messages", async () => {
+  test("removeSessionQuery deletes every part of the session across all its messages", async () => {
     const session = "ses_removeall"
     const msgA = "msg_rs_a"
     const msgB = "msg_rs_b"
@@ -103,8 +103,8 @@ describe("Parts", () => {
     await Parts.put(text(msgA, "prt_0000000000000012000000000a", "a1", session))
     await Parts.put(text(msgB, "prt_0000000000000013000000000b", "b1", session))
     await Parts.put(keep)
-
-    await Parts.removeSession(session)
+    const remove = await Parts.removeSessionQuery()
+    remove.run(session)
 
     expect(await Parts.list(msgA)).toEqual({ parts: [], size: 0 })
     expect(await Parts.list(msgB)).toEqual({ parts: [], size: 0 })

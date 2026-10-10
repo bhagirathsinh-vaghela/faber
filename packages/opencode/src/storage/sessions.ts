@@ -62,10 +62,12 @@ export namespace Sessions {
       importRow: db.query<void, [string, string, number, number, string]>(
         `INSERT OR IGNORE INTO session (id, project_id, time_created, time_updated, json) VALUES (?, ?, ?, ?, ?)`,
       ),
-      listProject: db.query<{ json: string }, [string]>(`SELECT json FROM session WHERE project_id = ?`),
+      listProject: db.query<{ id: string; json: string }, [string]>(
+        `SELECT id, json FROM session WHERE project_id = ? AND json_valid(json)`,
+      ),
       archived: db.query<{ archived: number | null }, [string]>(`SELECT archived FROM session WHERE id = ?`),
-      listArchived: db.query<{ json: string }, []>(
-        `SELECT json FROM session WHERE archived > 0 AND parent IS NULL ORDER BY archived DESC`,
+      listArchived: db.query<{ id: string; json: string }, []>(
+        `SELECT id, json FROM session WHERE archived > 0 AND parent IS NULL ORDER BY archived DESC`,
       ),
       listStarred: db.query<{ id: string; json: string }, []>(
         `SELECT id, json FROM session WHERE starred = 1 AND parent IS NULL`,
@@ -166,8 +168,7 @@ export namespace Sessions {
   }
 
   export async function listProject(projectID: string) {
-    const rows = await open().then((q) => q.listProject.all(projectID))
-    return Promise.all(rows.map((r) => normalize(r.json)))
+    return scan(await open().then((q) => q.listProject.all(projectID)))
   }
 
   // Returns a synchronous reader of the stored archive flag, for a caller that
@@ -181,8 +182,7 @@ export namespace Sessions {
   }
 
   export async function listArchived() {
-    const rows = await open().then((q) => q.listArchived.all())
-    return Promise.all(rows.map((r) => normalize(r.json)))
+    return scan(await open().then((q) => q.listArchived.all()))
   }
 
   // The recovery sweep's query, exported so a test explains this exact text.
@@ -283,11 +283,6 @@ export namespace Sessions {
   // Headless-run sessions created before `before`, across every project.
   export async function listEphemeral(before: number) {
     return scan(await open().then((q) => q.listEphemeral.all(before)))
-  }
-
-  export async function remove(sessionID: string) {
-    const q = await open()
-    await Db.retry(() => q.remove.run(sessionID))
   }
 
   export async function removeQuery() {

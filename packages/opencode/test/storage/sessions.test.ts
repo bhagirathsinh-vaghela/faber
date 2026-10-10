@@ -66,10 +66,40 @@ describe("Sessions", () => {
     expect(ids).toEqual(["ses_p1", "ses_p2"])
   })
 
+  test("listProject skips a row the schema rejects and returns the rest", async () => {
+    await Sessions.write(session("ses_ok", "proj_bad"))
+    await Sessions.write({ ...session("ses_bad", "proj_bad"), title: 7 } as unknown as Session.Info)
+
+    expect((await Sessions.listProject("proj_bad")).map((s) => s.id)).toEqual(["ses_ok"])
+  })
+
+  test("listProject skips a row whose JSON is torn and returns the rest", async () => {
+    const { Db } = await import("../../src/storage/db")
+    await Sessions.write(session("ses_whole", "proj_torn"))
+    ;(await Db.open())
+      .query(`INSERT INTO session (id, project_id, time_created, time_updated, json) VALUES (?, ?, 1, 1, ?)`)
+      .run("ses_torn", "proj_torn", '{"id":"ses_tor')
+
+    expect((await Sessions.listProject("proj_torn")).map((s) => s.id)).toEqual(["ses_whole"])
+  })
+
+  test("listArchived skips a row the schema rejects and returns the rest", async () => {
+    const archived = (id: string) => {
+      const base = session(id, "proj_archive")
+      return { ...base, time: { ...base.time, archived: 5 } } as Session.Info
+    }
+    await Sessions.write(archived("ses_arch_ok"))
+    await Sessions.write({ ...archived("ses_arch_bad"), title: 7 } as unknown as Session.Info)
+
+    const ids = (await Sessions.listArchived()).map((s) => s.id).filter((id) => id.startsWith("ses_arch_"))
+    expect(ids).toEqual(["ses_arch_ok"])
+  })
+
   test("remove deletes the session", async () => {
     const s = session("ses_rm", "proj_a")
     await Sessions.write(s)
-    await Sessions.remove(s.id)
+    const remove = await Sessions.removeQuery()
+    remove.run(s.id)
     await expect(Sessions.read(s.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
   })
 
