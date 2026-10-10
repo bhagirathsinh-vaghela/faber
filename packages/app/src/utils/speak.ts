@@ -618,7 +618,7 @@ export function createSpeech(opts?: {
     const session = media()
     if (!session) return
     if (typeof MediaMetadata !== "undefined")
-      session.metadata = new MediaMetadata({ title: opts?.title?.() ?? "", artist: "OpenCode" })
+      session.metadata = new MediaMetadata({ title: opts?.title?.() ?? "", artist: "Faber" })
     session.setActionHandler("play", () => (store.speaking ? resume() : start()))
     session.setActionHandler("pause", () => pause())
     // A skip from the lock screen or a headset keeps playing: unlike one made

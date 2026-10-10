@@ -457,7 +457,7 @@ export const dict = {
   "error.page.action.checkUpdates": "Check for updates",
   "error.page.action.updateTo": "Update to {{version}}",
   "error.page.report.prefix": "Please report this error",
-  "error.page.report.discord": "on Discord",
+  "error.page.report.github": "on GitHub",
   "error.page.version": "Version: {{version}}",
 
   "error.dev.rootNotFound":
@@ -599,9 +599,9 @@ export const dict = {
   "sidebar.gettingStarted.line1": "Faber includes free models so you can start immediately.",
   "sidebar.gettingStarted.line2": "Connect any provider to use models, inc. Claude, GPT, Gemini etc.",
 
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name": "Faber",
 
-  "settings.section.desktop": "Desktop",
+  "settings.section.app": "App",
   "settings.section.server": "Server",
   "settings.tab.general": "General",
   "settings.tab.shortcuts": "Shortcuts",

@@ -274,8 +274,8 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
               class="flex items-center text-text-interactive-base gap-1"
               onClick={() => platform.openLink("https://github.com/bhagirathsinh-vaghela/faber/issues")}
             >
-              <div>{language.t("error.page.report.discord")}</div>
-              <Icon name="discord" class="text-text-interactive-base" />
+              <div>{language.t("error.page.report.github")}</div>
+              <Icon name="github" class="text-text-interactive-base" />
             </button>
           </div>
           <Show when={platform.version}>
