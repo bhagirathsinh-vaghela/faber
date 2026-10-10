@@ -146,20 +146,15 @@ export namespace SessionProcessor {
           }
           try {
             const buildTimer = log.time("llm.build")
-            const { stream, cacheMarkers, systemBlockCount } = await LLM.stream(streamInput)
+            const { stream } = await LLM.stream(streamInput)
             buildTimer.stop()
 
-            // Store cache markers and system block count on the session.
             // Anchor the cache TTL to request dispatch time (parent sessions only) —
             // every request that reaches Anthropic restarts the 5m cache window.
             const dispatchedAt = Date.now()
             // updateCache, not update: this fires once per step, so it broadcasts
-            // the lean CacheUpdated event rather than the whole record. No client
-            // reads the marker fields; the web dock takes its countdown from the
-            // ping hub.
+            // the lean CacheUpdated event rather than the whole record.
             await Session.updateCache(input.sessionID, (draft) => {
-              draft.cacheMarkers = cacheMarkers
-              draft.systemBlockCount = systemBlockCount
               if (!draft.parentID) draft.cache = { lastRequestAt: dispatchedAt }
             })
             // The cache TTL just reset, so the armed ping deadline moved with it.
@@ -449,8 +444,6 @@ export namespace SessionProcessor {
                     draft.tokens.cacheWrite = usage.tokens.cache.write
                     draft.tokens.output = usage.tokens.output
                     draft.tokens.reasoning = usage.tokens.reasoning
-                    draft.tokens.cacheWrite5m = usage.tokens.cache.write5m ?? 0
-                    draft.tokens.cacheWrite1h = usage.tokens.cache.write1h ?? 0
                     draft.total.input += weightedInput
                     draft.total.output += weightedOutput
                     draft.total.cacheWrite += usage.tokens.cache.write

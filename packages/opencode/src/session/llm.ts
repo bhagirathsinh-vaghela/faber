@@ -66,8 +66,6 @@ export namespace LLM {
 
   export type StreamOutput = {
     stream: StreamTextResult<ToolSet, unknown>
-    cacheMarkers: number[]
-    systemBlockCount: number
   }
 
   export async function stream(input: StreamInput): Promise<StreamOutput> {
@@ -373,9 +371,7 @@ export namespace LLM {
       : []
     const catalogued = new Set([...listed, ...disabled])
 
-    // Calculate cache marker indices based on the final messages
     const cache = input.cache ?? true
-    const cacheMarkers = cache ? ProviderTransform.cacheMarkerIndices(finalMessages, probeIndex, cache) : []
 
     const stream = streamText({
       onError(error) {
@@ -455,7 +451,7 @@ export namespace LLM {
       },
     })
 
-    return { stream, cacheMarkers, systemBlockCount: system.length }
+    return { stream }
   }
 
   async function resolveTools(input: Pick<StreamInput, "tools" | "user">) {

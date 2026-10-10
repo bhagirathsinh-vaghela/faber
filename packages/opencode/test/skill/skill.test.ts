@@ -55,6 +55,52 @@ Instructions here.
   })
 })
 
+test("reads a skill's reminder conventions from its frontmatter", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, ".opencode", "skill", "gated", "SKILL.md"),
+        `---
+name: gated
+description: Declares an exit line and a re-injected section.
+reminder:
+  sparse: keep going
+  exit: "LOOP-OVER:"
+  section: Steps
+---
+
+# Gated
+`,
+      )
+      await Bun.write(
+        path.join(dir, ".opencode", "skill", "plain", "SKILL.md"),
+        `---
+name: plain
+description: Declares only the sparse text.
+reminder:
+  sparse: keep going
+---
+
+# Plain
+`,
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      expect((await Skill.get("gated"))?.reminder).toEqual({
+        sparse: "keep going",
+        exit: "LOOP-OVER:",
+        section: "Steps",
+      })
+      expect((await Skill.get("plain"))?.reminder).toEqual({ sparse: "keep going" })
+    },
+  })
+})
+
 test("returns skill directories from Skill.dirs", async () => {
   await using tmp = await tmpdir({
     git: true,

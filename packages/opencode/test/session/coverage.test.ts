@@ -247,7 +247,8 @@ describe("Coverage.state", () => {
 })
 
 describe("SessionPrompt.skillVerdict", () => {
-  const done = "SKILL-DONE: 1 rounds, last clean"
+  const exit = "LOOP-OVER:"
+  const done = "LOOP-OVER: 1 rounds, last clean"
 
   function transcript(exit: string) {
     return [
@@ -258,10 +259,10 @@ describe("SessionPrompt.skillVerdict", () => {
     ]
   }
 
-  test("no SKILL-DONE line is no verdict", async () => {
+  test("no exit line is no verdict", async () => {
     await project(async () => {
       const session = await root()
-      expect(await SessionPrompt.skillVerdict(transcript("still going"), session.id)).toBeUndefined()
+      expect(await SessionPrompt.skillVerdict(transcript("still going"), session.id, exit)).toBeUndefined()
     })
   })
 
@@ -273,41 +274,41 @@ describe("SessionPrompt.skillVerdict", () => {
       await call(session.id, "edit", { filePath: file })
       const state = { skills: [], reviewed: false, changed: true, writers: 0, edits: true }
       const early = transcript(done)
-      expect(await SessionPrompt.skillVerdict(early, session.id)).toEqual({
+      expect(await SessionPrompt.skillVerdict(early, session.id, exit)).toEqual({
         accepted: false,
         reason: "no completed read-only review of the current content",
-        advice: "Run a fresh review round, then restate SKILL-DONE.",
+        advice: "Run a fresh review round, then restate LOOP-OVER.",
         current: state,
       })
       await result(session.id, { tree: await Coverage.fingerprint(session.id) })
       // The review landed after the line: judged at the line it is missing, so
       // the advice is to restate rather than to review again.
-      expect(await SessionPrompt.skillVerdict(early, session.id)).toEqual({
+      expect(await SessionPrompt.skillVerdict(early, session.id, exit)).toEqual({
         accepted: false,
         reason: "no completed read-only review of the current content",
-        advice: "A review of the current content arrived after the line: restate SKILL-DONE.",
+        advice: "A review of the current content arrived after the line: restate LOOP-OVER.",
         current: { ...state, reviewed: true },
       })
       // A writer still running outranks the late review: its edits will move
       // the content the review vouched for.
       await child(session.id, ["edit"], true)
-      expect(await SessionPrompt.skillVerdict(early, session.id)).toEqual({
+      expect(await SessionPrompt.skillVerdict(early, session.id, exit)).toEqual({
         accepted: false,
         reason: "no completed read-only review of the current content",
         advice:
-          "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.",
+          "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate LOOP-OVER.",
         current: { ...state, reviewed: true, writers: 1 },
       })
       const messages = transcript(done)
-      expect(await SessionPrompt.skillVerdict(messages, session.id)).toEqual({
+      expect(await SessionPrompt.skillVerdict(messages, session.id, exit)).toEqual({
         accepted: false,
         reason: "1 write-capable subagent(s) still running",
         advice:
-          "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.",
+          "Wait for the 1 write-capable subagent(s) to report, run a review round over the result, then restate LOOP-OVER.",
         current: { ...state, reviewed: true, writers: 1 },
       })
       await Debt.drop(made.at(-1)!)
-      expect(await SessionPrompt.skillVerdict(messages, session.id)).toEqual({
+      expect(await SessionPrompt.skillVerdict(messages, session.id, exit)).toEqual({
         accepted: true,
         reason: "the current content reviewed",
         advice: "",

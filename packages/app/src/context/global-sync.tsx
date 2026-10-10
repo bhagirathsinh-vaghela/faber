@@ -1171,8 +1171,6 @@ function createGlobalSync() {
         const found = Binary.search(store.session, props.sessionID, (s) => s.id)
         if (!found.found) break
         setStore("session", found.index, "cache", props.cache)
-        setStore("session", found.index, "cacheMarkers", props.cacheMarkers)
-        setStore("session", found.index, "systemBlockCount", props.systemBlockCount)
         break
       }
       case "session.deleted": {

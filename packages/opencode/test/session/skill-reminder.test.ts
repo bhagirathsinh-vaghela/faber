@@ -134,39 +134,52 @@ describe("skillLedger", () => {
   })
 })
 
+const EXIT = "LOOP-OVER:"
+
 describe("skillExitRequested", () => {
-  test("newest assistant text starting a line with SKILL-DONE: is true", () => {
+  test("newest assistant text starting a line with the declared exit is true", () => {
+    const msgs = [user({}), assistant({ text: "All done.\nLOOP-OVER: 2 rounds, last clean" })]
+    expect(SessionPrompt.skillExitRequested(msgs, EXIT)).toBe(true)
+  })
+
+  test("a line carrying another skill's exit does not count", () => {
     const msgs = [user({}), assistant({ text: "All done.\nSKILL-DONE: 2 rounds, last clean" })]
-    expect(SessionPrompt.skillExitRequested(msgs)).toBe(true)
+    expect(SessionPrompt.skillExitRequested(msgs, EXIT)).toBe(false)
+  })
+
+  test("the exit mid-line does not count", () => {
+    const msgs = [user({}), assistant({ text: "I will write LOOP-OVER: later" })]
+    expect(SessionPrompt.skillExitRequested(msgs, EXIT)).toBe(false)
   })
 
   test("the line inside an OLDER assistant message does not count", () => {
     const msgs = [
-      assistant({ text: "SKILL-DONE: 1 rounds, last clean" }),
+      assistant({ text: "LOOP-OVER: 1 rounds, last clean" }),
       user({}),
       assistant({ text: "still working" }),
     ]
-    expect(SessionPrompt.skillExitRequested(msgs)).toBe(false)
+    expect(SessionPrompt.skillExitRequested(msgs, EXIT)).toBe(false)
   })
 
   test("no assistant message at all is false", () => {
-    expect(SessionPrompt.skillExitRequested([user({})])).toBe(false)
+    expect(SessionPrompt.skillExitRequested([user({})], EXIT)).toBe(false)
   })
 })
 
-describe("skillChecklistSection", () => {
-  const body = "# Skill\n\nIntro.\n\n## Checklist\n\nline one\nline two\n\n## Phase 0\n\nmore text"
+describe("skillSection", () => {
+  const body = "# Skill\n\nIntro.\n\n## Steps\n\nline one\nline two\n\n## Phase 0\n\nmore text"
 
-  test("extracts between the Checklist heading and the next heading", () => {
-    expect(SessionPrompt.skillChecklistSection(body)).toBe("## Checklist\n\nline one\nline two")
+  test("extracts between the declared heading and the next heading", () => {
+    expect(SessionPrompt.skillSection(body, "Steps")).toBe("## Steps\n\nline one\nline two")
   })
 
   test("returns undefined when the heading is absent", () => {
-    expect(SessionPrompt.skillChecklistSection("# Skill\n\nno checklist here")).toBeUndefined()
+    expect(SessionPrompt.skillSection("# Skill\n\nno steps here", "Steps")).toBeUndefined()
+    expect(SessionPrompt.skillSection(body, "Checklist")).toBeUndefined()
   })
 
-  test("runs to the end of the body when Checklist is the last section", () => {
-    const tail = "# Skill\n\n## Checklist\n\nonly section"
-    expect(SessionPrompt.skillChecklistSection(tail)).toBe("## Checklist\n\nonly section")
+  test("runs to the end of the body when the heading is the last section", () => {
+    const tail = "# Skill\n\n## Steps\n\nonly section"
+    expect(SessionPrompt.skillSection(tail, "Steps")).toBe("## Steps\n\nonly section")
   })
 })

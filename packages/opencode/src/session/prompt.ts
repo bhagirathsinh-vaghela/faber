@@ -1250,7 +1250,8 @@ export namespace SessionPrompt {
 
   // Plan mode allowlist: every registered tool stays available (so the request
   // schema is identical to a build turn and the prompt cache survives the
-  // plan<->build switch), but the edit-family tools are scoped to the plan files.
+  // plan<->build switch), but the edit-family tools are scoped to the plan files
+  // and only MCP tools their server marks read-only may run.
   // This replaces the old plan-agent edit permission deny, which routed through
   // PermissionNext.disabled and could strip edit tools from the wire.
   function planAllowlist(toolIds: string[]): Session.AllowedTool[] {
@@ -1259,7 +1260,7 @@ export namespace SessionPrompt {
       path.relative(Instance.worktree, path.join(Global.Path.data, "plans", "*.md")),
       path.join(Global.Path.data, "plans", "*.md"),
     ]
-    return toolIds.map((id) => (PATH_SCOPED_TOOLS.includes(id) ? { id, paths: planPaths } : id))
+    return [...toolIds.map((id) => (PATH_SCOPED_TOOLS.includes(id) ? { id, paths: planPaths } : id)), Agent.MCP_READ]
   }
 
   // The allowlist toolDenial enforces for a session: an explicit session
@@ -1350,7 +1351,7 @@ export namespace SessionPrompt {
       extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck },
       agent: input.agent.name,
       messages: input.messages,
-      metadata: async (val: { title?: string; metadata?: any; delta?: string }) => {
+      metadata: async (val: { title?: string; metadata?: any }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {
           const part = {
@@ -1365,10 +1366,7 @@ export namespace SessionPrompt {
               },
             },
           }
-          // A tool that streams its output (bash, per chunk) passes the new chunk
-          // as `delta`, so the wire blanks state.metadata.output and the client
-          // appends. Without a delta the full part ships (seed + heal).
-          await Session.updatePart(val.delta !== undefined ? { part, delta: val.delta } : part)
+          await Session.updatePart(part)
         }
       },
       async ask(req) {
@@ -2189,8 +2187,6 @@ export namespace SessionPrompt {
     return { turnsSinceReminder, totalReminders, hadPlanExit }
   }
 
-  const EXIT_LINE = /^SKILL-DONE:/m
-
   // Turns and commits for a skill's per-turn reminder: every part after the
   // ANCHOR, the newest completed `skill` tool part for `name` (later parts of
   // its own message included). Absent (dropped by compaction's filterCompacted,
@@ -2230,50 +2226,59 @@ export namespace SessionPrompt {
   }
 
   // The newest assistant message's own text (synthetic parts excluded, since
-  // those are injected reminders, not the model's own words) carrying the
-  // SKILL-DONE exit line the model writes to close out a skill run.
-  export function skillExitRequested(messages: MessageV2.WithParts[]) {
+  // those are injected reminders, not the model's own words) carrying a line
+  // that starts with the skill's declared `exit`. The split is on the
+  // terminators a multiline `^` matches after (ECMA-262 LineTerminator).
+  export function skillExitRequested(messages: MessageV2.WithParts[], exit: string) {
     const last = messages.findLast((msg) => msg.info.role === "assistant")
     if (!last) return false
-    const text = last.parts
+    return last.parts
       .filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
       .map((p) => p.text)
       .join("\n")
-    return EXIT_LINE.test(text)
+      .split(/[\n\r\u2028\u2029]/)
+      .some((line) => line.startsWith(exit))
   }
 
-  // Judges a SKILL-DONE line by content, counting only results written up to
+  // The exit line as prose names it: the declared prefix without its colon.
+  function exitName(exit: string) {
+    return exit.replace(/:$/, "")
+  }
+
+  // Judges an exit line by content, counting only results written up to
   // the line's own message, so one delivered after it cannot vouch for it. The
   // advice reads `current`, the state now: a review that landed after the line
   // needs only a restatement, and no review can vouch while a writer runs.
   // `reviewed` is the only field `until` scopes, so a line judged reviewed was
   // judged at the current state. Undefined when no exit was requested.
-  export async function skillVerdict(messages: MessageV2.WithParts[], sessionID: string) {
-    const exit = messages.findLast((msg) => msg.info.role === "assistant")
-    if (!exit || !skillExitRequested(messages)) return undefined
-    const judged = await Coverage.state(sessionID, exit.info.id)
+  export async function skillVerdict(messages: MessageV2.WithParts[], sessionID: string, exit: string) {
+    const last = messages.findLast((msg) => msg.info.role === "assistant")
+    if (!last || !skillExitRequested(messages, exit)) return undefined
+    const judged = await Coverage.state(sessionID, last.info.id)
     if (judged.reviewed && judged.writers === 0)
       return { accepted: true, reason: "the current content reviewed", advice: "", current: judged }
     const current = judged.reviewed ? judged : await Coverage.state(sessionID)
     const reason = judged.reviewed
       ? `${judged.writers} write-capable subagent(s) still running`
       : "no completed read-only review of the current content"
+    const name = exitName(exit)
     const advice =
       current.writers > 0
-        ? `Wait for the ${current.writers} write-capable subagent(s) to report, run a review round over the result, then restate SKILL-DONE.`
+        ? `Wait for the ${current.writers} write-capable subagent(s) to report, run a review round over the result, then restate ${name}.`
         : current.reviewed
-          ? "A review of the current content arrived after the line: restate SKILL-DONE."
-          : "Run a fresh review round, then restate SKILL-DONE."
+          ? `A review of the current content arrived after the line: restate ${name}.`
+          : `Run a fresh review round, then restate ${name}.`
     return { accepted: false, reason, advice, current }
   }
 
-  // The `## Checklist` section of a skill body, by heading, for the one-time
+  // The `## <heading>` section of a skill body, for the one-time
   // post-compaction re-inject (the sparse reminder alone is not enough right
   // after the body was dropped from history).
-  export function skillChecklistSection(body: string) {
-    const start = body.indexOf("## Checklist")
+  export function skillSection(body: string, heading: string) {
+    const title = `## ${heading}`
+    const start = body.indexOf(title)
     if (start === -1) return undefined
-    const next = body.indexOf("\n## ", start + "## Checklist".length)
+    const next = body.indexOf("\n## ", start + title.length)
     return (next === -1 ? body.slice(start) : body.slice(start, next)).trim()
   }
 
@@ -2486,8 +2491,12 @@ export namespace SessionPrompt {
       const marker = `<!-- skill-reminder:${name} -->`
       if (hasReminder(opener, marker)) continue
 
+      const skill = await Skill.get(name)
+      if (!skill?.reminder) continue
+
       const led = skillLedger(input.messages, name)
-      const verdict = await skillVerdict(input.messages, input.session.id)
+      const exit = skill.reminder.exit
+      const verdict = exit ? await skillVerdict(input.messages, input.session.id, exit) : undefined
 
       if (verdict?.accepted) {
         await Session.update(
@@ -2499,15 +2508,15 @@ export namespace SessionPrompt {
         continue
       }
 
-      const skill = await Skill.get(name)
-      if (!skill?.reminder) continue
-
-      if (justCompacted) {
-        const section = skillChecklistSection(await currentSkillBody(skill))
-        if (section) await persistReminder(input.messages, section, `<!-- skill-checklist:${name} -->`)
+      if (justCompacted && skill.reminder.section) {
+        const section = skillSection(await currentSkillBody(skill), skill.reminder.section)
+        if (section) await persistReminder(input.messages, section, `<!-- skill-section:${name} -->`)
       }
 
-      const refusal = verdict ? `\n\nExit refused: SKILL-DONE was written with ${verdict.reason}. ${verdict.advice}` : ""
+      const refusal =
+        verdict && exit
+          ? `\n\nExit refused: ${exitName(exit)} was written with ${verdict.reason}. ${verdict.advice}`
+          : ""
       const coverage = verdict?.current ?? (await Coverage.state(input.session.id))
       const text =
         `${name} active. ${led.scope}: ${led.turns} turns \u00b7 ${led.commits} commits \u00b7 ` +

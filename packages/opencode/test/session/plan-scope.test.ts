@@ -3,6 +3,7 @@ import path from "path"
 import { Instance } from "../../src/project/instance"
 import { SessionPrompt } from "../../src/session/prompt"
 import { Log } from "../../src/util/log"
+import type { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
@@ -16,12 +17,35 @@ async function within(fn: (dir: string) => void) {
 
 const patch = (...lines: string[]) => ["*** Begin Patch", ...lines, "*** End Patch"].join("\n")
 
+describe("toolDenial under the plan allowlist", () => {
+  test("an MCP tool its server marks read-only passes; a write-capable one is refused", async () => {
+    await within(() => {
+      const allowed = SessionPrompt.allowlist({} as Session.Info, "plan", ["read", "write"])
+      expect(SessionPrompt.toolDenial(allowed, "docs_search", {}, { readOnly: true })).toBeUndefined()
+      expect(SessionPrompt.toolDenial(allowed, "docs_update", {}, { readOnly: false })).toBe(
+        'Tool "docs_update" is not available for this task. Available tools: read, write, mcp:read',
+      )
+    })
+  })
+
+  test("a native tool cannot ride the MCP sentinel", async () => {
+    await within(() => {
+      const allowed = SessionPrompt.allowlist({} as Session.Info, "plan", ["read"])
+      expect(SessionPrompt.toolDenial(allowed, "bash", {})).toBe(
+        'Tool "bash" is not available for this task. Available tools: read, mcp:read',
+      )
+    })
+  })
+})
+
 describe("toolDenial for path-scoped tools", () => {
   test("a plan file passes, relative or absolute", async () => {
     await within((dir) => {
       const allowed = [{ id: "write", paths: plans("/data") }]
       expect(SessionPrompt.toolDenial(allowed, "write", { filePath: ".opencode/plans/a.md" })).toBeUndefined()
-      expect(SessionPrompt.toolDenial(allowed, "write", { filePath: path.join(dir, ".opencode/plans/a.md") })).toBeUndefined()
+      expect(
+        SessionPrompt.toolDenial(allowed, "write", { filePath: path.join(dir, ".opencode/plans/a.md") }),
+      ).toBeUndefined()
       expect(SessionPrompt.toolDenial(allowed, "write", { filePath: "/data/plans/b.md" })).toBeUndefined()
     })
   })

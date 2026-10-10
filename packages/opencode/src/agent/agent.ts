@@ -90,7 +90,7 @@ export namespace Agent {
       },
       plan: {
         name: "plan",
-        description: "Plan mode. Disallows all edit tools.",
+        description: "Plan mode. Disallows all edit tools and write-capable MCP tools.",
         options: {},
         // Edit restriction is enforced via the plan allowlist in
         // SessionPrompt.resolveTools (edit-family tools scoped to the plan files),

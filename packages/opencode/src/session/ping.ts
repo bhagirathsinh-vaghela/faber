@@ -89,41 +89,6 @@ export namespace SessionPing {
     return next.type === "ping"
   }
 
-  export const Armed = z.object({
-    sessionID: z.string(),
-    directory: z.string(),
-    // Cache anchor (ms) the countdown ticks from; absent until the first request
-    // dispatched this session. beforeExpiry (ms) is how early a ping fires.
-    lastRequestAt: z.number().optional(),
-    beforeExpiry: z.number(),
-  })
-  export type Armed = z.infer<typeof Armed>
-
-  // Every armed session across every directory on this instance, enriched with
-  // the countdown inputs (cache anchor + before-expiry). The home overview reads
-  // this ONCE, globally, and scans its recent session IDs against it — no
-  // per-directory bootstrap needed. Each session is read under its own directory
-  // context (captured at arm time).
-  export async function listArmed(): Promise<Armed[]> {
-    const entries = [...active.entries()]
-    return Promise.all(
-      entries.map(([sessionID, entry]) =>
-        Instance.provide({
-          directory: entry.directory,
-          fn: async () => {
-            const session = await Session.get(sessionID).catch(() => undefined)
-            return {
-              sessionID,
-              directory: entry.directory,
-              lastRequestAt: session?.cache?.lastRequestAt,
-              beforeExpiry: await beforeExpiry(),
-            }
-          },
-        }),
-      ),
-    )
-  }
-
   // Only IMPLICIT arms may consult this — attach and the boot restore, which act
   // on an intent recorded earlier rather than on something the user just did. An
   // explicit arm (a turn, the arm route) must NOT: it runs before its own
@@ -490,8 +455,6 @@ export namespace SessionPing {
             draft.tokens.cacheWrite = usage.tokens.cache.write
             draft.tokens.output = usage.tokens.output
             draft.tokens.reasoning = usage.tokens.reasoning
-            draft.tokens.cacheWrite5m = usage.tokens.cache.write5m ?? 0
-            draft.tokens.cacheWrite1h = usage.tokens.cache.write1h ?? 0
             draft.total.input += weightedInput
             draft.total.output += weightedOutput
             draft.total.cacheWrite += usage.tokens.cache.write

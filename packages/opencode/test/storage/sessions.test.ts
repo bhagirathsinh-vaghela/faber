@@ -12,7 +12,7 @@ function session(id: string, projectID: string, created = 1000): Session.Info {
     title: "test",
     version: "0.0.0",
     time: { created, updated: created },
-    tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
+    tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
     total: { input: 0, output: 0, cacheWrite: 0 },
     cost: 0,
   } as unknown as Session.Info
@@ -23,6 +23,19 @@ describe("Sessions", () => {
     const s = session("ses_w1", "proj_a")
     await Sessions.write(s)
     expect(await Sessions.read(s.id)).toEqual(s)
+  })
+
+  test("a stored record carrying removed fields still loads, without them", async () => {
+    const s = session("ses_legacy", "proj_a")
+    await Sessions.write({
+      ...s,
+      seen: { at: 5 },
+      cacheMarkers: [0, 1],
+      systemBlockCount: 3,
+      tokens: { ...s.tokens, cacheWrite5m: 7, cacheWrite1h: 9 },
+    } as Session.Info)
+    expect(await Sessions.read(s.id)).toEqual(s)
+    expect((await Sessions.listProject("proj_a")).find((x) => x.id === s.id)).toEqual(s)
   })
 
   test("read throws NotFoundError when absent", async () => {

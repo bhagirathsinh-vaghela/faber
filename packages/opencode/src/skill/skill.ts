@@ -19,8 +19,14 @@ export namespace Skill {
   // the skill is Session.Info.activeSkills, computed ledger prepended. Never
   // rendered into SkillTool's description, so it moves the pin digest
   // (skillDigestInput fingerprints frontmatter) but not tools[] bytes.
+  // `exit` is the line prefix the model writes to end a run, accepted only
+  // once the current content is reviewed; without it the skill has no exit
+  // gate. `section` names the `## ` heading of the body re-injected after a
+  // compaction; without it nothing is re-injected.
   export const Reminder = z.object({
     sparse: z.string(),
+    exit: z.string().optional(),
+    section: z.string().optional(),
   })
   export type Reminder = z.infer<typeof Reminder>
 

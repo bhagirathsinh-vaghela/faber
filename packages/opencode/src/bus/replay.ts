@@ -23,24 +23,8 @@ export function blankStreamedText(event: any) {
   if (p?.type !== "message.part.updated") return event
   const part = p.properties?.part
   if (p.properties?.delta === undefined || !part) return event
-  if (typeof part.text === "string") {
-    return { ...event, payload: { ...p, properties: { ...p.properties, part: { ...part, text: "" } } } }
-  }
-  // Tool parts grow through state.metadata.output (bash streams it per chunk).
-  // The full output still ships at completion.
-  if (part.type === "tool" && typeof part.state?.metadata?.output === "string") {
-    return {
-      ...event,
-      payload: {
-        ...p,
-        properties: {
-          ...p.properties,
-          part: { ...part, state: { ...part.state, metadata: { ...part.state.metadata, output: "" } } },
-        },
-      },
-    }
-  }
-  return event
+  if (typeof part.text !== "string") return event
+  return { ...event, payload: { ...p, properties: { ...p.properties, part: { ...part, text: "" } } } }
 }
 
 export namespace EventReplay {

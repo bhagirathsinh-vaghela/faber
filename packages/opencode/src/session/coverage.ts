@@ -89,8 +89,8 @@ export namespace Coverage {
   export type State = z.infer<typeof State>
 
   // What a reminder skill's rules and its exit read. With `until`, only results
-  // written up to that message count, so a result delivered after a SKILL-DONE
-  // line cannot vouch for it.
+  // written up to that message count, so a result delivered after a skill's
+  // exit line cannot vouch for it.
   export async function state(sessionID: string, until?: string): Promise<State> {
     const session = await Sessions.read(sessionID)
     const current = await fingerprint(sessionID)

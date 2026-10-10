@@ -244,11 +244,6 @@ export namespace Session {
       // session because attach reads the intent instead of declaring it.
       keepWarm: z.boolean().optional(),
       unseen: z.boolean().optional(),
-      seen: z
-        .object({
-          at: z.number(),
-        })
-        .optional(),
       // Timestamp of the last real transcript turn, for recency ordering in the
       // home overview. Stamped from message writes only, so pings (which never
       // persist a message) and session opens never advance it — unlike
@@ -261,12 +256,6 @@ export namespace Session {
           cacheWrite: z.number(),
           output: z.number(),
           reasoning: z.number(),
-          // TTL breakdown of cacheWrite, which stays the combined total. Added
-          // after the fact, so sessions written before this default to 0 while
-          // their cacheWrite is non-zero: treat cacheWrite as authoritative and
-          // these two as a detail that is only present going forward.
-          cacheWrite5m: z.number().default(0),
-          cacheWrite1h: z.number().default(0),
         })
         .default({
           input: 0,
@@ -274,8 +263,6 @@ export namespace Session {
           cacheWrite: 0,
           output: 0,
           reasoning: 0,
-          cacheWrite5m: 0,
-          cacheWrite1h: 0,
         }),
       total: z
         .object({
@@ -285,8 +272,6 @@ export namespace Session {
         })
         .default({ input: 0, output: 0, cacheWrite: 0 }),
       cost: z.number().default(0),
-      cacheMarkers: z.array(z.number()).optional(),
-      systemBlockCount: z.number().optional(),
       cacheProbeIndex: z.number().optional(),
       cacheProbeMessageID: z.string().optional(),
       allowedTools: AllowedTool.array().optional(),
@@ -310,11 +295,11 @@ export namespace Session {
       contextBranch: z.string().optional(),
       // Names of loaded skills that declare a `reminder:` block and are still
       // considered active. Written by SkillTool.execute on load; cleared by
-      // insertReminders once the model's SKILL-DONE-style exit line checks out
-      // against Coverage.state. NOT reset on compaction: filterCompacted drops the
-      // assistant message carrying the skill's tool part, so a history scan
-      // alone goes blind across a compaction boundary, and this flag is what
-      // lets the reminder survive it.
+      // insertReminders once the model's exit line (the skill's `reminder.exit`)
+      // checks out against Coverage.state. NOT reset on compaction:
+      // filterCompacted drops the assistant message carrying the skill's tool
+      // part, so a history scan alone goes blind across a compaction
+      // boundary, and this flag is what lets the reminder survive it.
       activeSkills: z.string().array().optional(),
       // Content fingerprints (Coverage.fingerprint): `asked` is the parent's
       // when this child was last prompted, copied onto its result; `loaded` is
@@ -370,19 +355,15 @@ export namespace Session {
         cost: Info.shape.cost,
       }),
     ),
-    // The per-step cache-anchor refresh (dispatch time + cache markers + system
-    // block count) also fires once per step, so it has the same full-record cost
-    // as the token path and gets the same lean treatment. Only the TUI reads
-    // these fields (cache.lastRequestAt for its countdown, cacheMarkers for its
-    // debug line); the web dock reads its countdown from the ping hub instead, so
-    // the web client can ignore this event entirely while the TUI applies it.
+    // The per-step cache-anchor refresh (dispatch time) also fires once per
+    // step, so it has the same full-record cost as the token path and gets the
+    // same lean treatment. The web dock reads its countdown from the ping hub
+    // instead, so the web client only keeps its cached record current with it.
     CacheUpdated: BusEvent.define(
       "session.cache-updated",
       z.object({
         sessionID: z.string(),
         cache: Info.shape.cache,
-        cacheMarkers: Info.shape.cacheMarkers,
-        systemBlockCount: Info.shape.systemBlockCount,
       }),
     ),
     Deleted: BusEvent.define(
@@ -541,7 +522,7 @@ export namespace Session {
         created: Date.now(),
         updated: Date.now(),
       },
-      tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
+      tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
       total: { input: 0, output: 0, cacheWrite: 0 },
       cost: 0,
       ...(input.ephemeral && { ephemeral: true }),
@@ -676,8 +657,6 @@ export namespace Session {
     Bus.publish(Event.CacheUpdated, {
       sessionID: id,
       cache: session.cache,
-      cacheMarkers: session.cacheMarkers,
-      systemBlockCount: session.systemBlockCount,
     })
     return session
   }
@@ -702,14 +681,7 @@ export namespace Session {
     void SessionRecent.setUnseen(id, false)
     // Opening the session is the acknowledgement: the failure is on screen.
     void SessionRecent.setError(id, false)
-    return update(
-      id,
-      (session) => {
-        session.unseen = false
-        session.seen = { at: Date.now() }
-      },
-      { touch: false },
-    )
+    return update(id, (session) => void (session.unseen = false), { touch: false })
   }
 
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
@@ -1028,10 +1000,6 @@ export namespace Session {
     }),
     z.object({
       part: MessageV2.ReasoningPart,
-      delta: z.string(),
-    }),
-    z.object({
-      part: MessageV2.ToolPart,
       delta: z.string(),
     }),
   ])

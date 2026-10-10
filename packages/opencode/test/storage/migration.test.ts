@@ -35,7 +35,7 @@ function sess(id: string, projectID: string): Session.Info {
     title: "t",
     version: "0.0.0",
     time: { created: 1, updated: 2 },
-    tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
+    tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 },
     total: { input: 0, output: 0, cacheWrite: 0 },
     cost: 0,
   } as unknown as Session.Info
