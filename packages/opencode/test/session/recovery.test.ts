@@ -272,6 +272,18 @@ async function texts(sessionID: string) {
   )
 }
 
+// The child's answer inside each result delivered to `sessionID`, without the
+// header lines above it.
+async function answers(sessionID: string) {
+  return (await Session.messages({ sessionID })).flatMap((m) =>
+    m.parts.flatMap((p) =>
+      p.type === "text" && p.backgroundSubagentResult
+        ? [p.text.slice(p.text.indexOf("\n\n") + 2, p.text.lastIndexOf("\n</background-subagent-result>"))]
+        : [],
+    ),
+  )
+}
+
 // A job record owned by `sessionID`, finished unless `status` says otherwise,
 // with its debt.
 async function job(id: string, sessionID: string, status: BackgroundJob.Status = "exited") {
@@ -331,6 +343,133 @@ describe("Recovery delivery", () => {
       expect(part.type === "text" && part.text).toContain("There are 7 files.")
       expect(await Debt.has(sub.id)).toBe(false)
       expect(state.requests.length).toBe(1)
+    })
+  }, 30_000)
+
+  // A child still owed a job cannot report yet, so its report waits for the
+  // turn the job's result starts, and that turn's shorter text is what gets
+  // delivered. The result says so and tells the parent how to read the report
+  // from the store.
+  test("a report held back by a running job is pointed to when a shorter text follows it", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      const asked = await user(sub.id, "survey the harness")
+      const record = {
+        id: "job_held_report",
+        sessionID: sub.id,
+        directory: Instance.directory,
+        project: Instance.directory,
+        command: "sleep 1",
+        description: "wait",
+        status: "running" as const,
+        launcher: { pid: process.pid, boot: Recovery.boot },
+        time: { created: Date.now(), hard: Date.now() + 60_000 },
+      }
+      await BackgroundJob.write(record)
+      await Debt.add(record.id, "job", sub.id)
+      await tick()
+      await assistant(sub.id, asked.id, "FULL REPORT")
+
+      try {
+        await settle({ idle: true })
+        expect(await answers(parent.id)).toEqual([])
+        expect(await Debt.has(sub.id)).toBe(true)
+
+        await BackgroundJob.write({ ...record, status: "exited", exit: 0, time: { ...record.time, completed: Date.now() } })
+        state.replies.push("ADDENDUM", "noted")
+        await settle()
+
+        expect(await answers(parent.id)).toEqual([
+          `ADDENDUM\n\n${Recovery.missed(sub.id, 1, "FULL REPORT".length)}`,
+        ])
+        expect(await Debt.has(sub.id)).toBe(false)
+      } finally {
+        await drop(record.id)
+      }
+    })
+  }, 30_000)
+
+  test("a job result answered in the same turn as the report is pointed to the report", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      const asked = await user(sub.id, "survey the harness")
+      await tick()
+      await assistant(sub.id, asked.id, "FULL REPORT")
+      await tick()
+      const delivered = await user(sub.id, "<background-job-result>done</background-job-result>", true)
+      await tick()
+      await assistant(sub.id, delivered.id, "ADDENDUM")
+      state.replies.push("noted")
+
+      await settle()
+
+      expect(await answers(parent.id)).toEqual([`ADDENDUM\n\n${Recovery.missed(sub.id, 1, "FULL REPORT".length)}`])
+    })
+  }, 30_000)
+
+  test("a last answer longer than everything before it is delivered alone", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      const asked = await user(sub.id, "survey the harness")
+      await tick()
+      await assistant(sub.id, asked.id, "Let me look at the code.", "tool-calls")
+      await tick()
+      await assistant(sub.id, asked.id, "The final answer: 7 files, all in src/.")
+      state.replies.push("noted")
+
+      await settle()
+
+      expect(await answers(parent.id)).toEqual(["The final answer: 7 files, all in src/."])
+    })
+  }, 30_000)
+
+  test("a turn that fails after the child wrote anything is pointed to what it wrote", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      const asked = await user(sub.id, "survey the harness")
+      await tick()
+      await assistant(sub.id, asked.id, "FULL REPORT")
+      await tick()
+      const failed = await assistant(sub.id, asked.id, "Killing the leftover job.", undefined)
+      await Session.updateMessage({
+        ...failed,
+        time: { ...failed.time, completed: Date.now() },
+        error: { name: "UnknownError", data: { message: "provider exploded" } },
+      } as typeof failed)
+      state.replies.push("noted")
+
+      await settle()
+
+      expect((await results(parent.id)).map((r) => r.status)).toEqual(["failed"])
+      expect(await answers(parent.id)).toEqual([
+        `ERROR: provider exploded\n\n${Recovery.missed(sub.id, 2, "Killing the leftover job.".length)}`,
+      ])
+    })
+  }, 30_000)
+
+  test("a second ask is answered with only what the child wrote since it", async () => {
+    await withProject(async () => {
+      const parent = await root()
+      const sub = await child(parent.id)
+      const asked = await user(sub.id, "first")
+      await tick()
+      await assistant(sub.id, asked.id, "The first answer, much longer than the second.")
+      state.replies.push("noted")
+      await settle()
+
+      await tick()
+      await Debt.add(sub.id, "subagent", parent.id)
+      const again = await user(sub.id, "second")
+      await tick()
+      await assistant(sub.id, again.id, "SECOND")
+      state.replies.push("noted again")
+      await settle()
+
+      expect(await answers(parent.id)).toEqual(["The first answer, much longer than the second.", "SECOND"])
     })
   }, 30_000)
 

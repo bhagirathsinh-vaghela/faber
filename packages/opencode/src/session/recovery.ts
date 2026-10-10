@@ -333,14 +333,34 @@ export namespace Recovery {
     }
   }
 
+  // Appended to a result that may not hold the child's report, so the parent
+  // reads it from the session store instead of asking the child to repeat it.
+  export function missed(childID: string, count: number, longest: number) {
+    return [
+      `Note: the text above is this subagent's last message. Since it was asked it wrote ${count} other text part${count === 1 ? "" : "s"}, the longest ${longest} characters, so its report may be in one of them. Read its last five text parts from the session store (no need to ask the subagent; change -5 to read more):`,
+      `curl -s "$OPENCODE_SERVER_URL/session/${childID}/message" | jq -r '[.[] | select(.info.role == "assistant") | .parts[] | select(.type == "text") | .text] | .[-5:] | join("\\n\\n---\\n\\n")'`,
+    ].join("\n")
+  }
+
   // What a child's last assistant message told: its status, and its text or
-  // its error.
-  async function told(childID: string): Promise<Outcome> {
-    const last = (await Session.messages({ sessionID: childID })).findLast((m) => m.info.role === "assistant")
+  // its error. A child still owed a job reports at the end of the turn that
+  // job's result starts, so its report can sit in an earlier message than the
+  // one delivered. The result then carries `missed`: when a text the child
+  // wrote since its debt opened (`since`) is longer than the delivered one, or
+  // when its last turn failed after it wrote anything.
+  async function told(child: Session.Info, since: number): Promise<Outcome> {
+    const replies = (await Session.messages({ sessionID: child.id })).filter((m) => m.info.role === "assistant")
+    const last = replies.at(-1)
     const ending = outcome(last?.info as MessageV2.Assistant | undefined)
-    const output =
-      ending.status === "failed" ? (ending.detail ?? "") : (last?.parts.findLast((p) => p.type === "text")?.text ?? "")
-    return { status: ending.status, output }
+    const delivered = ending.status === "failed" ? undefined : last?.parts.findLast((p) => p.type === "text")
+    const output = ending.status === "failed" ? (ending.detail ?? "") : (delivered?.text ?? "")
+    const earlier = replies
+      .filter((m) => m.info.time.created >= since)
+      .flatMap((m) => m.parts.flatMap((p) => (p.type === "text" && !p.internal && p !== delivered ? [p.text.length] : [])))
+    const longest = Math.max(0, ...earlier)
+    const flagged = ending.status === "failed" ? earlier.length > 0 : longest > output.length
+    if (!flagged) return { status: ending.status, output }
+    return { status: ending.status, output: `${output}\n\n${missed(child.id, earlier.length, longest)}` }
   }
 
   // Pay `debt` if its outcome is known. `forced` is an outcome the one asking
@@ -452,7 +472,7 @@ export namespace Recovery {
     const judged = await Debt.get(child.id)
     if (!judged) return
     await enter(caller.directory, async () => {
-      const ending = forced ?? ((await done(child)) ? await told(child.id) : undefined)
+      const ending = forced ?? ((await done(child)) ? await told(child, judged.created) : undefined)
       if (!ending) return
       // A Stop's outcome (the only forced "cancelled") holds whatever asked
       // since; a give-up does not, since a later ask is new work to answer.
