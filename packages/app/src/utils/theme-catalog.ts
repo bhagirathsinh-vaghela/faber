@@ -49,17 +49,9 @@ export const THEME_CATALOG: TokenGroup[] = [
   {
     group: "Message boxes",
     entries: [
-      { token: "--box-bg-user", label: "User box background", type: "color" },
-      { token: "--box-border-user", label: "User box border", type: "color" },
       { token: "--box-accent-user", label: "User box accent", type: "color" },
-      { token: "--box-bg-assistant", label: "Assistant box background", type: "color" },
-      { token: "--box-border-assistant", label: "Assistant box border", type: "color" },
       { token: "--box-accent-assistant", label: "Assistant box accent", type: "color" },
-      { token: "--box-bg-subagent", label: "Subagent box background", type: "color" },
-      { token: "--box-border-subagent", label: "Subagent box border", type: "color" },
       { token: "--box-accent-subagent", label: "Subagent box accent", type: "color" },
-      { token: "--box-bg-tool", label: "Tool box background", type: "color" },
-      { token: "--box-border-tool", label: "Tool box border", type: "color" },
       { token: "--box-accent-tool", label: "Tool box accent", type: "color" },
     ],
   },

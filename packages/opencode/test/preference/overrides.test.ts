@@ -7,11 +7,8 @@ function theme(light: Record<string, string>, dark: Record<string, string> = {})
 
 describe("legacyOverrides", () => {
   test("an override saved under a renamed token keeps applying, under the current name", () => {
-    const value = legacyOverrides(theme({ "--box-accent-task": "#c99813", "--box-bg-task": "#111c1d" }))
-    expect(value.overrides.light).toEqual({
-      "--box-accent-subagent": "#c99813",
-      "--box-bg-subagent": "#111c1d",
-    })
+    const value = legacyOverrides(theme({ "--box-accent-task": "#c99813", "--text-base": "#abc" }))
+    expect(value.overrides.light).toEqual({ "--box-accent-subagent": "#c99813", "--text-base": "#abc" })
   })
 
   test("a value saved under the current name wins over the old one", () => {
@@ -20,9 +17,9 @@ describe("legacyOverrides", () => {
   })
 
   test("both modes are read forward independently", () => {
-    const value = legacyOverrides(theme({ "--box-border-task": "#111" }, { "--box-border-task": "#222" }))
-    expect(value.overrides.light).toEqual({ "--box-border-subagent": "#111" })
-    expect(value.overrides.dark).toEqual({ "--box-border-subagent": "#222" })
+    const value = legacyOverrides(theme({ "--box-accent-task": "#111" }, { "--box-accent-task": "#222" }))
+    expect(value.overrides.light).toEqual({ "--box-accent-subagent": "#111" })
+    expect(value.overrides.dark).toEqual({ "--box-accent-subagent": "#222" })
   })
 
   test("unrelated overrides are untouched, and the record is returned as-is", () => {

@@ -69,14 +69,6 @@
 
   --box-backdrop: var(--color-background-strong, #010409);
   --box-accent-user: var(--color-icon-agent-build-base);
-  --box-border-user: color-mix(in srgb, var(--box-accent-user) 80%, var(--box-backdrop));
-  --box-bg-user: color-mix(in srgb, var(--box-accent-user) 7%, var(--box-backdrop));
-  --box-border-assistant: color-mix(in srgb, var(--box-accent-assistant) 80%, var(--box-backdrop));
-  --box-bg-assistant: color-mix(in srgb, var(--box-accent-assistant) 7%, var(--box-backdrop));
-  --box-border-subagent: color-mix(in srgb, var(--box-accent-subagent) 80%, var(--box-backdrop));
-  --box-bg-subagent: color-mix(in srgb, var(--box-accent-subagent) 7%, var(--box-backdrop));
-  --box-border-job: color-mix(in srgb, var(--box-accent-job) 80%, var(--box-backdrop));
-  --box-bg-job: color-mix(in srgb, var(--box-accent-job) 7%, var(--box-backdrop));
   --box-border-tool: color-mix(in srgb, var(--box-accent-tool) 80%, var(--box-backdrop));
   --box-bg-tool: color-mix(in srgb, var(--box-accent-tool) 7%, var(--box-backdrop));
 

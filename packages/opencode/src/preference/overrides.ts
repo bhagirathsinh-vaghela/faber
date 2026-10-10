@@ -5,8 +5,6 @@
 // config key is aliased.
 const RENAMED: Record<string, string> = {
   "--box-accent-task": "--box-accent-subagent",
-  "--box-border-task": "--box-border-subagent",
-  "--box-bg-task": "--box-bg-subagent",
 }
 
 function mode(overrides: Record<string, string>) {
