@@ -8,15 +8,14 @@ export namespace BoxPreference {
   const KEY = ["preference", "boxes"]
 
   // Per-box-type collapse defaults, keyed by tool/box name. Each mode flag is
-  // `true` = collapsed by default, absent/`false` = expanded. Reader and minimal
-  // are the two read-focused modes; minimal collapses more of the transcript.
+  // `true` = collapsed by default, absent/`false` = expanded. The modes are the
+  // app's BoxMode: the normal transcript and the read-focused reader view.
   export const Info = z
     .record(
       z.string(),
       z.object({
         normal: z.boolean().optional(),
         reader: z.boolean().optional(),
-        minimal: z.boolean().optional(),
       }),
     )
     .meta({
