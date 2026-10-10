@@ -242,8 +242,9 @@ export function Titlebar() {
           onClick={layout.overlaySidebar.toggle}
           aria-label={language.t("sidebar.menu.toggle")}
         />
-        {/* Search + server indicator live here (not in SessionHeader) so they
-            show on every route, including home. The session-only controls
+        {/* The server indicator lives here (not in SessionHeader) so it shows
+            on every route, including home. File search shows only in a session,
+            the one route that registers file.open. The session-only controls
             (stop, review) still portal into the mount below. */}
         <StatusPopover />
         <Tooltip value={muteLabel()} placement="bottom" gutter={8}>
@@ -257,16 +258,18 @@ export function Titlebar() {
             aria-pressed={settings.sounds.muted()}
           />
         </Tooltip>
-        <Tooltip value={language.t("session.header.searchFiles")} placement="bottom" gutter={8}>
-          <IconButton
-            icon="magnifying-glass"
-            iconSize="medium"
-            variant="ghost"
-            class="shrink-0 p-0"
-            onClick={() => command.trigger("file.open")}
-            aria-label={language.t("session.header.searchFiles")}
-          />
-        </Tooltip>
+        <Show when={inSession()}>
+          <Tooltip value={language.t("session.header.searchFiles")} placement="bottom" gutter={8}>
+            <IconButton
+              icon="magnifying-glass"
+              iconSize="medium"
+              variant="ghost"
+              class="shrink-0 p-0"
+              onClick={() => command.trigger("file.open")}
+              aria-label={language.t("session.header.searchFiles")}
+            />
+          </Tooltip>
+        </Show>
         {/* A session renders its own beside Stop, so this covers the routes
             that have no session header. */}
         <Show when={!inSession()}>
