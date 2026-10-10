@@ -1798,11 +1798,26 @@ interface ApplyPatchFile {
   relativePath?: string
   type: "add" | "update" | "delete" | "move"
   diff: string
-  before: string
-  after: string
+  before?: string
+  after?: string
   additions: number
   deletions: number
   movePath?: string
+}
+
+// `---`/`+++` are file headers only before the first hunk; inside a hunk they
+// are a removed `--…` or added `++…` line.
+export function patchLines(diff: string) {
+  const lines = diff.split("\n")
+  const start = lines.findIndex((line) => line.startsWith("@@"))
+  return lines.map((text, index) => {
+    if (text.startsWith("@@")) return { text, kind: "hunk" as const }
+    if (start === -1 || index < start) return { text, kind: "meta" as const }
+    if (text.startsWith("+")) return { text, kind: "add" as const }
+    if (text.startsWith("-")) return { text, kind: "delete" as const }
+    if (text.startsWith(" ")) return { text, kind: "context" as const }
+    return { text, kind: "meta" as const }
+  })
 }
 
 ToolRegistry.register({
@@ -1867,11 +1882,22 @@ ToolRegistry.register({
                     </div>
                     <Show when={file.type !== "delete"}>
                       <div data-component="apply-patch-file-diff">
-                        <Dynamic
-                          component={diffComponent}
-                          before={{ name: file.filePath, contents: file.before }}
-                          after={{ name: file.filePath, contents: file.after }}
-                        />
+                        <Show
+                          when={file.before !== undefined || file.after !== undefined}
+                          fallback={
+                            <pre data-slot="apply-patch-unified">
+                              <For each={patchLines(file.diff)}>
+                                {(line) => <div data-kind={line.kind}>{line.text}</div>}
+                              </For>
+                            </pre>
+                          }
+                        >
+                          <Dynamic
+                            component={diffComponent}
+                            before={{ name: file.filePath, contents: file.before ?? "" }}
+                            after={{ name: file.filePath, contents: file.after ?? "" }}
+                          />
+                        </Show>
                       </div>
                     </Show>
                   </div>

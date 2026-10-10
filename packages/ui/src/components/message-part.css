@@ -658,6 +658,38 @@ a[data-component="tool-action"]:hover {
   overflow-y: auto;
 }
 
+[data-slot="apply-patch-unified"] {
+  margin: 0;
+  padding: 4px 0;
+  min-width: 100%;
+  width: max-content;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-large);
+  color: var(--text-base);
+
+  > div {
+    min-height: 1lh;
+    padding: 0 12px;
+    white-space: pre;
+  }
+
+  [data-kind="add"] {
+    color: var(--text-diff-add-base);
+    background-color: var(--surface-diff-add-base);
+  }
+
+  [data-kind="delete"] {
+    color: var(--text-diff-delete-base);
+    background-color: var(--surface-diff-delete-base);
+  }
+
+  [data-kind="hunk"],
+  [data-kind="meta"] {
+    color: var(--text-weak);
+  }
+}
+
 [data-component="tool-loaded-file"] {
   display: flex;
   align-items: center;
