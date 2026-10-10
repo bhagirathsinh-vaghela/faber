@@ -1131,7 +1131,6 @@ export default function Layout(props: ParentProps) {
       id: "theme.scheme.cycle",
       title: language.t("command.theme.scheme.cycle"),
       category: language.t("command.category.theme"),
-      keybind: "mod+shift+s",
       onSelect: () => cycleColorScheme(1),
     })
 

@@ -98,7 +98,6 @@ import { Visibility } from "@/utils/visibility"
 type DiffStyle = "unified" | "split"
 
 const handoff = {
-  prompt: "",
   terminals: [] as string[],
   files: {} as Record<string, SelectedLineRange | null>,
 }
@@ -376,7 +375,6 @@ export default function Page() {
     createEffect(() => {
       const id = params.id
       if (!id) return
-      if (!prompt.ready()) return
       navMark({ dir: params.dir, to: id, name: "storage:prompt-ready" })
     })
 
@@ -883,9 +881,8 @@ export default function Page() {
   let focusedFor: string | undefined
   createEffect(
     on(
-      () => [params.id, prompt.ready()] as const,
-      ([id, ready]) => {
-        if (!ready) return
+      () => params.id,
+      (id) => {
         // A brand-new session has no params.id yet (created on first submit), but
         // its prompt dock is already mounted. Key focus on a sentinel so the
         // new-session view lands the cursor once, same as an opened session.
@@ -2315,23 +2312,6 @@ export default function Page() {
     document.addEventListener("auxclick", handleAuxClick)
   })
 
-  const previewPrompt = () =>
-    prompt
-      .current()
-      .map((part) => {
-        if (part.type === "file") return `[file:${part.path}]`
-        if (part.type === "agent") return `@${part.name}`
-        if (part.type === "image") return `[image:${part.filename}]`
-        return part.content
-      })
-      .join("")
-      .trim()
-
-  createEffect(() => {
-    if (!prompt.ready()) return
-    handoff.prompt = previewPrompt()
-  })
-
   createEffect(() => {
     if (!terminal.ready()) return
     language.locale()
@@ -2731,7 +2711,6 @@ export default function Page() {
                                         {info()?.title}
                                       </h1>
                                       <IconButton
-                                        tabIndex={-1}
                                         icon="pencil-line"
                                         variant="ghost"
                                         class="opacity-0 group-hover/title:opacity-100 focus-visible:opacity-100 shrink-0"
@@ -3026,23 +3005,14 @@ export default function Page() {
                 classList={{ hidden: reader() && !composerWanted() }}
                 inert={reader() && !composerWanted()}
               >
-                <Show
-                  when={prompt.ready()}
-                  fallback={
-                    <div class="w-full min-h-32 panel-wide:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
-                      {handoff.prompt || language.t("prompt.loading")}
-                    </div>
-                  }
-                >
-                  <PromptInput
-                    ref={(el) => {
-                      inputRef = el
-                    }}
-                    newSessionWorktree={newSessionWorktree()}
-                    onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
-                    onSubmit={onSubmit}
-                  />
-                </Show>
+                <PromptInput
+                  ref={(el) => {
+                    inputRef = el
+                  }}
+                  newSessionWorktree={newSessionWorktree()}
+                  onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
+                  onSubmit={onSubmit}
+                />
               </div>
             </div>
           </div>

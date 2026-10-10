@@ -167,7 +167,6 @@ function createPromptSession() {
   }
 
   return {
-    ready: () => true,
     current: createMemo(() => store.prompt),
     cursor: createMemo(() => store.cursor),
     dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
@@ -249,7 +248,6 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
     const session = createMemo(() => load(params.dir!, params.id))
 
     return {
-      ready: () => session().ready(),
       current: () => session().current(),
       cursor: () => session().cursor(),
       dirty: () => session().dirty(),
