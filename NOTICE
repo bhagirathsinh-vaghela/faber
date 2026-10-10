@@ -4,15 +4,35 @@ Copyright 2026 Bhagirathsinh Vaghela
 This product includes software from OpenCode (https://github.com/anomalyco/opencode),
 licensed under the MIT License. Its copyright and license notice are in LICENSE-OPENCODE.
 
-Bundled third-party assets added in Faber (packages/ui/src/assets):
+Third-party fonts (packages/ui/src/assets/fonts) and icons
+(packages/ui/src/components/icon.tsx) added in Faber. The full license text
+and copyright notice of each are in licenses/:
 
-- Commit Mono, Maple Mono, Monaspace Neon, JetBrains Mono, Source Code Pro and
-  Geist Mono (variable): SIL Open Font License 1.1, by their respective
-  authors (https://openfontlicense.org). Each font file carries its copyright
-  and license in its metadata.
-- The "Symbol Rescue" subsets are cut from Meslo LG (Apache License 2.0) and
-  Geist (SIL Open Font License 1.1) as patched by Nerd Fonts, whose glyph
-  sets carry the licenses listed at
-  https://github.com/ryanoasis/nerd-fonts/blob/master/LICENSE.
-- Icons drawn from Tabler Icons (MIT, https://github.com/tabler/tabler-icons)
-  and Lucide (ISC, https://github.com/lucide-icons/lucide).
+- Commit Mono: SIL Open Font License 1.1, Copyright (c) 2023 Eigil Nikolajsen.
+  licenses/commit-mono-OFL-1.1.txt
+- Maple Mono: SIL Open Font License 1.1, Copyright 2022 The Maple Mono Project
+  Authors. licenses/maple-mono-OFL-1.1.txt
+- Monaspace Neon: SIL Open Font License 1.1, Copyright (c) 2023, GitHub, with
+  Reserved Font Name "Monaspace". licenses/monaspace-OFL-1.1.txt
+- JetBrains Mono (variable): SIL Open Font License 1.1, Copyright 2020 The
+  JetBrains Mono Project Authors. licenses/jetbrains-mono-OFL-1.1.txt
+- Source Code Pro (variable): SIL Open Font License 1.1, (c) 2023 Adobe, with
+  Reserved Font Name 'Source'. licenses/source-code-pro-OFL-1.1.txt
+- Geist Mono (variable) and the GeistMono Nerd Font subset in the "Symbol
+  Rescue" family: SIL Open Font License 1.1, Copyright 2024 The Geist Project
+  Authors. licenses/geist-OFL-1.1.txt
+- The MesloLGS Nerd Font subset in the "Symbol Rescue" family: Meslo LG,
+  Apache License 2.0, Copyright 2009, 2010, 2013 André Berg
+  (licenses/meslo-lg-NOTICE.txt, licenses/Apache-2.0.txt). Meslo LG is
+  derived from Apple's Menlo (Copyright (c) 2009 Apple Inc.), itself derived
+  from Bitstream Vera Sans Mono (Copyright (c) 2003 by Bitstream, Inc.) with
+  Arev glyphs (Copyright (c) 2006 by Tavmjong Bah); the Bitstream Vera and
+  Arev licenses are in licenses/bitstream-vera-and-arev.txt.
+- Nerd Fonts patched glyph sets in both "Symbol Rescue" subsets: Copyright (c)
+  2014 Ryan L McIntyre, under the licenses listed in licenses/nerd-fonts.txt.
+- Icons from Tabler Icons: MIT License, Copyright (c) 2020-2026 Paweł Kuna.
+  licenses/tabler-icons-MIT.txt
+- Icons from Lucide: ISC License, Copyright (c) 2026 Lucide Icons and
+  Contributors. Lucide icons derived from Feather (of those used here:
+  database, arrow-up and arrow-down) are under the MIT License, Copyright (c)
+  2013-present Cole Bemis. licenses/lucide-ISC-and-feather-MIT.txt
