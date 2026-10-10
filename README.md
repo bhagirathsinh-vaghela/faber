@@ -46,15 +46,19 @@ The server and the supervisor listen on `127.0.0.1` by default. `--hostname 0.0.
 
 Dictation and read-aloud talk to a local speech sidecar at `http://127.0.0.1:4111` (`dictation.url` in config). No sidecar ships with Faber; anything that serves the [sidecar wire API](docs/speech-sidecar.md) works. Without one, the microphone and speaker buttons report that the sidecar is unreachable.
 
+## Why a web UI, and no terminal UI
+
+The agent does all of its work in the server: it reads and edits files, runs commands, and talks to the model there. The UI is only a client that shows the conversation and takes your input, so nothing about the work ties it to a terminal. A terminal is a hard place to build that client: long transcripts, diffs, images, questions with options and many sessions side by side all fight its limits. A browser handles all of them, works the same on a desktop and a phone, and installs like an app. The web was the fastest way for me to build the client I wanted, so Faber drops the terminal UI and puts everything into the web UI.
+
 ## Differences from upstream OpenCode
 
-|                        |                                                                                                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Interface              | Web UI only, branded Faber. The terminal UI and the desktop app were removed. The binary, config and data directories and env vars keep the `opencode` name. |
-| Session sharing        | Removed.                                                                                                                                                     |
-| Install                | From source only. The install script and `opencode upgrade` were removed.                                                                                    |
-| Subscription logins    | Claude Pro/Max login removed; ChatGPT, Copilot and GitLab logins kept.                                                                                       |
-| Existing OpenCode data | Sessions keep working, but sessions created by upstream OpenCode are stored under its old project ids and do not show under their folder.                    |
+|                        |                                                                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Interface              | Web UI only, branded Faber ([why](#why-a-web-ui-and-no-terminal-ui)). The terminal UI and the desktop app were removed. The binary, config and data directories and env vars keep the `opencode` name. |
+| Session sharing        | Removed.                                                                                                                                                                                               |
+| Install                | From source only. The install script and `opencode upgrade` were removed.                                                                                                                              |
+| Subscription logins    | Claude Pro/Max login removed; ChatGPT, Copilot and GitLab logins kept.                                                                                                                                 |
+| Existing OpenCode data | Sessions keep working, but sessions created by upstream OpenCode are stored under its old project ids and do not show under their folder.                                                              |
 
 ## Development
 
