@@ -77,6 +77,7 @@ import { Binary } from "@opencode-ai/util/binary"
 import { showToast } from "@opencode-ai/ui/toast"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { errorMessage as describeError } from "@/utils/error-message"
+import { recovered } from "@/utils/dictation-recover"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -1116,13 +1117,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // Pull the transcript the server held after an unexpected drop. A held
     // transcript returns its text; a 404 means the server has nothing under the
     // id (expired or never held), which is terminal, so it maps to "gone". A
-    // transport error throws, and the caller keeps recovery armed for a retry.
-    recover: async (id) => {
-      const pull = await sdk.client.dictation.recover({ id })
-      if (pull.data) return pull.data.text
-      if (pull.response.status === 404) return "gone"
-      throw new Error("recover failed")
-    },
+    // recovery still running (202) or a transport error throws, and the caller
+    // keeps recovery armed for a retry. The shared client throws on any error
+    // status, which would hide the 404, so this call reads statuses itself.
+    recover: async (id) => recovered(await sdk.client.dictation.recover({ id }, { throwOnError: false })),
+    release: (id) => void sdk.client.dictation.release({ id }).catch(() => undefined),
     onRecovered: (text) => {
       setStore("dictating", false)
       if (text.trim()) insertDictation(text.trim())

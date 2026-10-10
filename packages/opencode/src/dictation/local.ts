@@ -11,11 +11,18 @@ const log = Log.create({ service: "dictation.local" })
 const TRANSCRIBE_ATTEMPTS = 3
 const TRANSCRIBE_BACKOFF_MS = 400
 
+// A sidecar that accepts a POST and never answers would hold the dictation, and
+// a recovery pull waiting on it, forever. Each attempt gets this long plus the
+// chunk's length in real time at the default rate, which over-allows a model
+// sampling faster.
+const TRANSCRIBE_TIMEOUT_MS = 30_000
+
 // Ceiling on audio held for one chunk before it is transcribed regardless of a
-// pause. Without it a mic left open streams into an unbounded buffer. 16kHz
-// mono PCM16 is 32000 bytes/sec, so this is the byte budget for that duration.
+// pause. Without it a mic left open streams into an unbounded buffer. The byte
+// budget is that duration of mono PCM16 at the default rate; a model sampling
+// faster reaches it sooner.
 const MAX_BUFFER_MS = 600_000
-const MAX_BUFFER_BYTES = (16000 * 2 * MAX_BUFFER_MS) / 1000
+const MAX_BUFFER_BYTES = (DictationRate.DEFAULT * 2 * MAX_BUFFER_MS) / 1000
 
 // A committed chunk's audio was cut off from its neighbours at a pause, so a
 // leading boundary mark the decoder emits for it means nothing and is dropped.
@@ -25,7 +32,7 @@ function trim(text: string) {
   return out
 }
 
-export function local(host: Host, url: string): Engine {
+export function local(host: Host, url: string, timeout = TRANSCRIBE_TIMEOUT_MS): Engine {
   const frames: ArrayBuffer[] = []
   let buffered = 0
   let closed = false
@@ -47,6 +54,7 @@ export function local(host: Host, url: string): Engine {
           method: "POST",
           body: audio,
           headers: { "content-type": "application/octet-stream" },
+          signal: AbortSignal.timeout(timeout + (audio.size / (DictationRate.DEFAULT * 2)) * 1000),
         })
         if (!attempt.ok) throw new Error(`sidecar responded ${attempt.status}`)
         return attempt
@@ -61,9 +69,16 @@ export function local(host: Host, url: string): Engine {
       host.fail(`Local transcription failed — is the sidecar running at ${url}?`)
       return false
     }
-    const transcribed = await response.json()
-    log.info("transcribed", { ms: Date.now() - began, engine: transcribed.ms, bytes: audio.size })
+    const transcribed = await response.json().catch((error) => {
+      log.error("sidecar reply unreadable", { url, error })
+      return undefined
+    })
     if (closed) return false
+    if (!transcribed) {
+      host.fail(`Local transcription failed — the sidecar at ${url} sent an unreadable reply`)
+      return false
+    }
+    log.info("transcribed", { ms: Date.now() - began, engine: transcribed.ms, bytes: audio.size })
     const text = trim(transcribed.text ?? "")
     if (text) host.transcript({ text, final: true })
     return true

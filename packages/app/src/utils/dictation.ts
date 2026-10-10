@@ -1,5 +1,6 @@
 import { createEffect, createSignal, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
+import { single } from "./dictation-recover"
 
 // Worklet source is inlined via a Blob URL so no separate asset has to flow
 // through the embedded web bundle pipeline.
@@ -74,6 +75,7 @@ const DEFAULT_RATE = 16000
 // Ceiling on how long a batch engine may take to return its transcript after
 // the mic stops.
 const DRAIN_MS = 30_000
+const RECOVER_RETRY_MS = 5_000
 
 // Upper bound on holding the capture graph open after the mic stops. The OS
 // recording indicator is already dark by then, so this only bounds the wait
@@ -292,6 +294,8 @@ export function createDictation(opts: {
   // on a hit, "gone" when the server has nothing under the id (expired or never
   // held — terminal), or undefined on a transient failure worth a later retry.
   recover?: (id: string) => Promise<string | "gone" | undefined>
+  // Acknowledges a delivered transcript so the server can drop it.
+  release?: (id: string) => void
   onRecovered?: (text: string) => void
   onRecoverFailed?: () => void
 }) {
@@ -418,28 +422,46 @@ export function createDictation(opts: {
 
   const stop = () => {
     stopped = true
+    forget()
     teardown()
   }
 
-  // Pulls the transcript the server held after an unexpected drop. Fired both
+  // Pulls the transcript the server held after an unexpected drop. Fired
   // immediately on the drop (the socket may have died alone while the app stayed
-  // online) and again when the app reconnects (a whole-app outage). The
-  // server's one-shot delete makes a duplicate pull harmless: the second reads
-  // nothing.
-  const attemptRecover = async () => {
+  // online), again when the app reconnects (a whole-app outage), and on a timer
+  // while a pull is answered "still running" or lost in transit. One pull runs
+  // per dictation id at a time. The server keeps the transcript until it is
+  // released, so a pull lost on a dead connection does not lose it.
+  let retrying: ReturnType<typeof setTimeout> | undefined
+  const flight = single()
+
+  const forget = () => {
+    clearTimeout(retrying)
+    retrying = undefined
+    id = undefined
+    setStore("recovering", false)
+  }
+
+  const pull = async () => {
+    clearTimeout(retrying)
+    retrying = undefined
     if (!store.recovering || !id || !opts.recover) return
     const pending = id
     const recovered = await opts.recover(pending).catch(() => undefined)
-    // A concurrent success or a new session already cleared recovery; ignore a
-    // late resolve so it cannot overwrite the next dictation.
+    // A discard, an unmount or a new session already cleared recovery; ignore
+    // a late resolve so it cannot overwrite the next dictation.
     if (!store.recovering || id !== pending) return
-    // A transient failure keeps recovery armed for the reconnect trigger.
-    if (recovered === undefined) return
-    setStore("recovering", false)
-    id = undefined
+    if (recovered === undefined) {
+      retrying = setTimeout(() => void attemptRecover(), RECOVER_RETRY_MS)
+      return
+    }
+    forget()
     if (recovered === "gone") return opts.onRecoverFailed?.()
+    opts.release?.(pending)
     if (recovered) opts.onRecovered?.(recovered)
   }
+
+  const attemptRecover = () => flight(id, pull)
 
   // Pausing commits the audio so far as its own chunk, then drops incoming
   // frames until resume. Committing on pause (not resume) means a long pause's
@@ -658,7 +680,10 @@ export function createDictation(opts: {
     }
   }
 
-  onCleanup(teardown)
+  onCleanup(() => {
+    forget()
+    teardown()
+  })
 
   return {
     supported,

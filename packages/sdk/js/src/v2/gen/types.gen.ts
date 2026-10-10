@@ -2659,6 +2659,24 @@ export type DictationConnectResponses = {
 
 export type DictationConnectResponse = DictationConnectResponses[keyof DictationConnectResponses]
 
+export type DictationReleaseData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/dictation/recover/{id}"
+}
+
+export type DictationReleaseResponses = {
+  /**
+   * Released
+   */
+  200: boolean
+}
+
+export type DictationReleaseResponse = DictationReleaseResponses[keyof DictationReleaseResponses]
+
 export type DictationRecoverData = {
   body?: never
   path: {
@@ -2681,6 +2699,12 @@ export type DictationRecoverResponses = {
    */
   200: {
     text: string
+  }
+  /**
+   * Recovery still running
+   */
+  202: {
+    pending: true
   }
 }
 

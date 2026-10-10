@@ -9,7 +9,7 @@ Log.init({ print: false })
 // /transcribe returns the next queued reply, and every request body is recorded
 // so a test can prove one POST happened per committed chunk — the property that
 // keeps each chunk an independent utterance.
-function sidecar(replies: string[], sampleRate = 16000, failFirst = 0) {
+function sidecar(replies: string[], sampleRate = 16000, failFirst = 0, raw?: string) {
   const bodies: number[] = []
   let health = 0
   let failures = 0
@@ -30,6 +30,7 @@ function sidecar(replies: string[], sampleRate = 16000, failFirst = 0) {
         return Response.json({}, { status: 503 })
       }
       bodies.push(body.byteLength)
+      if (raw !== undefined) return new Response(raw)
       const text = replies[bodies.length - 1] ?? ""
       return Response.json({ text, ms: 1 })
     },
@@ -105,6 +106,23 @@ describe("dictation.local", () => {
     expect(sink.done()).toBe(true)
   })
 
+  test("a sidecar that never answers a transcribe fails the dictation", async () => {
+    const hung = Bun.serve({
+      port: 0,
+      fetch: (request) =>
+        new URL(request.url).pathname === "/health" ? Response.json({ sampleRate: 16000 }) : new Promise(() => {}),
+    })
+    const url = `http://127.0.0.1:${hung.port}`
+    const sink = collector()
+    const engine = local(sink.host, url, 50)
+
+    engine.frame(frame(32))
+    await engine.stop(16000)
+    hung.stop(true)
+
+    expect(sink.failed()).toBe(`Local transcription failed — is the sidecar running at ${url}?`)
+  })
+
   test("a commit with no buffered frames sends no POST", async () => {
     stub = sidecar(["only chunk"])
     const sink = collector()
@@ -177,7 +195,7 @@ describe("dictation.local", () => {
     expect(sink.failed()).toBeUndefined()
   })
 
-  test("a sidecar down past the breaker fails the dictation without delivering", async () => {
+  test("a sidecar down for every retry attempt fails the dictation without delivering", async () => {
     stub = sidecar(["never"], 16000, 3)
     const sink = collector()
     const engine = local(sink.host, stub.url)
@@ -188,6 +206,20 @@ describe("dictation.local", () => {
     expect(stub.posts()).toEqual([])
     expect(sink.transcripts()).toEqual([])
     expect(sink.failed()).toBe(`Local transcription failed — is the sidecar running at ${stub.url}?`)
+    expect(sink.done()).toBe(false)
+  })
+
+  test("a 200 reply that is not JSON fails the dictation instead of rejecting stop", async () => {
+    stub = sidecar([], 16000, 0, "<html>bad gateway</html>")
+    const sink = collector()
+    const engine = local(sink.host, stub.url)
+
+    engine.frame(frame(10))
+    await engine.stop(16000)
+
+    expect(stub.posts()).toEqual([10])
+    expect(sink.transcripts()).toEqual([])
+    expect(sink.failed()).toBe(`Local transcription failed — the sidecar at ${stub.url} sent an unreadable reply`)
     expect(sink.done()).toBe(false)
   })
 

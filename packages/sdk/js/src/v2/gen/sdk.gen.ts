@@ -31,6 +31,7 @@ import type {
   DictationConnectResponses,
   DictationRecoverErrors,
   DictationRecoverResponses,
+  DictationReleaseResponses,
   EventSubscribeResponses,
   ExperimentalResourceListResponses,
   FileListResponses,
@@ -529,9 +530,28 @@ export class Dictation extends HeyApiClient {
   }
 
   /**
+   * Release a recovered dictation transcript
+   *
+   * Drop the transcript held for a dictation once the client has inserted it.
+   */
+  public release<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).delete<DictationReleaseResponses, unknown, ThrowOnError>({
+      url: "/dictation/recover/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Recover a dropped dictation transcript
    *
-   * Return the transcript held for a dictation whose socket dropped before delivery, once. Absent or expired ids return 404.
+   * Return the transcript held for a dictation whose socket dropped before delivery. It stays held until released with DELETE, or until it expires. A recovery still running after a wait returns 202; pull again. Absent or expired ids return 404.
    */
   public recover<ThrowOnError extends boolean = false>(
     parameters: {

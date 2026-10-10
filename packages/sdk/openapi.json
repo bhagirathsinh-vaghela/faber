@@ -498,7 +498,7 @@
       "get": {
         "operationId": "dictation.recover",
         "summary": "Recover a dropped dictation transcript",
-        "description": "Return the transcript held for a dictation whose socket dropped before delivery, once. Absent or expired ids return 404.",
+        "description": "Return the transcript held for a dictation whose socket dropped before delivery. It stays held until released with DELETE, or until it expires. A recovery still running after a wait returns 202; pull again. Absent or expired ids return 404.",
         "responses": {
           "200": {
             "description": "Recovered",
@@ -512,6 +512,23 @@
                     }
                   },
                   "required": ["text"]
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Recovery still running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pending": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": ["pending"]
                 }
               }
             }
@@ -534,6 +551,39 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.recover({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "dictation.release",
+        "summary": "Release a recovered dictation transcript",
+        "description": "Drop the transcript held for a dictation once the client has inserted it.",
+        "responses": {
+          "200": {
+            "description": "Released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.dictation.release({\n  ...\n})"
           }
         ]
       }

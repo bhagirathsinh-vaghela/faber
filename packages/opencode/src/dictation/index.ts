@@ -24,6 +24,9 @@ export namespace Dictation {
     // While recovering, the client is gone: transcripts route to the store and
     // done/fail must not touch the dead socket.
     let recovering = false
+    // The rate the client was told to capture at. A recovery stops the engine on
+    // the client's behalf, so it must claim the rate the audio was sampled at.
+    let rate = DictationRate.DEFAULT
     // Selecting the engine is async, and the browser starts sending as soon as
     // the socket opens, so early frames wait here rather than being dropped. A
     // commit or stop arriving in that window is replayed after the frames.
@@ -59,7 +62,7 @@ export namespace Dictation {
         const url = config.dictation?.url ?? DEFAULT_URL
         // The browser is told the rate to sample at rather than assuming one, so
         // a model whose rate differs from the default is fed correctly.
-        const rate = await DictationRate.get(url)
+        rate = await DictationRate.get(url)
         if (closed) return
         client.send(JSON.stringify({ type: "rate", rate }))
         const started = local(host, url)
@@ -113,11 +116,14 @@ export namespace Dictation {
         }
         log.info("client dropped, recovering transcript", { id })
         recovering = true
-        Promise.resolve(engine.stop(DictationRate.DEFAULT)).finally(() => {
-          if (transcript) DictationRecover.put(id, transcript)
-          closed = true
-          engine?.close()
-        })
+        DictationRecover.track(
+          id,
+          Promise.resolve(engine.stop(rate)).finally(() => {
+            if (transcript) DictationRecover.put(id, transcript)
+            closed = true
+            engine?.close()
+          }),
+        )
       },
     }
   }

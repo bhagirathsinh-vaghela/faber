@@ -12,7 +12,7 @@ export namespace DictationRate {
     if (cached !== undefined) return cached
     const rate = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) })
       .then((r) => (r.ok ? r.json() : undefined))
-      .then((health) => (typeof health?.sampleRate === "number" ? health.sampleRate : undefined))
+      .then((health): number | undefined => (typeof health?.sampleRate === "number" ? health.sampleRate : undefined))
       .catch(() => undefined)
     cached = rate ?? DEFAULT
     return cached
