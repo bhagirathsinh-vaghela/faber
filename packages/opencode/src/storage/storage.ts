@@ -147,9 +147,19 @@ export namespace Storage {
       .json()
       .then((x) => parseInt(x))
       .catch(() => 0)
+    // A failed migration stops the chain (each one reads the layout the one
+    // before it wrote) and is retried on the next boot, but storage still
+    // opens: one unreadable legacy file must not fail every read in the process.
     for (let index = migration; index < MIGRATIONS.length; index++) {
       log.info("running migration", { index })
-      await MIGRATIONS[index](dir)
+      const failed = await MIGRATIONS[index](dir).then(
+        () => false,
+        (error) => {
+          log.error("migration failed", { index, error })
+          return true
+        },
+      )
+      if (failed) break
       await Bun.write(path.join(dir, "migration"), (index + 1).toString())
     }
     await sweepOrphans(dir)

@@ -57,3 +57,29 @@ describe("Storage", () => {
     })
   })
 })
+
+test("a failing migration leaves storage usable and is retried on the next boot", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-migrate-"))
+  const storage = path.join(root, "share", "opencode", "storage")
+  await Bun.write(path.join(storage, "migration"), "1")
+  await Bun.write(path.join(storage, "session", "prj", "ses_bad.json"), "{bad")
+  const entry = path.join(root, "boot.ts")
+  await Bun.write(
+    entry,
+    `import { Storage } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/storage/storage"))}
+await Storage.write(["probe"], { ok: true })
+console.log(JSON.stringify(await Storage.read(["probe"])))`,
+  )
+  const env = Object.fromEntries(
+    ["data", "cache", "config", "state"].map((kind) => [
+      `XDG_${kind.toUpperCase()}_HOME`,
+      path.join(root, kind === "data" ? "share" : kind),
+    ]),
+  )
+  const proc = Bun.spawn(["bun", "run", entry], { env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" })
+  const out = await new Response(proc.stdout).text()
+  expect(await proc.exited).toBe(0)
+  expect(out.trim().split("\n").at(-1)).toBe('{"ok":true}')
+  expect(await Bun.file(path.join(storage, "migration")).text()).toBe("1")
+  await fs.rm(root, { recursive: true, force: true })
+})
