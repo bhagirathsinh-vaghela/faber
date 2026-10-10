@@ -1,7 +1,6 @@
 .DS_Store
 node_modules
 .worktrees
-.sst
 .env
 .idea
 .vscode
@@ -14,7 +13,6 @@ ts-dist
 .turbo
 **/.serena
 .serena/
-/result
 refs
 Session.vim
 opencode.json
