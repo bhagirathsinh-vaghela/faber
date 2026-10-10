@@ -23,11 +23,14 @@ describe("Icon.png", () => {
     expect([...png.subarray(24, 29)]).toEqual([8, 2, 0, 0, 0])
   })
 
-  test("draws the label under the logo", () => {
+  test("draws the label under the F mark", () => {
     const pixel = decode(Icon.png(512, "laptop"))
     expect(pixel(196, 360)).toEqual([0xff, 0xff, 0xff])
     expect(pixel(170, 200)).toEqual([0xff, 0xff, 0xff])
-    expect(pixel(256, 250)).toEqual([0x5a, 0x58, 0x58])
+    expect(pixel(340, 100)).toEqual([0xff, 0xff, 0xff])
+    expect(pixel(280, 200)).toEqual([0xff, 0xff, 0xff])
+    expect(pixel(330, 250)).toEqual([0x13, 0x10, 0x10])
+    expect(pixel(256, 250)).toEqual([0x13, 0x10, 0x10])
     expect(pixel(256, 500)).toEqual([0x13, 0x10, 0x10])
   })
 

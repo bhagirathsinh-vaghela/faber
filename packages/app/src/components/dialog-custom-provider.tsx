@@ -7,7 +7,6 @@ import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@opencode-ai/ui/toast"
 import { For } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Link } from "@/components/link"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
@@ -282,13 +281,7 @@ export function DialogCustomProvider(props: Props) {
         </div>
 
         <form onSubmit={save} class="px-2.5 pb-6 flex flex-col gap-6">
-          <p class="text-14-regular text-text-base">
-            Configure an OpenAI-compatible provider. See the{" "}
-            <Link href="https://opencode.ai/docs/providers/#custom-provider" tabIndex={-1}>
-              provider config docs
-            </Link>
-            .
-          </p>
+          <p class="text-14-regular text-text-base">Configure an OpenAI-compatible provider.</p>
 
           <div class="flex flex-col gap-4">
             <TextField

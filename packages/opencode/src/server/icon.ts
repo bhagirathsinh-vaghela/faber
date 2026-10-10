@@ -5,16 +5,15 @@ type Rect = { x: number; y: number; w: number; h: number; color: Color }
 
 const BG: Color = [0x13, 0x10, 0x10]
 const WHITE: Color = [0xff, 0xff, 0xff]
-const GREY: Color = [0x5a, 0x58, 0x58]
 
-// The stock logo (packages/ui/src/assets/favicon/favicon-v3.svg) on its 512 grid.
+// The F mark (packages/ui/src/assets/favicon/favicon-v3.svg) on its 512 grid.
 const LOGO: Rect[] = [
-  { x: 128, y: 96, w: 256, h: 320, color: WHITE },
-  { x: 192, y: 160, w: 128, h: 64, color: BG },
-  { x: 192, y: 224, w: 128, h: 128, color: GREY },
+  { x: 128, y: 96, w: 64, h: 320, color: WHITE },
+  { x: 128, y: 96, w: 256, h: 64, color: WHITE },
+  { x: 128, y: 224, w: 192, h: 64, color: WHITE },
 ]
 
-// 5x7 pixel font, blocky to match the logo.
+// 5x7 pixel font, blocky to match the mark.
 const FONT: Record<string, string[]> = {
   A: [" ### ", "#   #", "#   #", "#####", "#   #", "#   #", "#   #"],
   B: ["#### ", "#   #", "#   #", "#### ", "#   #", "#   #", "#### "],
@@ -148,7 +147,7 @@ function encode(size: number, pixels: Uint8Array) {
 }
 
 export namespace Icon {
-  // The install and home-screen icons. Tab favicons keep the stock logo: at
+  // The install and home-screen icons. Tab favicons keep the plain mark: at
   // 16-32px a label is unreadable.
   export const files: Record<string, number> = {
     "/web-app-manifest-192x192.png": 192,

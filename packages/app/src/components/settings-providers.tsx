@@ -171,15 +171,7 @@ export const SettingsProviders: Component = () => {
                     <div class="flex items-center gap-x-3">
                       <ProviderIcon id={icon(item.id)} class="size-5 shrink-0 icon-strong-base" />
                       <span class="text-14-medium text-text-strong">{item.name}</span>
-                      <Show when={item.id === "opencode"}>
-                        <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
-                      </Show>
                     </div>
-                    <Show when={item.id === "opencode"}>
-                      <span class="text-12-regular text-text-weak pl-8">
-                        {language.t("dialog.provider.opencode.note")}
-                      </span>
-                    </Show>
                     <Show when={item.id === "anthropic"}>
                       <span class="text-12-regular text-text-weak pl-8">
                         {language.t("dialog.provider.anthropic.note")}

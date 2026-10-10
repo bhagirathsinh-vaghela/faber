@@ -127,8 +127,6 @@ export const dict = {
   "dialog.provider.empty": "No providers found",
   "dialog.provider.group.popular": "Popular",
   "dialog.provider.group.other": "Other",
-  "dialog.provider.tag.recommended": "Recommended",
-  "dialog.provider.opencode.note": "Curated models including Claude, GPT, Gemini and more",
   "dialog.provider.anthropic.note": "Direct access to Claude models",
   "dialog.provider.copilot.note": "Claude models for coding assistance",
   "dialog.provider.openai.note": "GPT models for fast, capable general AI tasks",
@@ -580,7 +578,6 @@ export const dict = {
   "common.dismiss": "Dismiss",
   "common.requestFailed": "Request failed",
   "common.moreOptions": "More options",
-  "common.learnMore": "Learn more",
   "common.rename": "Rename",
   "common.reset": "Reset",
   "common.archive": "Archive",
@@ -596,7 +593,6 @@ export const dict = {
   "sidebar.settings": "Settings",
   "sidebar.help": "Help",
   "sidebar.gettingStarted.title": "Getting started",
-  "sidebar.gettingStarted.line1": "Faber includes free models so you can start immediately.",
   "sidebar.gettingStarted.line2": "Connect any provider to use models, inc. Claude, GPT, Gemini etc.",
 
   "app.name": "Faber",
@@ -643,9 +639,6 @@ export const dict = {
   "settings.general.row.appearance.description": "Customise how Faber looks on your device",
   "settings.general.row.theme.title": "Theme",
   "settings.general.row.theme.description": "Customise how Faber is themed.",
-
-  "settings.general.row.releaseNotes.title": "Release notes",
-  "settings.general.row.releaseNotes.description": "Show What's New popups after updates",
 
   "settings.updates.row.startup.title": "Check for updates on startup",
   "settings.updates.row.startup.description": "Automatically check for updates when Faber launches",

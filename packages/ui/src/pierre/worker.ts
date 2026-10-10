@@ -22,7 +22,7 @@ function createPool(lineDiffType: "word-alt", poolTheme = theme) {
       workerFactory,
       // poolSize defaults to 8. More workers = more parallelism but
       // also more memory. Too many can actually slow things down.
-      // NOTE: 2 is probably better for OpenCode, as I think 8 might be
+      // NOTE: 2 is probably better for Faber, as I think 8 might be
       // a bit overkill, especially because Safari has a significantly slower
       // boot up time for workers
       poolSize: 2,

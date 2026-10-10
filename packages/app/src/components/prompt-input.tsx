@@ -1426,7 +1426,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
-    // Ctrl+C clears the input, matching OpenCode's terminal UI. A non-collapsed selection means
+    // Ctrl+C clears the input, matching upstream's terminal UI. A non-collapsed selection means
     // the user is copying, so let the browser handle it and clear nothing.
     if (ctrl && event.code === "KeyC") {
       if (overlayActive()) return
