@@ -123,6 +123,30 @@ export namespace FileTime {
     }
   }
 
+  // True when this session stamped the file and its bytes have changed since.
+  // A file with no stamp is not "changed": there is no baseline to compare.
+  export async function changed(sessionID: string, filepath: string) {
+    const entry = get(sessionID, filepath)
+    if (!entry) return false
+    const stats = await Bun.file(filepath).stat()
+    // Compare against the file's mtime when it was read, not the wall-clock read
+    // time. The read-mtime is durable (persisted on the Read tool part and
+    // restored via seed()), so this stays correct across a server restart: an
+    // outside edit during the gap bumps mtime past the stored value, while an
+    // untouched file still matches.
+    if (stats.mtime.getTime() <= entry.mtime) return false
+
+    // mtime moved, but that alone does not mean the content changed. A formatter
+    // rewrite-in-place, our own post-write re-stamp, an editor save, or cloud
+    // sync all bump mtime without touching bytes. When we recorded a hash at read
+    // time, compare the current bytes against it: an identical hash means the
+    // read is still valid. Only a genuine content change (or a missing hash,
+    // e.g. a legacy read) counts as changed.
+    if (!entry.hash) return true
+    const current = await hash(filepath)
+    return !current || current !== entry.hash
+  }
+
   export async function assert(sessionID: string, filepath: string) {
     if (Flag.OPENCODE_DISABLE_FILETIME_CHECK === true) {
       return
@@ -139,26 +163,9 @@ export namespace FileTime {
       throw new Error(
         `Read ${filepath} before editing it. There is no read of this file in the current context, so read it first, then retry this edit.`,
       )
+    if (!(await changed(sessionID, filepath))) return
+
     const stats = await Bun.file(filepath).stat()
-    // Compare against the file's mtime when it was read, not the wall-clock read
-    // time. The read-mtime is durable (persisted on the Read tool part and
-    // restored via seed()), so this stays correct across a server restart: an
-    // outside edit during the gap bumps mtime past the stored value and forces a
-    // re-read, while an untouched file still matches.
-    if (stats.mtime.getTime() <= entry.mtime) return
-
-    // mtime moved, but that alone does not mean the content changed. A formatter
-    // rewrite-in-place, our own post-write re-stamp, an editor save, or cloud
-    // sync all bump mtime without touching bytes. When we recorded a hash at read
-    // time, compare the current bytes against it: an identical hash means the
-    // read is still valid, so proceed instead of forcing a spurious re-read. Only
-    // a genuine content change (or a missing hash, e.g. a legacy read)
-    // throws.
-    if (entry.hash) {
-      const current = await hash(filepath)
-      if (current && current === entry.hash) return
-    }
-
     throw new Error(
       `File ${filepath} has been modified since it was last read.\nLast modification: ${stats.mtime.toISOString()}\nLast read mtime: ${new Date(entry.mtime).toISOString()}\n\nPlease read the file again before modifying it.`,
     )

@@ -1715,51 +1715,55 @@ ToolRegistry.register({
   },
 })
 
-ToolRegistry.register({
-  name: "edit",
-  render(props) {
-    const i18n = useI18n()
-    const diffComponent = useDiffComponent()
-    const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
-    const filename = () => getFilename(props.input.filePath ?? "")
-    const patch = () => (typeof props.metadata.diff === "string" ? props.metadata.diff : undefined)
-    return (
-      <TranscriptCard
-        {...props}
-        defaultOpen
-        icon="code-lines"
-        trigger={{
-          title: i18n.t("ui.messagePart.title.edit"),
-          subtitle: filename(),
-          args: props.input.filePath?.includes("/") ? [getDirectory(props.input.filePath)] : undefined,
-          action: props.metadata.filediff ? <DiffChanges changes={props.metadata.filediff} /> : undefined,
-        }}
-      >
-        <Switch>
-          <Match when={patch() || props.input.newString || props.input.oldString}>
-            <div data-component="edit-content">
-              {/* Bare oldString/newString snippets carry no file position, so numbering them would start at 1. */}
-              <Dynamic
-                component={diffComponent}
-                patch={patch()}
-                disableLineNumbers={!patch() && !props.metadata?.filediff?.before}
-                before={{
-                  name: props.metadata?.filediff?.file || props.input.filePath,
-                  contents: props.metadata?.filediff?.before || props.input.oldString,
-                }}
-                after={{
-                  name: props.metadata?.filediff?.file || props.input.filePath,
-                  contents: props.metadata?.filediff?.after || props.input.newString,
-                }}
-              />
-            </div>
-          </Match>
-        </Switch>
-        <DiagnosticsDisplay diagnostics={diagnostics()} />
-      </TranscriptCard>
-    )
-  },
-})
+// Edit and multiedit share one card: a multiedit's replacement list stands in
+// for the single oldString/newString pair until the stored patch exists.
+function EditCard(props: ToolProps) {
+  const i18n = useI18n()
+  const diffComponent = useDiffComponent()
+  const diagnostics = createMemo(() => getDiagnostics(props.metadata.diagnostics, props.input.filePath))
+  const filename = () => getFilename(props.input.filePath ?? "")
+  const patch = () => (typeof props.metadata.diff === "string" ? props.metadata.diff : undefined)
+  const snippet = (side: "oldString" | "newString"): string | undefined =>
+    props.input[side] ?? props.input.edits?.map((edit: Record<string, string>) => edit[side]).join("\n")
+  return (
+    <TranscriptCard
+      {...props}
+      defaultOpen
+      icon="code-lines"
+      trigger={{
+        title: i18n.t("ui.messagePart.title.edit"),
+        subtitle: filename(),
+        args: props.input.filePath?.includes("/") ? [getDirectory(props.input.filePath)] : undefined,
+        action: props.metadata.filediff ? <DiffChanges changes={props.metadata.filediff} /> : undefined,
+      }}
+    >
+      <Switch>
+        <Match when={patch() || snippet("newString") || snippet("oldString")}>
+          <div data-component="edit-content">
+            {/* Bare oldString/newString snippets carry no file position, so numbering them would start at 1. */}
+            <Dynamic
+              component={diffComponent}
+              patch={patch()}
+              disableLineNumbers={!patch() && !props.metadata?.filediff?.before}
+              before={{
+                name: props.metadata?.filediff?.file || props.input.filePath,
+                contents: props.metadata?.filediff?.before || snippet("oldString"),
+              }}
+              after={{
+                name: props.metadata?.filediff?.file || props.input.filePath,
+                contents: props.metadata?.filediff?.after || snippet("newString"),
+              }}
+            />
+          </div>
+        </Match>
+      </Switch>
+      <DiagnosticsDisplay diagnostics={diagnostics()} />
+    </TranscriptCard>
+  )
+}
+
+ToolRegistry.register({ name: "edit", render: EditCard })
+ToolRegistry.register({ name: "multiedit", render: EditCard })
 
 ToolRegistry.register({
   name: "write",

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import * as fs from "fs"
 import { ReadTool } from "../../src/tool/read"
-import { EditTool } from "../../src/tool/edit"
+import { CHANGED, EditTool } from "../../src/tool/edit"
 import { WriteTool } from "../../src/tool/write"
 import { ApplyPatchTool } from "../../src/tool/apply_patch"
 import { FileTime } from "../../src/file/time"
@@ -53,33 +53,67 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
         const edit = await EditTool.init()
         const result = await edit.execute({ filePath: file, oldString: "hello world", newString: "goodbye world" }, ctx)
         expect(result.output).toContain("updated successfully")
+        expect(result.output).not.toContain(CHANGED)
         expect(await Bun.file(file).text()).toBe("goodbye world\n")
       },
     })
   })
 
-  test("edit still throws when content genuinely changed under a bumped mtime", async () => {
-    await using tmp = await tmpdir({
+  test("edit applies against content changed since the read, and says so", async () => {
+    await using workspace = await tmpdir({
       init: (dir) => Bun.write(path.join(dir, "f.txt"), "hello world\n"),
     })
     await Instance.provide({
-      directory: tmp.path,
+      directory: workspace.path,
       fn: async () => {
-        const file = path.join(tmp.path, "f.txt")
+        const file = path.join(workspace.path, "f.txt")
         const read = await ReadTool.init()
         await read.execute({ filePath: file }, ctx)
 
         // An outside writer changes the bytes AND the mtime moves.
-        await Bun.write(file, "TAMPERED CONTENT\n")
+        await Bun.write(file, "hello world\nadded outside\n")
         bumpMtime(file)
 
         const edit = await EditTool.init()
-        const err = await edit
-          .execute({ filePath: file, oldString: "hello world", newString: "x" }, ctx)
+        const edited = await edit.execute({ filePath: file, oldString: "hello world", newString: "goodbye world" }, ctx)
+        expect(edited.output).toContain(CHANGED)
+        expect(await Bun.file(file).text()).toBe("goodbye world\nadded outside\n")
+      },
+    })
+  })
+
+  test("edit applies to a file never read in this session, with no change notice", async () => {
+    await using workspace = await tmpdir({
+      init: (dir) => Bun.write(path.join(dir, "f.txt"), "hello world\n"),
+    })
+    await Instance.provide({
+      directory: workspace.path,
+      fn: async () => {
+        const file = path.join(workspace.path, "f.txt")
+        const edit = await EditTool.init()
+        const edited = await edit.execute({ filePath: file, oldString: "hello world", newString: "goodbye world" }, ctx)
+        expect(edited.output).not.toContain(CHANGED)
+        expect(await Bun.file(file).text()).toBe("goodbye world\n")
+      },
+    })
+  })
+
+  test("write still refuses to overwrite an existing file it never read", async () => {
+    await using workspace = await tmpdir({
+      init: (dir) => Bun.write(path.join(dir, "f.txt"), "hello world\n"),
+    })
+    await Instance.provide({
+      directory: workspace.path,
+      fn: async () => {
+        const file = path.join(workspace.path, "f.txt")
+        const err = await (await WriteTool.init())
+          .execute({ filePath: file, content: "replaced\n" }, ctx)
           .then(() => null)
           .catch((e: Error) => e)
-        expect(err).toBeInstanceOf(Error)
-        expect(err!.message).toContain("modified since it was last read")
+        expect(err!.message).toBe(
+          `Read ${file} before editing it. There is no read of this file in the current context, so read it first, then retry this edit.`,
+        )
+        expect(await Bun.file(file).text()).toBe("hello world\n")
       },
     })
   })
@@ -102,6 +136,7 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
         // self-inflicted false positive the bare Date.now() re-stamp caused.
         const second = await edit.execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         expect(second.output).toContain("updated successfully")
+        expect(second.output).not.toContain(CHANGED)
         expect(await Bun.file(file).text()).toBe("1\n2\nthree\n")
       },
     })
@@ -131,6 +166,7 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
           { file, mtime: first.metadata.mtime as number, hash: first.metadata.hash as string },
         ])
 
+        await FileTime.assert(ctx.sessionID, file)
         const second = await edit.execute({ filePath: file, oldString: "three", newString: "3" }, ctx)
         expect(second.output).toContain("updated successfully")
         expect(await Bun.file(file).text()).toBe("1\ntwo\n3\n")
@@ -180,6 +216,7 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
         const stale = { file, mtime: newest.mtime - 5000, hash: "pre-write" }
         FileTime.seed(ctx.sessionID, [newest, stale])
 
+        await FileTime.assert(ctx.sessionID, file)
         const next = await edit.execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         expect(next.output).toContain("updated successfully")
         expect(await Bun.file(file).text()).toBe("1\n2\nthree\n")
@@ -314,10 +351,11 @@ describe("FileTime content-fallback (mtime bump, unchanged bytes)", () => {
   })
 })
 
-// Every tool that writes a file must leave the session able to edit that file
-// again — both later in the same turn and on the next turn, where FileTime is
-// rebuilt from durable tool parts by SessionPrompt.fileStamps. A write the
-// rebuild cannot see makes the model re-read a file it just wrote.
+// Every tool that writes a file must leave a current stamp for it, both later in
+// the same turn and on the next turn, where FileTime is rebuilt from durable tool
+// parts by SessionPrompt.fileStamps. Edit does not check the stamp, but Write
+// does: a stamp the rebuild cannot see makes Write refuse a file this session
+// just wrote. So each case asserts the stamp before its follow-up edit.
 describe("FileTime across a turn boundary (seed from durable parts)", () => {
   // Stand in for the next turn: rebuild FileTime the way the turn loop does,
   // through the same fileStamps() the loop calls, rather than a hand-rolled copy
@@ -344,6 +382,7 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
         const patched = await (await ApplyPatchTool.init()).execute({ patchText }, ctx)
         reseed(ctx.sessionID, [{ tool: "apply_patch", input: { patchText }, metadata: patched.metadata }])
 
+        await FileTime.assert(ctx.sessionID, file)
         const edited = await (await EditTool.init()).execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         expect(edited.output).toContain("updated successfully")
         expect(await Bun.file(file).text()).toBe("1\n2\n")
@@ -365,6 +404,7 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
           reseed(ctx.sessionID, [{ tool: "apply_patch", input: { patchText }, metadata: patched.metadata }]),
         ).toHaveLength(1)
 
+        await FileTime.assert(ctx.sessionID, file)
         const edited = await (await EditTool.init()).execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         expect(edited.output).toContain("updated successfully")
       },
@@ -388,6 +428,7 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
 
         // The stamp must follow the file to its destination: the source path no
         // longer exists, so a stamp left on it would strand the moved file.
+        await FileTime.assert(ctx.sessionID, destination)
         const edited = await (
           await EditTool.init()
         ).execute({ filePath: destination, oldString: "two", newString: "2" }, ctx)
@@ -420,6 +461,8 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
           reseed(ctx.sessionID, [{ tool: "apply_patch", input: { patchText }, metadata: patched.metadata }]),
         ).toHaveLength(2)
 
+        await FileTime.assert(ctx.sessionID, first)
+        await FileTime.assert(ctx.sessionID, second)
         const edit = await EditTool.init()
         expect((await edit.execute({ filePath: first, oldString: "two", newString: "2" }, ctx)).output).toContain(
           "updated successfully",
@@ -456,6 +499,7 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
           ctx.sessionID,
           concurrent.map((result) => ({ tool: "edit", input: { filePath: file }, metadata: result.metadata })),
         )
+        await FileTime.assert(ctx.sessionID, file)
         const after = await edit.execute({ filePath: file, oldString: "four", newString: "4" }, ctx)
         expect(after.output).toContain("updated successfully")
       },
@@ -473,6 +517,7 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
         const written = await (await WriteTool.init()).execute({ filePath: file, content: "alpha\nbeta\n" }, ctx)
         reseed(ctx.sessionID, [{ tool: "write", input: { filePath: file }, metadata: written.metadata }])
 
+        await FileTime.assert(ctx.sessionID, file)
         const edited = await (await EditTool.init()).execute({ filePath: file, oldString: "beta", newString: "B" }, ctx)
         expect(edited.output).toContain("updated successfully")
       },
@@ -494,6 +539,7 @@ describe("FileTime across a turn boundary (seed from durable parts)", () => {
         const written = await (await WriteTool.init()).execute({ filePath: file, content: "alpha\nbeta\n" }, ctx)
         reseed(ctx.sessionID, [{ tool: "write", input: { filePath: file }, metadata: written.metadata }])
 
+        await FileTime.assert(ctx.sessionID, file)
         const edited = await (await EditTool.init()).execute({ filePath: file, oldString: "beta", newString: "B" }, ctx)
         expect(edited.output).toContain("updated successfully")
       },
@@ -529,6 +575,7 @@ describe("FileTime with a formatter rewriting after the write", () => {
         const unsubscribe = formatter("// formatted-edit")
         const edit = await EditTool.init()
         await edit.execute({ filePath: file, oldString: "one", newString: "1" }, ctx)
+        await FileTime.assert(ctx.sessionID, file)
         const second = await edit.execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         unsubscribe()
         expect(second.output).toContain("updated successfully")
@@ -546,6 +593,7 @@ describe("FileTime with a formatter rewriting after the write", () => {
         const file = path.join(workspace.path, "w.txt")
         const unsubscribe = formatter("// formatted-write")
         await (await WriteTool.init()).execute({ filePath: file, content: "one\ntwo\n" }, ctx)
+        await FileTime.assert(ctx.sessionID, file)
         const edited = await (await EditTool.init()).execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         unsubscribe()
         expect(edited.output).toContain("updated successfully")
@@ -565,6 +613,7 @@ describe("FileTime with a formatter rewriting after the write", () => {
         const unsubscribe = formatter("// formatted-patch")
         const patchText = `*** Begin Patch\n*** Update File: ${file}\n@@\n-one\n+1\n*** End Patch`
         await (await ApplyPatchTool.init()).execute({ patchText }, ctx)
+        await FileTime.assert(ctx.sessionID, file)
         const edited = await (await EditTool.init()).execute({ filePath: file, oldString: "two", newString: "2" }, ctx)
         unsubscribe()
         expect(edited.output).toContain("updated successfully")

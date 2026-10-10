@@ -21,13 +21,14 @@ export namespace SessionCompaction {
 
   export const CONTINUE_NUDGE = "Continue if you have next steps"
 
-  // filterCompacted drops every Read before the summary, so FileTime has no
-  // entry for those files and the next edit would be refused at the read-first
-  // precondition. The reminder is delivered on the nudge message itself, the one
-  // place guaranteed to be the first thing the model sees after a summary.
+  // filterCompacted drops every Read before the summary, so the model no longer
+  // has those files' contents and FileTime has no entry for them, which makes
+  // Write refuse to overwrite them. The reminder is delivered on the nudge
+  // message itself, the one place guaranteed to be the first thing the model
+  // sees after a summary.
   export const COMPACTION_READS =
     "The conversation before this point was summarized, so files you read earlier are no longer in your context. " +
-    "Read a file with the Read tool before editing it, even one you remember reading — an edit without a fresh read in the current context will be refused."
+    "Read a file again before relying on its contents. An edit still applies wherever its oldString matches the current file, but overwriting an existing file with Write needs a fresh read."
 
   export const Event = {
     Compacted: BusEvent.define(

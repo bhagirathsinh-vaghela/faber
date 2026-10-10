@@ -18,6 +18,11 @@ import { Truncate } from "./truncation"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 
+export const CHANGED =
+  "Note: this file changed since you last read it (a shell command, another session, or an editor wrote to it). The edit applied where oldString matched the current content; read the file before relying on its other parts."
+
+type Replacement = { oldString: string; newString: string; replaceAll?: boolean }
+
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
 }
@@ -45,194 +50,156 @@ export const EditTool = Tool.define("edit", {
     })
     .strict(),
   async execute(params, ctx) {
-    if (!params.filePath) {
-      throw new Error("filePath is required")
-    }
-
-    if (params.oldString === params.newString) {
-      throw new Error("oldString and newString must be different")
-    }
-
-    const filePath = Filesystem.resolve(Instance.directory, params.filePath)
-    await assertExternalDirectory(ctx, filePath)
-
-    let diff = ""
-    let contentOld = ""
-    let contentNew = ""
-    let stamp: { mtime: number; hash?: string } | undefined
-    await FileTime.withLock(filePath, async () => {
-      if (params.oldString === "") {
-        const existed = await Bun.file(filePath).exists()
-        if (existed) {
-          const existing = await Bun.file(filePath).text()
-          if (existing.length > 0) {
-            throw new Error(
-              `Cannot use empty oldString on a file that already has content. Use the Write tool for full overwrites, or provide the specific text to replace.`,
-            )
-          }
-        }
-        let encoding: "utf8" | "utf16le" = "utf8"
-        let ending: "CRLF" | "LF" = "LF"
-        if (existed) {
-          const props = await detectFileProperties(filePath)
-          encoding = props.encoding
-          ending = props.ending
-        }
-        contentNew = params.newString
-        diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
-        await ctx.ask({
-          permission: "edit",
-          patterns: [path.relative(Instance.worktree, filePath)],
-          always: ["*"],
-          metadata: {
-            filepath: filePath,
-            diff,
-          },
-        })
-        await Bun.write(filePath, encodeContent(applyLineEnding(params.newString, ending), encoding))
-        await Bus.publish(File.Event.Edited, {
-          file: filePath,
-        })
-        await Bus.publish(FileWatcher.Event.Updated, {
-          file: filePath,
-          event: existed ? "change" : "add",
-        })
-        // Re-stamp with the file's actual post-write mtime and content hash, not
-        // Date.now(). The real mtime lands after the wall clock we would capture,
-        // so a bare Date.now() re-stamp makes the very next edit see mtime > stored
-        // and throw a spurious "modified since last read". Stamping the true mtime
-        // plus the hash we just wrote keeps the guard quiet for our own writes.
-        stamp = await FileTime.restamp(ctx.sessionID, filePath)
-        return
-      }
-
-      const file = Bun.file(filePath)
-      const stats = await file.stat().catch(() => {})
-      if (!stats) throw new Error(`File ${filePath} not found`)
-      if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-      await FileTime.assert(ctx.sessionID, filePath)
-      const props = await detectFileProperties(filePath)
-      contentOld = props.text
-      // In a CRLF file, match on LF text: the read tool never shows \r, so a multi-line oldString
-      // arrives with \n only. The write below re-applies CRLF. LF files keep any stray CRLF lines as-is.
-      const crlf = props.ending === "CRLF"
-      contentNew = crlf
-        ? replace(
-            normalizeLineEndings(contentOld),
-            normalizeLineEndings(params.oldString),
-            normalizeLineEndings(params.newString),
-            params.replaceAll,
-          )
-        : replace(contentOld, params.oldString, params.newString, params.replaceAll)
-
-      diff = trimDiff(
-        createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-      )
-      await ctx.ask({
-        permission: "edit",
-        patterns: [path.relative(Instance.worktree, filePath)],
-        always: ["*"],
-        metadata: {
-          filepath: filePath,
-          diff,
-        },
-      })
-
-      await file.write(encodeContent(applyLineEnding(contentNew, props.ending), props.encoding))
-      await Bus.publish(File.Event.Edited, {
-        file: filePath,
-      })
-      await Bus.publish(FileWatcher.Event.Updated, {
-        file: filePath,
-        event: "change",
-      })
-      contentNew = await file.text()
-      diff = trimDiff(
-        createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
-      )
-      stamp = await FileTime.restamp(ctx.sessionID, filePath)
-    })
-
-    const filediff: Snapshot.FileDiff = {
-      file: filePath,
-      before: contentOld,
-      after: contentNew,
-      additions: 0,
-      deletions: 0,
-    }
-    for (const change of diffLines(contentOld, contentNew)) {
-      if (change.added) filediff.additions += change.count || 0
-      if (change.removed) filediff.deletions += change.count || 0
-    }
-
-    // Neither the running event nor the persisted result carries the before/after
-    // bodies: they are whole-file copies (2x the file) that no renderer needs (the
-    // edit view falls back to input old/new strings) and the model never reads
-    // metadata. Ship only the +/- stat.
-    const { before, after, ...stat } = filediff
-    ctx.metadata({
-      metadata: {
-        filediff: stat,
-        diagnostics: {},
-      },
-    })
-
-    const patch = structuredPatch(
-      filePath,
-      filePath,
-      normalizeLineEndings(contentOld),
-      normalizeLineEndings(contentNew),
-    )
-    const hunks = patch.hunks.map((h) => ({
-      oldStart: h.oldStart,
-      oldLines: h.oldLines,
-      newStart: h.newStart,
-      newLines: h.newLines,
-      lines: h.lines,
-    }))
-
-    let output = `The file ${filePath} has been updated successfully.\n\n`
-    output += hunks
-      .map((h) => {
-        const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`
-        return `${header}\n${h.lines.join("\n")}`
-      })
-      .join("\n")
-
-    await LSP.touchFile(filePath, true)
-    const diagnostics = await LSP.diagnostics()
-    const normalizedFilePath = Filesystem.normalizePath(filePath)
-    const issues = diagnostics[normalizedFilePath] ?? []
-    const errors = issues.filter((item) => item.severity === 1)
-    if (errors.length > 0) {
-      const limited = errors.slice(0, MAX_DIAGNOSTICS_PER_FILE)
-      const suffix =
-        errors.length > MAX_DIAGNOSTICS_PER_FILE ? `\n... and ${errors.length - MAX_DIAGNOSTICS_PER_FILE} more` : ""
-      output += `\n\nLSP errors detected in this file, please fix:\n<diagnostics file="${filePath}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
-    }
-
-    return {
-      metadata: {
-        // Persist only the edited file's diagnostics, keyed by its path. The
-        // renderers index this map by the edited path; the whole LSP.diagnostics()
-        // map scales with the repo (tens of MB in a monorepo) and no reader wants
-        // the other files. The model never reads metadata — it gets the bounded
-        // <diagnostics> block from `output`.
-        diagnostics: issues.length ? { [normalizedFilePath]: issues } : {},
-        diff: Truncate.diff(diff),
-        // The +/-/file stat is all any renderer needs; the before/after bodies
-        // were whole-file copies. The one reader falls back to input old/new.
-        filediff: stat,
-        // Persisted so seed() can carry this edit's post-write mtime+hash across
-        // turns, instead of restoring the stale pre-edit read state.
-        mtime: stamp?.mtime,
-        hash: stamp?.hash,
-      },
-      title: filePath,
-      output,
-    }
+    return change(params.filePath, [params], ctx)
   },
 })
+
+// The one write path for edit and multiedit. Every replacement is applied in
+// memory before the single write, so one that fails leaves the file untouched.
+export async function change(target: string, edits: Replacement[], ctx: Tool.Context) {
+  if (!target) throw new Error("filePath is required")
+  if (edits.length === 0) throw new Error("edits must contain at least one edit")
+  if (edits.some((edit) => edit.oldString === edit.newString))
+    throw new Error("oldString and newString must be different")
+
+  const filePath = Filesystem.resolve(Instance.directory, target)
+  await assertExternalDirectory(ctx, filePath)
+
+  let diff = ""
+  let contentOld = ""
+  let contentNew = ""
+  let changed = false
+  let stamp: { mtime: number; hash?: string } | undefined
+  await FileTime.withLock(filePath, async () => {
+    const stats = await Bun.file(filePath)
+      .stat()
+      .catch(() => undefined)
+    if (stats?.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
+    const create = edits[0].oldString === ""
+    if (!stats && !create) throw new Error(`File ${filePath} not found`)
+    const props = stats ? await detectFileProperties(filePath) : undefined
+    contentOld = props?.text ?? ""
+    if (create && contentOld.length > 0)
+      throw new Error(
+        `Cannot use empty oldString on a file that already has content. Use the Write tool for full overwrites, or provide the specific text to replace.`,
+      )
+    changed = stats ? await FileTime.changed(ctx.sessionID, filePath) : false
+    // In a CRLF file, match on LF text: the read tool never shows \r, so a multi-line oldString
+    // arrives with \n only. The write below re-applies CRLF. LF files keep any stray CRLF lines as-is.
+    const lf = (text: string) => (props?.ending === "CRLF" ? normalizeLineEndings(text) : text)
+    contentNew = (create ? edits.slice(1) : edits).reduce(
+      (text, edit) => replace(text, lf(edit.oldString), lf(edit.newString), edit.replaceAll),
+      create ? edits[0].newString : lf(contentOld),
+    )
+
+    diff = trimDiff(
+      createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+    )
+    await ctx.ask({
+      permission: "edit",
+      patterns: [path.relative(Instance.worktree, filePath)],
+      always: ["*"],
+      metadata: {
+        filepath: filePath,
+        diff,
+      },
+    })
+
+    await Bun.write(filePath, encodeContent(applyLineEnding(contentNew, props?.ending ?? "LF"), props?.encoding ?? "utf8"))
+    await Bus.publish(File.Event.Edited, {
+      file: filePath,
+    })
+    await Bus.publish(FileWatcher.Event.Updated, {
+      file: filePath,
+      event: stats ? "change" : "add",
+    })
+    contentNew = await Bun.file(filePath).text()
+    diff = trimDiff(
+      createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
+    )
+    // Re-stamp with the file's actual post-write mtime and content hash, not
+    // Date.now(). The real mtime lands after the wall clock we would capture,
+    // so a bare Date.now() re-stamp makes the very next edit see mtime > stored
+    // and report the file as changed by someone else. Stamping the true mtime
+    // plus the hash we just wrote keeps our own writes from looking foreign.
+    stamp = await FileTime.restamp(ctx.sessionID, filePath)
+  })
+
+  const filediff: Snapshot.FileDiff = {
+    file: filePath,
+    before: contentOld,
+    after: contentNew,
+    additions: 0,
+    deletions: 0,
+  }
+  for (const part of diffLines(contentOld, contentNew)) {
+    if (part.added) filediff.additions += part.count || 0
+    if (part.removed) filediff.deletions += part.count || 0
+  }
+
+  // Neither the running event nor the persisted result carries the before/after
+  // bodies: they are whole-file copies (2x the file) that no renderer needs (the
+  // edit card renders the stored `diff`) and the model never reads metadata.
+  // Ship only the +/- stat.
+  const { before, after, ...stat } = filediff
+  ctx.metadata({
+    metadata: {
+      filediff: stat,
+      diagnostics: {},
+    },
+  })
+
+  const patch = structuredPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew))
+  const hunks = patch.hunks.map((h) => ({
+    oldStart: h.oldStart,
+    oldLines: h.oldLines,
+    newStart: h.newStart,
+    newLines: h.newLines,
+    lines: h.lines,
+  }))
+
+  let output = `The file ${filePath} has been updated successfully.\n\n`
+  output += hunks
+    .map((h) => {
+      const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`
+      return `${header}\n${h.lines.join("\n")}`
+    })
+    .join("\n")
+  if (changed) output += `\n\n${CHANGED}`
+
+  await LSP.touchFile(filePath, true)
+  const diagnostics = await LSP.diagnostics()
+  const normalizedFilePath = Filesystem.normalizePath(filePath)
+  const issues = diagnostics[normalizedFilePath] ?? []
+  const errors = issues.filter((item) => item.severity === 1)
+  if (errors.length > 0) {
+    const limited = errors.slice(0, MAX_DIAGNOSTICS_PER_FILE)
+    const suffix =
+      errors.length > MAX_DIAGNOSTICS_PER_FILE ? `\n... and ${errors.length - MAX_DIAGNOSTICS_PER_FILE} more` : ""
+    output += `\n\nLSP errors detected in this file, please fix:\n<diagnostics file="${filePath}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
+  }
+
+  return {
+    metadata: {
+      // Persist only the edited file's diagnostics, keyed by its path. The
+      // renderers index this map by the edited path; the whole LSP.diagnostics()
+      // map scales with the repo (tens of MB in a monorepo) and no reader wants
+      // the other files. The model never reads metadata — it gets the bounded
+      // <diagnostics> block from `output`.
+      diagnostics: issues.length ? { [normalizedFilePath]: issues } : {},
+      diff: Truncate.diff(diff),
+      // The +/-/file stat is all any renderer needs; the edit card draws the
+      // change from `diff`, so whole-file bodies would only cost storage.
+      filediff: stat,
+      // Persisted so seed() can carry this edit's post-write mtime+hash across
+      // turns, instead of restoring the stale pre-edit read state.
+      mtime: stamp?.mtime,
+      hash: stamp?.hash,
+    },
+    title: filePath,
+    output,
+  }
+}
 
 export function trimDiff(diff: string): string {
   const lines = diff.split("\n")

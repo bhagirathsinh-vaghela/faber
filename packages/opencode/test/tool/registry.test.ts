@@ -23,6 +23,21 @@ describe("tool.registry", () => {
     })
   })
 
+  test("the edit family follows the model: a patch tool for GPT-5, the edit tools otherwise", async () => {
+    await using workspace = await tmpdir()
+    await Instance.provide({
+      directory: workspace.path,
+      fn: async () => {
+        const family = async (providerID: string, modelID: string) =>
+          (await ToolRegistry.tools({ providerID, modelID }))
+            .map((tool) => tool.id)
+            .filter((id) => ["apply_patch", "edit", "multiedit", "write"].includes(id))
+        expect(await family("anthropic", "claude-opus-4-5")).toEqual(["edit", "multiedit", "write"])
+        expect(await family("openai", "gpt-5")).toEqual(["apply_patch"])
+      },
+    })
+  })
+
   test("loads tools from .opencode/tool (singular)", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
