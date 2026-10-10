@@ -88,27 +88,22 @@ export function MessageFooter(props: { message: AssistantMessage }) {
   const show = (id: string) => local.dock.isVisible(id)
 
   const fields = createMemo(() => {
-    const result: { id: string; node: () => JSX.Element }[] = []
-    if (show("agent"))
-      result.push({ id: "agent", node: () => <Field color={AGENT} text={titlecase(props.message.mode)} /> })
+    const result: (() => JSX.Element)[] = []
+    if (show("agent")) result.push(() => <Field color={AGENT} text={titlecase(props.message.mode)} />)
     if (show("model") && model())
-      result.push({
-        id: "model",
-        node: () => (
-          <span class="inline-flex items-center gap-1">
-            <Show when={props.message.providerID}>
-              <ProviderIcon id={props.message.providerID as IconName} class="size-3.5 shrink-0 text-text-weak" />
-            </Show>
-            <Field color={MODEL} text={model()} />
-          </span>
-        ),
-      })
+      result.push(() => (
+        <span class="inline-flex items-center gap-1">
+          <Show when={props.message.providerID}>
+            <ProviderIcon id={props.message.providerID as IconName} class="size-3.5 shrink-0 text-text-weak" />
+          </Show>
+          <Field color={MODEL} text={model()} />
+        </span>
+      ))
     if (show("variant") && props.message.variant)
-      result.push({ id: "variant", node: () => <Field color={VARIANT} text={props.message.variant!} /> })
-    if (show("duration") && elapsed())
-      result.push({ id: "duration", node: () => <Field color={DURATION} text={elapsed()!} /> })
-    if (interrupted()) result.push({ id: "interrupted", node: () => <Field color={INTERRUPTED} text="interrupted" /> })
-    if (show("cwd") && dir()) result.push({ id: "cwd", node: () => <Field color={CWD} text={dir()} /> })
+      result.push(() => <Field color={VARIANT} text={props.message.variant!} />)
+    if (show("duration") && elapsed()) result.push(() => <Field color={DURATION} text={elapsed()!} />)
+    if (interrupted()) result.push(() => <Field color={INTERRUPTED} text="interrupted" />)
+    if (show("cwd") && dir()) result.push(() => <Field color={CWD} text={dir()} />)
     return result
   })
 
@@ -116,12 +111,12 @@ export function MessageFooter(props: { message: AssistantMessage }) {
     <>
       <div class="flex flex-row flex-wrap items-center text-11-regular font-mono leading-tight">
         <For each={fields()}>
-          {(field, i) => (
+          {(node, i) => (
             <>
               <Show when={i() > 0}>
                 <Dot />
               </Show>
-              {field.node()}
+              {node()}
             </>
           )}
         </For>

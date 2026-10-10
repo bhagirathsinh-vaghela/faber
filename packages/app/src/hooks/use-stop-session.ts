@@ -2,11 +2,11 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useNavigate, useParams } from "@solidjs/router"
 
-// The one Stop action, shared by every stop control (the session header, the
-// overview, the subagents dialog). Aborts the in-flight turn — which
-// server-side also tears down the session's ping daemon — and, only when the
-// stopped session is the one on screen, returns to the overview home.
-// Alt+Q and Ctrl+D both fire the stop action, wherever a stop control lives.
+// The full Stop, shared by the session header, the overview and the subagents
+// dialog (the composer's Stop aborts only the turn). Aborts the in-flight turn —
+// which server-side also tears down the session's ping daemon — and, only when
+// the stopped session is the one on screen, returns to the overview home.
+// Alt+Q and Ctrl+D fire it from the session header and the overview.
 // event.code, not event.key: on macOS Alt+Q composes the glyph "œ", so
 // event.key never equals "q"; the physical code is layout/composition proof.
 export function isStopKey(event: KeyboardEvent) {

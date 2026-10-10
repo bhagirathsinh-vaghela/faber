@@ -73,6 +73,7 @@ import { DialogSettings } from "@/components/dialog-settings"
 import { useCommand, type CommandOption } from "@/context/command"
 import { ConstrainDragXAxis } from "@/utils/solid-dnd"
 import { navStart } from "@/utils/perf"
+import { swallowClick } from "@/utils/swallow-click"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogEditProject } from "@/components/dialog-edit-project"
 import { NotificationCenter } from "@/components/notification-center"
@@ -211,12 +212,7 @@ export default function Layout(props: ParentProps) {
       // pointer never receives it — the first outside click only closes the
       // flyout. Registered here (not in the effect body) so tearing down the
       // effect when the flyout closes can't remove it before the click lands.
-      const swallow = (click: MouseEvent) => {
-        click.preventDefault()
-        click.stopPropagation()
-        document.removeEventListener("click", swallow, true)
-      }
-      document.addEventListener("click", swallow, true)
+      swallowClick(event)
       setState("previewProject", undefined)
     }
     document.addEventListener("pointerdown", dismiss, true)
@@ -2059,9 +2055,7 @@ export default function Layout(props: ParentProps) {
                 }}
               >
                 <SortableProvider ids={layout.projects.list().map((p) => p.worktree)}>
-                  <For each={layout.projects.list()}>
-                    {(project) => <SortableProject project={project} />}
-                  </For>
+                  <For each={layout.projects.list()}>{(project) => <SortableProject project={project} />}</For>
                 </SortableProvider>
                 <Tooltip
                   placement={sidebarMode.overlay ? "bottom" : "right"}
