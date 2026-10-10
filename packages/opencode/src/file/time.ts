@@ -74,7 +74,8 @@ export namespace FileTime {
   }
 
   // Rebuild a session's read map from durable records (mtime + content hash
-  // persisted on Read tool parts). This replaces the in-memory map for the
+  // persisted on the read, edit, write and apply_patch tool parts; see
+  // SessionPrompt.fileStamps). This replaces the in-memory map for the
   // session, so it reflects exactly the reads still present in history: after a
   // server restart the reads are restored, and after compaction the filtered-out
   // reads are dropped (forcing a real re-read instead of an unchanged stub). The
@@ -151,7 +152,7 @@ export namespace FileTime {
     // sync all bump mtime without touching bytes. When we recorded a hash at read
     // time, compare the current bytes against it: an identical hash means the
     // read is still valid, so proceed instead of forcing a spurious re-read. Only
-    // a genuine content change (or a missing hash, e.g. a partial/legacy read)
+    // a genuine content change (or a missing hash, e.g. a legacy read)
     // throws.
     if (entry.hash) {
       const current = await hash(filepath)

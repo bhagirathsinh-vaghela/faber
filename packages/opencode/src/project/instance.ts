@@ -90,10 +90,9 @@ export const Instance = {
   },
   // Dispose a specific directory's instance ONLY if it is already cached. Unlike
   // provide()+dispose(), this never creates (and never bootstraps) a fresh
-  // instance for an uncached directory — which would re-add the project to the
-  // open set via InstanceBootstrap. The optional before() runs in the instance
-  // context just prior to disposal (e.g. to stop sessions, which read
-  // per-instance state). Used by project close.
+  // instance for an uncached directory just to tear it down. The optional
+  // before() runs in the instance context just prior to disposal (e.g. to stop
+  // sessions, which read per-instance state). Used by the Liveness grace timer.
   async disposeDirectory(directory: string, before?: () => void | Promise<void>) {
     const existing = cache.get(directory)
     if (!existing) return

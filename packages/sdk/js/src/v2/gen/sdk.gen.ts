@@ -49,8 +49,6 @@ import type {
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
-  GlobalPingArmedErrors,
-  GlobalPingArmedResponses,
   GlobalProjectsCloseErrors,
   GlobalProjectsCloseResponses,
   GlobalProjectsOpenAddErrors,
@@ -82,7 +80,6 @@ import type {
   McpDisconnectResponses,
   McpLocalConfig,
   McpRemoteConfig,
-  McpRemoveErrors,
   McpRemoveResponses,
   McpStatusResponses,
   McpToolsResponses,
@@ -295,7 +292,7 @@ export class Projects extends HeyApiClient {
   /**
    * Open a project
    *
-   * Add a project (resolved from a directory to its git root) to the shared sidebar set. Idempotent; broadcast to all clients over SSE.
+   * Add a project (keyed by the directory's realpath, with its git worktree) to the shared sidebar set. Idempotent; broadcast to all clients over SSE.
    */
   public openAdd<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -408,18 +405,6 @@ export class Global extends HeyApiClient {
   public health<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalHealthResponses, unknown, ThrowOnError>({
       url: "/global/health",
-      ...options,
-    })
-  }
-
-  /**
-   * Get armed ping daemons
-   *
-   * Every armed cache-ping daemon across all directories on this instance, enriched with the countdown inputs so the home overview can render active sessions without bootstrapping each directory.
-   */
-  public pingArmed<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<GlobalPingArmedResponses, GlobalPingArmedErrors, ThrowOnError>({
-      url: "/global/ping/armed",
       ...options,
     })
   }
@@ -3790,7 +3775,7 @@ export class Mcp extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).delete<McpRemoveResponses, McpRemoveErrors, ThrowOnError>({
+    return (options?.client ?? this.client).delete<McpRemoveResponses, unknown, ThrowOnError>({
       url: "/mcp/{name}",
       ...options,
       ...params,

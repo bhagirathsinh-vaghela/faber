@@ -235,7 +235,10 @@ export namespace BackgroundJob {
       // meant to end it. Escalating here happens while the wrapper is still
       // alive to do it.
       `trap '{ kill -TERM -$__oc_cmd 2>/dev/null; sleep ${escalate}; kill -KILL -$__oc_cmd 2>/dev/null; } &' TERM INT HUP`,
-      `{ sleep ${seconds}; kill -TERM -$__oc_cmd 2>/dev/null; sleep ${escalate}; kill -KILL -$__oc_cmd 2>/dev/null; } &`,
+      // Killing a subshell does not kill the `sleep` it is waiting on, which
+      // would linger for the whole deadline, so the watchdog sleeps in the
+      // background and its TERM trap takes that sleep down with it.
+      `{ trap 'kill $__oc_s 2>/dev/null; exit 0' TERM; sleep ${seconds} & __oc_s=$!; wait $__oc_s; kill -TERM -$__oc_cmd 2>/dev/null; sleep ${escalate} & __oc_s=$!; wait $__oc_s; kill -KILL -$__oc_cmd 2>/dev/null; } &`,
       `__oc_wd=$!`,
       // The command's own output already reached the log; these redirects
       // silence only the shell's reports ABOUT its jobs, which are noise to a

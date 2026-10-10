@@ -1,7 +1,7 @@
 import { spawn, type Subprocess } from "bun"
-import os from "os"
 import path from "path"
 import { cmd } from "./cmd"
+import { Global } from "../../global"
 import { Origin } from "../../server/origin"
 
 // The server it supervises puts every route, health included, behind basic auth
@@ -47,6 +47,13 @@ export function launched(command: string, port: number) {
   return command.match(/\bserve --port (\d+)\b/)?.[1] === String(port)
 }
 
+// stdout of a helper command, or "" when it fails. Bun.spawn throws
+// synchronously on a missing binary, before any promise exists to catch.
+export async function run(cmd: string[]) {
+  if (!Bun.which(cmd[0])) return ""
+  return new Response(spawn(cmd, { stderr: "ignore" }).stdout).text().catch(() => "")
+}
+
 export const SuperviseCommand = cmd({
   command: "supervise",
   describe: "run the supervisor that owns and restarts the opencode server",
@@ -71,7 +78,7 @@ export const SuperviseCommand = cmd({
     // OpenCode UI when a proxy/tunnel fronts it on a different scheme/host/port
     // than PORT (e.g. a Caddy https origin). Absent → the page falls back to
     // the current host with PORT.
-    const configFile = path.join(os.homedir(), ".config", "opencode", "supervisor.json")
+    const configFile = path.join(Global.Path.config, "supervisor.json")
     const uiUrl = await Bun.file(configFile)
       .json()
       .then((c) => (typeof c.uiUrl === "string" ? c.uiUrl : ""))
@@ -85,14 +92,12 @@ export const SuperviseCommand = cmd({
     const compiled = !entry || entry.startsWith("/$bunfs")
     const base = compiled ? [process.execPath] : [process.execPath, "run", "--conditions=browser", entry]
 
-    function serveArgs(port: number, restore = false) {
-      const args = [...base, "serve", "--port", String(port), "--hostname", HOST]
-      if (restore) args.push("--restore")
-      return args
+    function serveArgs(port: number) {
+      return [...base, "serve", "--port", String(port), "--hostname", HOST]
     }
 
     // The supervisor OWNS the server it runs: it started it, holds the handle,
-    // and kills it through the handle. No lsof/port-scan in the normal path.
+    // and kills it through the handle.
     let current: Subprocess | null = null
 
     async function health(port: number) {
@@ -108,10 +113,6 @@ export const SuperviseCommand = cmd({
       if (!proc) return
       proc.kill()
       await proc.exited
-    }
-
-    async function run(cmd: string[]) {
-      return new Response(spawn(cmd, { stderr: "ignore" }).stdout).text().catch(() => "")
     }
 
     // ss -p prints LISTEN sockets with `users:(("proc",pid=NNN,fd=N))`; pull
@@ -147,9 +148,11 @@ export const SuperviseCommand = cmd({
     // platform, not by `command -v ss`: macOS can carry an iproute2mac ss shim
     // that ignores -p and emits no pids, which reads as "nothing listening"
     // and silently disables reaping and ownership checks. ss is the Linux path
-    // (some containers have no lsof); lsof everywhere else.
+    // (some containers have no lsof); lsof everywhere else, and on a Linux box
+    // without ss.
     async function listeners(port: number) {
-      const found = process.platform === "linux" ? await listenersSs(port) : await listenersLsof(port)
+      const found =
+        process.platform === "linux" && Bun.which("ss") ? await listenersSs(port) : await listenersLsof(port)
       return [...new Set(found.filter((pid) => pid !== String(process.pid)))]
     }
 
@@ -199,18 +202,16 @@ export const SuperviseCommand = cmd({
     // restart does not leave cut turns and warm caches waiting a minute. An env
     // var, not a flag: a binary that predates it ignores it instead of refusing
     // to start.
-    function launch(port: number, restore = false) {
+    function launch(port: number) {
       const { OPENCODE_LIVE: _, ...rest } = process.env
       const env = port === PORT ? { ...rest, OPENCODE_LIVE: "1" } : rest
-      return spawn(serveArgs(port, restore), { stdout: "inherit", stderr: "inherit", env })
+      return spawn(serveArgs(port), { stdout: "inherit", stderr: "inherit", env })
     }
 
     // The supervisor owns processes only. Which sessions to resume, deliver
     // into, or re-arm is decided by the server that holds the recovery lease,
-    // from its own database. `restore` is still passed on a cold start so a
-    // server from before that change boots the way it expects; a newer one
-    // ignores it.
-    async function restart(restore = false) {
+    // from its own database.
+    async function restart() {
       // Stage on the alt port and prove it healthy before touching the live
       // server.
       const staging = await reapOrphan(ALT_PORT)
@@ -231,7 +232,7 @@ export const SuperviseCommand = cmd({
       // the relaunch can't lose the bind race and leave stale bits serving.
       const cutover = await reapOrphan(PORT)
       if (cutover) return { ok: false, step: "cutover", detail: cutover }
-      current = launch(PORT, restore)
+      current = launch(PORT)
       const live = await waitOwned(current, PORT)
       if (!live) {
         await stop(current)
@@ -327,8 +328,8 @@ export const SuperviseCommand = cmd({
     Bun.serve({
       port: SUPERVISOR_PORT,
       hostname: HOST,
-      // /restart holds the request through stage-boot + health-check + cutover
-      // + resume — well past the 10s default idle timeout. 255 is Bun's max.
+      // /restart holds the request through stage-boot + health-check + cutover,
+      // well past the 10s default idle timeout. 255 is Bun's max.
       idleTimeout: 255,
       async fetch(req) {
         if (!admitted(req, process.env["OPENCODE_SERVER_PASSWORD"], process.env["OPENCODE_SERVER_USERNAME"]))
@@ -365,7 +366,7 @@ export const SuperviseCommand = cmd({
     // in-memory liveness) to replace it with an identical one. reapOrphan
     // inside restart() adopts that orphan on the next explicit /restart.
     if (!(await health(PORT))) {
-      const boot = await restart(true)
+      const boot = await restart()
       console.log(boot.ok ? `started server on :${PORT}` : `failed to start server: ${boot.step} — ${boot.detail}`)
     }
 

@@ -26,9 +26,10 @@ export namespace OpenProjects {
     .object({
       id: z.string(),
       worktree: z.string(),
-      // Whether the worktree still resolves on disk. Computed at list/emit time,
-      // never persisted. Absent on the durable record; always present on the
-      // wire. false = the sidebar renders it as a not-found project.
+      // Whether the project directory still resolves on disk. Computed at
+      // list/emit time, never persisted: absent on the durable record and on
+      // the POST /projects/open reply. false = the sidebar renders it as a
+      // not-found project.
       exists: z.boolean().optional(),
     })
     .meta({ ref: "OpenProject" })
@@ -67,11 +68,6 @@ export namespace OpenProjects {
   export async function list() {
     await hydrate()
     return project()
-  }
-
-  export async function has(id: string) {
-    await hydrate()
-    return entries.has(id)
   }
 
   export async function open(entry: Stored) {

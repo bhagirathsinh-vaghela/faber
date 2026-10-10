@@ -99,7 +99,7 @@ describe("BackgroundSpawn background path", () => {
 
 describe("BackgroundSpawn exit watcher", () => {
   // Without this the result of a job finishing just past the window would wait
-  // for the next reconcile pass, which can be half an hour away. The handle is
+  // for the next reconcile sweep, up to five minutes away. The handle is
   // already held in this process, so its exit costs no poller and no worker.
   test("fires the moment a backgrounded job exits", async () => {
     const seen: string[] = []

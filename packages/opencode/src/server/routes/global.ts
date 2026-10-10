@@ -14,7 +14,6 @@ import { Installation } from "@/installation"
 import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
-import { SessionPing } from "../../session/ping"
 import { SessionRecent } from "../../session/recent"
 import { Session } from "../../session"
 import { Sessions } from "../../storage/sessions"
@@ -93,29 +92,6 @@ export const GlobalRoutes = lazy(() =>
       },
     )
     .get(
-      "/ping/armed",
-      describeRoute({
-        summary: "Get armed ping daemons",
-        description:
-          "Every armed cache-ping daemon across all directories on this instance, enriched with the countdown inputs so the home overview can render active sessions without bootstrapping each directory.",
-        operationId: "global.pingArmed",
-        responses: {
-          200: {
-            description: "Armed sessions",
-            content: {
-              "application/json": {
-                schema: resolver(z.array(SessionPing.Armed)),
-              },
-            },
-          },
-          ...errors(400),
-        },
-      }),
-      async (c) => {
-        return c.json(await SessionPing.listArmed())
-      },
-    )
-    .get(
       "/recent",
       describeRoute({
         summary: "Get recent sessions",
@@ -187,7 +163,7 @@ export const GlobalRoutes = lazy(() =>
       describeRoute({
         summary: "Open a project",
         description:
-          "Add a project (resolved from a directory to its git root) to the shared sidebar set. Idempotent; broadcast to all clients over SSE.",
+          "Add a project (keyed by the directory's realpath, with its git worktree) to the shared sidebar set. Idempotent; broadcast to all clients over SSE.",
         operationId: "global.projects.openAdd",
         responses: {
           200: {
@@ -297,6 +273,13 @@ export const GlobalRoutes = lazy(() =>
             finish?.()
             stream.close().catch(() => {})
           }
+          // Registered before the first write: hono's StreamingApi.abort()
+          // (hono 4.10.7) notifies only listeners already registered, and a
+          // write waits on the client to read.
+          stream.onAbort(() => {
+            teardown()
+            log.info("global event disconnected")
+          })
 
           // A write that never settles means the client stopped draining (a
           // backgrounded tab whose receive buffer filled). Left unbounded, its
@@ -469,10 +452,7 @@ export const GlobalRoutes = lazy(() =>
 
           await new Promise<void>((resolve) => {
             finish = resolve
-            stream.onAbort(() => {
-              teardown()
-              log.info("global event disconnected")
-            })
+            if (torn) resolve()
           })
         })
       },

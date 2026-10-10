@@ -533,7 +533,6 @@
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "ai": "5.0.124",
     "diff": "8.0.2",
-    "dompurify": "3.3.1",
     "fuzzysort": "3.1.0",
     "hono": "4.10.7",
     "hono-openapi": "1.1.2",

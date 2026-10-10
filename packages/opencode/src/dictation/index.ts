@@ -64,7 +64,6 @@ export namespace Dictation {
         client.send(JSON.stringify({ type: "rate", rate }))
         const started = local(host, url)
         engine = started
-        if (closed) started.close()
         for (const frame of buffered) frame === "commit" ? started.commit() : started.frame(frame)
         buffered.length = 0
         if (pendingStop !== undefined) started.stop(pendingStop)

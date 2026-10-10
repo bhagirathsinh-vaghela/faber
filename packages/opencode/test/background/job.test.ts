@@ -301,6 +301,16 @@ describe("BackgroundJob.wrap", () => {
     return code
   }
 
+  test("a command that ends early leaves no watchdog sleep behind", async () => {
+    const job = record()
+    // A deadline no other process sleeps for, so ps can single out its sleep.
+    const seconds = 7000 + Math.floor(Math.random() * 1000)
+    expect(await run("sleep 0.3", job.id, seconds * 1000)).toBe(0)
+    await Bun.sleep(200)
+    const ps = await new Response(Bun.spawn(["ps", "-axo", "command"]).stdout).text()
+    expect(ps.split("\n").filter((line) => line.trim() === `sleep ${seconds}`)).toEqual([])
+  })
+
   test("passes a normal command's exit code through and records it", async () => {
     const job = record()
     expect(await run("echo hello; exit 7", job.id, 60_000)).toBe(7)
@@ -315,7 +325,8 @@ describe("BackgroundJob.wrap", () => {
     const code = await run("echo starting; sleep 30", job.id, 1000)
     const elapsed = Date.now() - started
 
-    expect(elapsed).toBeLessThan(10_000)
+    // Ends at the deadline, not after the watchdog's SIGKILL escalation delay.
+    expect(elapsed).toBeLessThan(1000 + 1500)
     expect(code).not.toBe(0)
     // Whatever the command wrote before the kill is still there.
     expect(await BackgroundJob.output(job.id)).toContain("starting")

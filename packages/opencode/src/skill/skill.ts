@@ -181,8 +181,8 @@ export namespace Skill {
     return state().then((x) => x.dirs)
   }
 
-  // Favorites live in the same skill.json the TUI writes, so a TUI and a
-  // browser client on one binary share one list.
+  // Favorites live in skill.json under the global state dir, so every client
+  // of this server shares one list.
   const favoriteFile = path.join(Global.Path.state, "skill.json")
 
   export async function favorites() {

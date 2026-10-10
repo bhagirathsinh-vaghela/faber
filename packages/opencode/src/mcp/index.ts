@@ -302,8 +302,8 @@ export namespace MCP {
   // instance — never re-calls listTools(). This keeps the tool catalog stable
   // through transient MCP failures (token blips, network blips, server
   // restarts); the cost is that tool catalog changes mid-session (servers
-  // adding/removing tools) require an OpenCode restart to pick up. Acceptable
-  // tradeoff for stability.
+  // adding/removing tools) are picked up only on a reconnect, a refresh through
+  // listLive(), or a restart. Acceptable tradeoff for stability.
   type ToolsListResult = Awaited<ReturnType<MCPClient["listTools"]>>
 
   let buildCount = 0
@@ -696,11 +696,6 @@ export namespace MCP {
     return state().then((state) => state.clients)
   }
 
-  // Whether this instance has built its client set, without building it.
-  export function started() {
-    return state.peek() !== undefined
-  }
-
   // How many times this process built a client set. A build spawns one
   // subprocess per configured server, and the memo hides that a caller
   // triggered one, so the count is what a test can assert against.
@@ -790,7 +785,7 @@ export namespace MCP {
   }
 
   // Live advertised-tools fetch for a single server (the UI "refresh advertised
-  // tools" source and the whitelist-curation substrate). Connects if needed;
+  // tools" source). Connects if needed;
   // when the server needs auth/registration it surfaces that status instead of
   // triggering interactive OAuth. On success it refreshes the per-client tools
   // cache and returns the advertised list.
@@ -816,7 +811,7 @@ export namespace MCP {
     return { status, tools: result.tools }
   }
 
-  // Raw metadata for every whitelisted MCP tool, keyed identically to tools().
+  // Raw metadata for every enabled MCP tool, keyed identically to tools().
   // Unlike tools() (which returns executable AI-SDK tools with opaque wrapped
   // schemas), corpus() returns the plain name/description/JSON-schema plus the
   // owning client and its configured catalog tier. This is the substrate the

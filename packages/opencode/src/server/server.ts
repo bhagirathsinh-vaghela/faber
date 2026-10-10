@@ -68,8 +68,8 @@ export namespace Server {
   // Dynamic responses compress on the request thread, so quality trades directly
   // against TTFB. On a ~1.9MB history payload, brotli q11 costs ~700ms and blocks
   // the event loop for every client; q5 costs ~8ms for a 14.4x ratio (vs q11's
-  // 16.6x), a 16KB give-up for an 88x speedup. Static assets keep q11 (precompressed
-  // offline in pack-web.ts, where CPU is free).
+  // 16.6x), a 16KB give-up for an 88x speedup. Static assets are precompressed
+  // offline in pack-web.ts (q11 for release builds).
   const dynamicBrotli = { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } }
 
   // Compresses buffered JSON/text responses per Accept-Encoding. text/event-stream
@@ -109,13 +109,13 @@ export namespace Server {
     return _url ?? new URL("http://localhost:4096")
   }
 
-  // A TUI worker calls listen() only when --port is passed, so the fallback in
-  // url() names a port nothing is bound to. An unset value is the honest answer
-  // for a caller that has to reach the API over the network. A wildcard bind
-  // reaches _url verbatim, and no client can dial 0.0.0.0.
+  // Before listen() the fallback in url() names a port nothing is bound to, so
+  // an unset value is the honest answer for a caller that has to reach the API
+  // over the network. A wildcard bind reaches _url verbatim, and no client can
+  // dial 0.0.0.0 or [::] (the WHATWG URL hostname of an IPv6 bind).
   export function listening() {
     if (!_url) return
-    if (_url.hostname !== "0.0.0.0" && _url.hostname !== "::") return _url.origin
+    if (_url.hostname !== "0.0.0.0" && _url.hostname !== "[::]") return _url.origin
     return `http://127.0.0.1:${_url.port}`
   }
 
@@ -724,8 +724,8 @@ export namespace Server {
 
     const args = {
       hostname: opts.hostname,
-      // Reap a connection with no traffic for 90s. SSE streams heartbeat every
-      // 30s (below), so a live client resets the timer well inside the window;
+      // Reap a connection with no traffic for 90s. SSE streams heartbeat at
+      // least every 30s, so a live client resets the timer well inside the window;
       // a half-dead backgrounded socket (no ACKs, no RST) that the heartbeat
       // can no longer reach gets closed instead of lingering with its buffered
       // events pinned in memory. 90s is 3x the heartbeat and under Bun's 255s cap.

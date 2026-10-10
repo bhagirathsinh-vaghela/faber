@@ -4,14 +4,6 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
-export type BadRequestError = {
-  data: unknown
-  errors: Array<{
-    [key: string]: unknown
-  }>
-  success: false
-}
-
 export type RecentSession = {
   sessionID: string
   directory: string
@@ -28,6 +20,14 @@ export type RecentSession = {
   pingAt?: number
   pinged?: number
   starred: boolean
+}
+
+export type BadRequestError = {
+  data: unknown
+  errors: Array<{
+    [key: string]: unknown
+  }>
+  success: false
 }
 
 export type FileDiff = {
@@ -2419,36 +2419,6 @@ export type GlobalHealthResponses = {
 }
 
 export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
-
-export type GlobalPingArmedData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/global/ping/armed"
-}
-
-export type GlobalPingArmedErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type GlobalPingArmedError = GlobalPingArmedErrors[keyof GlobalPingArmedErrors]
-
-export type GlobalPingArmedResponses = {
-  /**
-   * Armed sessions
-   */
-  200: Array<{
-    sessionID: string
-    directory: string
-    lastRequestAt?: number
-    beforeExpiry: number
-  }>
-}
-
-export type GlobalPingArmedResponse = GlobalPingArmedResponses[keyof GlobalPingArmedResponses]
 
 export type GlobalRecentData = {
   body?: never
@@ -5860,15 +5830,6 @@ export type McpRemoveData = {
   }
   url: "/mcp/{name}"
 }
-
-export type McpRemoveErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-}
-
-export type McpRemoveError = McpRemoveErrors[keyof McpRemoveErrors]
 
 export type McpRemoveResponses = {
   /**

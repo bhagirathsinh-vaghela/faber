@@ -71,7 +71,7 @@ describe("tool.edit and tool.write encodings", () => {
         const write = await WriteTool.init()
         await write.execute(
           { filePath: file, content: "a\nB\n" },
-          { ...ctx, ask: async (req: { metadata: { diff: string } }) => void asked.push(req.metadata.diff) },
+          { ...ctx, ask: async (req) => void asked.push(req.metadata.diff) },
         )
         const changed = asked[0].split("\n").filter((line) => /^[-+][^-+]/.test(line))
         expect(changed).toEqual(["-b", "+B"])

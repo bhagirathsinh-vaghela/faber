@@ -127,6 +127,63 @@ describe("tool.skill", () => {
     }
   })
 
+  test("description is byte-identical across checkouts of one repo", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        for (const name of ["alpha", "beta"]) {
+          const repo = path.join(dir, "checkouts", name)
+          await Bun.write(path.join(repo, ".opencode", "skill", "repo-skill", "SKILL.md"), SKILL_MD("repo-skill"))
+          await $`git init`.cwd(repo).quiet()
+          await $`git commit --allow-empty -m init`.cwd(repo).quiet()
+        }
+      },
+    })
+
+    const home = process.env.OPENCODE_TEST_HOME
+    process.env.OPENCODE_TEST_HOME = tmp.path
+
+    try {
+      const render = (directory: string) =>
+        Instance.provide({ directory, fn: async () => (await SkillTool.init()).description })
+
+      const alpha = await render(path.join(tmp.path, "checkouts", "alpha"))
+      const beta = await render(path.join(tmp.path, "checkouts", "beta"))
+
+      expect(alpha).toContain("<location>.opencode/skill/repo-skill/SKILL.md</location>")
+      expect(beta).toBe(alpha)
+    } finally {
+      process.env.OPENCODE_TEST_HOME = home
+    }
+  })
+
+  // The read tool resolves a relative path against the session's directory, so a
+  // location rendered relative to anything else would point it at the wrong file.
+  test("a session opened in a subdirectory renders a repo skill where the read tool can find it", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "repo", ".opencode", "skill", "repo-skill", "SKILL.md"), SKILL_MD("repo-skill"))
+        await Bun.write(path.join(dir, "repo", "sub", ".keep"), "")
+        await $`git init`.cwd(path.join(dir, "repo")).quiet()
+        await $`git commit --allow-empty -m init`.cwd(path.join(dir, "repo")).quiet()
+      },
+    })
+
+    const home = process.env.OPENCODE_TEST_HOME
+    process.env.OPENCODE_TEST_HOME = tmp.path
+
+    try {
+      const description = await Instance.provide({
+        directory: path.join(tmp.path, "repo", "sub"),
+        fn: async () => (await SkillTool.init()).description,
+      })
+      expect(description).toContain("<location>~/repo/.opencode/skill/repo-skill/SKILL.md</location>")
+    } finally {
+      process.env.OPENCODE_TEST_HOME = home
+    }
+  })
+
   test("execute returns skill content block with files", async () => {
     await using tmp = await tmpdir({
       git: true,

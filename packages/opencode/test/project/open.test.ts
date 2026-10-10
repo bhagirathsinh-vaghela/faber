@@ -4,15 +4,13 @@ import { OpenProjects } from "../../src/project/open"
 const missing = () => "/tmp/does-not-exist-" + Date.now()
 
 describe("OpenProjects", () => {
-  test("open is idempotent by id; close removes; has reflects membership", async () => {
+  test("open is idempotent by id; close removes", async () => {
     const entry = { id: import.meta.dir, worktree: import.meta.dir }
     await OpenProjects.open(entry)
     await OpenProjects.open(entry)
     expect((await OpenProjects.list()).filter((x) => x.id === entry.id)).toEqual([{ ...entry, exists: true }])
-    expect(await OpenProjects.has(entry.id)).toBe(true)
 
     await OpenProjects.close(entry.id)
-    expect(await OpenProjects.has(entry.id)).toBe(false)
     expect((await OpenProjects.list()).filter((x) => x.id === entry.id)).toEqual([])
   })
 

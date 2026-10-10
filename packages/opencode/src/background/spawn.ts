@@ -231,7 +231,7 @@ export namespace BackgroundSpawn {
       // The handle is still live in THIS process, so its exit needs no polling
       // and no worker: awaiting the promise we already hold is what makes a
       // result arrive the instant the job ends rather than at the next
-      // reconcile pass, which could be half an hour later. That pass remains
+      // reconcile sweep, up to five minutes later. That pass remains
       // the recovery path for a job whose handle died with its server.
       void proc.exited
         .then(async () => {
@@ -301,7 +301,7 @@ export namespace BackgroundSpawn {
     const completed = Date.now()
     const settled = await BackgroundJob.update(id, (draft) => {
       if (draft.status !== "running") return false
-      // `completed` is the finish instant here (proc.exited just resolved), so
+      // `completed` is taken just after the exit is observed, so
       // it is the moment settledStatus judges the deadline against. A job ended
       // by its own watchdog reads `killed` and is delivered as a timeout.
       draft.status = BackgroundJob.settledStatus(draft.time.hard, completed)

@@ -77,10 +77,6 @@ const embedded: Encoded = await import("./web-assets.json", { with: { type: "jso
 fill(embedded)
 
 export namespace Web {
-  export function available() {
-    return decoded.size > 0 && decoded.has("/index.html")
-  }
-
   export async function reload() {
     load((await Bun.file(path.resolve(import.meta.dir, "web-assets.json")).json()) as Encoded)
     return decoded.size
@@ -109,12 +105,19 @@ export namespace Web {
     // revalidates so a rebuilt UI is picked up. The ETag lets that revalidation
     // return 304 instead of re-sending the whole shell when it hasn't changed.
     const hashed = asset !== index && file.startsWith("/assets/")
-    if (inm === asset.etag)
+    // If-None-Match takes a list and compares weakly, and a 304 repeats the
+    // Vary a 200 would send (RFC 9110 sections 13.1.2 and 15.4.5).
+    const fresh = inm?.split(",").some((tag) => {
+      const value = tag.trim()
+      return value === "*" || value.replace(/^W\//, "") === asset.etag
+    })
+    if (fresh)
       return new Response(null, {
         status: 304,
         headers: {
           ETag: asset.etag,
           "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
+          Vary: "Accept-Encoding",
         },
       })
     const encoding =
@@ -125,9 +128,11 @@ export namespace Web {
       "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
       ETag: asset.etag,
       Vary: "Accept-Encoding",
-      // worker-src/script-src blob: for the dictation AudioWorklet, which loads
-      // its module from an inline Blob URL. media-src blob: for synthesized
-      // speech, which arrives as bytes and is played from an object URL.
+      // script-src blob: for the dictation AudioWorklet, which loads its module
+      // from an inline Blob URL; worker-src governs only Worker, SharedWorker
+      // and ServiceWorker (CSP3 section 6.2.2), so a worklet falls to
+      // script-src. media-src blob: for synthesized speech, which arrives as
+      // bytes and is played from an object URL.
       "Content-Security-Policy":
         "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' data:",
     }

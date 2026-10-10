@@ -25,12 +25,12 @@ export namespace BackgroundNotify {
   // multi-line string.
   export function collapse(text: string) {
     // Normalize CR and CRLF to LF so a `\r\n\r\n` blank line is caught too, then
-    // fold any run of newlines (with whitespace between) to one and trim the
-    // boundaries.
+    // fold each run of blank (or whitespace-only) lines to one newline and trim
+    // blank lines at the boundaries. A non-blank line keeps its indentation.
     return text
       .replace(/\r\n?/g, "\n")
-      .replace(/(\n[ \t]*)+/g, "\n")
-      .replace(/^\n+|\n+$/g, "")
+      .replace(/\n(?:[ \t]*\n)+/g, "\n")
+      .replace(/^(?:[ \t]*\n)+|(?:\n[ \t]*)+$/g, "")
   }
 
   // How long ago the log last grew, phrased for a reader. Undefined age means

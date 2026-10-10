@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import { basicAuth } from "hono/basic-auth"
-import { admitted, credentials, launched } from "../../src/cli/cmd/supervise"
+import { admitted, credentials, launched, run } from "../../src/cli/cmd/supervise"
 
 describe("launched", () => {
   test("a compiled serve on the port is the supervisor's", () => {
@@ -18,6 +18,16 @@ describe("launched", () => {
 
   test("an unrelated listener on the port is not", () => {
     expect(launched("python3 -m http.server 4097", 4097)).toBe(false)
+  })
+})
+
+describe("run", () => {
+  test("a missing binary reads as empty output instead of throwing", async () => {
+    expect(await run(["opencode-no-such-binary"])).toBe("")
+  })
+
+  test("a present binary returns its stdout", async () => {
+    expect(await run(["echo", "listening"])).toBe("listening\n")
   })
 })
 

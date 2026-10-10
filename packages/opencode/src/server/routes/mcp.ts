@@ -322,7 +322,6 @@ export const McpRoutes = lazy(() =>
               },
             },
           },
-          ...errors(404),
         },
       }),
       validator("param", z.object({ name: z.string() })),

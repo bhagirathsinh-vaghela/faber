@@ -29,7 +29,7 @@ console.log("Generated models-snapshot.ts")
 // OPENCODE_SKIP_PACK_WEB=1 to reuse an existing web-assets.json when the app
 // sources are unchanged, skipping the ~4s Vite build on server-only iterations.
 if (process.env.OPENCODE_SKIP_PACK_WEB === "1") {
-  console.log("Skipping web pack (OPENCODE_SKIP_PACK_WEB=1, app sources unchanged)")
+  console.log("Skipping web pack (OPENCODE_SKIP_PACK_WEB=1)")
 } else {
   await import("./pack-web.ts")
 }

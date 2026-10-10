@@ -8,21 +8,24 @@ import { Ripgrep } from "../file/ripgrep"
 import { iife } from "@/util/iife"
 import { Instance } from "../project/instance"
 import { Global } from "@/global"
+import { Filesystem } from "@/util/filesystem"
 import { Session } from "@/session"
 import { Coverage } from "@/session/coverage"
 
 // This text is part of the skill tool's description, so it lands in tools[] —
 // the front of Anthropic's cumulative prefix hash. A location that renders
 // differently per worktree changes those bytes and invalidates the whole
-// downstream cache, system prompt included. Home-relative is checked FIRST so
-// a skill outside the worktree renders identically everywhere: testing the
-// worktree first would strip the "~/" whenever the worktree contains home
-// (cwd == ~), reclassifying every global skill as project-local.
+// downstream cache, system prompt included. A skill inside the session's
+// directory renders relative to it, so two checkouts of one repo match and the
+// read tool, which resolves a relative path against that directory, finds it;
+// anything else renders home-relative. A directory that contains home (cwd == ~)
+// is skipped, or every global skill would read as project-local.
 function relativePath(absolute: string) {
   const home = Global.Path.home
-  const worktree = Instance.worktree
+  const directory = Instance.directory
+  const project = directory !== "/" && !Filesystem.contains(directory, home)
+  if (project && absolute.startsWith(directory + path.sep)) return path.relative(directory, absolute)
   if (absolute.startsWith(home + path.sep)) return "~/" + path.relative(home, absolute)
-  if (worktree !== "/" && absolute.startsWith(worktree + path.sep)) return path.relative(worktree, absolute)
   return absolute
 }
 
@@ -96,8 +99,9 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, execCtx) {
-      // Metadata comes from the pin, so the tool description and the loadable
-      // set stay frozen for the session. The body is re-read from disk: it is
+      // Metadata comes from the pin, so the tool description stays frozen for
+      // the session; a skill added since the pin still loads by name through
+      // Skill.get. The body is re-read from disk: it is
       // output rather than prompt, so serving the current text lets a skill be
       // edited and picked up on the next invocation without moving the prefix.
       const pinned = ctx?.snapshot ? ctx.snapshot.skills[params.name] : undefined

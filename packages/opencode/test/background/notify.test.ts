@@ -34,7 +34,7 @@ describe("BackgroundNotify header", () => {
     expect(BackgroundNotify.render(job({ exit: 1 }), "boom\n", "completed")).toContain("status: failed")
   })
 
-  // A job killed by its own watchdog never wrote an exit code, and the reader
+  // A job whose wrapper died before its exit line wrote no exit code, and the reader
   // must not read that absence as success.
   test("names a timeout kill and says the exit is unknown", () => {
     const text = BackgroundNotify.render(job({ status: "killed", exit: undefined }), "partial\n", "timeout")
@@ -289,6 +289,12 @@ describe("BackgroundNotify: the header/body boundary", () => {
   test("a CRLF blank line in a command is collapsed like an LF one", () => {
     expect(BackgroundNotify.collapse("a\r\n\r\nb")).toBe("a\nb")
     expect(BackgroundNotify.collapse("echo hi\r\n")).toBe("echo hi")
+  })
+
+  test("an indented line keeps its indentation; whitespace-only lines fold", () => {
+    expect(BackgroundNotify.collapse("for f in *; do\n  echo $f\ndone")).toBe("for f in *; do\n  echo $f\ndone")
+    expect(BackgroundNotify.collapse("a\n  \n\t\n  b")).toBe("a\n  b")
+    expect(BackgroundNotify.collapse("\n  \na\n  ")).toBe("a")
   })
 
   // A genuinely multi-line command (distinct non-blank lines) must survive intact

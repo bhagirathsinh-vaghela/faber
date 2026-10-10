@@ -281,8 +281,8 @@ export const BashTool = Tool.define("bash", async () => {
           OPENCODE_SESSION_ID: ctx.sessionID,
           OPENCODE_MESSAGE_ID: ctx.messageID,
           OPENCODE_AGENT: ctx.agent,
-          // Absent under a TUI that was never given --port: there is no API to
-          // reach, and a default origin would name a port nothing is bound to.
+          // Absent when no server is listening: there is no API to reach, and a
+          // default origin would name a port nothing is bound to.
           ...(listening ? { OPENCODE_SERVER_URL: listening } : {}),
         },
         hard: seconds * 1000,

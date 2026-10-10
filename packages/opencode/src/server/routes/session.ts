@@ -332,8 +332,9 @@ export const SessionRoutes = lazy(() =>
           },
         },
       }),
-      // spawnedBy rides Session.create's own schema, so a helper session is
-      // linked to the peer waiting on it by the same call that creates it.
+      // spawnedBy rides Session.create's own schema, so a helper session
+      // records its spawner and inherits the spawner's agent, model and
+      // variant in the same call that creates it.
       validator("json", Session.create.schema.optional()),
       async (c) => {
         const body = c.req.valid("json") ?? {}
@@ -1177,12 +1178,7 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
-        const body = c.req.valid("json")
-        if (body.cacheProbeMessageID) {
-          await SessionPing.probe(sessionID, body.cacheProbeMessageID)
-        } else {
-          await SessionPing.probe(sessionID, "")
-        }
+        await SessionPing.probe(sessionID, c.req.valid("json").cacheProbeMessageID ?? "")
         return c.json({ ok: true })
       },
     )
